@@ -56,6 +56,7 @@ export async function getGraphNode(entryId: string): Promise<GraphNode | null> {
         lemmas: relation.target.lemmas,
         gloss: relation.target.gloss,
         pos: relation.target.pos,
+        examples: relation.target.examples,
         parents: [],
         children: [],
       });
@@ -72,6 +73,7 @@ export async function getGraphNode(entryId: string): Promise<GraphNode | null> {
         lemmas: relation.source.lemmas,
         gloss: relation.source.gloss,
         pos: relation.source.pos,
+        examples: relation.source.examples,
         parents: [],
         children: [],
       });
@@ -83,6 +85,7 @@ export async function getGraphNode(entryId: string): Promise<GraphNode | null> {
     lemmas: entry.lemmas,
     gloss: entry.gloss,
     pos: entry.pos,
+    examples: entry.examples,
     parents,
     children,
   };

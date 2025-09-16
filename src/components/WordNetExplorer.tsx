@@ -190,7 +190,7 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
         </aside>
 
         {/* Graph Visualization */}
-        <div className="flex-1 p-6">
+        <div className="flex-1 p-6 bg-white">
           {currentNode && !isLoading ? (
             <LexicalGraph 
               currentNode={currentNode} 

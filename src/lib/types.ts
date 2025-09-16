@@ -39,6 +39,7 @@ export interface GraphNode {
   lemmas: string[];
   gloss: string;
   pos: string;
+  examples: string[];
   parents: GraphNode[];
   children: GraphNode[];
 }
