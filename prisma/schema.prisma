@@ -1,0 +1,60 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model LexicalEntry {
+  id           String   @id
+  gloss        String
+  pos          String   @db.Char(1)
+  lexfile      String
+  isMwe        Boolean  @default(false) @map("is_mwe")
+  transitive   Boolean?
+
+  lemmas       String[] @default([])
+  particles    String[] @default([])
+  frames       String[] @default([])
+  examples     String[] @default([])
+
+  // Search vectors (computed by triggers)
+  glossTsv     String?  @map("gloss_tsv")
+  examplesTsv  String?  @map("examples_tsv")
+
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  sourceRelations EntryRelation[] @relation("SourceEntry")
+  targetRelations EntryRelation[] @relation("TargetEntry")
+
+  @@map("lexical_entries")
+}
+
+model EntryRelation {
+  sourceId String      @map("source_id")
+  targetId String      @map("target_id")
+  type     RelationType
+
+  source LexicalEntry @relation("SourceEntry", fields: [sourceId], references: [id], onDelete: Cascade)
+  target LexicalEntry @relation("TargetEntry", fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@id([sourceId, type, targetId])
+  @@map("entry_relations")
+}
+
+enum RelationType {
+  also_see
+  causes
+  entails
+  hypernym
+  hyponym
+
+  @@map("relation_type")
+}
