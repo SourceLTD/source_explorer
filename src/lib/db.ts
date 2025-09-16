@@ -45,30 +45,33 @@ export async function getGraphNode(entryId: string): Promise<GraphNode | null> {
   const entry = await getEntryById(entryId);
   if (!entry) return null;
 
-  // Get parents (hypernyms)
+  // Get parents (hypernyms) - these are broader concepts
+  // Since DB stores: child → parent, type = hypernym
+  // When current entry is the SOURCE (child), the TARGET is the parent (hypernym)
   const parents: GraphNode[] = [];
-  for (const relation of entry.targetRelations) {
-    if (relation.type === RelationType.HYPERNYM && relation.source) {
+  for (const relation of entry.sourceRelations) {
+    if (relation.type === RelationType.HYPERNYM && relation.target) {
       parents.push({
-        id: relation.source.id,
-        lemmas: relation.source.lemmas,
-        gloss: relation.source.gloss,
-        pos: relation.source.pos,
+        id: relation.target.id,
+        lemmas: relation.target.lemmas,
+        gloss: relation.target.gloss,
+        pos: relation.target.pos,
         parents: [],
         children: [],
       });
     }
   }
 
-  // Get children (hyponyms)
+  // Get children (hyponyms) - these are more specific concepts  
+  // When current entry is the TARGET (parent), the SOURCE is the child (hyponym)
   const children: GraphNode[] = [];
-  for (const relation of entry.sourceRelations) {
-    if (relation.type === RelationType.HYPONYM && relation.target) {
+  for (const relation of entry.targetRelations) {
+    if (relation.type === RelationType.HYPERNYM && relation.source) {
       children.push({
-        id: relation.target.id,
-        lemmas: relation.target.lemmas,
-        gloss: relation.target.gloss,
-        pos: relation.target.pos,
+        id: relation.source.id,
+        lemmas: relation.source.lemmas,
+        gloss: relation.source.gloss,
+        pos: relation.source.pos,
         parents: [],
         children: [],
       });

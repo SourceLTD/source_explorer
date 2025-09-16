@@ -1,113 +1,260 @@
 'use client';
 
-import { MermaidDiagram } from '@lightenna/react-mermaid-diagram';
+import React, { useMemo } from 'react';
+import { Group } from '@visx/group';
+import { LinearGradient } from '@visx/gradient';
 import { GraphNode } from '@/lib/types';
+
+// Color scheme
+const currentNodeColor = '#3b82f6';
+const currentNodeStroke = '#1e40af';
+const parentNodeColor = '#10b981';
+const parentNodeStroke = '#059669';
+const childNodeColor = '#f59e0b';
+const childNodeStroke = '#d97706';
+const linkColor = '#e5e7eb';
+const backgroundColor = '#ffffff';
 
 interface LexicalGraphProps {
   currentNode: GraphNode;
   onNodeClick: (nodeId: string) => void;
 }
 
+function truncateText(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  return text.substring(0, maxLength) + '...';
+}
+
+interface PositionedNode {
+  node: GraphNode;
+  nodeType: 'current' | 'parent' | 'child';
+  x: number;
+  y: number;
+}
+
+interface LayoutResult {
+  nodes: PositionedNode[];
+  width: number;
+  height: number;
+}
+
 export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphProps) {
-  const generateMermaidDiagram = (node: GraphNode): string => {
-    let diagram = 'graph TD\n';
-    const nodeId = sanitizeId(node.id);
+
+  const positionedNodes = useMemo((): LayoutResult => {
+    const nodes: PositionedNode[] = [];
     
-    // Define the current node
-    const currentLabel = `${node.lemmas[0] || node.id}<br/><small>${truncateText(node.gloss, 30)}</small>`;
-    diagram += `    ${nodeId}["${currentLabel}"]\n`;
-    diagram += `    class ${nodeId} current-node\n`;
+    // Fixed width, but calculate height based on content
+    const width = 800;
+    const centerX = width / 2;
     
-    // Add parent nodes (hypernyms)
-    node.parents.forEach((parent, index) => {
-      const parentId = sanitizeId(parent.id);
-      const parentLabel = `${parent.lemmas[0] || parent.id}<br/><small>${truncateText(parent.gloss, 30)}</small>`;
-      diagram += `    ${parentId}["${parentLabel}"]\n`;
-      diagram += `    ${parentId} --> ${nodeId}\n`;
-      diagram += `    class ${parentId} parent-node\n`;
+    // Calculate required height based on number of nodes
+    const previewNodeHeight = 60;
+    const currentNodeHeight = 80;
+    const rowSpacing = 100;
+    const margin = 50;
+    const spacingFromCenter = 80;
+    
+    const parentRows = Math.ceil(currentNode.parents.length / 3);
+    const childRows = Math.ceil(currentNode.children.length / 3);
+    
+    const spaceNeededAbove = parentRows > 0 ? 
+      parentRows * previewNodeHeight + (parentRows - 1) * rowSpacing + spacingFromCenter : 
+      spacingFromCenter;
+    
+    const spaceNeededBelow = childRows > 0 ? 
+      childRows * previewNodeHeight + (childRows - 1) * rowSpacing + spacingFromCenter : 
+      spacingFromCenter;
+    
+    const totalHeight = margin + spaceNeededAbove + currentNodeHeight + spaceNeededBelow + margin;
+    const height = Math.max(600, totalHeight); // Minimum 600px, but expand as needed
+    const centerY = margin + spaceNeededAbove + currentNodeHeight / 2;
+    
+    // Add current node at center
+    nodes.push({
+      node: currentNode,
+      nodeType: 'current',
+      x: centerX,
+      y: centerY
     });
     
-    // Add child nodes (hyponyms)
-    node.children.forEach((child, index) => {
-      const childId = sanitizeId(child.id);
-      const childLabel = `${child.lemmas[0] || child.id}<br/><small>${truncateText(child.gloss, 30)}</small>`;
-      diagram += `    ${childId}["${childLabel}"]\n`;
-      diagram += `    ${nodeId} --> ${childId}\n`;
-      diagram += `    class ${childId} child-node\n`;
-    });
+    const nodeSpacing = 160; // Space between nodes
     
-    // Add click events
-    diagram += `    click ${nodeId} "javascript:handleNodeClick('${node.id}')"\n`;
-    node.parents.forEach(parent => {
-      const parentId = sanitizeId(parent.id);
-      diagram += `    click ${parentId} "javascript:handleNodeClick('${parent.id}')"\n`;
-    });
-    node.children.forEach(child => {
-      const childId = sanitizeId(child.id);
-      diagram += `    click ${childId} "javascript:handleNodeClick('${child.id}')"\n`;
-    });
+    // Use data directly - parents should be hypernyms (above), children should be hyponyms (below)
+    const hypernymsToShow = currentNode.parents; // Should be broader concepts - GREEN ABOVE
+    const hyponymsToShow = currentNode.children;  // Should be specific concepts - ORANGE BELOW
     
-    return diagram;
-  };
+    // Position hypernyms ABOVE (green) - no compression needed since height is dynamic
+    if (hypernymsToShow.length > 0) {
+      const hypernymStartY = margin + previewNodeHeight / 2;
+      
+      hypernymsToShow.forEach((hypernym, index) => {
+        const row = Math.floor(index / 3);
+        const col = index % 3;
+        const rowWidth = Math.min(hypernymsToShow.length - row * 3, 3) * nodeSpacing;
+        const startX = centerX - (rowWidth - nodeSpacing) / 2;
+        
+        const nodeY = hypernymStartY + (row * (previewNodeHeight + rowSpacing));
+        
+        nodes.push({
+          node: hypernym,
+          nodeType: 'parent', // GREEN - broader concepts ABOVE
+          x: startX + col * nodeSpacing,
+          y: nodeY
+        });
+      });
+    }
+    
+    // Position hyponyms BELOW (orange) - no compression needed since height is dynamic
+    if (hyponymsToShow.length > 0) {
+      const hyponymStartY = centerY + currentNodeHeight / 2 + spacingFromCenter + previewNodeHeight / 2;
+      
+      hyponymsToShow.forEach((hyponym, index) => {
+        const row = Math.floor(index / 3);
+        const col = index % 3;
+        const rowWidth = Math.min(hyponymsToShow.length - row * 3, 3) * nodeSpacing;
+        const startX = centerX - (rowWidth - nodeSpacing) / 2;
+        
+        const nodeY = hyponymStartY + (row * (previewNodeHeight + rowSpacing));
+        
+        nodes.push({
+          node: hyponym,
+          nodeType: 'child', // ORANGE - specific concepts BELOW
+          x: startX + col * nodeSpacing,
+          y: nodeY
+        });
+      });
+    }
+    
+    return { nodes, width, height };
+  }, [currentNode]);
 
-  const sanitizeId = (id: string): string => {
-    return id.replace(/[^a-zA-Z0-9]/g, '_');
-  };
+  // Create links between nodes
+  const links = useMemo(() => {
+    const linkList: { from: PositionedNode; to: PositionedNode }[] = [];
+    const currentNodePos = positionedNodes.nodes.find(n => n.nodeType === 'current')!;
 
-  const truncateText = (text: string, maxLength: number): string => {
-    if (text.length <= maxLength) return text;
-    return text.substring(0, maxLength) + '...';
-  };
+    // Links from hypernyms (displayed as green "parent" nodes above) to current node
+    // These connect downward from broader concepts to the selected node
+    positionedNodes.nodes.filter(n => n.nodeType === 'parent').forEach(hypernym => {
+      linkList.push({ from: hypernym, to: currentNodePos });
+    });
 
-  // Set up global click handler
-  if (typeof window !== 'undefined') {
-    (window as any).handleNodeClick = (nodeId: string) => {
-      onNodeClick(nodeId);
-    };
-  }
+    // Links from current node to hyponyms (displayed as orange "child" nodes below)
+    // These connect downward from selected node to more specific concepts
+    positionedNodes.nodes.filter(n => n.nodeType === 'child').forEach(hyponym => {
+      linkList.push({ from: currentNodePos, to: hyponym });
+    });
 
-  const diagramText = generateMermaidDiagram(currentNode);
+    return linkList;
+  }, [positionedNodes]);
+  
+  // Get dynamic dimensions
+  const { width, height } = positionedNodes;
 
   return (
-    <div className="w-full h-full flex items-center justify-center bg-white rounded-lg shadow-sm border">
-      <style jsx global>{`
-        .current-node rect {
-          fill: #3b82f6 !important;
-          stroke: #1e40af !important;
-          stroke-width: 2px !important;
-        }
-        .current-node .nodeLabel {
-          color: white !important;
-          font-weight: bold !important;
-        }
-        .parent-node rect {
-          fill: #10b981 !important;
-          stroke: #059669 !important;
-        }
-        .parent-node .nodeLabel {
-          color: white !important;
-        }
-        .child-node rect {
-          fill: #f59e0b !important;
-          stroke: #d97706 !important;
-        }
-        .child-node .nodeLabel {
-          color: white !important;
-        }
-        .node rect {
-          cursor: pointer !important;
-        }
-        .node:hover rect {
-          opacity: 0.8 !important;
-        }
-        .edgeLabel {
-          background-color: white !important;
-          border-radius: 4px !important;
-          padding: 2px 4px !important;
-          font-size: 12px !important;
-        }
-      `}</style>
-      <MermaidDiagram>{diagramText}</MermaidDiagram>
+    <div className="w-full h-full flex items-start justify-center pt-4 bg-white rounded-lg shadow-sm border">
+      <svg width={width} height={height}>
+        <LinearGradient id="link-gradient" from={linkColor} to={linkColor} />
+        <rect width={width} height={height} rx={14} fill={backgroundColor} />
+        <Group>
+          {/* Render links */}
+          {links.map((link, i) => (
+            <line
+              key={`link-${i}`}
+              x1={link.from.x}
+              y1={link.from.y}
+              x2={link.to.x}
+              y2={link.to.y}
+              stroke={linkColor}
+              strokeWidth="2"
+              strokeOpacity={0.6}
+            />
+          ))}
+          
+          {/* Render nodes */}
+          {positionedNodes.nodes.map((posNode, i) => {
+            if (posNode.nodeType === 'current') {
+              const nodeWidth = 200;
+              const nodeHeight = 80;
+              const centerX = -nodeWidth / 2;
+              const centerY = -nodeHeight / 2;
+              
+              return (
+                <Group key={`node-${i}`} top={posNode.y} left={posNode.x}>
+                  <rect
+                    width={nodeWidth}
+                    height={nodeHeight}
+                    y={centerY}
+                    x={centerX}
+                    fill={currentNodeColor}
+                    stroke={currentNodeStroke}
+                    strokeWidth={3}
+                    rx={8}
+                    ry={8}
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => onNodeClick(posNode.node.id)}
+                  />
+                  <text
+                    dy=".33em"
+                    fontSize={14}
+                    fontFamily="Arial"
+                    fontWeight="bold"
+                    textAnchor="middle"
+                    style={{ pointerEvents: 'none' }}
+                    fill="white"
+                  >
+                    <tspan x={0} dy="-0.5em">{posNode.node.lemmas[0] || posNode.node.id}</tspan>
+                    <tspan x={0} dy="1.2em" fontSize={11} fontWeight="normal">
+                      {truncateText(posNode.node.gloss, 40)}
+                    </tspan>
+                  </text>
+                </Group>
+              );
+            } else {
+              const nodeWidth = 140;
+              const nodeHeight = 60;
+              const centerX = -nodeWidth / 2;
+              const centerY = -nodeHeight / 2;
+              
+              const isParent = posNode.nodeType === 'parent';
+              const fillColor = isParent ? parentNodeColor : childNodeColor;
+              const strokeColor = isParent ? parentNodeStroke : childNodeStroke;
+              
+              return (
+                <Group key={`node-${i}`} top={posNode.y} left={posNode.x}>
+                  <rect
+                    width={nodeWidth}
+                    height={nodeHeight}
+                    y={centerY}
+                    x={centerX}
+                    fill={fillColor}
+                    stroke={strokeColor}
+                    strokeWidth={2}
+                    rx={6}
+                    ry={6}
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => onNodeClick(posNode.node.id)}
+                  />
+                  <text
+                    dy=".33em"
+                    fontSize={11}
+                    fontFamily="Arial"
+                    fontWeight="500"
+                    textAnchor="middle"
+                    style={{ pointerEvents: 'none' }}
+                    fill="white"
+                  >
+                    <tspan x={0} dy="-0.4em">{posNode.node.lemmas[0] || posNode.node.id}</tspan>
+                    <tspan x={0} dy="1.1em" fontSize={9} fontWeight="normal">
+                      {truncateText(posNode.node.gloss, 20)}
+                    </tspan>
+                  </text>
+                </Group>
+              );
+            }
+          })}
+        </Group>
+      </svg>
     </div>
   );
 }
