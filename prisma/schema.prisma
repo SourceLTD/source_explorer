@@ -10,7 +10,45 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Enum for relation types
+model LexicalEntry {
+  id           String   @id
+  gloss        String
+  pos          String   @db.Char(1)
+  lexfile      String
+  isMwe        Boolean  @default(false) @map("is_mwe")
+  transitive   Boolean?
+
+  lemmas       String[] @default([])
+  particles    String[] @default([])
+  frames       String[] @default([])
+  examples     String[] @default([])
+
+  // Search vectors (computed by triggers)
+  glossTsv     String?  @map("gloss_tsv")
+  examplesTsv  String?  @map("examples_tsv")
+
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  sourceRelations EntryRelation[] @relation("SourceEntry")
+  targetRelations EntryRelation[] @relation("TargetEntry")
+
+  @@map("lexical_entries")
+}
+
+model EntryRelation {
+  sourceId String      @map("source_id")
+  targetId String      @map("target_id")
+  type     RelationType
+
+  source LexicalEntry @relation("SourceEntry", fields: [sourceId], references: [id], onDelete: Cascade)
+  target LexicalEntry @relation("TargetEntry", fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@id([sourceId, type, targetId])
+  @@map("entry_relations")
+}
+
 enum RelationType {
   also_see
   causes
@@ -19,55 +57,4 @@ enum RelationType {
   hyponym
 
   @@map("relation_type")
-}
-
-// Main lexical entries table
-model LexicalEntry {
-  id          String   @id
-  gloss       String
-  pos         String   @db.Char(1) // 'n','v','a','r','s'
-  lexfile     String
-  isMwe       Boolean  @default(false) @map("is_mwe")
-  transitive  Boolean?
-  
-  // Array fields
-  lemmas      String[] @default([])
-  particles   String[] @default([])
-  frames      String[] @default([])
-  examples    String[] @default([])
-  
-  // TSVector fields for full-text search (managed by triggers)
-  glossTsv    Unsupported("tsvector")? @map("gloss_tsv")
-  examplesTsv Unsupported("tsvector")? @map("examples_tsv")
-  
-  // Timestamps
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
-  
-  // Relations
-  sourceRelations EntryRelation[] @relation("SourceEntry")
-  targetRelations EntryRelation[] @relation("TargetEntry")
-
-  @@index([pos], name: "idx_lex_pos")
-  @@index([lemmas], name: "idx_lex_lemmas_gin", type: Gin)
-  @@index([particles], name: "idx_lex_particles_gin", type: Gin)
-  @@index([frames], name: "idx_lex_frames_gin", type: Gin)
-  @@index([glossTsv], name: "idx_lex_gloss_tsv", type: Gin)
-  @@index([examplesTsv], name: "idx_lex_examples_tsv", type: Gin)
-  @@map("lexical_entries")
-}
-
-// Relations between entries
-model EntryRelation {
-  sourceId  String       @map("source_id")
-  targetId  String       @map("target_id")
-  type      RelationType
-  
-  // Foreign key relations
-  source    LexicalEntry @relation("SourceEntry", fields: [sourceId], references: [id], onDelete: Cascade)
-  target    LexicalEntry @relation("TargetEntry", fields: [targetId], references: [id], onDelete: Cascade)
-  
-  @@id([sourceId, type, targetId])
-  @@index([targetId, type], name: "idx_rel_target_type")
-  @@map("entry_relations")
 }

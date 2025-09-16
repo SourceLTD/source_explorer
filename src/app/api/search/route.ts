@@ -1,43 +1,21 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
-import type { SearchOptions } from '@/lib/types'
+import { NextRequest, NextResponse } from 'next/server';
+import { searchEntries } from '@/lib/db';
 
-export async function POST(request: NextRequest) {
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  const query = searchParams.get('q');
+  const limitParam = searchParams.get('limit');
+  const limit = limitParam ? parseInt(limitParam, 10) : 20;
+
+  if (!query) {
+    return NextResponse.json({ error: 'Search query is required' }, { status: 400 });
+  }
+
   try {
-    const body: SearchOptions = await request.json()
-    
-    if (!body.query?.trim()) {
-      return NextResponse.json(
-        { error: 'Query parameter is required' },
-        { status: 400 }
-      )
-    }
-
-    const entries = await db.searchLexicalEntries(body.query, {
-      limit: body.limit || 50,
-      offset: body.offset || 0,
-      pos: body.pos,
-      includeMwe: body.includeMwe ?? true
-    })
-
-    // Get total count for pagination (simplified - you might want to optimize this)
-    const totalEntries = await db.searchLexicalEntries(body.query, {
-      limit: 1000, // Large number to get approximate total
-      offset: 0,
-      pos: body.pos,
-      includeMwe: body.includeMwe ?? true
-    })
-
-    return NextResponse.json({
-      entries,
-      total: totalEntries.length,
-      hasMore: entries.length === (body.limit || 50)
-    })
+    const results = await searchEntries(query, limit);
+    return NextResponse.json(results);
   } catch (error) {
-    console.error('Search error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    console.error('Error searching entries:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

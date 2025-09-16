@@ -1,97 +1,235 @@
-import { PrismaClient, RelationType } from '@prisma/client'
+import { PrismaClient, RelationType } from '@prisma/client';
 
-const prisma = new PrismaClient()
+const prisma = new PrismaClient();
 
 async function main() {
-  console.log('🌱 Starting seed...')
+  console.log('Seeding database...');
 
-  // Sample lexical entries
-  const sampleEntries = [
+  // Create sample lexical entries
+  const entries = [
     {
-      id: 'dog.n.01',
-      gloss: 'a member of the genus Canis (probably descended from the common wolf) that has been domesticated by man since prehistoric times; occurs in many breeds',
-      pos: 'n',
-      lexfile: 'noun.animal',
-      lemmas: ['dog', 'domestic_dog', 'Canis_familiaris'],
-      examples: ['the dog barked all night']
-    },
-    {
-      id: 'animal.n.01',
-      gloss: 'a living organism characterized by voluntary movement',
-      pos: 'n',
-      lexfile: 'noun.animal',
-      lemmas: ['animal', 'animate_being', 'beast', 'brute', 'creature', 'fauna'],
-      examples: ['animals in the zoo']
-    },
-    {
-      id: 'run.v.01',
-      gloss: 'move fast by using one\'s feet, with one foot off the ground at any given time',
+      id: 'have.v.02',
+      gloss: 'have as a feature',
       pos: 'v',
-      lexfile: 'verb.motion',
-      lemmas: ['run'],
-      frames: ['Somebody ----s', 'Somebody ----s PP'],
-      examples: ['Don\'t run--you\'ll be out of breath', 'The children ran to the store']
+      lexfile: 'verb.stative',
+      lemmas: ['have', 'feature'],
+      examples: ['This restaurant features the most famous chefs in France'],
     },
     {
-      id: 'fast.a.01',
-      gloss: 'acting or moving or capable of acting or moving quickly',
-      pos: 'a',
-      lexfile: 'adj.all',
-      lemmas: ['fast'],
-      examples: ['fast cars', 'a fast typist']
+      id: 'brim.v.01',
+      gloss: 'be completely full',
+      pos: 'v',
+      lexfile: 'verb.stative',
+      lemmas: ['brim'],
+      examples: ['His eyes brimmed with tears'],
     },
     {
-      id: 'quickly.r.01',
-      gloss: 'with rapid movements',
-      pos: 'r',
-      lexfile: 'adv.all',
-      lemmas: ['quickly', 'rapidly', 'speedily', 'chop-chop', 'apace'],
-      examples: ['he works quickly']
-    }
-  ]
+      id: 'abound.v.02',
+      gloss: 'be abundant or plentiful; exist in large quantities',
+      pos: 'v',
+      lexfile: 'verb.stative',
+      lemmas: ['abound', 'burst', 'bristle'],
+      examples: ['The plaza is bursting with life'],
+    },
+    {
+      id: 'bear.v.01',
+      gloss: 'have',
+      pos: 'v',
+      lexfile: 'verb.stative',
+      lemmas: ['bear', 'carry'],
+      examples: ['bear a resemblance', 'bear a signature'],
+    },
+    {
+      id: 'carry.v.02',
+      gloss: 'have with oneself; have on one\'s person',
+      pos: 'v',
+      lexfile: 'verb.possession',
+      lemmas: ['carry', 'pack', 'take'],
+      examples: ['She always takes an umbrella'],
+    },
+    {
+      id: 'carry.v.18',
+      gloss: 'bear or be able to bear the weight, pressure, or responsibility of',
+      pos: 'v',
+      lexfile: 'verb.stative',
+      lemmas: ['carry', 'hold', 'support'],
+      examples: ['Can you carry this suitcase?'],
+    },
+    {
+      id: 'carry.v.22',
+      gloss: 'have or possess something abstract',
+      pos: 'v',
+      lexfile: 'verb.stative',
+      lemmas: ['carry', 'bear'],
+      examples: ['I carry her image in my mind\'s eye'],
+    },
+    {
+      id: 'carry.v.35',
+      gloss: 'include as the content; broadcast or publicize',
+      pos: 'v',
+      lexfile: 'verb.communication',
+      lemmas: ['carry', 'run'],
+      examples: ['All major networks carried the press conference'],
+    },
+    {
+      id: 'give_off.v.01',
+      gloss: 'have as a by-product',
+      pos: 'v',
+      lexfile: 'verb.creation',
+      lemmas: ['give_off', 'emit'],
+      examples: ['The big cities gave off so many wonderful American qualities'],
+    },
+    {
+      id: 'imply.v.05',
+      gloss: 'have as a logical consequence',
+      pos: 'v',
+      lexfile: 'verb.stative',
+      lemmas: ['imply', 'connote'],
+      examples: ['The water shortage means that we have to stop taking long showers'],
+    },
+    {
+      id: 'possess.v.01',
+      gloss: 'have as an attribute or quality',
+      pos: 'v',
+      lexfile: 'verb.stative',
+      lemmas: ['possess', 'own'],
+      examples: ['he possesses great knowledge in that area'],
+    },
+    {
+      id: 'read.v.02',
+      gloss: 'have or contain a certain wording or form',
+      pos: 'v',
+      lexfile: 'verb.stative',
+      lemmas: ['read', 'say'],
+      examples: ['The passage reads as follows'],
+    },
+    {
+      id: 'sport.v.01',
+      gloss: 'wear or display in an ostentatious or proud manner',
+      pos: 'v',
+      lexfile: 'verb.body',
+      lemmas: ['sport', 'boast', 'feature'],
+      examples: ['she was sporting a new hat'],
+    },
+    {
+      id: 'star.v.01',
+      gloss: 'feature as the star',
+      pos: 'v',
+      lexfile: 'verb.creation',
+      lemmas: ['star'],
+      examples: ['The movie stars Dustin Hoffman as an autistic man'],
+    },
+    {
+      id: 'unite.v.03',
+      gloss: 'have or possess in combination',
+      pos: 'v',
+      lexfile: 'verb.stative',
+      lemmas: ['unite', 'combine'],
+      examples: ['she unites charm with a good business sense'],
+    },
+    {
+      id: 'wear.v.02',
+      gloss: 'have on one\'s person',
+      pos: 'v',
+      lexfile: 'verb.body',
+      lemmas: ['wear', 'bear'],
+      examples: ['He always wears a smile'],
+    },
+    {
+      id: 'wear.v.03',
+      gloss: 'have in one\'s aspect; wear an expression of one\'s attitude or personality',
+      pos: 'v',
+      lexfile: 'verb.body',
+      lemmas: ['wear'],
+      examples: ['He always wears a smile'],
+    },
+    {
+      id: 'wear.v.05',
+      gloss: 'have or show an appearance of',
+      pos: 'v',
+      lexfile: 'verb.perception',
+      lemmas: ['wear'],
+      examples: ['wear one\'s hair in a certain way'],
+    },
+  ];
 
-  // Insert sample entries
-  for (const entry of sampleEntries) {
+  // Insert entries
+  for (const entry of entries) {
     await prisma.lexicalEntry.upsert({
       where: { id: entry.id },
       update: {},
-      create: entry
-    })
+      create: entry,
+    });
   }
 
-  // Sample relations
-  const sampleRelations = [
-    { sourceId: 'dog.n.01', targetId: 'animal.n.01', type: 'hypernym' as RelationType },
-    { sourceId: 'animal.n.01', targetId: 'dog.n.01', type: 'hyponym' as RelationType },
-    { sourceId: 'run.v.01', targetId: 'fast.a.01', type: 'also_see' as RelationType },
-    { sourceId: 'fast.a.01', targetId: 'quickly.r.01', type: 'also_see' as RelationType }
-  ]
+  // Create relations (hypernym/hyponym relationships)
+  const relations = [
+    // have.v.02 is hypernym to many others
+    { source: 'brim.v.01', target: 'have.v.02', type: RelationType.hypernym },
+    { source: 'abound.v.02', target: 'have.v.02', type: RelationType.hypernym },
+    { source: 'bear.v.01', target: 'have.v.02', type: RelationType.hypernym },
+    { source: 'carry.v.02', target: 'have.v.02', type: RelationType.hypernym },
+    { source: 'carry.v.18', target: 'have.v.02', type: RelationType.hypernym },
+    { source: 'carry.v.22', target: 'have.v.02', type: RelationType.hypernym },
+    { source: 'carry.v.35', target: 'have.v.02', type: RelationType.hypernym },
+    { source: 'give_off.v.01', target: 'have.v.02', type: RelationType.hypernym },
+    { source: 'imply.v.05', target: 'have.v.02', type: RelationType.hypernym },
+    { source: 'possess.v.01', target: 'have.v.02', type: RelationType.hypernym },
+    { source: 'read.v.02', target: 'have.v.02', type: RelationType.hypernym },
+    { source: 'sport.v.01', target: 'have.v.02', type: RelationType.hypernym },
+    { source: 'star.v.01', target: 'have.v.02', type: RelationType.hypernym },
+    { source: 'unite.v.03', target: 'have.v.02', type: RelationType.hypernym },
+    { source: 'wear.v.02', target: 'have.v.02', type: RelationType.hypernym },
+    { source: 'wear.v.03', target: 'have.v.02', type: RelationType.hypernym },
+    { source: 'wear.v.05', target: 'have.v.02', type: RelationType.hypernym },
 
-  // Insert sample relations
-  for (const relation of sampleRelations) {
+    // Create corresponding hyponym relations
+    { source: 'have.v.02', target: 'brim.v.01', type: RelationType.hyponym },
+    { source: 'have.v.02', target: 'abound.v.02', type: RelationType.hyponym },
+    { source: 'have.v.02', target: 'bear.v.01', type: RelationType.hyponym },
+    { source: 'have.v.02', target: 'carry.v.02', type: RelationType.hyponym },
+    { source: 'have.v.02', target: 'carry.v.18', type: RelationType.hyponym },
+    { source: 'have.v.02', target: 'carry.v.22', type: RelationType.hyponym },
+    { source: 'have.v.02', target: 'carry.v.35', type: RelationType.hyponym },
+    { source: 'have.v.02', target: 'give_off.v.01', type: RelationType.hyponym },
+    { source: 'have.v.02', target: 'imply.v.05', type: RelationType.hyponym },
+    { source: 'have.v.02', target: 'possess.v.01', type: RelationType.hyponym },
+    { source: 'have.v.02', target: 'read.v.02', type: RelationType.hyponym },
+    { source: 'have.v.02', target: 'sport.v.01', type: RelationType.hyponym },
+    { source: 'have.v.02', target: 'star.v.01', type: RelationType.hyponym },
+    { source: 'have.v.02', target: 'unite.v.03', type: RelationType.hyponym },
+    { source: 'have.v.02', target: 'wear.v.02', type: RelationType.hyponym },
+    { source: 'have.v.02', target: 'wear.v.03', type: RelationType.hyponym },
+    { source: 'have.v.02', target: 'wear.v.05', type: RelationType.hyponym },
+  ];
+
+  // Insert relations
+  for (const relation of relations) {
     await prisma.entryRelation.upsert({
       where: {
         sourceId_type_targetId: {
-          sourceId: relation.sourceId,
-          targetId: relation.targetId,
-          type: relation.type
-        }
+          sourceId: relation.source,
+          type: relation.type,
+          targetId: relation.target,
+        },
       },
       update: {},
-      create: relation
-    })
+      create: {
+        sourceId: relation.source,
+        targetId: relation.target,
+        type: relation.type,
+      },
+    });
   }
 
-  console.log('✅ Seed completed successfully!')
-  console.log(`📊 Created ${sampleEntries.length} lexical entries`)
-  console.log(`🔗 Created ${sampleRelations.length} relations`)
+  console.log('Database seeded successfully!');
 }
 
 main()
   .catch((e) => {
-    console.error('❌ Seed failed:', e)
-    process.exit(1)
+    console.error(e);
+    process.exit(1);
   })
   .finally(async () => {
-    await prisma.$disconnect()
-  })
+    await prisma.$disconnect();
+  });
