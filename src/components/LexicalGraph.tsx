@@ -48,21 +48,21 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
     const centerX = width / 2;
     
     // Calculate required height based on number of nodes
-    const previewNodeHeight = 60;
-    const currentNodeHeight = 80;
-    const rowSpacing = 100;
+    const closedNodeHeight = 30; // Much smaller for closed nodes
+    const currentNodeHeight = 120; // Taller for full information display
+    const rowSpacing = 50; // Reduced spacing for closed nodes
     const margin = 50;
     const spacingFromCenter = 80;
     
-    const parentRows = Math.ceil(currentNode.parents.length / 3);
-    const childRows = Math.ceil(currentNode.children.length / 3);
+    const parentRows = Math.ceil(currentNode.parents.length / 5); // More nodes per row
+    const childRows = Math.ceil(currentNode.children.length / 5);
     
     const spaceNeededAbove = parentRows > 0 ? 
-      parentRows * previewNodeHeight + (parentRows - 1) * rowSpacing + spacingFromCenter : 
+      parentRows * closedNodeHeight + (parentRows - 1) * rowSpacing + spacingFromCenter : 
       spacingFromCenter;
     
     const spaceNeededBelow = childRows > 0 ? 
-      childRows * previewNodeHeight + (childRows - 1) * rowSpacing + spacingFromCenter : 
+      childRows * closedNodeHeight + (childRows - 1) * rowSpacing + spacingFromCenter : 
       spacingFromCenter;
     
     const totalHeight = margin + spaceNeededAbove + currentNodeHeight + spaceNeededBelow + margin;
@@ -77,7 +77,7 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
       y: centerY
     });
     
-    const nodeSpacing = 160; // Space between nodes
+    const closedNodeSpacing = 90; // Closer spacing for smaller closed nodes
     
     // Use data directly - parents should be hypernyms (above), children should be hyponyms (below)
     const hypernymsToShow = currentNode.parents; // Should be broader concepts - GREEN ABOVE
@@ -85,20 +85,20 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
     
     // Position hypernyms ABOVE (green) - no compression needed since height is dynamic
     if (hypernymsToShow.length > 0) {
-      const hypernymStartY = margin + previewNodeHeight / 2;
+      const hypernymStartY = margin + closedNodeHeight / 2;
       
       hypernymsToShow.forEach((hypernym, index) => {
-        const row = Math.floor(index / 3);
-        const col = index % 3;
-        const rowWidth = Math.min(hypernymsToShow.length - row * 3, 3) * nodeSpacing;
-        const startX = centerX - (rowWidth - nodeSpacing) / 2;
+        const row = Math.floor(index / 5); // 5 nodes per row
+        const col = index % 5;
+        const rowWidth = Math.min(hypernymsToShow.length - row * 5, 5) * closedNodeSpacing;
+        const startX = centerX - (rowWidth - closedNodeSpacing) / 2;
         
-        const nodeY = hypernymStartY + (row * (previewNodeHeight + rowSpacing));
+        const nodeY = hypernymStartY + (row * (closedNodeHeight + rowSpacing));
         
         nodes.push({
           node: hypernym,
           nodeType: 'parent', // GREEN - broader concepts ABOVE
-          x: startX + col * nodeSpacing,
+          x: startX + col * closedNodeSpacing,
           y: nodeY
         });
       });
@@ -106,20 +106,20 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
     
     // Position hyponyms BELOW (orange) - no compression needed since height is dynamic
     if (hyponymsToShow.length > 0) {
-      const hyponymStartY = centerY + currentNodeHeight / 2 + spacingFromCenter + previewNodeHeight / 2;
+      const hyponymStartY = centerY + currentNodeHeight / 2 + spacingFromCenter + closedNodeHeight / 2;
       
       hyponymsToShow.forEach((hyponym, index) => {
-        const row = Math.floor(index / 3);
-        const col = index % 3;
-        const rowWidth = Math.min(hyponymsToShow.length - row * 3, 3) * nodeSpacing;
-        const startX = centerX - (rowWidth - nodeSpacing) / 2;
+        const row = Math.floor(index / 5); // 5 nodes per row
+        const col = index % 5;
+        const rowWidth = Math.min(hyponymsToShow.length - row * 5, 5) * closedNodeSpacing;
+        const startX = centerX - (rowWidth - closedNodeSpacing) / 2;
         
-        const nodeY = hyponymStartY + (row * (previewNodeHeight + rowSpacing));
+        const nodeY = hyponymStartY + (row * (closedNodeHeight + rowSpacing));
         
         nodes.push({
           node: hyponym,
           nodeType: 'child', // ORANGE - specific concepts BELOW
-          x: startX + col * nodeSpacing,
+          x: startX + col * closedNodeSpacing,
           y: nodeY
         });
       });
@@ -174,8 +174,9 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
           {/* Render nodes */}
           {positionedNodes.nodes.map((posNode, i) => {
             if (posNode.nodeType === 'current') {
-              const nodeWidth = 200;
-              const nodeHeight = 80;
+              // Current node - show full information like the first image
+              const nodeWidth = 280;
+              const nodeHeight = 120;
               const centerX = -nodeWidth / 2;
               const centerY = -nodeHeight / 2;
               
@@ -194,25 +195,67 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                     style={{ cursor: 'pointer' }}
                     onClick={() => onNodeClick(posNode.node.id)}
                   />
+                  {/* Node title/lemma */}
                   <text
                     dy=".33em"
-                    fontSize={14}
+                    fontSize={16}
                     fontFamily="Arial"
                     fontWeight="bold"
                     textAnchor="middle"
                     style={{ pointerEvents: 'none' }}
                     fill="white"
                   >
-                    <tspan x={0} dy="-0.5em">{posNode.node.lemmas[0] || posNode.node.id}</tspan>
-                    <tspan x={0} dy="1.2em" fontSize={11} fontWeight="normal">
-                      {truncateText(posNode.node.gloss, 40)}
+                    <tspan x={0} dy="-2.2em">{posNode.node.lemmas[0] || posNode.node.id}</tspan>
+                    <tspan x={0} dy="0.2em" fontSize={12} fontWeight="normal">
+                      ({posNode.node.id})
+                    </tspan>
+                  </text>
+                  {/* Definition/gloss */}
+                  <text
+                    dy=".33em"
+                    fontSize={10}
+                    fontFamily="Arial"
+                    fontWeight="normal"
+                    textAnchor="middle"
+                    style={{ pointerEvents: 'none' }}
+                    fill="white"
+                    fontStyle="italic"
+                  >
+                    <tspan x={0} dy="1.2em">{truncateText(posNode.node.gloss, 50)}</tspan>
+                  </text>
+                  {/* Part of Speech */}
+                  <text
+                    dy=".33em"
+                    fontSize={11}
+                    fontFamily="Arial"
+                    fontWeight="600"
+                    textAnchor="middle"
+                    style={{ pointerEvents: 'none' }}
+                    fill="white"
+                  >
+                    <tspan x={0} dy="2.2em">Part of Speech: {posNode.node.pos}</tspan>
+                  </text>
+                  {/* Lemmas */}
+                  <text
+                    dy=".33em"
+                    fontSize={10}
+                    fontFamily="Arial"
+                    fontWeight="500"
+                    textAnchor="middle"
+                    style={{ pointerEvents: 'none' }}
+                    fill="white"
+                  >
+                    <tspan x={0} dy="3.0em">
+                      Lemmas: {posNode.node.lemmas.slice(0, 3).join('; ')}
+                      {posNode.node.lemmas.length > 3 ? '...' : ''}
                     </tspan>
                   </text>
                 </Group>
               );
             } else {
-              const nodeWidth = 140;
-              const nodeHeight = 60;
+              // Closed nodes - show only ID like the second image
+              const nodeWidth = 60;
+              const nodeHeight = 30;
               const centerX = -nodeWidth / 2;
               const centerY = -nodeHeight / 2;
               
@@ -229,25 +272,22 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                     x={centerX}
                     fill={fillColor}
                     stroke={strokeColor}
-                    strokeWidth={2}
-                    rx={6}
-                    ry={6}
+                    strokeWidth={1}
+                    rx={4}
+                    ry={4}
                     style={{ cursor: 'pointer' }}
                     onClick={() => onNodeClick(posNode.node.id)}
                   />
                   <text
                     dy=".33em"
-                    fontSize={11}
+                    fontSize={9}
                     fontFamily="Arial"
                     fontWeight="500"
                     textAnchor="middle"
                     style={{ pointerEvents: 'none' }}
                     fill="white"
                   >
-                    <tspan x={0} dy="-0.4em">{posNode.node.lemmas[0] || posNode.node.id}</tspan>
-                    <tspan x={0} dy="1.1em" fontSize={9} fontWeight="normal">
-                      {truncateText(posNode.node.gloss, 20)}
-                    </tspan>
+                    {posNode.node.id}
                   </text>
                 </Group>
               );
