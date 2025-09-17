@@ -15,6 +15,11 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Editing state
+  const [editingField, setEditingField] = useState<'lemmas' | 'gloss' | 'examples' | null>(null);
+  const [editValue, setEditValue] = useState<string>('');
+  const [isSaving, setIsSaving] = useState(false);
 
   const loadGraphNode = async (entryId: string) => {
     setIsLoading(true);
@@ -57,6 +62,80 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
 
   const handleBreadcrumbNavigate = (id: string) => {
     loadGraphNode(id);
+  };
+
+  const startEditing = (field: 'lemmas' | 'gloss' | 'examples') => {
+    if (!currentNode) return;
+    
+    let initialValue = '';
+    switch (field) {
+      case 'lemmas':
+        initialValue = currentNode.lemmas.join('; ');
+        break;
+      case 'gloss':
+        initialValue = currentNode.gloss;
+        break;
+      case 'examples':
+        initialValue = currentNode.examples.join('\n');
+        break;
+    }
+    
+    setEditingField(field);
+    setEditValue(initialValue);
+  };
+
+  const cancelEditing = () => {
+    setEditingField(null);
+    setEditValue('');
+  };
+
+  const saveEdit = async () => {
+    if (!currentNode || !editingField) return;
+    
+    setIsSaving(true);
+    try {
+      let updateData: any = {};
+      
+      switch (editingField) {
+        case 'lemmas':
+          updateData.lemmas = editValue.split(';').map(s => s.trim()).filter(s => s);
+          break;
+        case 'gloss':
+          updateData.gloss = editValue.trim();
+          break;
+        case 'examples':
+          updateData.examples = editValue.split('\n').map(s => s.trim()).filter(s => s);
+          break;
+      }
+
+      const response = await fetch(`/api/entries/${currentNode.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updateData)
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update entry');
+      }
+
+      // Reload the graph node to get updated data
+      await loadGraphNode(currentNode.id);
+      
+      setEditingField(null);
+      setEditValue('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save changes');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && e.ctrlKey) {
+      saveEdit();
+    } else if (e.key === 'Escape') {
+      cancelEditing();
+    }
   };
 
   // Load initial entry
@@ -123,32 +202,138 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
               {/* Lemmas */}
               <div>
                 <h3 className="text-sm font-medium text-gray-700 mb-2">Lemmas</h3>
-                <p className="text-gray-900 text-sm leading-relaxed">
-                  {currentNode.lemmas.join('; ')}
-                </p>
+                {editingField === 'lemmas' ? (
+                  <div className="space-y-2">
+                    <input
+                      type="text"
+                      value={editValue}
+                      onChange={(e) => setEditValue(e.target.value)}
+                      onKeyDown={handleKeyDown}
+                      className="w-full px-3 py-2 border border-blue-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                      placeholder="Enter lemmas separated by semicolons"
+                      autoFocus
+                    />
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={saveEdit}
+                        disabled={isSaving}
+                        className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        {isSaving ? 'Saving...' : 'Save'}
+                      </button>
+                      <button
+                        onClick={cancelEditing}
+                        className="px-3 py-1 bg-gray-300 text-gray-700 text-xs rounded hover:bg-gray-400"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-500">Press Ctrl+Enter to save, Esc to cancel</p>
+                  </div>
+                ) : (
+                  <p 
+                    className="text-gray-900 text-sm leading-relaxed cursor-pointer hover:bg-gray-50 p-2 rounded border-2 border-transparent hover:border-gray-200 transition-colors"
+                    onDoubleClick={() => startEditing('lemmas')}
+                    title="Double-click to edit"
+                  >
+                    {currentNode.lemmas.join('; ')}
+                  </p>
+                )}
               </div>
 
               {/* Definition */}
               <div>
                 <h3 className="text-sm font-medium text-gray-700 mb-2">Definition</h3>
-                <p className="text-gray-900 text-sm leading-relaxed">
-                  {currentNode.gloss}
-                </p>
+                {editingField === 'gloss' ? (
+                  <div className="space-y-2">
+                    <textarea
+                      value={editValue}
+                      onChange={(e) => setEditValue(e.target.value)}
+                      onKeyDown={handleKeyDown}
+                      className="w-full px-3 py-2 border border-blue-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-vertical"
+                      rows={3}
+                      placeholder="Enter definition"
+                      autoFocus
+                    />
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={saveEdit}
+                        disabled={isSaving}
+                        className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        {isSaving ? 'Saving...' : 'Save'}
+                      </button>
+                      <button
+                        onClick={cancelEditing}
+                        className="px-3 py-1 bg-gray-300 text-gray-700 text-xs rounded hover:bg-gray-400"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-500">Press Ctrl+Enter to save, Esc to cancel</p>
+                  </div>
+                ) : (
+                  <p 
+                    className="text-gray-900 text-sm leading-relaxed cursor-pointer hover:bg-gray-50 p-2 rounded border-2 border-transparent hover:border-gray-200 transition-colors"
+                    onDoubleClick={() => startEditing('gloss')}
+                    title="Double-click to edit"
+                  >
+                    {currentNode.gloss}
+                  </p>
+                )}
               </div>
 
               {/* Examples */}
-              {currentNode.examples && currentNode.examples.length > 0 && (
-                <div>
-                  <h3 className="text-sm font-medium text-gray-700 mb-2">Examples</h3>
-                  <div className="space-y-1">
-                    {currentNode.examples.map((example, index) => (
-                      <p key={index} className="text-gray-900 text-sm leading-relaxed italic">
-                        "{example}"
-                      </p>
-                    ))}
+              <div>
+                <h3 className="text-sm font-medium text-gray-700 mb-2">Examples</h3>
+                {editingField === 'examples' ? (
+                  <div className="space-y-2">
+                    <textarea
+                      value={editValue}
+                      onChange={(e) => setEditValue(e.target.value)}
+                      onKeyDown={handleKeyDown}
+                      className="w-full px-3 py-2 border border-blue-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-vertical"
+                      rows={4}
+                      placeholder="Enter examples, one per line"
+                      autoFocus
+                    />
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={saveEdit}
+                        disabled={isSaving}
+                        className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        {isSaving ? 'Saving...' : 'Save'}
+                      </button>
+                      <button
+                        onClick={cancelEditing}
+                        className="px-3 py-1 bg-gray-300 text-gray-700 text-xs rounded hover:bg-gray-400"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-500">Press Ctrl+Enter to save, Esc to cancel</p>
                   </div>
-                </div>
-              )}
+                ) : (
+                  <div 
+                    className="cursor-pointer hover:bg-gray-50 p-2 rounded border-2 border-transparent hover:border-gray-200 transition-colors"
+                    onDoubleClick={() => startEditing('examples')}
+                    title="Double-click to edit"
+                  >
+                    {currentNode.examples && currentNode.examples.length > 0 ? (
+                      <div className="space-y-1">
+                        {currentNode.examples.map((example, index) => (
+                          <p key={index} className="text-gray-900 text-sm leading-relaxed italic">
+                            "{example}"
+                          </p>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-gray-500 text-sm italic">No examples (double-click to add)</p>
+                    )}
+                  </div>
+                )}
+              </div>
 
               {/* Parents (Hypernyms) */}
               {currentNode.parents.length > 0 && (
