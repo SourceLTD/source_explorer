@@ -75,10 +75,6 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
             <h1 className="text-xl font-bold text-gray-900">
               Lexical Explorer
             </h1>
-            <Breadcrumbs 
-              items={breadcrumbs} 
-              onNavigate={handleBreadcrumbNavigate} 
-            />
           </div>
           
           <SearchBox onSelectResult={handleSearchResult} />
@@ -109,14 +105,27 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
 
           {currentNode && !isLoading && (
             <div className="space-y-6">
+              {/* Breadcrumbs */}
+              <div>
+                <Breadcrumbs 
+                  items={breadcrumbs} 
+                  onNavigate={handleBreadcrumbNavigate} 
+                />
+              </div>
+
               {/* Entry Header */}
               <div>
                 <h2 className="text-lg font-bold text-gray-900 mb-2">
-                  {currentNode.lemmas.join(', ') || currentNode.id}
+                  {currentNode.lemmas[0] || currentNode.id} ({currentNode.id})
                 </h2>
-                <span className="inline-block px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded-full">
-                  {getPartOfSpeechLabel(currentNode.pos)}
-                </span>
+              </div>
+
+              {/* Lemmas */}
+              <div>
+                <h3 className="text-sm font-medium text-gray-700 mb-2">Lemmas</h3>
+                <p className="text-gray-900 text-sm leading-relaxed">
+                  {currentNode.lemmas.join('; ')}
+                </p>
               </div>
 
               {/* Definition */}
@@ -126,6 +135,20 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
                   {currentNode.gloss}
                 </p>
               </div>
+
+              {/* Examples */}
+              {currentNode.examples && currentNode.examples.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-medium text-gray-700 mb-2">Examples</h3>
+                  <div className="space-y-1">
+                    {currentNode.examples.map((example, index) => (
+                      <p key={index} className="text-gray-900 text-sm leading-relaxed italic">
+                        "{example}"
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Parents (Hypernyms) */}
               {currentNode.parents.length > 0 && (
@@ -170,6 +193,81 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
                         </div>
                         <div className="text-yellow-600 text-xs mt-1 line-clamp-2">
                           {child.gloss}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Causes */}
+              {currentNode.causes && currentNode.causes.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-medium text-gray-700 mb-2">
+                    Causes ({currentNode.causes.length})
+                  </h3>
+                  <div className="space-y-2">
+                    {currentNode.causes.map(cause => (
+                      <button
+                        key={cause.id}
+                        onClick={() => handleNodeClick(cause.id)}
+                        className="block w-full text-left p-3 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-lg transition-colors"
+                      >
+                        <div className="font-medium text-purple-800 text-sm">
+                          {cause.lemmas.join(', ') || cause.id}
+                        </div>
+                        <div className="text-purple-600 text-xs mt-1 line-clamp-2">
+                          {cause.gloss}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Entails */}
+              {currentNode.entails && currentNode.entails.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-medium text-gray-700 mb-2">
+                    Entails ({currentNode.entails.length})
+                  </h3>
+                  <div className="space-y-2">
+                    {currentNode.entails.map(entail => (
+                      <button
+                        key={entail.id}
+                        onClick={() => handleNodeClick(entail.id)}
+                        className="block w-full text-left p-3 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition-colors"
+                      >
+                        <div className="font-medium text-indigo-800 text-sm">
+                          {entail.lemmas.join(', ') || entail.id}
+                        </div>
+                        <div className="text-indigo-600 text-xs mt-1 line-clamp-2">
+                          {entail.gloss}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Similar to (Also See) */}
+              {currentNode.alsoSee && currentNode.alsoSee.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-medium text-gray-700 mb-2">
+                    Similar to ({currentNode.alsoSee.length})
+                  </h3>
+                  <div className="space-y-2">
+                    {currentNode.alsoSee.map(similar => (
+                      <button
+                        key={similar.id}
+                        onClick={() => handleNodeClick(similar.id)}
+                        className="block w-full text-left p-3 bg-teal-50 hover:bg-teal-100 border border-teal-200 rounded-lg transition-colors"
+                      >
+                        <div className="font-medium text-teal-800 text-sm">
+                          {similar.lemmas.join(', ') || similar.id}
+                        </div>
+                        <div className="text-teal-600 text-xs mt-1 line-clamp-2">
+                          {similar.gloss}
                         </div>
                       </button>
                     ))}

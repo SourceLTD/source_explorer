@@ -89,7 +89,35 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
     
     // Calculate required height based on number of nodes
     const closedNodeHeight = 45; // Bigger closed nodes
-    const currentNodeHeight = 160; // Taller for full information display
+    
+    // Calculate dynamic height for current node based on content
+    const calculateCurrentNodeHeight = (node: GraphNode): number => {
+      let height = 20; // Top padding
+      height += 25; // Title height
+      height += 45; // Definition section height
+      height += 35; // Lemmas section height
+      
+      if (node.examples && node.examples.length > 0) {
+        height += 35; // Examples section height
+      }
+      
+      if (node.causes && node.causes.length > 0) {
+        height += 30; // Causes section height
+      }
+      
+      if (node.entails && node.entails.length > 0) {
+        height += 30; // Entails section height
+      }
+      
+      if (node.alsoSee && node.alsoSee.length > 0) {
+        height += 30; // AlsoSee section height
+      }
+      
+      height += 20; // Bottom padding
+      return height;
+    };
+    
+    const currentNodeHeight = calculateCurrentNodeHeight(currentNode);
     const rowSpacing = 50; // Reduced spacing for closed nodes
     const margin = 50;
     const spacingFromCenter = 80;
@@ -219,11 +247,70 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
           {/* Render nodes */}
           {positionedNodes.nodes.map((posNode, i) => {
             if (posNode.nodeType === 'current') {
-              // Current node - show full information like the first image
+              // Current node - show full information with dynamic height
               const nodeWidth = 340;
-              const nodeHeight = 160;
+              
+              // Calculate dynamic height based on content
+              let currentY = 20; // Top padding
+              
+              // Title section (lemma + ID)
+              currentY += 25; // Title height
+              
+              // Definition/gloss section
+              currentY += 45; // Definition section height (increased for larger font)
+              
+              // Lemmas section
+              currentY += 35; // Lemmas section height
+              
+              // Examples section (only if examples exist)
+              let examplesHeight = 0;
+              if (posNode.node.examples && posNode.node.examples.length > 0) {
+                examplesHeight = 35;
+                currentY += examplesHeight;
+              }
+              
+              // Relationship sections (only if they exist)
+              let causesHeight = 0;
+              if (posNode.node.causes && posNode.node.causes.length > 0) {
+                causesHeight = 30;
+                currentY += causesHeight;
+              }
+              
+              let entailsHeight = 0;
+              if (posNode.node.entails && posNode.node.entails.length > 0) {
+                entailsHeight = 30;
+                currentY += entailsHeight;
+              }
+              
+              let alsoSeeHeight = 0;
+              if (posNode.node.alsoSee && posNode.node.alsoSee.length > 0) {
+                alsoSeeHeight = 30;
+                currentY += alsoSeeHeight;
+              }
+              
+              currentY += 20; // Bottom padding
+              
+              const nodeHeight = currentY;
               const centerX = -nodeWidth / 2;
               const centerY = -nodeHeight / 2;
+              
+              // Calculate Y positions for each section
+              let sectionY = centerY + 130; // Start after examples base position
+              if (posNode.node.examples && posNode.node.examples.length > 0) {
+                sectionY += 35; // Add examples height if they exist
+              }
+              
+              const causesY = sectionY;
+              if (posNode.node.causes && posNode.node.causes.length > 0) {
+                sectionY += 30;
+              }
+              
+              const entailsY = sectionY;
+              if (posNode.node.entails && posNode.node.entails.length > 0) {
+                sectionY += 30;
+              }
+              
+              const alsoSeeY = sectionY;
               
               return (
                 <Group key={`node-${i}`} top={posNode.y} left={posNode.x}>
@@ -243,7 +330,7 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                   {/* Node title/lemma with ID */}
                   <text
                     x={centerX + 12}
-                    y={centerY + 25}
+                    y={centerY + 35}
                     fontSize={20}
                     fontFamily="Arial"
                     textAnchor="start"
@@ -256,13 +343,13 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                   {/* Definition/gloss with text wrapping */}
                   <foreignObject
                     x={centerX + 12}
-                    y={centerY + 40}
+                    y={centerY + 50}
                     width={nodeWidth - 24}
-                    height={35}
+                    height={40}
                   >
                     <div
                       style={{
-                        fontSize: '12px',
+                        fontSize: '14px',
                         fontFamily: 'Arial',
                         fontWeight: 'normal',
                         color: 'white',
@@ -278,13 +365,13 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                   {/* Lemmas with text wrapping */}
                   <foreignObject
                     x={centerX + 12}
-                    y={centerY + 80}
+                    y={centerY + 95}
                     width={nodeWidth - 24}
                     height={30}
                   >
-                    <div
+                      <div
                       style={{
-                        fontSize: '11px',
+                        fontSize: '13px',
                         fontFamily: 'Arial',
                         color: 'white',
                         lineHeight: '1.3',
@@ -299,13 +386,13 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                   {posNode.node.examples && posNode.node.examples.length > 0 && (
                     <foreignObject
                       x={centerX + 12}
-                      y={centerY + 115}
+                      y={centerY + 130}
                       width={nodeWidth - 24}
                       height={30}
                     >
                       <div
                         style={{
-                          fontSize: '11px',
+                          fontSize: '13px',
                           fontFamily: 'Arial',
                           color: 'white',
                           lineHeight: '1.3',
@@ -314,6 +401,129 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                         }}
                       >
                         <span style={{ fontWeight: 'bold' }}>Examples:</span> <span style={{ fontWeight: '400' }}>{posNode.node.examples.join('; ')}</span>
+                      </div>
+                    </foreignObject>
+                  )}
+                  
+                  {/* Relationship links - Causes */}
+                  {posNode.node.causes && posNode.node.causes.length > 0 && (
+                    <foreignObject
+                      x={centerX + 12}
+                      y={causesY}
+                      width={nodeWidth - 24}
+                      height={25}
+                    >
+                      <div
+                        style={{
+                          fontSize: '13px',
+                          fontFamily: 'Arial',
+                          color: 'white',
+                          lineHeight: '1.3',
+                          wordWrap: 'break-word',
+                          overflow: 'hidden'
+                        }}
+                      >
+                        <span style={{ fontWeight: 'bold' }}>Causes:</span>{' '}
+                        {posNode.node.causes.map((causeNode, idx) => (
+                          <span key={causeNode.id}>
+                            <span 
+                              style={{ 
+                                fontWeight: '400', 
+                                textDecoration: 'underline', 
+                                cursor: 'pointer' 
+                              }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onNodeClick(causeNode.id);
+                              }}
+                            >
+                              {causeNode.id}
+                            </span>
+                            {idx < posNode.node.causes.length - 1 ? '; ' : ''}
+                          </span>
+                        ))}
+                      </div>
+                    </foreignObject>
+                  )}
+                  
+                  {/* Relationship links - Entails */}
+                  {posNode.node.entails && posNode.node.entails.length > 0 && (
+                    <foreignObject
+                      x={centerX + 12}
+                      y={entailsY}
+                      width={nodeWidth - 24}
+                      height={25}
+                    >
+                      <div
+                        style={{
+                          fontSize: '13px',
+                          fontFamily: 'Arial',
+                          color: 'white',
+                          lineHeight: '1.3',
+                          wordWrap: 'break-word',
+                          overflow: 'hidden'
+                        }}
+                      >
+                        <span style={{ fontWeight: 'bold' }}>Entails:</span>{' '}
+                        {posNode.node.entails.map((entailsNode, idx) => (
+                          <span key={entailsNode.id}>
+                            <span 
+                              style={{ 
+                                fontWeight: '400', 
+                                textDecoration: 'underline', 
+                                cursor: 'pointer' 
+                              }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onNodeClick(entailsNode.id);
+                              }}
+                            >
+                              {entailsNode.id}
+                            </span>
+                            {idx < posNode.node.entails.length - 1 ? '; ' : ''}
+                          </span>
+                        ))}
+                      </div>
+                    </foreignObject>
+                  )}
+                  
+                  {/* Relationship links - Similar to (Also See) */}
+                  {posNode.node.alsoSee && posNode.node.alsoSee.length > 0 && (
+                    <foreignObject
+                      x={centerX + 12}
+                      y={alsoSeeY}
+                      width={nodeWidth - 24}
+                      height={25}
+                    >
+                      <div
+                        style={{
+                          fontSize: '13px',
+                          fontFamily: 'Arial',
+                          color: 'white',
+                          lineHeight: '1.3',
+                          wordWrap: 'break-word',
+                          overflow: 'hidden'
+                        }}
+                      >
+                        <span style={{ fontWeight: 'bold' }}>Similar to:</span>{' '}
+                        {posNode.node.alsoSee.map((alsoSeeNode, idx) => (
+                          <span key={alsoSeeNode.id}>
+                            <span 
+                              style={{ 
+                                fontWeight: '400', 
+                                textDecoration: 'underline', 
+                                cursor: 'pointer' 
+                              }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onNodeClick(alsoSeeNode.id);
+                              }}
+                            >
+                              {alsoSeeNode.id}
+                            </span>
+                            {idx < posNode.node.alsoSee.length - 1 ? '; ' : ''}
+                          </span>
+                        ))}
                       </div>
                     </foreignObject>
                   )}

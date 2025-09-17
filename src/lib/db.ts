@@ -59,6 +59,9 @@ export async function getGraphNode(entryId: string): Promise<GraphNode | null> {
         examples: relation.target.examples,
         parents: [],
         children: [],
+        entails: [],
+        causes: [],
+        alsoSee: [],
       });
     }
   }
@@ -76,6 +79,66 @@ export async function getGraphNode(entryId: string): Promise<GraphNode | null> {
         examples: relation.source.examples,
         parents: [],
         children: [],
+        entails: [],
+        causes: [],
+        alsoSee: [],
+      });
+    }
+  }
+
+  // Get entails relationships - when current entry is the SOURCE
+  const entails: GraphNode[] = [];
+  for (const relation of entry.sourceRelations) {
+    if (relation.type === RelationType.ENTAILS && relation.target) {
+      entails.push({
+        id: relation.target.id,
+        lemmas: relation.target.lemmas,
+        gloss: relation.target.gloss,
+        pos: relation.target.pos,
+        examples: relation.target.examples,
+        parents: [],
+        children: [],
+        entails: [],
+        causes: [],
+        alsoSee: [],
+      });
+    }
+  }
+
+  // Get causes relationships - when current entry is the SOURCE
+  const causes: GraphNode[] = [];
+  for (const relation of entry.sourceRelations) {
+    if (relation.type === RelationType.CAUSES && relation.target) {
+      causes.push({
+        id: relation.target.id,
+        lemmas: relation.target.lemmas,
+        gloss: relation.target.gloss,
+        pos: relation.target.pos,
+        examples: relation.target.examples,
+        parents: [],
+        children: [],
+        entails: [],
+        causes: [],
+        alsoSee: [],
+      });
+    }
+  }
+
+  // Get also_see relationships - when current entry is the SOURCE
+  const alsoSee: GraphNode[] = [];
+  for (const relation of entry.sourceRelations) {
+    if (relation.type === RelationType.ALSO_SEE && relation.target) {
+      alsoSee.push({
+        id: relation.target.id,
+        lemmas: relation.target.lemmas,
+        gloss: relation.target.gloss,
+        pos: relation.target.pos,
+        examples: relation.target.examples,
+        parents: [],
+        children: [],
+        entails: [],
+        causes: [],
+        alsoSee: [],
       });
     }
   }
@@ -88,6 +151,9 @@ export async function getGraphNode(entryId: string): Promise<GraphNode | null> {
     examples: entry.examples,
     parents,
     children,
+    entails,
+    causes,
+    alsoSee,
   };
 }
 

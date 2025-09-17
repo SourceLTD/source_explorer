@@ -42,6 +42,9 @@ export interface GraphNode {
   examples: string[];
   parents: GraphNode[];
   children: GraphNode[];
+  entails: GraphNode[];
+  causes: GraphNode[];
+  alsoSee: GraphNode[];
 }
 
 export interface SearchResult {
