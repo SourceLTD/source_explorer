@@ -41,6 +41,27 @@ export async function searchEntries(query: string, limit = 20): Promise<SearchRe
   return results;
 }
 
+export async function updateEntry(id: string, updates: Partial<Pick<LexicalEntry, 'gloss' | 'lemmas' | 'examples'>>): Promise<EntryWithRelations | null> {
+  const updatedEntry = await prisma.lexicalEntry.update({
+    where: { id },
+    data: updates,
+    include: {
+      sourceRelations: {
+        include: {
+          target: true
+        }
+      },
+      targetRelations: {
+        include: {
+          source: true
+        }
+      }
+    }
+  });
+
+  return updatedEntry;
+}
+
 export async function getGraphNode(entryId: string): Promise<GraphNode | null> {
   const entry = await getEntryById(entryId);
   if (!entry) return null;
