@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { GraphNode, SearchResult, BreadcrumbItem } from '@/lib/types';
 import LexicalGraph from './LexicalGraph';
 import SearchBox from './SearchBox';
@@ -11,10 +12,25 @@ interface WordNetExplorerProps {
 }
 
 export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [currentNode, setCurrentNode] = useState<GraphNode | null>(null);
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Editing state
+  const [editingField, setEditingField] = useState<'lemmas' | 'gloss' | 'examples' | null>(null);
+  const [editValue, setEditValue] = useState<string>('');
+  const [editListItems, setEditListItems] = useState<string[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Helper function to update URL parameters without page reload
+  const updateUrlParam = (entryId: string) => {
+    const params = new URLSearchParams(searchParams);
+    params.set('entry', entryId);
+    router.push(`/?${params.toString()}`, { scroll: false });
+  };
 
   const loadGraphNode = async (entryId: string) => {
     setIsLoading(true);
@@ -48,15 +64,111 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
   };
 
   const handleNodeClick = (nodeId: string) => {
+    updateUrlParam(nodeId);
     loadGraphNode(nodeId);
   };
 
   const handleSearchResult = (result: SearchResult) => {
+    updateUrlParam(result.id);
     loadGraphNode(result.id);
   };
 
   const handleBreadcrumbNavigate = (id: string) => {
+    updateUrlParam(id);
     loadGraphNode(id);
+  };
+
+  const startEditing = (field: 'lemmas' | 'gloss' | 'examples') => {
+    if (!currentNode) return;
+    
+    setEditingField(field);
+    
+    if (field === 'lemmas') {
+      setEditListItems([...currentNode.lemmas]);
+    } else if (field === 'examples') {
+      setEditListItems([...currentNode.examples]);
+    } else if (field === 'gloss') {
+      setEditValue(currentNode.gloss);
+    }
+  };
+
+  const cancelEditing = () => {
+    setEditingField(null);
+    setEditValue('');
+    setEditListItems([]);
+  };
+
+  const saveEdit = async () => {
+    if (!currentNode || !editingField) return;
+    
+    setIsSaving(true);
+    try {
+      let updateData: any = {};
+      
+      switch (editingField) {
+        case 'lemmas':
+          updateData.lemmas = editListItems.filter(s => s.trim());
+          break;
+        case 'gloss':
+          updateData.gloss = editValue.trim();
+          break;
+        case 'examples':
+          updateData.examples = editListItems.filter(s => s.trim());
+          break;
+      }
+
+      const response = await fetch(`/api/entries/${currentNode.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updateData)
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update entry');
+      }
+
+      // Reload the graph node to get updated data
+      await loadGraphNode(currentNode.id);
+      
+      setEditingField(null);
+      setEditValue('');
+      setEditListItems([]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save changes');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && e.ctrlKey) {
+      saveEdit();
+    } else if (e.key === 'Escape') {
+      cancelEditing();
+    }
+  };
+
+  // List editing helpers
+  const updateListItem = (index: number, value: string) => {
+    const newItems = [...editListItems];
+    newItems[index] = value;
+    setEditListItems(newItems);
+  };
+
+  const addListItem = () => {
+    setEditListItems([...editListItems, '']);
+  };
+
+  const removeListItem = (index: number) => {
+    const newItems = editListItems.filter((_, i) => i !== index);
+    setEditListItems(newItems);
+  };
+
+  const moveListItem = (fromIndex: number, toIndex: number) => {
+    const newItems = [...editListItems];
+    const [movedItem] = newItems.splice(fromIndex, 1);
+    newItems.splice(toIndex, 0, movedItem);
+    setEditListItems(newItems);
   };
 
   // Load initial entry
@@ -65,6 +177,14 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
       loadGraphNode(initialEntryId);
     }
   }, [initialEntryId]);
+
+  // Listen to URL parameter changes for browser back/forward navigation
+  useEffect(() => {
+    const currentEntryId = searchParams.get('entry');
+    if (currentEntryId && currentEntryId !== currentNode?.id) {
+      loadGraphNode(currentEntryId);
+    }
+  }, [searchParams, currentNode?.id]);
 
   return (
     <div className="h-screen flex flex-col bg-gray-50">
@@ -105,14 +225,6 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
 
           {currentNode && !isLoading && (
             <div className="space-y-6">
-              {/* Breadcrumbs */}
-              <div>
-                <Breadcrumbs 
-                  items={breadcrumbs} 
-                  onNavigate={handleBreadcrumbNavigate} 
-                />
-              </div>
-
               {/* Entry Header */}
               <div>
                 <h2 className="text-lg font-bold text-gray-900 mb-2">
@@ -123,32 +235,242 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
               {/* Lemmas */}
               <div>
                 <h3 className="text-sm font-medium text-gray-700 mb-2">Lemmas</h3>
-                <p className="text-gray-900 text-sm leading-relaxed">
-                  {currentNode.lemmas.join('; ')}
-                </p>
+                {editingField === 'lemmas' ? (
+                  <div className="space-y-3">
+                    <div className="space-y-2">
+                      {editListItems.map((item, index) => (
+                        <div key={index} className="flex items-center space-x-2">
+                          <input
+                            type="text"
+                            value={item}
+                            onChange={(e) => updateListItem(index, e.target.value)}
+                            className="flex-1 px-3 py-2 border-2 border-blue-400 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-600 text-sm bg-white text-gray-900 font-medium shadow-sm"
+                            placeholder="Enter lemma"
+                            autoFocus={index === editListItems.length - 1}
+                          />
+                          <div className="flex space-x-1">
+                            {index > 0 && (
+                              <button
+                                onClick={() => moveListItem(index, index - 1)}
+                                className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded"
+                                title="Move up"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                                </svg>
+                              </button>
+                            )}
+                            {index < editListItems.length - 1 && (
+                              <button
+                                onClick={() => moveListItem(index, index + 1)}
+                                className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded"
+                                title="Move down"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                </svg>
+                              </button>
+                            )}
+                            <button
+                              onClick={() => removeListItem(index)}
+                              className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded"
+                              title="Remove"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    
+                    <button
+                      onClick={addListItem}
+                      className="w-full px-3 py-2 border-2 border-dashed border-gray-300 rounded-md text-gray-600 hover:border-gray-400 hover:text-gray-700 text-sm flex items-center justify-center space-x-2"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      <span>Add Lemma</span>
+                    </button>
+                    
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={saveEdit}
+                        disabled={isSaving}
+                        className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        {isSaving ? 'Saving...' : 'Save'}
+                      </button>
+                      <button
+                        onClick={cancelEditing}
+                        className="px-3 py-1 bg-gray-300 text-gray-700 text-xs rounded hover:bg-gray-400"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-600 font-medium bg-gray-50 px-2 py-1 rounded">Press Ctrl+Enter to save, Esc to cancel</p>
+                  </div>
+                ) : (
+                  <div 
+                    className="cursor-pointer hover:bg-gray-50 p-2 rounded border-2 border-transparent hover:border-gray-200 transition-colors"
+                    onDoubleClick={() => startEditing('lemmas')}
+                    title="Double-click to edit"
+                  >
+                    {currentNode.lemmas && currentNode.lemmas.length > 0 ? (
+                      <p className="text-gray-900 text-sm font-medium">
+                        {currentNode.lemmas.join('; ')}
+                      </p>
+                    ) : (
+                      <p className="text-gray-500 text-sm italic">No lemmas (double-click to add)</p>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Definition */}
               <div>
                 <h3 className="text-sm font-medium text-gray-700 mb-2">Definition</h3>
-                <p className="text-gray-900 text-sm leading-relaxed">
-                  {currentNode.gloss}
-                </p>
+                {editingField === 'gloss' ? (
+                  <div className="space-y-2">
+                    <textarea
+                      value={editValue}
+                      onChange={(e) => setEditValue(e.target.value)}
+                      onKeyDown={handleKeyDown}
+                      className="w-full px-3 py-2 border-2 border-blue-400 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-600 text-sm resize-vertical bg-white text-gray-900 font-medium shadow-sm"
+                      rows={3}
+                      placeholder="Enter definition"
+                      autoFocus
+                    />
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={saveEdit}
+                        disabled={isSaving}
+                        className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        {isSaving ? 'Saving...' : 'Save'}
+                      </button>
+                      <button
+                        onClick={cancelEditing}
+                        className="px-3 py-1 bg-gray-300 text-gray-700 text-xs rounded hover:bg-gray-400"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-600 font-medium bg-gray-50 px-2 py-1 rounded">Press Ctrl+Enter to save, Esc to cancel</p>
+                  </div>
+                ) : (
+                  <p 
+                    className="text-gray-900 text-sm leading-relaxed cursor-pointer hover:bg-gray-50 p-2 rounded border-2 border-transparent hover:border-gray-200 transition-colors"
+                    onDoubleClick={() => startEditing('gloss')}
+                    title="Double-click to edit"
+                  >
+                    {currentNode.gloss}
+                  </p>
+                )}
               </div>
 
               {/* Examples */}
-              {currentNode.examples && currentNode.examples.length > 0 && (
-                <div>
-                  <h3 className="text-sm font-medium text-gray-700 mb-2">Examples</h3>
-                  <div className="space-y-1">
-                    {currentNode.examples.map((example, index) => (
-                      <p key={index} className="text-gray-900 text-sm leading-relaxed italic">
-                        "{example}"
-                      </p>
-                    ))}
+              <div>
+                <h3 className="text-sm font-medium text-gray-700 mb-2">Examples</h3>
+                {editingField === 'examples' ? (
+                  <div className="space-y-3">
+                    <div className="space-y-2">
+                      {editListItems.map((item, index) => (
+                        <div key={index} className="flex items-start space-x-2">
+                          <textarea
+                            value={item}
+                            onChange={(e) => updateListItem(index, e.target.value)}
+                            className="flex-1 px-3 py-2 border-2 border-blue-400 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-600 text-sm bg-white text-gray-900 font-medium shadow-sm resize-vertical"
+                            rows={2}
+                            placeholder="Enter example sentence"
+                            autoFocus={index === editListItems.length - 1}
+                          />
+                          <div className="flex flex-col space-y-1 pt-1">
+                            {index > 0 && (
+                              <button
+                                onClick={() => moveListItem(index, index - 1)}
+                                className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded"
+                                title="Move up"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                                </svg>
+                              </button>
+                            )}
+                            {index < editListItems.length - 1 && (
+                              <button
+                                onClick={() => moveListItem(index, index + 1)}
+                                className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded"
+                                title="Move down"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                </svg>
+                              </button>
+                            )}
+                            <button
+                              onClick={() => removeListItem(index)}
+                              className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded"
+                              title="Remove"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    
+                    <button
+                      onClick={addListItem}
+                      className="w-full px-3 py-2 border-2 border-dashed border-gray-300 rounded-md text-gray-600 hover:border-gray-400 hover:text-gray-700 text-sm flex items-center justify-center space-x-2"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      <span>Add Example</span>
+                    </button>
+                    
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={saveEdit}
+                        disabled={isSaving}
+                        className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        {isSaving ? 'Saving...' : 'Save'}
+                      </button>
+                      <button
+                        onClick={cancelEditing}
+                        className="px-3 py-1 bg-gray-300 text-gray-700 text-xs rounded hover:bg-gray-400"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-600 font-medium bg-gray-50 px-2 py-1 rounded">Press Ctrl+Enter to save, Esc to cancel</p>
                   </div>
-                </div>
-              )}
+                ) : (
+                  <div 
+                    className="cursor-pointer hover:bg-gray-50 p-2 rounded border-2 border-transparent hover:border-gray-200 transition-colors"
+                    onDoubleClick={() => startEditing('examples')}
+                    title="Double-click to edit"
+                  >
+                    {currentNode.examples && currentNode.examples.length > 0 ? (
+                      <div className="space-y-2">
+                        {currentNode.examples.map((example, index) => (
+                          <p key={index} className="text-gray-900 text-sm leading-relaxed italic">
+                            "{example}"
+                          </p>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-gray-500 text-sm italic">No examples (double-click to add)</p>
+                    )}
+                  </div>
+                )}
+              </div>
 
               {/* Parents (Hypernyms) */}
               {currentNode.parents.length > 0 && (
@@ -290,10 +612,23 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
         {/* Graph Visualization */}
         <div className="flex-1 p-6 bg-white">
           {currentNode && !isLoading ? (
-            <LexicalGraph 
-              currentNode={currentNode} 
-              onNodeClick={handleNodeClick} 
-            />
+            <div className="h-full flex flex-col">
+              {/* Breadcrumbs */}
+              <div className="mb-4">
+                <Breadcrumbs 
+                  items={breadcrumbs} 
+                  onNavigate={handleBreadcrumbNavigate} 
+                />
+              </div>
+              
+              {/* Graph */}
+              <div className="flex-1">
+                <LexicalGraph 
+                  currentNode={currentNode} 
+                  onNodeClick={handleNodeClick} 
+                />
+              </div>
+            </div>
           ) : (
             <div className="h-full flex items-center justify-center bg-white rounded-lg shadow-sm border">
               {isLoading ? (

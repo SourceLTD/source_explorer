@@ -11,11 +11,11 @@ export default function Breadcrumbs({ items, onNavigate }: BreadcrumbsProps) {
   if (items.length === 0) return null;
 
   return (
-    <nav className="flex items-start flex-wrap gap-x-2 gap-y-1 text-sm text-gray-600">
+    <nav className="flex items-start flex-wrap gap-x-1 gap-y-1 text-sm text-gray-600">
       {items.map((item, index) => (
         <div key={item.id} className="flex items-center">
           {index > 0 && (
-            <svg className="h-4 w-4 text-gray-400 mx-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="h-4 w-4 text-gray-400 mx-1 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
             </svg>
           )}

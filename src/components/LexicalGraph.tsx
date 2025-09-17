@@ -40,6 +40,53 @@ interface LayoutResult {
 
 export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphProps) {
 
+  // Helper function to estimate text height based on content and width
+  const estimateTextHeight = (text: string, width: number, fontSize: number = 13, lineHeight: number = 1.3): number => {
+    // Approximate character width based on font size
+    const avgCharWidth = fontSize * 0.6;
+    const availableWidth = width - 24; // Account for padding
+    const charsPerLine = Math.floor(availableWidth / avgCharWidth);
+    const lines = Math.ceil(text.length / charsPerLine);
+    return Math.max(1, lines) * fontSize * lineHeight;
+  };
+
+  // Calculate dynamic height for current node based on content
+  const calculateCurrentNodeHeight = (node: GraphNode): number => {
+    const nodeWidth = 340;
+    const contentWidth = nodeWidth - 24; // Account for padding
+    let height = 20; // Top padding
+    height += 25; // Title height
+    height += 45; // Definition section height (already has good spacing)
+    height += 35; // Lemmas section height (already has good spacing)
+    
+    if (node.examples && node.examples.length > 0) {
+      const exampleText = `Examples: ${node.examples.join('; ')}`;
+      const estimatedHeight = estimateTextHeight(exampleText, contentWidth);
+      height += Math.max(30, estimatedHeight + 10); // Minimum 30px, or estimated + padding
+    }
+    
+    if (node.causes && node.causes.length > 0) {
+      const causesText = `Causes: ${node.causes.map(c => c.id).join('; ')}`;
+      const estimatedHeight = estimateTextHeight(causesText, contentWidth);
+      height += Math.max(25, estimatedHeight + 8); // Minimum 25px, or estimated + padding
+    }
+    
+    if (node.entails && node.entails.length > 0) {
+      const entailsText = `Entails: ${node.entails.map(e => e.id).join('; ')}`;
+      const estimatedHeight = estimateTextHeight(entailsText, contentWidth);
+      height += Math.max(25, estimatedHeight + 8); // Minimum 25px, or estimated + padding
+    }
+    
+    if (node.alsoSee && node.alsoSee.length > 0) {
+      const alsoSeeText = `Similar to: ${node.alsoSee.map(a => a.id).join('; ')}`;
+      const estimatedHeight = estimateTextHeight(alsoSeeText, contentWidth);
+      height += Math.max(25, estimatedHeight + 8); // Minimum 25px, or estimated + padding
+    }
+    
+    height += 20; // Bottom padding
+    return height;
+  };
+
   // Helper function to calculate node width based on text length
   const calculateNodeWidth = (text: string, minWidth: number = 60, maxWidth: number = 150): number => {
     // Approximate character width in pixels (11px font size)
@@ -89,34 +136,6 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
     
     // Calculate required height based on number of nodes
     const closedNodeHeight = 45; // Bigger closed nodes
-    
-    // Calculate dynamic height for current node based on content
-    const calculateCurrentNodeHeight = (node: GraphNode): number => {
-      let height = 20; // Top padding
-      height += 25; // Title height
-      height += 45; // Definition section height
-      height += 35; // Lemmas section height
-      
-      if (node.examples && node.examples.length > 0) {
-        height += 35; // Examples section height
-      }
-      
-      if (node.causes && node.causes.length > 0) {
-        height += 30; // Causes section height
-      }
-      
-      if (node.entails && node.entails.length > 0) {
-        height += 30; // Entails section height
-      }
-      
-      if (node.alsoSee && node.alsoSee.length > 0) {
-        height += 30; // AlsoSee section height
-      }
-      
-      height += 20; // Bottom padding
-      return height;
-    };
-    
     const currentNodeHeight = calculateCurrentNodeHeight(currentNode);
     const rowSpacing = 50; // Reduced spacing for closed nodes
     const margin = 50;
@@ -250,67 +269,44 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
               // Current node - show full information with dynamic height
               const nodeWidth = 340;
               
-              // Calculate dynamic height based on content
-              let currentY = 20; // Top padding
-              
-              // Title section (lemma + ID)
-              currentY += 25; // Title height
-              
-              // Definition/gloss section
-              currentY += 45; // Definition section height (increased for larger font)
-              
-              // Lemmas section
-              currentY += 35; // Lemmas section height
-              
-              // Examples section (only if examples exist)
-              let examplesHeight = 0;
-              if (posNode.node.examples && posNode.node.examples.length > 0) {
-                examplesHeight = 35;
-                currentY += examplesHeight;
-              }
-              
-              // Relationship sections (only if they exist)
-              let causesHeight = 0;
-              if (posNode.node.causes && posNode.node.causes.length > 0) {
-                causesHeight = 30;
-                currentY += causesHeight;
-              }
-              
-              let entailsHeight = 0;
-              if (posNode.node.entails && posNode.node.entails.length > 0) {
-                entailsHeight = 30;
-                currentY += entailsHeight;
-              }
-              
-              let alsoSeeHeight = 0;
-              if (posNode.node.alsoSee && posNode.node.alsoSee.length > 0) {
-                alsoSeeHeight = 30;
-                currentY += alsoSeeHeight;
-              }
-              
-              currentY += 20; // Bottom padding
-              
-              const nodeHeight = currentY;
+              // Use the pre-calculated node height
+              const nodeHeight = calculateCurrentNodeHeight(posNode.node);
               const centerX = -nodeWidth / 2;
               const centerY = -nodeHeight / 2;
               
-              // Calculate Y positions for each section
+              // Calculate Y positions for each section using the same logic as height calculation
+              const contentWidth = nodeWidth - 24; // Account for padding
               let sectionY = centerY + 130; // Start after examples base position
+              
+              let examplesHeight = 0;
               if (posNode.node.examples && posNode.node.examples.length > 0) {
-                sectionY += 35; // Add examples height if they exist
+                const exampleText = `Examples: ${posNode.node.examples.join('; ')}`;
+                examplesHeight = Math.max(30, estimateTextHeight(exampleText, contentWidth) + 10);
+                sectionY += examplesHeight;
               }
               
               const causesY = sectionY;
+              let causesHeight = 0;
               if (posNode.node.causes && posNode.node.causes.length > 0) {
-                sectionY += 30;
+                const causesText = `Causes: ${posNode.node.causes.map(c => c.id).join('; ')}`;
+                causesHeight = Math.max(25, estimateTextHeight(causesText, contentWidth) + 8);
+                sectionY += causesHeight;
               }
               
               const entailsY = sectionY;
+              let entailsHeight = 0;
               if (posNode.node.entails && posNode.node.entails.length > 0) {
-                sectionY += 30;
+                const entailsText = `Entails: ${posNode.node.entails.map(e => e.id).join('; ')}`;
+                entailsHeight = Math.max(25, estimateTextHeight(entailsText, contentWidth) + 8);
+                sectionY += entailsHeight;
               }
               
               const alsoSeeY = sectionY;
+              let alsoSeeHeight = 0;
+              if (posNode.node.alsoSee && posNode.node.alsoSee.length > 0) {
+                const alsoSeeText = `Similar to: ${posNode.node.alsoSee.map(a => a.id).join('; ')}`;
+                alsoSeeHeight = Math.max(25, estimateTextHeight(alsoSeeText, contentWidth) + 8);
+              }
               
               return (
                 <Group key={`node-${i}`} top={posNode.y} left={posNode.x}>
@@ -388,7 +384,7 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                       x={centerX + 12}
                       y={centerY + 130}
                       width={nodeWidth - 24}
-                      height={30}
+                      height={examplesHeight - 5}
                     >
                       <div
                         style={{
@@ -411,7 +407,7 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                       x={centerX + 12}
                       y={causesY}
                       width={nodeWidth - 24}
-                      height={25}
+                      height={causesHeight - 3}
                     >
                       <div
                         style={{
@@ -452,7 +448,7 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                       x={centerX + 12}
                       y={entailsY}
                       width={nodeWidth - 24}
-                      height={25}
+                      height={entailsHeight - 3}
                     >
                       <div
                         style={{
@@ -493,7 +489,7 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                       x={centerX + 12}
                       y={alsoSeeY}
                       width={nodeWidth - 24}
-                      height={25}
+                      height={alsoSeeHeight - 3}
                     >
                       <div
                         style={{
