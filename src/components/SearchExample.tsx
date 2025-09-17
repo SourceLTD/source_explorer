@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useSearchEntries } from '@/lib/hooks'
-import { POS_LABELS, RELATION_LABELS } from '@/lib/types'
+import { POS_LABELS } from '@/lib/types'
 import type { LexicalEntry } from '@/lib/types'
 
 export default function SearchExample() {
@@ -80,7 +80,7 @@ export default function SearchExample() {
       {/* No Results */}
       {query && !loading && results.entries.length === 0 && !error && (
         <div className="text-center py-8 text-gray-500">
-          No entries found for "{query}"
+          No entries found for &quot;{query}&quot;
         </div>
       )}
     </div>
@@ -96,7 +96,7 @@ function EntryCard({ entry }: { entry: LexicalEntry }) {
         </h3>
         <div className="flex gap-2">
           <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">
-            {POS_LABELS[entry.pos] || entry.pos}
+            {POS_LABELS[entry.pos as keyof typeof POS_LABELS] || entry.pos}
           </span>
           {entry.isMwe && (
             <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs rounded">
@@ -122,7 +122,7 @@ function EntryCard({ entry }: { entry: LexicalEntry }) {
           <span className="text-sm font-medium text-gray-600">Examples: </span>
           <div className="text-sm text-gray-700 italic">
             {entry.examples.slice(0, 2).map((example, i) => (
-              <div key={i}>"{example}"</div>
+              <div key={i}>&quot;{example}&quot;</div>
             ))}
             {entry.examples.length > 2 && (
               <div className="text-xs text-gray-500">

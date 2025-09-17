@@ -1,8 +1,8 @@
 import { prisma } from './prisma';
-import { RelationType, type EntryWithRelations, type GraphNode, type SearchResult } from './types';
+import { RelationType, type LexicalEntry, type EntryWithRelations, type GraphNode, type SearchResult, type PaginationParams, type PaginatedResult, type TableEntry } from './types';
 
 export async function getEntryById(id: string): Promise<EntryWithRelations | null> {
-  return await prisma.lexicalEntry.findUnique({
+  const entry = await prisma.lexicalEntry.findUnique({
     where: { id },
     include: {
       sourceRelations: {
@@ -17,6 +17,32 @@ export async function getEntryById(id: string): Promise<EntryWithRelations | nul
       },
     },
   });
+
+  if (!entry) return null;
+
+  // Convert Prisma types to our types
+  return {
+    ...entry,
+    transitive: entry.transitive || undefined,
+    sourceRelations: entry.sourceRelations.map(rel => ({
+      sourceId: rel.sourceId,
+      targetId: rel.targetId,
+      type: rel.type as RelationType,
+      target: rel.target ? {
+        ...rel.target,
+        transitive: rel.target.transitive || undefined
+      } : undefined,
+    })),
+    targetRelations: entry.targetRelations.map(rel => ({
+      sourceId: rel.sourceId,
+      targetId: rel.targetId,
+      type: rel.type as RelationType,
+      source: rel.source ? {
+        ...rel.source,
+        transitive: rel.source.transitive || undefined
+      } : undefined,
+    })),
+  };
 }
 
 export async function searchEntries(query: string, limit = 20): Promise<SearchResult[]> {
@@ -59,7 +85,31 @@ export async function updateEntry(id: string, updates: Partial<Pick<LexicalEntry
     }
   });
 
-  return updatedEntry;
+  if (!updatedEntry) return null;
+
+  // Convert Prisma types to our types
+  return {
+    ...updatedEntry,
+    transitive: updatedEntry.transitive || undefined,
+    sourceRelations: updatedEntry.sourceRelations.map(rel => ({
+      sourceId: rel.sourceId,
+      targetId: rel.targetId,
+      type: rel.type as RelationType,
+      target: rel.target ? {
+        ...rel.target,
+        transitive: rel.target.transitive || undefined
+      } : undefined,
+    })),
+    targetRelations: updatedEntry.targetRelations.map(rel => ({
+      sourceId: rel.sourceId,
+      targetId: rel.targetId,
+      type: rel.type as RelationType,
+      source: rel.source ? {
+        ...rel.source,
+        transitive: rel.source.transitive || undefined
+      } : undefined,
+    })),
+  };
 }
 
 export async function getGraphNode(entryId: string): Promise<GraphNode | null> {
@@ -198,4 +248,128 @@ export async function getAncestorPath(entryId: string): Promise<GraphNode[]> {
   }
 
   return path;
+}
+
+export async function getPaginatedEntries(params: PaginationParams = {}): Promise<PaginatedResult<TableEntry>> {
+  const {
+    page = 1,
+    limit = 20,
+    sortBy = 'id',
+    sortOrder = 'asc',
+    search,
+    pos,
+    lexfile
+  } = params;
+
+  const skip = (page - 1) * limit;
+
+  // Build where clause
+  const whereClause: Record<string, unknown> = {};
+  
+  if (search) {
+    whereClause.OR = [
+      {
+        gloss: {
+          contains: search,
+          mode: 'insensitive'
+        }
+      },
+      {
+        lemmas: {
+          hasSome: [search]
+        }
+      },
+      {
+        examples: {
+          hasSome: search.split(' ')
+        }
+      }
+    ];
+  }
+
+  if (pos) {
+    whereClause.pos = pos;
+  }
+
+  if (lexfile) {
+    whereClause.lexfile = lexfile;
+  }
+
+  // Get total count
+  const total = await prisma.lexicalEntry.count({
+    where: whereClause
+  });
+
+  // Build order clause
+  const orderBy: Record<string, unknown> = {};
+  if (sortBy === 'lemmas') {
+    // For array fields, we need to use raw SQL for proper sorting
+    orderBy.lemmas = sortOrder;
+  } else if (sortBy === 'parentsCount' || sortBy === 'childrenCount') {
+    // These will be computed after fetching
+    orderBy.id = sortOrder; // Default fallback
+  } else {
+    orderBy[sortBy] = sortOrder;
+  }
+
+  // Fetch entries with relation counts
+  const entries = await prisma.lexicalEntry.findMany({
+    where: whereClause,
+    skip,
+    take: limit,
+    orderBy,
+    include: {
+      _count: {
+        select: {
+          sourceRelations: {
+            where: { type: 'hypernym' }
+          },
+          targetRelations: {
+            where: { type: 'hypernym' }
+          }
+        }
+      }
+    }
+  });
+
+  // Transform to TableEntry format
+  const data: TableEntry[] = entries.map(entry => ({
+    id: entry.id,
+    lemmas: entry.lemmas,
+    gloss: entry.gloss,
+    pos: entry.pos,
+    lexfile: entry.lexfile,
+    isMwe: entry.isMwe,
+    transitive: entry.transitive || undefined,
+    examples: entry.examples,
+    parentsCount: entry._count.sourceRelations,
+    childrenCount: entry._count.targetRelations,
+    createdAt: entry.createdAt,
+    updatedAt: entry.updatedAt
+  }));
+
+  // Sort by computed fields if needed
+  if (sortBy === 'parentsCount') {
+    data.sort((a, b) => sortOrder === 'asc' 
+      ? a.parentsCount - b.parentsCount 
+      : b.parentsCount - a.parentsCount
+    );
+  } else if (sortBy === 'childrenCount') {
+    data.sort((a, b) => sortOrder === 'asc' 
+      ? a.childrenCount - b.childrenCount 
+      : b.childrenCount - a.childrenCount
+    );
+  }
+
+  const totalPages = Math.ceil(total / limit);
+
+  return {
+    data,
+    total,
+    page,
+    limit,
+    totalPages,
+    hasNext: page < totalPages,
+    hasPrev: page > 1
+  };
 }

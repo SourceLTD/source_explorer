@@ -30,7 +30,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     
     // Validate that only allowed fields are being updated
     const allowedFields = ['gloss', 'lemmas', 'examples'];
-    const updateData: any = {};
+    const updateData: Record<string, unknown> = {};
     
     for (const [key, value] of Object.entries(updates)) {
       if (allowedFields.includes(key)) {

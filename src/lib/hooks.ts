@@ -5,7 +5,7 @@ import type {
   LexicalEntry, 
   LexicalEntryWithRelations, 
   SearchOptions, 
-  SearchResult,
+  PaginatedSearchResult,
   DatabaseStats,
   EntryRelationWithEntries,
   RelationType
@@ -13,7 +13,7 @@ import type {
 
 // Custom hook for searching lexical entries
 export function useSearchEntries() {
-  const [results, setResults] = useState<SearchResult>({
+  const [results, setResults] = useState<PaginatedSearchResult>({
     entries: [],
     total: 0,
     hasMore: false

@@ -2,10 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { GraphNode, SearchResult, BreadcrumbItem } from '@/lib/types';
+import { GraphNode, SearchResult, BreadcrumbItem, TableEntry } from '@/lib/types';
 import LexicalGraph from './LexicalGraph';
 import SearchBox from './SearchBox';
 import Breadcrumbs from './Breadcrumbs';
+import DataTable from './DataTable';
+import ViewToggle, { ViewMode } from './ViewToggle';
 
 interface WordNetExplorerProps {
   initialEntryId?: string;
@@ -18,6 +20,8 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>('graph');
+  const [searchQuery, setSearchQuery] = useState<string>('');
   
   // Editing state
   const [editingField, setEditingField] = useState<'lemmas' | 'gloss' | 'examples' | null>(null);
@@ -71,6 +75,20 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
   const handleSearchResult = (result: SearchResult) => {
     updateUrlParam(result.id);
     loadGraphNode(result.id);
+    setSearchQuery(''); // Clear search after selection
+  };
+
+  const handleTableRowClick = (entry: TableEntry) => {
+    updateUrlParam(entry.id);
+    loadGraphNode(entry.id);
+  };
+
+  const handleViewModeChange = (mode: ViewMode) => {
+    setViewMode(mode);
+  };
+
+  const handleSearchQueryChange = (query: string) => {
+    setSearchQuery(query);
   };
 
   const handleBreadcrumbNavigate = (id: string) => {
@@ -103,7 +121,7 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
     
     setIsSaving(true);
     try {
-      let updateData: any = {};
+      const updateData: Record<string, unknown> = {};
       
       switch (editingField) {
         case 'lemmas':
@@ -197,7 +215,16 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
             </h1>
           </div>
           
-          <SearchBox onSelectResult={handleSearchResult} />
+          <div className="flex items-center gap-4">
+            <SearchBox 
+              onSelectResult={handleSearchResult}
+              onSearchChange={handleSearchQueryChange}
+            />
+            <ViewToggle 
+              currentView={viewMode} 
+              onViewChange={handleViewModeChange}
+            />
+          </div>
         </div>
       </header>
 
@@ -461,7 +488,7 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
                       <div className="space-y-2">
                         {currentNode.examples.map((example, index) => (
                           <p key={index} className="text-gray-900 text-sm leading-relaxed italic">
-                            "{example}"
+                            &quot;{example}&quot;
                           </p>
                         ))}
                       </div>
@@ -609,41 +636,66 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
           )}
         </aside>
 
-        {/* Graph Visualization */}
+        {/* Main Visualization Area */}
         <div className="flex-1 p-6 bg-white">
-          {currentNode && !isLoading ? (
-            <div className="h-full flex flex-col">
-              {/* Breadcrumbs */}
-              <div className="mb-4">
-                <Breadcrumbs 
-                  items={breadcrumbs} 
-                  onNavigate={handleBreadcrumbNavigate} 
-                />
-              </div>
-              
-              {/* Graph */}
-              <div className="flex-1">
-                <LexicalGraph 
-                  currentNode={currentNode} 
-                  onNodeClick={handleNodeClick} 
-                />
-              </div>
-            </div>
-          ) : (
-            <div className="h-full flex items-center justify-center bg-white rounded-lg shadow-sm border">
-              {isLoading ? (
-                <div className="text-center">
-                  <div className="animate-spin h-12 w-12 border-2 border-gray-300 border-t-blue-600 rounded-full mx-auto mb-4"></div>
-                  <p className="text-gray-500">Loading graph...</p>
+          {viewMode === 'graph' ? (
+            /* Graph View */
+            currentNode && !isLoading ? (
+              <div className="h-full flex flex-col">
+                {/* Breadcrumbs */}
+                <div className="mb-4">
+                  <Breadcrumbs 
+                    items={breadcrumbs} 
+                    onNavigate={handleBreadcrumbNavigate} 
+                  />
                 </div>
-              ) : (
-                <div className="text-center text-gray-400">
-                  <svg className="h-24 w-24 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                  </svg>
-                  <p>Select an entry to visualize its relations</p>
+                
+                {/* Graph */}
+                <div className="flex-1">
+                  <LexicalGraph 
+                    currentNode={currentNode} 
+                    onNodeClick={handleNodeClick} 
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="h-full flex items-center justify-center bg-white rounded-lg shadow-sm border">
+                {isLoading ? (
+                  <div className="text-center">
+                    <div className="animate-spin h-12 w-12 border-2 border-gray-300 border-t-blue-600 rounded-full mx-auto mb-4"></div>
+                    <p className="text-gray-500">Loading graph...</p>
+                  </div>
+                ) : (
+                  <div className="text-center text-gray-400">
+                    <svg className="h-24 w-24 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                    </svg>
+                    <p>Select an entry to visualize its relations</p>
+                  </div>
+                )}
+              </div>
+            )
+          ) : (
+            /* Table View */
+            <div className="h-full flex flex-col">
+              {/* Breadcrumbs for table view when an entry is selected */}
+              {currentNode && (
+                <div className="mb-4">
+                  <Breadcrumbs 
+                    items={breadcrumbs} 
+                    onNavigate={handleBreadcrumbNavigate} 
+                  />
                 </div>
               )}
+              
+              {/* Data Table */}
+              <div className="flex-1">
+                <DataTable 
+                  onRowClick={handleTableRowClick}
+                  searchQuery={searchQuery}
+                  className="h-full"
+                />
+              </div>
             </div>
           )}
         </div>
@@ -652,13 +704,13 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
   );
 }
 
-function getPartOfSpeechLabel(pos: string): string {
-  const labels: Record<string, string> = {
-    'n': 'Noun',
-    'v': 'Verb',
-    'a': 'Adjective',
-    'r': 'Adverb',
-    's': 'Adjective Satellite',
-  };
-  return labels[pos] || pos;
-}
+// function getPartOfSpeechLabel(pos: string): string {
+//   const labels: Record<string, string> = {
+//     'n': 'Noun',
+//     'v': 'Verb',
+//     'a': 'Adjective',
+//     'r': 'Adverb',
+//     's': 'Adjective Satellite',
+//   };
+//   return labels[pos] || pos;
+// }
