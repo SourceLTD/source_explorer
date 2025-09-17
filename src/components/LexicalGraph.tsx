@@ -20,10 +20,10 @@ interface LexicalGraphProps {
   onNodeClick: (nodeId: string) => void;
 }
 
-function truncateText(text: string, maxLength: number): string {
-  if (text.length <= maxLength) return text;
-  return text.substring(0, maxLength) + '...';
-}
+// function truncateText(text: string, maxLength: number): string {
+//   if (text.length <= maxLength) return text;
+//   return text.substring(0, maxLength) + '...';
+// }
 
 interface PositionedNode {
   node: GraphNode;

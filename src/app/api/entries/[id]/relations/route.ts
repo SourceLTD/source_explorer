@@ -1,17 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
-import type { RelationType } from '@prisma/client'
+import { getEntryById } from '@/lib/db'
 
 // GET /api/entries/[id]/relations - Get relations for an entry
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { searchParams } = new URL(request.url)
-    const type = searchParams.get('type') as RelationType | null
+    const { id } = await params;
+    const entry = await getEntryById(id)
     
-    const relations = await db.getEntryRelations(params.id, type || undefined)
+    if (!entry) {
+      return NextResponse.json(
+        { error: 'Entry not found' },
+        { status: 404 }
+      )
+    }
+    
+    const relations = {
+      sourceRelations: entry.sourceRelations,
+      targetRelations: entry.targetRelations
+    }
     
     return NextResponse.json(relations)
   } catch (error) {

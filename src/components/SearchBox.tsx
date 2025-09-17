@@ -5,9 +5,10 @@ import { SearchResult } from '@/lib/types';
 
 interface SearchBoxProps {
   onSelectResult: (result: SearchResult) => void;
+  onSearchChange?: (query: string) => void;
 }
 
-export default function SearchBox({ onSelectResult }: SearchBoxProps) {
+export default function SearchBox({ onSelectResult, onSearchChange }: SearchBoxProps) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isOpen, setIsOpen] = useState(false);
@@ -46,6 +47,9 @@ export default function SearchBox({ onSelectResult }: SearchBoxProps) {
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setQuery(value);
+    
+    // Call the search change callback immediately
+    onSearchChange?.(value);
     
     // Debounce search
     const timeoutId = setTimeout(() => {
@@ -106,7 +110,7 @@ export default function SearchBox({ onSelectResult }: SearchBoxProps) {
 
       {isOpen && results.length > 0 && (
         <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-96 overflow-y-auto">
-          {results.map((result, index) => (
+                      {results.map((result) => (
             <button
               key={result.id}
               onClick={() => handleSelectResult(result)}
@@ -138,7 +142,7 @@ export default function SearchBox({ onSelectResult }: SearchBoxProps) {
       {isOpen && results.length === 0 && query && !isLoading && (
         <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg">
           <div className="px-4 py-3 text-gray-500 text-sm">
-            No results found for "{query}"
+            No results found for &quot;{query}&quot;
           </div>
         </div>
       )}

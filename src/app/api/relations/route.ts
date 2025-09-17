@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { prisma } from '@/lib/prisma'
 import type { RelationType } from '@prisma/client'
 
 interface RelationRequest {
@@ -38,7 +38,13 @@ export async function POST(request: NextRequest) {
       )
     }
     
-    const relation = await db.createEntryRelation(body.sourceId, body.targetId, body.type)
+    const relation = await prisma.entryRelation.create({
+      data: {
+        sourceId: body.sourceId,
+        targetId: body.targetId,
+        type: body.type
+      }
+    })
     
     return NextResponse.json(relation, { status: 201 })
   } catch (error) {
@@ -80,7 +86,15 @@ export async function DELETE(request: NextRequest) {
       )
     }
     
-    await db.deleteEntryRelation(body.sourceId, body.targetId, body.type)
+    await prisma.entryRelation.delete({
+      where: {
+        sourceId_type_targetId: {
+          sourceId: body.sourceId,
+          targetId: body.targetId,
+          type: body.type
+        }
+      }
+    })
     
     return NextResponse.json({ success: true })
   } catch (error) {
