@@ -26,6 +26,8 @@ export async function GET(request: NextRequest) {
     // Boolean filters
     isMwe: searchParams.get('isMwe') ? searchParams.get('isMwe') === 'true' : undefined,
     transitive: searchParams.get('transitive') ? searchParams.get('transitive') === 'true' : undefined,
+    flagged: searchParams.get('flagged') ? searchParams.get('flagged') === 'true' : undefined,
+    forbidden: searchParams.get('forbidden') ? searchParams.get('forbidden') === 'true' : undefined,
     
     // Numeric filters
     parentsCountMin: searchParams.get('parentsCountMin') ? parseInt(searchParams.get('parentsCountMin')!, 10) : undefined,

@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { TableEntry, PaginatedResult, PaginationParams } from '@/lib/types';
+import { TableEntry, PaginatedResult, PaginationParams, POS_LABELS, LexicalEntry, EntryRelation } from '@/lib/types';
 import FilterPanel, { FilterState } from './FilterPanel';
+import ColumnVisibilityPanel, { ColumnConfig, ColumnVisibilityState } from './ColumnVisibilityPanel';
 
 interface DataTableProps {
   onRowClick?: (entry: TableEntry) => void;
@@ -20,12 +21,62 @@ interface SelectionState {
   selectAll: boolean;
 }
 
+interface ColumnWidthState {
+  [columnKey: string]: number;
+}
+
+// Define all available columns with their configurations
+const DEFAULT_COLUMNS: ColumnConfig[] = [
+  { key: 'lemmas', label: 'Lemmas', visible: true, sortable: true },
+  { key: 'gloss', label: 'Definition', visible: true, sortable: true },
+  { key: 'pos', label: 'Part of Speech', visible: false, sortable: true },
+  { key: 'lexfile', label: 'Lexfile', visible: true, sortable: true },
+  { key: 'isMwe', label: 'Multi-word Expression', visible: false, sortable: true },
+  { key: 'transitive', label: 'Transitive', visible: false, sortable: true },
+  { key: 'flagged', label: 'Flagged', visible: false, sortable: true },
+  { key: 'forbidden', label: 'Forbidden', visible: false, sortable: true },
+  { key: 'particles', label: 'Particles', visible: false, sortable: false },
+  { key: 'frames', label: 'Frames', visible: false, sortable: false },
+  { key: 'examples', label: 'Examples', visible: false, sortable: false },
+  { key: 'parentsCount', label: 'Parents', visible: true, sortable: true },
+  { key: 'childrenCount', label: 'Children', visible: true, sortable: true },
+  { key: 'createdAt', label: 'Created', visible: false, sortable: true },
+  { key: 'updatedAt', label: 'Updated', visible: false, sortable: true },
+];
+
+// Default column widths in pixels
+const DEFAULT_COLUMN_WIDTHS: ColumnWidthState = {
+  lemmas: 150,
+  gloss: 300,
+  pos: 120,
+  lexfile: 120,
+  isMwe: 100,
+  transitive: 100,
+  flagged: 100,
+  forbidden: 100,
+  particles: 120,
+  frames: 100,
+  examples: 250,
+  parentsCount: 150,
+  childrenCount: 150,
+  createdAt: 100,
+  updatedAt: 100,
+};
+
+const getDefaultVisibility = (): ColumnVisibilityState => {
+  const visibility: ColumnVisibilityState = {};
+  DEFAULT_COLUMNS.forEach(col => {
+    visibility[col.key] = col.visible;
+  });
+  return visibility;
+};
+
 export default function DataTable({ onRowClick, searchQuery, className }: DataTableProps) {
   const [data, setData] = useState<PaginatedResult<TableEntry> | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
+  const [pageSize, setPageSize] = useState(10);
   const [sortState, setSortState] = useState<SortState>({ field: 'id', order: 'asc' });
   const [filters, setFilters] = useState<FilterState>({});
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
@@ -33,6 +84,22 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
     selectedIds: new Set(),
     selectAll: false,
   });
+  const [columnVisibility, setColumnVisibility] = useState<ColumnVisibilityState>(() => {
+    // Try to load from localStorage, fallback to defaults
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('table-column-visibility');
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch {
+          return getDefaultVisibility();
+        }
+      }
+    }
+    return getDefaultVisibility();
+  });
+  const [isColumnPanelOpen, setIsColumnPanelOpen] = useState(false);
+  const [relationsData, setRelationsData] = useState<Record<string, { parents: string[]; children: string[] }>>({});
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -96,6 +163,80 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
     setCurrentPage(1);
   };
 
+  const handleColumnVisibilityChange = (newVisibility: ColumnVisibilityState) => {
+    setColumnVisibility(newVisibility);
+    // Save to localStorage
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('table-column-visibility', JSON.stringify(newVisibility));
+    }
+  };
+
+  const handleResetColumns = () => {
+    const defaultVisibility = getDefaultVisibility();
+    setColumnVisibility(defaultVisibility);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('table-column-visibility', JSON.stringify(defaultVisibility));
+    }
+  };
+
+  // Get current column configurations with visibility state
+  const currentColumns = DEFAULT_COLUMNS.map(col => ({
+    ...col,
+    visible: columnVisibility[col.key] ?? col.visible
+  }));
+
+  const visibleColumns = currentColumns.filter(col => col.visible);
+
+  // Fetch relations data for entries when parents or children columns are visible
+  const fetchRelationsForEntry = async (entryId: string): Promise<{ parents: string[]; children: string[] }> => {
+    if (relationsData[entryId]) {
+      return relationsData[entryId];
+    }
+
+    try {
+      const response = await fetch(`/api/entries/${entryId}/relations`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch relations');
+      }
+      const data = await response.json();
+      
+      // Extract parent IDs (hypernyms - more general concepts this entry points to)
+      const parents = data.sourceRelations
+        .filter((rel: EntryRelation) => rel.type === 'hypernym')
+        .map((rel: EntryRelation) => rel.target?.id)
+        .filter(Boolean);
+      
+      // Extract children IDs (hyponyms - more specific concepts that point to this entry)
+      const children = data.targetRelations
+        .filter((rel: EntryRelation) => rel.type === 'hypernym')
+        .map((rel: EntryRelation) => rel.source?.id)
+        .filter(Boolean);
+      
+      const result = { parents, children };
+      setRelationsData(prev => ({ ...prev, [entryId]: result }));
+      return result;
+    } catch (error) {
+      console.error('Error fetching relations:', error);
+      const result = { parents: [], children: [] };
+      setRelationsData(prev => ({ ...prev, [entryId]: result }));
+      return result;
+    }
+  };
+
+  // Preload relations data when parents or children columns become visible
+  useEffect(() => {
+    const needsParents = visibleColumns.some(col => col.key === 'parentsCount');
+    const needsChildren = visibleColumns.some(col => col.key === 'childrenCount');
+    
+    if ((needsParents || needsChildren) && data?.data) {
+      data.data.forEach(entry => {
+        if (!relationsData[entry.id]) {
+          fetchRelationsForEntry(entry.id);
+        }
+      });
+    }
+  }, [visibleColumns, data, relationsData]);
+
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
   };
@@ -144,6 +285,51 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
     });
   };
 
+  const handleModerationUpdate = async (updates: { flagged?: boolean; forbidden?: boolean }) => {
+    if (selection.selectedIds.size === 0) return;
+
+    try {
+      const response = await fetch('/api/entries/moderation', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ids: Array.from(selection.selectedIds),
+          updates
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update entries');
+      }
+
+      // Refresh the data to show updated status
+      await fetchData();
+      
+      // Clear selection
+      setSelection({ selectedIds: new Set(), selectAll: false });
+
+      // Show success message (you could add a toast notification here)
+      console.log('Successfully updated entries');
+    } catch (error) {
+      console.error('Error updating entries:', error);
+      // You could add error notification here
+    }
+  };
+
+  const handleToggleFlagged = () => {
+    // For bulk operations, we'll set flagged to true for all selected items
+    // Users can manually unflag individual items if needed
+    handleModerationUpdate({ flagged: true });
+  };
+
+  const handleToggleForbidden = () => {
+    // For bulk operations, we'll set forbidden to true for all selected items
+    // Users can manually allow individual items if needed
+    handleModerationUpdate({ forbidden: true });
+  };
+
   const getSortIcon = (field: string) => {
     if (sortState.field !== field) {
       return (
@@ -169,13 +355,204 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
     return text.substring(0, maxLength) + '...';
   };
 
-  // const formatDate = (date: Date) => {
-  //   return new Date(date).toLocaleDateString();
-  // };
+  const formatDate = (date: Date) => {
+    return new Date(date).toLocaleDateString();
+  };
+
+  const renderCellContent = (entry: TableEntry, columnKey: string) => {
+    const entryRelations = relationsData[entry.id];
+    switch (columnKey) {
+      case 'lemmas':
+        return (
+          <div className="flex flex-wrap gap-1">
+            {entry.lemmas.slice(0, 3).map((lemma, idx) => (
+              <span 
+                key={idx}
+                className="inline-block px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded"
+              >
+                {lemma}
+              </span>
+            ))}
+            {entry.lemmas.length > 3 && (
+              <span className="inline-block px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded">
+                +{entry.lemmas.length - 3}
+              </span>
+            )}
+          </div>
+        );
+      case 'gloss':
+        return (
+          <div className="text-sm text-gray-900" title={entry.gloss}>
+            {truncateText(entry.gloss, 150)}
+          </div>
+        );
+      case 'pos':
+        return (
+          <span className="inline-block px-2 py-1 text-xs bg-green-100 text-green-800 rounded font-medium">
+            {POS_LABELS[entry.pos as keyof typeof POS_LABELS] || entry.pos}
+          </span>
+        );
+      case 'lexfile':
+        return <span className="text-xs text-gray-500">{entry.lexfile.replace(/^verb\./, '')}</span>;
+      case 'isMwe':
+        return (
+          <span className={`inline-block px-2 py-1 text-xs rounded font-medium ${
+            entry.isMwe 
+              ? 'bg-purple-100 text-purple-800' 
+              : 'bg-gray-100 text-gray-600'
+          }`}>
+            {entry.isMwe ? 'Yes' : 'No'}
+          </span>
+        );
+      case 'transitive':
+        if (entry.transitive === null || entry.transitive === undefined) {
+          return <span className="text-gray-400 text-sm">N/A</span>;
+        }
+        return (
+          <span className={`inline-block px-2 py-1 text-xs rounded font-medium ${
+            entry.transitive 
+              ? 'bg-blue-100 text-blue-800' 
+              : 'bg-gray-100 text-gray-600'
+          }`}>
+            {entry.transitive ? 'Yes' : 'No'}
+          </span>
+        );
+      case 'flagged':
+        if (entry.flagged === null || entry.flagged === undefined) {
+          return <span className="text-gray-400 text-sm">N/A</span>;
+        }
+        return (
+          <span className={`inline-block px-2 py-1 text-xs rounded font-medium ${
+            entry.flagged 
+              ? 'bg-orange-100 text-orange-800' 
+              : 'bg-gray-100 text-gray-600'
+          }`}>
+            {entry.flagged ? 'Yes' : 'No'}
+          </span>
+        );
+      case 'forbidden':
+        if (entry.forbidden === null || entry.forbidden === undefined) {
+          return <span className="text-gray-400 text-sm">N/A</span>;
+        }
+        return (
+          <span className={`inline-block px-2 py-1 text-xs rounded font-medium ${
+            entry.forbidden 
+              ? 'bg-red-100 text-red-800' 
+              : 'bg-gray-100 text-gray-600'
+          }`}>
+            {entry.forbidden ? 'Yes' : 'No'}
+          </span>
+        );
+      case 'particles':
+        if (!entry.particles || entry.particles.length === 0) {
+          return <span className="text-gray-400 text-sm">None</span>;
+        }
+        return (
+          <div className="flex flex-wrap gap-1">
+            {entry.particles.slice(0, 2).map((particle, idx) => (
+              <span 
+                key={idx}
+                className="inline-block px-2 py-1 text-xs bg-orange-100 text-orange-800 rounded"
+              >
+                {particle}
+              </span>
+            ))}
+            {entry.particles.length > 2 && (
+              <span className="inline-block px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded">
+                +{entry.particles.length - 2}
+              </span>
+            )}
+          </div>
+        );
+      case 'frames':
+        if (!entry.frames || entry.frames.length === 0) {
+          return <span className="text-gray-400 text-sm">None</span>;
+        }
+        return (
+          <div className="text-xs text-gray-600" title={entry.frames.join(', ')}>
+            {entry.frames.length} frame{entry.frames.length !== 1 ? 's' : ''}
+          </div>
+        );
+      case 'examples':
+        if (!entry.examples || entry.examples.length === 0) {
+          return <span className="text-gray-400 text-sm">None</span>;
+        }
+        return (
+          <div className="space-y-1 text-xs text-gray-700 max-w-md">
+            {entry.examples.map((example, idx) => (
+              <div key={idx} className="leading-relaxed">
+                <span className="text-gray-400 mr-1">{idx + 1}.</span>
+                {example}
+              </div>
+            ))}
+          </div>
+        );
+      case 'parentsCount':
+        if (!entryRelations?.parents || entryRelations.parents.length === 0) {
+          return <span className="text-gray-400 text-sm">None</span>;
+        }
+        return (
+          <div className="space-y-1 text-xs text-gray-700 max-w-sm">
+            {entryRelations.parents.map((parentId, idx) => (
+              <div key={idx} className="font-mono text-blue-600">
+                {parentId}
+              </div>
+            ))}
+          </div>
+        );
+      case 'childrenCount':
+        if (!entryRelations?.children || entryRelations.children.length === 0) {
+          return <span className="text-gray-400 text-sm">None</span>;
+        }
+        return (
+          <div className="space-y-1 text-xs text-gray-700 max-w-sm">
+            {entryRelations.children.map((childId, idx) => (
+              <div key={idx} className="font-mono text-green-600">
+                {childId}
+              </div>
+            ))}
+          </div>
+        );
+      case 'createdAt':
+        return <span className="text-xs text-gray-500">{formatDate(entry.createdAt)}</span>;
+      case 'updatedAt':
+        return <span className="text-xs text-gray-500">{formatDate(entry.updatedAt)}</span>;
+      default:
+        return <span className="text-sm text-gray-900">{String((entry as any)[columnKey] || '')}</span>;
+    }
+  };
+
+  const getColumnWidth = (columnKey: string) => {
+    switch (columnKey) {
+      case 'lemmas':
+        return 'w-32';
+      case 'gloss':
+        return 'w-1/4';
+      case 'examples':
+        return 'w-1/3';
+      case 'parentsCount':
+      case 'childrenCount':
+        return 'w-32';
+      case 'frames':
+        return 'w-24';
+      case 'isMwe':
+      case 'transitive':
+      case 'flagged':
+      case 'forbidden':
+        return 'w-16';
+      case 'pos':
+        return 'w-20';
+      case 'createdAt':
+      case 'updatedAt':
+        return 'w-24';
+      default:
+        return '';
+    }
+  };
 
   if (loading && !data) {
     return (
-      <div className={`bg-white rounded-lg shadow-sm border ${className || ''}`}>
+      <div className={`bg-white rounded-lg shadow-sm border border-gray-200 ${className || ''}`}>
         <div className="p-8 text-center">
           <div className="animate-spin h-12 w-12 border-2 border-gray-300 border-t-blue-600 rounded-full mx-auto mb-4"></div>
           <p className="text-gray-500">Loading entries...</p>
@@ -186,7 +563,7 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
 
   if (error) {
     return (
-      <div className={`bg-white rounded-lg shadow-sm border ${className || ''}`}>
+      <div className={`bg-white rounded-lg shadow-sm border border-gray-200 ${className || ''}`}>
         <div className="p-8 text-center text-red-600">
           <svg className="h-12 w-12 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 15.5c-.77.833.192 2.5 1.732 2.5z" />
@@ -205,7 +582,7 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
 
   if (!data || data.data.length === 0) {
     return (
-      <div className={`bg-white rounded-lg shadow-sm border ${className || ''}`}>
+      <div className={`bg-white rounded-lg shadow-sm border border-gray-200 ${className || ''}`}>
         <div className="p-8 text-center text-gray-400">
           <svg className="h-24 w-24 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -220,11 +597,11 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
   }
 
   return (
-    <div className={`bg-white rounded-lg shadow-sm border ${className || ''}`}>
+    <div className={`bg-white rounded-lg shadow-sm border border-gray-200 ${className || ''}`}>
       {/* Filters and Controls */}
-      <div className="p-4 border-b bg-gray-50">
+      <div className="p-4 border-b border-gray-200 bg-gray-50">
         <div className="flex flex-wrap gap-4 items-center justify-between">
-          <div className="relative">
+          <div className="flex items-center gap-4">
             <FilterPanel
               isOpen={isFilterPanelOpen}
               onToggle={() => setIsFilterPanelOpen(!isFilterPanelOpen)}
@@ -232,6 +609,41 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
               onFiltersChange={handleFiltersChange}
               onClearAll={handleClearAllFilters}
             />
+            <ColumnVisibilityPanel
+              isOpen={isColumnPanelOpen}
+              onToggle={() => setIsColumnPanelOpen(!isColumnPanelOpen)}
+              columns={currentColumns}
+              onColumnVisibilityChange={handleColumnVisibilityChange}
+              onResetToDefaults={handleResetColumns}
+            />
+            
+            {/* Moderation Actions */}
+            {selection.selectedIds.size > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-600">
+                  {selection.selectedIds.size} selected
+                </span>
+                <div className="h-4 w-px bg-gray-300"></div>
+                <button
+                  onClick={handleToggleFlagged}
+                  className="flex items-center gap-1 px-3 py-1 text-sm font-medium text-orange-700 bg-orange-50 border border-orange-200 rounded-md hover:bg-orange-100 transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 2H21l-3 6 3 6h-8.5l-1-2H5a2 2 0 00-2 2zm9-13.5V9" />
+                  </svg>
+                  Mark Flagged
+                </button>
+                <button
+                  onClick={handleToggleForbidden}
+                  className="flex items-center gap-1 px-3 py-1 text-sm font-medium text-red-700 bg-red-50 border border-red-200 rounded-md hover:bg-red-100 transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636m12.728 12.728L18.364 5.636M5.636 18.364l12.728-12.728" />
+                  </svg>
+                  Mark Forbidden
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
@@ -258,7 +670,7 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
           </div>
         )}
         <table className="w-full">
-          <thead className="bg-gray-50 border-b">
+          <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
               <th className="px-4 py-3 text-left">
                 <input
@@ -268,51 +680,20 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
                   className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
               </th>
-              <th 
-                className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                onClick={() => handleSort('lemmas')}
+              {visibleColumns.map((column) => (
+                <th 
+                  key={column.key}
+                  className={`px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${
+                    column.sortable ? 'cursor-pointer hover:bg-gray-100' : ''
+                  } ${getColumnWidth(column.key)}`}
+                  onClick={column.sortable ? () => handleSort(column.key) : undefined}
               >
                 <div className="flex items-center gap-2">
-                  Lemmas
-                  {getSortIcon('lemmas')}
+                    {column.label}
+                    {column.sortable && getSortIcon(column.key)}
                 </div>
               </th>
-              <th 
-                className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 w-2/5"
-                onClick={() => handleSort('gloss')}
-              >
-                <div className="flex items-center gap-2">
-                  Definition
-                  {getSortIcon('gloss')}
-                </div>
-              </th>
-              <th 
-                className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                onClick={() => handleSort('parentsCount')}
-              >
-                <div className="flex items-center gap-2">
-                  Parents
-                  {getSortIcon('parentsCount')}
-                </div>
-              </th>
-              <th 
-                className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                onClick={() => handleSort('childrenCount')}
-              >
-                <div className="flex items-center gap-2">
-                  Children
-                  {getSortIcon('childrenCount')}
-                </div>
-              </th>
-              <th 
-                className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                onClick={() => handleSort('lexfile')}
-              >
-                <div className="flex items-center gap-2">
-                  Lexfile
-                  {getSortIcon('lexfile')}
-                </div>
-              </th>
+              ))}
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
@@ -332,52 +713,21 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
                     className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                   />
                 </td>
-                <td 
-                  className={`px-4 py-4 whitespace-nowrap ${onRowClick ? 'cursor-pointer' : ''}`}
-                  onClick={() => onRowClick?.(entry)}
-                >
-                  <div className="flex flex-wrap gap-1">
-                    {entry.lemmas.slice(0, 3).map((lemma, idx) => (
-                      <span 
-                        key={idx}
-                        className="inline-block px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded"
-                      >
-                        {lemma}
-                      </span>
-                    ))}
-                    {entry.lemmas.length > 3 && (
-                      <span className="inline-block px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded">
-                        +{entry.lemmas.length - 3}
-                      </span>
-                    )}
-                  </div>
+                {visibleColumns.map((column) => {
+                  const isClickable = onRowClick && column.key !== 'isMwe' && column.key !== 'transitive';
+                  const allowsWrap = ['gloss', 'examples', 'frames', 'parentsCount', 'childrenCount'].includes(column.key);
+                  const cellClassName = `px-4 py-4 ${allowsWrap ? '' : 'whitespace-nowrap'} ${isClickable ? 'cursor-pointer' : ''} align-top`;
+                  
+                  return (
+                    <td 
+                      key={column.key}
+                      className={cellClassName}
+                      onClick={isClickable ? () => onRowClick?.(entry) : undefined}
+                    >
+                      {renderCellContent(entry, column.key)}
                 </td>
-                <td 
-                  className={`px-4 py-4 ${onRowClick ? 'cursor-pointer' : ''}`}
-                  onClick={() => onRowClick?.(entry)}
-                >
-                  <div className="text-sm text-gray-900" title={entry.gloss}>
-                    {truncateText(entry.gloss, 150)}
-                  </div>
-                </td>
-                <td 
-                  className={`px-4 py-4 whitespace-nowrap text-center ${onRowClick ? 'cursor-pointer' : ''}`}
-                  onClick={() => onRowClick?.(entry)}
-                >
-                  <span className="text-sm text-gray-900">{entry.parentsCount}</span>
-                </td>
-                <td 
-                  className={`px-4 py-4 whitespace-nowrap text-center ${onRowClick ? 'cursor-pointer' : ''}`}
-                  onClick={() => onRowClick?.(entry)}
-                >
-                  <span className="text-sm text-gray-900">{entry.childrenCount}</span>
-                </td>
-                <td 
-                  className={`px-4 py-4 whitespace-nowrap ${onRowClick ? 'cursor-pointer' : ''}`}
-                  onClick={() => onRowClick?.(entry)}
-                >
-                  <span className="text-xs text-gray-500">{entry.lexfile}</span>
-                </td>
+                  );
+                })}
               </tr>
             ))}
           </tbody>
@@ -385,7 +735,7 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
       </div>
 
       {/* Pagination */}
-      <div className="px-4 py-3 border-t bg-gray-50 flex items-center justify-between">
+      <div className="px-4 py-3 border-t border-gray-200 bg-gray-50 flex items-center justify-between">
         <div className="text-sm text-gray-700">
           Showing {((data.page - 1) * data.limit) + 1} to {Math.min(data.page * data.limit, data.total)} of {data.total} entries
         </div>
@@ -409,7 +759,7 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
                   key={pageNum}
                   onClick={() => handlePageChange(pageNum)}
                   disabled={loading}
-                  className={`px-4 py-2 text-sm font-semibold border rounded-md min-w-[40px] ${
+                  className={`px-4 py-2 text-sm font-semibold border-gray-300 rounded-md min-w-[40px] ${
                     pageNum === data.page
                       ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
                       : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'

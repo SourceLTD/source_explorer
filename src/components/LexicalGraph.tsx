@@ -254,7 +254,7 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
             <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#000000" floodOpacity="0.45" />
           </filter>
         </defs>
-        <rect width={width} height={height} rx={14} fill={backgroundColor} />
+        <rect width={width} height={height} rx={14} fill={backgroundColor} stroke="none" />
         <Group>
           {/* Render links */}
           {links.map((link, i) => (

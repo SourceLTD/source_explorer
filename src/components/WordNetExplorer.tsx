@@ -180,6 +180,54 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
     setEditListItems(newItems);
   };
 
+  // Moderation functions
+  const handleModerationUpdate = async (updates: { flagged?: boolean; forbidden?: boolean }) => {
+    if (!currentNode) return;
+
+    try {
+      const response = await fetch('/api/entries/moderation', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ids: [currentNode.id],
+          updates
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update entry');
+      }
+
+      // Reload the graph node to get updated data
+      await loadGraphNode(currentNode.id);
+      
+      console.log('Successfully updated entry');
+    } catch (error) {
+      console.error('Error updating entry:', error);
+      setError(error instanceof Error ? error.message : 'Failed to update entry');
+    }
+  };
+
+  const handleToggleFlagged = () => {
+    const newFlaggedValue = !currentNode?.flagged;
+    handleModerationUpdate({ 
+      flagged: newFlaggedValue,
+      // Clear reason if unflagging
+      ...(newFlaggedValue ? {} : { flaggedReason: null })
+    });
+  };
+
+  const handleToggleForbidden = () => {
+    const newForbiddenValue = !currentNode?.forbidden;
+    handleModerationUpdate({ 
+      forbidden: newForbiddenValue,
+      // Clear reason if allowing
+      ...(newForbiddenValue ? {} : { forbiddenReason: null })
+    });
+  };
+
   // Load initial entry
   useEffect(() => {
     if (initialEntryId) {
@@ -212,7 +260,7 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
             </button>
             <div className="h-6 w-px bg-gray-300"></div>
             <h1 className="text-xl font-bold text-gray-900">
-              Graph Mode
+              Verbs
             </h1>
             <p className="text-sm text-gray-600">
               Explore lexical relationships
@@ -266,6 +314,56 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
                 <h2 className="text-lg font-bold text-gray-900 mb-2">
                   {currentNode.lemmas[0] || currentNode.id} ({currentNode.id})
                 </h2>
+                
+                {/* Status Indicators */}
+                <div className="flex items-center gap-2 mb-3">
+                  {currentNode.flagged && (
+                    <span className="inline-block px-2 py-1 text-xs rounded font-medium bg-orange-100 text-orange-800">
+                      Flagged
+                      {currentNode.flaggedReason && (
+                        <span className="ml-1 text-orange-600">({currentNode.flaggedReason})</span>
+                      )}
+                    </span>
+                  )}
+                  {currentNode.forbidden && (
+                    <span className="inline-block px-2 py-1 text-xs rounded font-medium bg-red-100 text-red-800">
+                      Forbidden
+                      {currentNode.forbiddenReason && (
+                        <span className="ml-1 text-red-600">({currentNode.forbiddenReason})</span>
+                      )}
+                    </span>
+                  )}
+                </div>
+                
+                {/* Moderation Actions */}
+                <div className="flex items-center gap-2 mb-4">
+                  <button
+                    onClick={handleToggleFlagged}
+                    className={`flex items-center gap-1 px-3 py-1 text-sm font-medium border rounded-md transition-colors ${
+                      currentNode.flagged
+                        ? 'text-orange-700 bg-orange-100 border-orange-200 hover:bg-orange-200'
+                        : 'text-orange-700 bg-orange-50 border-orange-200 hover:bg-orange-100'
+                    }`}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 2H21l-3 6 3 6h-8.5l-1-2H5a2 2 0 00-2 2zm9-13.5V9" />
+                    </svg>
+                    {currentNode.flagged ? 'Unflag' : 'Flag'}
+                  </button>
+                  <button
+                    onClick={handleToggleForbidden}
+                    className={`flex items-center gap-1 px-3 py-1 text-sm font-medium border rounded-md transition-colors ${
+                      currentNode.forbidden
+                        ? 'text-red-700 bg-red-100 border-red-200 hover:bg-red-200'
+                        : 'text-red-700 bg-red-50 border-red-200 hover:bg-red-100'
+                    }`}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636m12.728 12.728L18.364 5.636M5.636 18.364l12.728-12.728" />
+                    </svg>
+                    {currentNode.forbidden ? 'Allow' : 'Forbid'}
+                  </button>
+                </div>
               </div>
 
               {/* Lemmas */}
@@ -666,7 +764,7 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
               </div>
             </div>
           ) : (
-            <div className="h-full flex items-center justify-center bg-white rounded-lg shadow-sm border">
+            <div className="h-full flex items-center justify-center bg-white rounded-lg shadow-sm">
               {isLoading ? (
                 <div className="text-center">
                   <div className="animate-spin h-12 w-12 border-2 border-gray-300 border-t-blue-600 rounded-full mx-auto mb-4"></div>

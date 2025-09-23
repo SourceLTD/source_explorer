@@ -24,13 +24,17 @@ export async function getEntryById(id: string): Promise<EntryWithRelations | nul
   return {
     ...entry,
     transitive: entry.transitive || undefined,
+    flaggedReason: (entry as any).flaggedReason || undefined,
+    forbiddenReason: (entry as any).forbiddenReason || undefined,
     sourceRelations: entry.sourceRelations.map(rel => ({
       sourceId: rel.sourceId,
       targetId: rel.targetId,
       type: rel.type as RelationType,
       target: rel.target ? {
         ...rel.target,
-        transitive: rel.target.transitive || undefined
+        transitive: rel.target.transitive || undefined,
+        flaggedReason: (rel.target as any).flaggedReason || undefined,
+        forbiddenReason: (rel.target as any).forbiddenReason || undefined
       } : undefined,
     })),
     targetRelations: entry.targetRelations.map(rel => ({
@@ -39,7 +43,9 @@ export async function getEntryById(id: string): Promise<EntryWithRelations | nul
       type: rel.type as RelationType,
       source: rel.source ? {
         ...rel.source,
-        transitive: rel.source.transitive || undefined
+        transitive: rel.source.transitive || undefined,
+        flaggedReason: (rel.source as any).flaggedReason || undefined,
+        forbiddenReason: (rel.source as any).forbiddenReason || undefined
       } : undefined,
     })),
   };
@@ -67,7 +73,7 @@ export async function searchEntries(query: string, limit = 20): Promise<SearchRe
   return results;
 }
 
-export async function updateEntry(id: string, updates: Partial<Pick<LexicalEntry, 'gloss' | 'lemmas' | 'examples'>>): Promise<EntryWithRelations | null> {
+export async function updateEntry(id: string, updates: Partial<Pick<LexicalEntry, 'gloss' | 'lemmas' | 'examples' | 'flagged' | 'flaggedReason' | 'forbidden' | 'forbiddenReason'>>): Promise<EntryWithRelations | null> {
   const updatedEntry = await prisma.lexicalEntry.update({
     where: { id },
     data: updates,
@@ -91,13 +97,17 @@ export async function updateEntry(id: string, updates: Partial<Pick<LexicalEntry
   return {
     ...updatedEntry,
     transitive: updatedEntry.transitive || undefined,
+    flaggedReason: (updatedEntry as any).flaggedReason || undefined,
+    forbiddenReason: (updatedEntry as any).forbiddenReason || undefined,
     sourceRelations: updatedEntry.sourceRelations.map(rel => ({
       sourceId: rel.sourceId,
       targetId: rel.targetId,
       type: rel.type as RelationType,
       target: rel.target ? {
         ...rel.target,
-        transitive: rel.target.transitive || undefined
+        transitive: rel.target.transitive || undefined,
+        flaggedReason: (rel.target as any).flaggedReason || undefined,
+        forbiddenReason: (rel.target as any).forbiddenReason || undefined
       } : undefined,
     })),
     targetRelations: updatedEntry.targetRelations.map(rel => ({
@@ -106,7 +116,9 @@ export async function updateEntry(id: string, updates: Partial<Pick<LexicalEntry
       type: rel.type as RelationType,
       source: rel.source ? {
         ...rel.source,
-        transitive: rel.source.transitive || undefined
+        transitive: rel.source.transitive || undefined,
+        flaggedReason: (rel.source as any).flaggedReason || undefined,
+        forbiddenReason: (rel.source as any).forbiddenReason || undefined
       } : undefined,
     })),
   };
@@ -220,6 +232,10 @@ export async function getGraphNode(entryId: string): Promise<GraphNode | null> {
     gloss: entry.gloss,
     pos: entry.pos,
     examples: entry.examples,
+    flagged: (entry as any).flagged || undefined,
+    flaggedReason: (entry as any).flaggedReason || undefined,
+    forbidden: (entry as any).forbidden || undefined,
+    forbiddenReason: (entry as any).forbiddenReason || undefined,
     parents,
     children,
     entails,
@@ -250,6 +266,27 @@ export async function getAncestorPath(entryId: string): Promise<GraphNode[]> {
   return path;
 }
 
+export async function updateModerationStatus(
+  ids: string[], 
+  updates: { 
+    flagged?: boolean; 
+    flaggedReason?: string; 
+    forbidden?: boolean; 
+    forbiddenReason?: string; 
+  }
+): Promise<number> {
+  const result = await prisma.lexicalEntry.updateMany({
+    where: {
+      id: {
+        in: ids
+      }
+    },
+    data: updates
+  });
+
+  return result.count;
+}
+
 export async function getPaginatedEntries(params: PaginationParams = {}): Promise<PaginatedResult<TableEntry>> {
   const {
     page = 1,
@@ -266,6 +303,8 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
     frames,
     isMwe,
     transitive,
+    flagged,
+    forbidden,
     parentsCountMin,
     parentsCountMax,
     childrenCountMin,
@@ -366,6 +405,14 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
     andConditions.push({ transitive });
   }
 
+  if (flagged !== undefined) {
+    andConditions.push({ flagged });
+  }
+
+  if (forbidden !== undefined) {
+    andConditions.push({ forbidden });
+  }
+
   // Date filters
   if (createdAfter) {
     andConditions.push({
@@ -450,7 +497,13 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
     lexfile: entry.lexfile,
     isMwe: entry.isMwe,
     transitive: entry.transitive || undefined,
+    particles: entry.particles,
+    frames: entry.frames,
     examples: entry.examples,
+    flagged: (entry as any).flagged || undefined,
+    flaggedReason: (entry as any).flaggedReason || undefined,
+    forbidden: (entry as any).forbidden || undefined,
+    forbiddenReason: (entry as any).forbiddenReason || undefined,
     parentsCount: entry._count.sourceRelations,
     childrenCount: entry._count.targetRelations,
     createdAt: entry.createdAt,

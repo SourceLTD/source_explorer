@@ -1,51 +1,52 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  url      = env("DIRECT_URL")
 }
 
 model LexicalEntry {
-  id           String   @id
-  gloss        String
-  pos          String   @db.Char(1)
-  lexfile      String
-  isMwe        Boolean  @default(false) @map("is_mwe")
-  transitive   Boolean?
+  id              String                   @id
+  gloss           String
+  pos             String                   @db.Char(1)
+  lexfile         String
+  isMwe           Boolean                  @default(false) @map("is_mwe")
+  transitive      Boolean?
+  lemmas          String[]                 @default([])
+  particles       String[]                 @default([])
+  frames          String[]                 @default([])
+  examples        String[]                 @default([])
+  glossTsv        Unsupported("tsvector")? @map("gloss_tsv")
+  examplesTsv     Unsupported("tsvector")? @map("examples_tsv")
+  createdAt       DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime                 @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  flagged         Boolean?                 @default(false)
+  flaggedReason   String?                  @map("flagged_reason")
+  forbidden       Boolean?                 @default(false)
+  forbiddenReason String?                  @map("forbidden_reason")
+  sourceRelations EntryRelation[]          @relation("SourceEntry")
+  targetRelations EntryRelation[]          @relation("TargetEntry")
 
-  lemmas       String[] @default([])
-  particles    String[] @default([])
-  frames       String[] @default([])
-  examples     String[] @default([])
-
-  // Search vectors (computed by triggers)
-  glossTsv     String?  @map("gloss_tsv")
-  examplesTsv  String?  @map("examples_tsv")
-
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
-
-  // Relations
-  sourceRelations EntryRelation[] @relation("SourceEntry")
-  targetRelations EntryRelation[] @relation("TargetEntry")
-
+  @@index([examplesTsv], map: "idx_lex_examples_tsv", type: Gin)
+  @@index([frames], map: "idx_lex_frames_gin", type: Gin)
+  @@index([glossTsv], map: "idx_lex_gloss_tsv", type: Gin)
+  @@index([lemmas], map: "idx_lex_lemmas_gin", type: Gin)
+  @@index([particles], map: "idx_lex_particles_gin", type: Gin)
+  @@index([pos], map: "idx_lex_pos")
   @@map("lexical_entries")
 }
 
 model EntryRelation {
-  sourceId String      @map("source_id")
-  targetId String      @map("target_id")
+  sourceId String       @map("source_id")
+  targetId String       @map("target_id")
   type     RelationType
-
-  source LexicalEntry @relation("SourceEntry", fields: [sourceId], references: [id], onDelete: Cascade)
-  target LexicalEntry @relation("TargetEntry", fields: [targetId], references: [id], onDelete: Cascade)
+  source   LexicalEntry @relation("SourceEntry", fields: [sourceId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  target   LexicalEntry @relation("TargetEntry", fields: [targetId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@id([sourceId, type, targetId])
+  @@index([targetId, type], map: "idx_rel_target_type")
   @@map("entry_relations")
 }
 

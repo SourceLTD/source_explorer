@@ -26,7 +26,7 @@ export default function TableMode() {
   };
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50">
+    <div className="h-screen flex flex-col bg-white">
       {/* Header */}
       <header className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="flex items-center justify-between">
@@ -42,7 +42,7 @@ export default function TableMode() {
             </button>
             <div className="h-6 w-px bg-gray-300"></div>
             <h1 className="text-xl font-bold text-gray-900">
-              Table Mode
+              Verbs
             </h1>
             <p className="text-sm text-gray-600">
               Browse and search through all lexical entries
@@ -69,13 +69,12 @@ export default function TableMode() {
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col p-6">
+      <main className="flex-1 flex flex-col bg-white">
         {/* Data Table */}
-        <div className="flex-1 bg-white rounded-lg shadow-sm border overflow-hidden">
+        <div className="m-6 bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
           <DataTable 
             onRowClick={handleTableRowClick}
             searchQuery={searchQuery}
-            className="h-full"
           />
         </div>
       </main>

@@ -9,6 +9,10 @@ export interface LexicalEntry {
   particles: string[];
   frames: string[];
   examples: string[];
+  flagged?: boolean;
+  flaggedReason?: string;
+  forbidden?: boolean;
+  forbiddenReason?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -40,6 +44,10 @@ export interface GraphNode {
   gloss: string;
   pos: string;
   examples: string[];
+  flagged?: boolean;
+  flaggedReason?: string;
+  forbidden?: boolean;
+  forbiddenReason?: string;
   parents: GraphNode[];
   children: GraphNode[];
   entails: GraphNode[];
@@ -111,6 +119,8 @@ export interface PaginationParams {
   // Boolean filters
   isMwe?: boolean;
   transitive?: boolean;
+  flagged?: boolean;
+  forbidden?: boolean;
   
   // Numeric filters
   parentsCountMin?: number;
@@ -143,7 +153,13 @@ export interface TableEntry {
   lexfile: string;
   isMwe: boolean;
   transitive?: boolean;
+  particles: string[];
+  frames: string[];
   examples: string[];
+  flagged?: boolean;
+  flaggedReason?: string;
+  forbidden?: boolean;
+  forbiddenReason?: string;
   parentsCount: number;
   childrenCount: number;
   createdAt: Date;
