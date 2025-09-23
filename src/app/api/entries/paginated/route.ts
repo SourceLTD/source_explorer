@@ -11,8 +11,33 @@ export async function GET(request: NextRequest) {
     sortBy: searchParams.get('sortBy') || 'id',
     sortOrder: (searchParams.get('sortOrder') as 'asc' | 'desc') || 'asc',
     search: searchParams.get('search') || undefined,
+    
+    // Basic filters (legacy)
     pos: searchParams.get('pos') || undefined,
     lexfile: searchParams.get('lexfile') || undefined,
+    
+    // Advanced filters
+    gloss: searchParams.get('gloss') || undefined,
+    lemmas: searchParams.get('lemmas') || undefined,
+    examples: searchParams.get('examples') || undefined,
+    particles: searchParams.get('particles') || undefined,
+    frames: searchParams.get('frames') || undefined,
+    
+    // Boolean filters
+    isMwe: searchParams.get('isMwe') ? searchParams.get('isMwe') === 'true' : undefined,
+    transitive: searchParams.get('transitive') ? searchParams.get('transitive') === 'true' : undefined,
+    
+    // Numeric filters
+    parentsCountMin: searchParams.get('parentsCountMin') ? parseInt(searchParams.get('parentsCountMin')!, 10) : undefined,
+    parentsCountMax: searchParams.get('parentsCountMax') ? parseInt(searchParams.get('parentsCountMax')!, 10) : undefined,
+    childrenCountMin: searchParams.get('childrenCountMin') ? parseInt(searchParams.get('childrenCountMin')!, 10) : undefined,
+    childrenCountMax: searchParams.get('childrenCountMax') ? parseInt(searchParams.get('childrenCountMax')!, 10) : undefined,
+    
+    // Date filters
+    createdAfter: searchParams.get('createdAfter') || undefined,
+    createdBefore: searchParams.get('createdBefore') || undefined,
+    updatedAfter: searchParams.get('updatedAfter') || undefined,
+    updatedBefore: searchParams.get('updatedBefore') || undefined,
   };
 
   // Validate pagination params

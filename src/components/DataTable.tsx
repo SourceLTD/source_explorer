@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { TableEntry, PaginatedResult, POS_LABELS, PaginationParams } from '@/lib/types';
+import { TableEntry, PaginatedResult, PaginationParams } from '@/lib/types';
+import FilterPanel, { FilterState } from './FilterPanel';
 
 interface DataTableProps {
   onRowClick?: (entry: TableEntry) => void;
@@ -26,10 +27,8 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [sortState, setSortState] = useState<SortState>({ field: 'id', order: 'asc' });
-  const [filters, setFilters] = useState({
-    pos: '',
-    lexfile: '',
-  });
+  const [filters, setFilters] = useState<FilterState>({});
+  const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
   const [selection, setSelection] = useState<SelectionState>({
     selectedIds: new Set(),
     selectAll: false,
@@ -46,8 +45,7 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
         sortBy: sortState.field,
         sortOrder: sortState.order,
         search: searchQuery || undefined,
-        pos: filters.pos || undefined,
-        lexfile: filters.lexfile || undefined,
+        ...filters,
       };
 
       const queryParams = new URLSearchParams();
@@ -88,8 +86,13 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
     setCurrentPage(1);
   };
 
-  const handleFilterChange = (filterName: keyof typeof filters, value: string) => {
-    setFilters(prev => ({ ...prev, [filterName]: value }));
+  const handleFiltersChange = (newFilters: FilterState) => {
+    setFilters(newFilters);
+    setCurrentPage(1);
+  };
+
+  const handleClearAllFilters = () => {
+    setFilters({});
     setCurrentPage(1);
   };
 
@@ -208,7 +211,7 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
           <p>No entries found</p>
-          {(searchQuery || filters.pos || filters.lexfile) && (
+          {(searchQuery || Object.keys(filters).length > 0) && (
             <p className="text-sm mt-2">Try adjusting your search or filters</p>
           )}
         </div>
@@ -218,35 +221,20 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
 
   return (
     <div className={`bg-white rounded-lg shadow-sm border ${className || ''}`}>
-      {/* Filters */}
+      {/* Filters and Controls */}
       <div className="p-4 border-b bg-gray-50">
-        <div className="flex flex-wrap gap-4 items-center">
-          <div className="flex items-center gap-2">
-            <label className="text-sm font-medium text-gray-700">Part of Speech:</label>
-            <select
-              value={filters.pos}
-              onChange={(e) => handleFilterChange('pos', e.target.value)}
-              className="px-3 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
-            >
-              <option value="">All</option>
-              {Object.entries(POS_LABELS).map(([pos, label]) => (
-                <option key={pos} value={pos}>{label}</option>
-              ))}
-            </select>
-          </div>
-          
-          <div className="flex items-center gap-2">
-            <label className="text-sm font-medium text-gray-700">Lexical File:</label>
-            <input
-              type="text"
-              value={filters.lexfile}
-              onChange={(e) => handleFilterChange('lexfile', e.target.value)}
-              placeholder="Filter by lexfile..."
-              className="px-3 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
+        <div className="flex flex-wrap gap-4 items-center justify-between">
+          <div className="relative">
+            <FilterPanel
+              isOpen={isFilterPanelOpen}
+              onToggle={() => setIsFilterPanelOpen(!isFilterPanelOpen)}
+              filters={filters}
+              onFiltersChange={handleFiltersChange}
+              onClearAll={handleClearAllFilters}
             />
           </div>
 
-          <div className="flex items-center gap-2 ml-auto">
+          <div className="flex items-center gap-2">
             <label className="text-sm font-medium text-gray-700">Show:</label>
             <select
               value={pageSize}

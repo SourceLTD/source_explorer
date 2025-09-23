@@ -258,41 +258,150 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
     sortOrder = 'asc',
     search,
     pos,
-    lexfile
+    lexfile,
+    gloss,
+    lemmas,
+    examples,
+    particles,
+    frames,
+    isMwe,
+    transitive,
+    parentsCountMin,
+    parentsCountMax,
+    childrenCountMin,
+    childrenCountMax,
+    createdAfter,
+    createdBefore,
+    updatedAfter,
+    updatedBefore
   } = params;
 
   const skip = (page - 1) * limit;
 
   // Build where clause
   const whereClause: Record<string, unknown> = {};
+  const andConditions: Record<string, unknown>[] = [];
   
+  // Global search (legacy)
   if (search) {
-    whereClause.OR = [
-      {
-        gloss: {
-          contains: search,
-          mode: 'insensitive'
+    andConditions.push({
+      OR: [
+        {
+          gloss: {
+            contains: search,
+            mode: 'insensitive'
+          }
+        },
+        {
+          lemmas: {
+            hasSome: [search]
+          }
+        },
+        {
+          examples: {
+            hasSome: search.split(' ')
+          }
         }
-      },
-      {
-        lemmas: {
-          hasSome: [search]
-        }
-      },
-      {
-        examples: {
-          hasSome: search.split(' ')
-        }
-      }
-    ];
+      ]
+    });
   }
 
+  // Basic filters
   if (pos) {
-    whereClause.pos = pos;
+    andConditions.push({ pos });
   }
 
   if (lexfile) {
-    whereClause.lexfile = lexfile;
+    andConditions.push({ lexfile });
+  }
+
+  // Advanced text filters
+  if (gloss) {
+    andConditions.push({
+      gloss: {
+        contains: gloss,
+        mode: 'insensitive'
+      }
+    });
+  }
+
+  if (lemmas) {
+    andConditions.push({
+      lemmas: {
+        hasSome: lemmas.split(/[\s,]+/).filter(Boolean)
+      }
+    });
+  }
+
+  if (examples) {
+    andConditions.push({
+      examples: {
+        hasSome: examples.split(/[\s,]+/).filter(Boolean)
+      }
+    });
+  }
+
+  if (particles) {
+    andConditions.push({
+      particles: {
+        hasSome: particles.split(/[\s,]+/).filter(Boolean)
+      }
+    });
+  }
+
+  if (frames) {
+    andConditions.push({
+      frames: {
+        hasSome: frames.split(/[\s,]+/).filter(Boolean)
+      }
+    });
+  }
+
+  // Boolean filters
+  if (isMwe !== undefined) {
+    andConditions.push({ isMwe });
+  }
+
+  if (transitive !== undefined) {
+    andConditions.push({ transitive });
+  }
+
+  // Date filters
+  if (createdAfter) {
+    andConditions.push({
+      createdAt: {
+        gte: new Date(createdAfter)
+      }
+    });
+  }
+
+  if (createdBefore) {
+    andConditions.push({
+      createdAt: {
+        lte: new Date(createdBefore + 'T23:59:59.999Z')
+      }
+    });
+  }
+
+  if (updatedAfter) {
+    andConditions.push({
+      updatedAt: {
+        gte: new Date(updatedAfter)
+      }
+    });
+  }
+
+  if (updatedBefore) {
+    andConditions.push({
+      updatedAt: {
+        lte: new Date(updatedBefore + 'T23:59:59.999Z')
+      }
+    });
+  }
+
+  // Combine all conditions
+  if (andConditions.length > 0) {
+    whereClause.AND = andConditions;
   }
 
   // Get total count
@@ -333,7 +442,7 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
   });
 
   // Transform to TableEntry format
-  const data: TableEntry[] = entries.map(entry => ({
+  let data: TableEntry[] = entries.map(entry => ({
     id: entry.id,
     lemmas: entry.lemmas,
     gloss: entry.gloss,
@@ -347,6 +456,20 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
     createdAt: entry.createdAt,
     updatedAt: entry.updatedAt
   }));
+
+  // Apply numeric filters on computed fields
+  if (parentsCountMin !== undefined) {
+    data = data.filter(entry => entry.parentsCount >= parentsCountMin);
+  }
+  if (parentsCountMax !== undefined) {
+    data = data.filter(entry => entry.parentsCount <= parentsCountMax);
+  }
+  if (childrenCountMin !== undefined) {
+    data = data.filter(entry => entry.childrenCount >= childrenCountMin);
+  }
+  if (childrenCountMax !== undefined) {
+    data = data.filter(entry => entry.childrenCount <= childrenCountMax);
+  }
 
   // Sort by computed fields if needed
   if (sortBy === 'parentsCount') {

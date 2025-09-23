@@ -96,8 +96,33 @@ export interface PaginationParams {
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
   search?: string;
+  
+  // Basic filters (legacy)
   pos?: string;
   lexfile?: string;
+  
+  // Advanced filters
+  gloss?: string;
+  lemmas?: string;
+  examples?: string;
+  particles?: string;
+  frames?: string;
+  
+  // Boolean filters
+  isMwe?: boolean;
+  transitive?: boolean;
+  
+  // Numeric filters
+  parentsCountMin?: number;
+  parentsCountMax?: number;
+  childrenCountMin?: number;
+  childrenCountMax?: number;
+  
+  // Date filters
+  createdAfter?: string;
+  createdBefore?: string;
+  updatedAfter?: string;
+  updatedBefore?: string;
 }
 
 export interface PaginatedResult<T> {
