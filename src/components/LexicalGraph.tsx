@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Group } from '@visx/group';
 import { LinearGradient } from '@visx/gradient';
 import { GraphNode } from '@/lib/types';
@@ -39,6 +39,8 @@ interface LayoutResult {
 }
 
 export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphProps) {
+
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
 
   // Helper function to estimate text height based on content and width
   const estimateTextHeight = (text: string, width: number, fontSize: number = 13, lineHeight: number = 1.3): number => {
@@ -247,6 +249,11 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
     <div className="w-full h-full flex items-start justify-center pt-4">
       <svg width={width} height={height}>
         <LinearGradient id="link-gradient" from={linkColor} to={linkColor} />
+        <defs>
+          <filter id="nodeHoverShadow" x="-50%" y="-50%" width="200%" height="200%">
+            <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#000000" floodOpacity="0.45" />
+          </filter>
+        </defs>
         <rect width={width} height={height} rx={14} fill={backgroundColor} />
         <Group>
           {/* Render links */}
@@ -309,7 +316,14 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
               }
               
               return (
-                <Group key={`node-${i}`} top={posNode.y} left={posNode.x}>
+                <Group
+                  key={`node-${i}`}
+                  top={posNode.y}
+                  left={posNode.x}
+                  onMouseEnter={() => setHoveredNodeId(posNode.node.id)}
+                  onMouseLeave={() => setHoveredNodeId(null)}
+                  style={{ cursor: 'pointer' }}
+                >
                   <rect
                     width={nodeWidth}
                     height={nodeHeight}
@@ -321,6 +335,7 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                     rx={8}
                     ry={8}
                     style={{ cursor: 'pointer' }}
+                    filter={hoveredNodeId === posNode.node.id ? 'url(#nodeHoverShadow)' : undefined}
                     onClick={() => onNodeClick(posNode.node.id)}
                   />
                   {/* Node title/lemma with ID */}
@@ -352,7 +367,8 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                         fontStyle: 'italic',
                         lineHeight: '1.3',
                         wordWrap: 'break-word',
-                        overflow: 'hidden'
+                        overflow: 'hidden',
+                        cursor: 'pointer'
                       }}
                     >
                       {posNode.node.gloss}
@@ -372,7 +388,8 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                         color: 'white',
                         lineHeight: '1.3',
                         wordWrap: 'break-word',
-                        overflow: 'hidden'
+                        overflow: 'hidden',
+                        cursor: 'pointer'
                       }}
                     >
                       <span style={{ fontWeight: 'bold' }}>Lemmas:</span> <span style={{ fontWeight: '500' }}>{posNode.node.lemmas.join('; ')}</span>
@@ -393,7 +410,8 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                           color: 'white',
                           lineHeight: '1.3',
                           wordWrap: 'break-word',
-                          overflow: 'hidden'
+                          overflow: 'hidden',
+                          cursor: 'pointer'
                         }}
                       >
                         <span style={{ fontWeight: 'bold' }}>Examples:</span> <span style={{ fontWeight: '400' }}>{posNode.node.examples.join('; ')}</span>
@@ -416,7 +434,8 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                           color: 'white',
                           lineHeight: '1.3',
                           wordWrap: 'break-word',
-                          overflow: 'hidden'
+                          overflow: 'hidden',
+                          cursor: 'pointer'
                         }}
                       >
                         <span style={{ fontWeight: 'bold' }}>Causes:</span>{' '}
@@ -457,7 +476,8 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                           color: 'white',
                           lineHeight: '1.3',
                           wordWrap: 'break-word',
-                          overflow: 'hidden'
+                          overflow: 'hidden',
+                          cursor: 'pointer'
                         }}
                       >
                         <span style={{ fontWeight: 'bold' }}>Entails:</span>{' '}
@@ -498,7 +518,8 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                           color: 'white',
                           lineHeight: '1.3',
                           wordWrap: 'break-word',
-                          overflow: 'hidden'
+                          overflow: 'hidden',
+                          cursor: 'pointer'
                         }}
                       >
                         <span style={{ fontWeight: 'bold' }}>Similar to:</span>{' '}
@@ -537,7 +558,14 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
               const strokeColor = isParent ? parentNodeStroke : childNodeStroke;
               
               return (
-                <Group key={`node-${i}`} top={posNode.y} left={posNode.x}>
+                <Group
+                  key={`node-${i}`}
+                  top={posNode.y}
+                  left={posNode.x}
+                  onMouseEnter={() => setHoveredNodeId(posNode.node.id)}
+                  onMouseLeave={() => setHoveredNodeId(null)}
+                  style={{ cursor: 'pointer' }}
+                >
                   <rect
                     width={nodeWidth}
                     height={nodeHeight}
@@ -549,6 +577,7 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                     rx={4}
                     ry={4}
                     style={{ cursor: 'pointer' }}
+                    filter={hoveredNodeId === posNode.node.id ? 'url(#nodeHoverShadow)' : undefined}
                     onClick={() => onNodeClick(posNode.node.id)}
                   />
                   <text
