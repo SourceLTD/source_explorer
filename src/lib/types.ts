@@ -60,3 +60,71 @@ export interface BreadcrumbItem {
   lemma: string;
   gloss: string;
 }
+
+export interface TableEntry {
+  id: string;
+  lemmas: string[];
+  gloss: string;
+  pos: string;
+  lexfile: string;
+  isMwe: boolean;
+  transitive?: boolean;
+  particles: string[];
+  frames: string[];
+  examples: string[];
+  parentsCount: number;
+  childrenCount: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface PaginatedResult<T> {
+  data: T[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  hasNext: boolean;
+  hasPrev: boolean;
+}
+
+export interface PaginationParams {
+  page?: number;
+  limit?: number;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+  search?: string;
+  pos?: string;
+  lexfile?: string;
+  isMwe?: boolean;
+  transitive?: boolean;
+  hasParticles?: boolean;
+  hasFrames?: boolean;
+  hasExamples?: boolean;
+  lemmaContains?: string;
+  glossContains?: string;
+  minParents?: number;
+  maxParents?: number;
+  minChildren?: number;
+  maxChildren?: number;
+  createdAfter?: string;
+  createdBefore?: string;
+}
+
+export interface FilterConfig {
+  type: 'text' | 'select' | 'boolean' | 'number' | 'date' | 'range';
+  label: string;
+  field: string;
+  placeholder?: string;
+  options?: { value: string; label: string }[];
+  min?: number;
+  max?: number;
+}
+
+export const POS_LABELS: Record<string, string> = {
+  'n': 'Noun',
+  'v': 'Verb',
+  'a': 'Adjective',
+  'r': 'Adverb',
+  's': 'Adjective Satellite',
+};

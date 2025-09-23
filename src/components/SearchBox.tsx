@@ -4,10 +4,11 @@ import { useState, useRef, useEffect } from 'react';
 import { SearchResult } from '@/lib/types';
 
 interface SearchBoxProps {
-  onSelectResult: (result: SearchResult) => void;
+  onSelectResult?: (result: SearchResult) => void;
+  onSearch?: (query: string) => void;
 }
 
-export default function SearchBox({ onSelectResult }: SearchBoxProps) {
+export default function SearchBox({ onSelectResult, onSearch }: SearchBoxProps) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isOpen, setIsOpen] = useState(false);
@@ -47,18 +48,26 @@ export default function SearchBox({ onSelectResult }: SearchBoxProps) {
     const value = e.target.value;
     setQuery(value);
     
-    // Debounce search
-    const timeoutId = setTimeout(() => {
-      searchEntries(value);
-    }, 300);
+    // Call onSearch callback if provided (for table filtering)
+    if (onSearch) {
+      onSearch(value);
+    }
+    
+    // Only do dropdown search if onSelectResult is provided
+    if (onSelectResult) {
+      // Debounce search
+      const timeoutId = setTimeout(() => {
+        searchEntries(value);
+      }, 300);
 
-    return () => clearTimeout(timeoutId);
+      return () => clearTimeout(timeoutId);
+    }
   };
 
   const handleSelectResult = (result: SearchResult) => {
     setQuery(result.lemmas[0] || result.id);
     setIsOpen(false);
-    onSelectResult(result);
+    onSelectResult?.(result);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -104,9 +113,9 @@ export default function SearchBox({ onSelectResult }: SearchBoxProps) {
         </div>
       </div>
 
-      {isOpen && results.length > 0 && (
+      {isOpen && results.length > 0 && onSelectResult && (
         <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-96 overflow-y-auto">
-          {results.map((result, index) => (
+          {results.map((result) => (
             <button
               key={result.id}
               onClick={() => handleSelectResult(result)}
@@ -135,10 +144,10 @@ export default function SearchBox({ onSelectResult }: SearchBoxProps) {
         </div>
       )}
 
-      {isOpen && results.length === 0 && query && !isLoading && (
+      {isOpen && results.length === 0 && query && !isLoading && onSelectResult && (
         <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg">
           <div className="px-4 py-3 text-gray-500 text-sm">
-            No results found for "{query}"
+            No results found for &ldquo;{query}&rdquo;
           </div>
         </div>
       )}
