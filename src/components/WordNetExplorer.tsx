@@ -7,6 +7,7 @@ import LexicalGraph from './LexicalGraph';
 import SearchBox from './SearchBox';
 import Breadcrumbs from './Breadcrumbs';
 import ViewToggle, { ViewMode } from './ViewToggle';
+import SignOutButton from './SignOutButton';
 
 interface WordNetExplorerProps {
   initialEntryId?: string;
@@ -278,6 +279,7 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
                 }
               }}
             />
+            <SignOutButton />
           </div>
         </div>
       </header>
