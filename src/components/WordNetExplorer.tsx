@@ -251,12 +251,9 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
           <div className="flex items-center space-x-4">
             <button
               onClick={() => router.push('/')}
-              className="flex items-center gap-2 text-blue-600 hover:text-blue-700"
+              className="text-xl font-bold text-gray-900 hover:text-gray-700 cursor-pointer"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-              </svg>
-              <span className="text-sm font-medium">SourceNet</span>
+              SourceNet
             </button>
             <div className="h-6 w-px bg-gray-300"></div>
             <h1 className="text-xl font-bold text-gray-900">
