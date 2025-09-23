@@ -14,6 +14,11 @@ interface SortState {
   order: 'asc' | 'desc';
 }
 
+interface SelectionState {
+  selectedIds: Set<string>;
+  selectAll: boolean;
+}
+
 export default function DataTable({ onRowClick, searchQuery, className }: DataTableProps) {
   const [data, setData] = useState<PaginatedResult<TableEntry> | null>(null);
   const [loading, setLoading] = useState(false);
@@ -24,6 +29,10 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
   const [filters, setFilters] = useState({
     pos: '',
     lexfile: '',
+  });
+  const [selection, setSelection] = useState<SelectionState>({
+    selectedIds: new Set(),
+    selectAll: false,
   });
 
   const fetchData = useCallback(async () => {
@@ -91,6 +100,45 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
   const handlePageSizeChange = (size: number) => {
     setPageSize(size);
     setCurrentPage(1);
+  };
+
+  const handleSelectAll = () => {
+    if (!data) return;
+    
+    setSelection(prev => {
+      const newSelectAll = !prev.selectAll;
+      const newSelectedIds = new Set<string>();
+      
+      if (newSelectAll) {
+        data.data.forEach(entry => newSelectedIds.add(entry.id));
+      }
+      
+      return {
+        selectAll: newSelectAll,
+        selectedIds: newSelectedIds,
+      };
+    });
+  };
+
+  const handleSelectRow = (entryId: string) => {
+    setSelection(prev => {
+      const newSelectedIds = new Set(prev.selectedIds);
+      
+      if (newSelectedIds.has(entryId)) {
+        newSelectedIds.delete(entryId);
+      } else {
+        newSelectedIds.add(entryId);
+      }
+      
+      const allCurrentPageSelected = data?.data.every(entry => 
+        newSelectedIds.has(entry.id)
+      ) || false;
+      
+      return {
+        selectedIds: newSelectedIds,
+        selectAll: allCurrentPageSelected && newSelectedIds.size > 0,
+      };
+    });
   };
 
   const getSortIcon = (field: string) => {
@@ -178,7 +226,7 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
             <select
               value={filters.pos}
               onChange={(e) => handleFilterChange('pos', e.target.value)}
-              className="px-3 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="px-3 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
             >
               <option value="">All</option>
               {Object.entries(POS_LABELS).map(([pos, label]) => (
@@ -194,7 +242,7 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
               value={filters.lexfile}
               onChange={(e) => handleFilterChange('lexfile', e.target.value)}
               placeholder="Filter by lexfile..."
-              className="px-3 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="px-3 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
             />
           </div>
 
@@ -203,7 +251,7 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
             <select
               value={pageSize}
               onChange={(e) => handlePageSizeChange(parseInt(e.target.value))}
-              className="px-3 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="px-3 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
             >
               <option value={10}>10</option>
               <option value={20}>20</option>
@@ -215,10 +263,23 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto relative">
+        {loading && (
+          <div className="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center z-10">
+            <div className="animate-spin h-8 w-8 border-2 border-gray-300 border-t-blue-600 rounded-full"></div>
+          </div>
+        )}
         <table className="w-full">
           <thead className="bg-gray-50 border-b">
             <tr>
+              <th className="px-4 py-3 text-left">
+                <input
+                  type="checkbox"
+                  checked={selection.selectAll}
+                  onChange={handleSelectAll}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+              </th>
               <th 
                 className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
                 onClick={() => handleSort('lemmas')}
@@ -229,21 +290,12 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
                 </div>
               </th>
               <th 
-                className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 w-2/5"
                 onClick={() => handleSort('gloss')}
               >
                 <div className="flex items-center gap-2">
                   Definition
                   {getSortIcon('gloss')}
-                </div>
-              </th>
-              <th 
-                className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                onClick={() => handleSort('pos')}
-              >
-                <div className="flex items-center gap-2">
-                  POS
-                  {getSortIcon('pos')}
                 </div>
               </th>
               <th 
@@ -273,19 +325,29 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
                   {getSortIcon('lexfile')}
                 </div>
               </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Examples
-              </th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
             {data.data.map((entry) => (
               <tr
                 key={entry.id}
-                className={`hover:bg-gray-50 ${onRowClick ? 'cursor-pointer' : ''}`}
-                onClick={() => onRowClick?.(entry)}
+                className={`hover:bg-gray-50 ${selection.selectedIds.has(entry.id) ? 'bg-blue-50' : ''}`}
               >
                 <td className="px-4 py-4 whitespace-nowrap">
+                  <input
+                    type="checkbox"
+                    checked={selection.selectedIds.has(entry.id)}
+                    onChange={(e) => {
+                      e.stopPropagation();
+                      handleSelectRow(entry.id);
+                    }}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                </td>
+                <td 
+                  className={`px-4 py-4 whitespace-nowrap ${onRowClick ? 'cursor-pointer' : ''}`}
+                  onClick={() => onRowClick?.(entry)}
+                >
                   <div className="flex flex-wrap gap-1">
                     {entry.lemmas.slice(0, 3).map((lemma, idx) => (
                       <span 
@@ -302,34 +364,31 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
                     )}
                   </div>
                 </td>
-                <td className="px-4 py-4">
+                <td 
+                  className={`px-4 py-4 ${onRowClick ? 'cursor-pointer' : ''}`}
+                  onClick={() => onRowClick?.(entry)}
+                >
                   <div className="text-sm text-gray-900" title={entry.gloss}>
-                    {truncateText(entry.gloss, 100)}
+                    {truncateText(entry.gloss, 150)}
                   </div>
                 </td>
-                <td className="px-4 py-4 whitespace-nowrap">
-                  <span className="inline-block px-2 py-1 text-xs bg-green-100 text-green-800 rounded">
-                    {POS_LABELS[entry.pos as keyof typeof POS_LABELS] || entry.pos}
-                  </span>
-                </td>
-                <td className="px-4 py-4 whitespace-nowrap text-center">
+                <td 
+                  className={`px-4 py-4 whitespace-nowrap text-center ${onRowClick ? 'cursor-pointer' : ''}`}
+                  onClick={() => onRowClick?.(entry)}
+                >
                   <span className="text-sm text-gray-900">{entry.parentsCount}</span>
                 </td>
-                <td className="px-4 py-4 whitespace-nowrap text-center">
+                <td 
+                  className={`px-4 py-4 whitespace-nowrap text-center ${onRowClick ? 'cursor-pointer' : ''}`}
+                  onClick={() => onRowClick?.(entry)}
+                >
                   <span className="text-sm text-gray-900">{entry.childrenCount}</span>
                 </td>
-                <td className="px-4 py-4 whitespace-nowrap">
+                <td 
+                  className={`px-4 py-4 whitespace-nowrap ${onRowClick ? 'cursor-pointer' : ''}`}
+                  onClick={() => onRowClick?.(entry)}
+                >
                   <span className="text-xs text-gray-500">{entry.lexfile}</span>
-                </td>
-                <td className="px-4 py-4">
-                  {entry.examples.length > 0 ? (
-                    <div className="text-xs text-gray-600" title={entry.examples.join('; ')}>
-                      {truncateText(entry.examples[0], 80)}
-                      {entry.examples.length > 1 && ` (+${entry.examples.length - 1})`}
-                    </div>
-                  ) : (
-                    <span className="text-xs text-gray-400">No examples</span>
-                  )}
                 </td>
               </tr>
             ))}
@@ -347,7 +406,7 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
           <button
             onClick={() => handlePageChange(data.page - 1)}
             disabled={!data.hasPrev || loading}
-            className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-2 text-sm font-medium border border-gray-300 rounded-md hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed bg-white text-gray-700"
           >
             Previous
           </button>
@@ -362,11 +421,11 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
                   key={pageNum}
                   onClick={() => handlePageChange(pageNum)}
                   disabled={loading}
-                  className={`px-3 py-1 text-sm border rounded ${
+                  className={`px-4 py-2 text-sm font-semibold border rounded-md min-w-[40px] ${
                     pageNum === data.page
-                      ? 'bg-blue-600 text-white border-blue-600'
-                      : 'border-gray-300 hover:bg-gray-100'
-                  } disabled:opacity-50`}
+                      ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'
+                  } disabled:opacity-50 transition-colors`}
                 >
                   {pageNum}
                 </button>
@@ -377,18 +436,12 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
           <button
             onClick={() => handlePageChange(data.page + 1)}
             disabled={!data.hasNext || loading}
-            className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-2 text-sm font-medium border border-gray-300 rounded-md hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed bg-white text-gray-700"
           >
             Next
           </button>
         </div>
       </div>
-      
-      {loading && (
-        <div className="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center">
-          <div className="animate-spin h-8 w-8 border-2 border-gray-300 border-t-blue-600 rounded-full"></div>
-        </div>
-      )}
     </div>
   );
 }

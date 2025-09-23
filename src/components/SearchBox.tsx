@@ -6,9 +6,10 @@ import { SearchResult } from '@/lib/types';
 interface SearchBoxProps {
   onSelectResult: (result: SearchResult) => void;
   onSearchChange?: (query: string) => void;
+  placeholder?: string;
 }
 
-export default function SearchBox({ onSelectResult, onSearchChange }: SearchBoxProps) {
+export default function SearchBox({ onSelectResult, onSearchChange, placeholder = "Search lexical entries..." }: SearchBoxProps) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isOpen, setIsOpen] = useState(false);
@@ -94,7 +95,7 @@ export default function SearchBox({ onSelectResult, onSearchChange }: SearchBoxP
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
           onFocus={() => query && setIsOpen(true)}
-          placeholder="Search lexical entries..."
+          placeholder={placeholder}
           className="w-full px-4 py-2 pr-10 text-base font-medium text-gray-900 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
         />
         <div className="absolute inset-y-0 right-0 flex items-center pr-3">

@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { TableCellsIcon, ArrowTurnLeftDownIcon, ArrowTurnRightDownIcon, ArrowDownIcon } from '@heroicons/react/24/outline';
 
 export type ViewMode = 'graph' | 'table';
 
@@ -12,32 +13,42 @@ interface ViewToggleProps {
 
 export default function ViewToggle({ currentView, onViewChange, className }: ViewToggleProps) {
   return (
-    <div className={`inline-flex rounded-lg border border-gray-300 bg-white ${className || ''}`}>
-      <button
-        onClick={() => onViewChange('graph')}
-        className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-l-lg transition-colors ${
-          currentView === 'graph'
-            ? 'bg-blue-600 text-white'
-            : 'text-gray-700 hover:bg-gray-50'
+    <div className={`relative inline-flex items-center bg-gray-100 rounded-xl p-1 shadow-inner ${className || ''}`}>
+      {/* Sliding background indicator */}
+      <div
+        className={`absolute top-1 bottom-1 w-12 bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg shadow-md transform transition-transform duration-300 ease-out ${
+          currentView === 'table' ? 'translate-x-0' : 'translate-x-12'
         }`}
-      >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-        </svg>
-        Graph
-      </button>
+      />
+      
+      {/* Table button */}
       <button
         onClick={() => onViewChange('table')}
-        className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-r-lg transition-colors ${
+        className={`relative z-10 flex items-center justify-center w-12 h-10 rounded-lg transition-all duration-300 ease-out transform ${
           currentView === 'table'
-            ? 'bg-blue-600 text-white'
-            : 'text-gray-700 hover:bg-gray-50'
+            ? 'text-white scale-105'
+            : 'text-gray-500 hover:text-gray-700 hover:scale-105'
         }`}
+        title="Table View"
       >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-        </svg>
-        Table
+        <TableCellsIcon className="w-5 h-5" />
+      </button>
+      
+      {/* Graph button */}
+      <button
+        onClick={() => onViewChange('graph')}
+        className={`relative z-10 flex items-center justify-center w-12 h-10 rounded-lg transition-all duration-300 ease-out transform ${
+          currentView === 'graph'
+            ? 'text-white scale-105'
+            : 'text-gray-500 hover:text-gray-700 hover:scale-105'
+        }`}
+        title="Graph View"
+      >
+        <div className="relative w-8 h-7 mt-2.5">
+          <ArrowTurnLeftDownIcon className="absolute w-4 h-4 top-0 left-0" />
+          <ArrowDownIcon className="absolute w-4 h-4 top-0 left-1/2 transform -translate-x-1/2" />
+          <ArrowTurnRightDownIcon className="absolute w-4 h-4 top-0 right-0" />
+        </div>
       </button>
     </div>
   );

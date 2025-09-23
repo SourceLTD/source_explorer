@@ -2,11 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { GraphNode, SearchResult, BreadcrumbItem, TableEntry } from '@/lib/types';
+import { GraphNode, SearchResult, BreadcrumbItem } from '@/lib/types';
 import LexicalGraph from './LexicalGraph';
 import SearchBox from './SearchBox';
 import Breadcrumbs from './Breadcrumbs';
-import DataTable from './DataTable';
 import ViewToggle, { ViewMode } from './ViewToggle';
 
 interface WordNetExplorerProps {
@@ -20,7 +19,6 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<ViewMode>('graph');
   const [searchQuery, setSearchQuery] = useState<string>('');
   
   // Editing state
@@ -33,7 +31,7 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
   const updateUrlParam = (entryId: string) => {
     const params = new URLSearchParams(searchParams);
     params.set('entry', entryId);
-    router.push(`/?${params.toString()}`, { scroll: false });
+    router.push(`/graph?${params.toString()}`, { scroll: false });
   };
 
   const loadGraphNode = async (entryId: string) => {
@@ -78,14 +76,7 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
     setSearchQuery(''); // Clear search after selection
   };
 
-  const handleTableRowClick = (entry: TableEntry) => {
-    updateUrlParam(entry.id);
-    loadGraphNode(entry.id);
-  };
 
-  const handleViewModeChange = (mode: ViewMode) => {
-    setViewMode(mode);
-  };
 
   const handleSearchQueryChange = (query: string) => {
     setSearchQuery(query);
@@ -210,19 +201,37 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
       <header className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
+            <button
+              onClick={() => router.push('/')}
+              className="flex items-center gap-2 text-blue-600 hover:text-blue-700"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+              <span className="text-sm font-medium">SourceNet</span>
+            </button>
+            <div className="h-6 w-px bg-gray-300"></div>
             <h1 className="text-xl font-bold text-gray-900">
-              Lexical Explorer
+              Graph Mode
             </h1>
+            <p className="text-sm text-gray-600">
+              Explore lexical relationships
+            </p>
           </div>
           
           <div className="flex items-center gap-4">
             <SearchBox 
               onSelectResult={handleSearchResult}
               onSearchChange={handleSearchQueryChange}
+              placeholder="Search graph..."
             />
             <ViewToggle 
-              currentView={viewMode} 
-              onViewChange={handleViewModeChange}
+              currentView="graph"
+              onViewChange={(view: ViewMode) => {
+                if (view === 'table') {
+                  router.push('/table');
+                }
+              }}
             />
           </div>
         </div>
@@ -636,66 +645,41 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
           )}
         </aside>
 
-        {/* Main Visualization Area */}
+        {/* Main Graph Area */}
         <div className="flex-1 p-6 bg-white">
-          {viewMode === 'graph' ? (
-            /* Graph View */
-            currentNode && !isLoading ? (
-              <div className="h-full flex flex-col">
-                {/* Breadcrumbs */}
-                <div className="mb-4">
-                  <Breadcrumbs 
-                    items={breadcrumbs} 
-                    onNavigate={handleBreadcrumbNavigate} 
-                  />
-                </div>
-                
-                {/* Graph */}
-                <div className="flex-1">
-                  <LexicalGraph 
-                    currentNode={currentNode} 
-                    onNodeClick={handleNodeClick} 
-                  />
-                </div>
-              </div>
-            ) : (
-              <div className="h-full flex items-center justify-center bg-white rounded-lg shadow-sm border">
-                {isLoading ? (
-                  <div className="text-center">
-                    <div className="animate-spin h-12 w-12 border-2 border-gray-300 border-t-blue-600 rounded-full mx-auto mb-4"></div>
-                    <p className="text-gray-500">Loading graph...</p>
-                  </div>
-                ) : (
-                  <div className="text-center text-gray-400">
-                    <svg className="h-24 w-24 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                    </svg>
-                    <p>Select an entry to visualize its relations</p>
-                  </div>
-                )}
-              </div>
-            )
-          ) : (
-            /* Table View */
+          {currentNode && !isLoading ? (
             <div className="h-full flex flex-col">
-              {/* Breadcrumbs for table view when an entry is selected */}
-              {currentNode && (
-                <div className="mb-4">
-                  <Breadcrumbs 
-                    items={breadcrumbs} 
-                    onNavigate={handleBreadcrumbNavigate} 
-                  />
-                </div>
-              )}
-              
-              {/* Data Table */}
-              <div className="flex-1">
-                <DataTable 
-                  onRowClick={handleTableRowClick}
-                  searchQuery={searchQuery}
-                  className="h-full"
+              {/* Breadcrumbs */}
+              <div className="mb-4">
+                <Breadcrumbs 
+                  items={breadcrumbs} 
+                  onNavigate={handleBreadcrumbNavigate} 
                 />
               </div>
+              
+              {/* Graph */}
+              <div className="flex-1">
+                <LexicalGraph 
+                  currentNode={currentNode} 
+                  onNodeClick={handleNodeClick} 
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="h-full flex items-center justify-center bg-white rounded-lg shadow-sm border">
+              {isLoading ? (
+                <div className="text-center">
+                  <div className="animate-spin h-12 w-12 border-2 border-gray-300 border-t-blue-600 rounded-full mx-auto mb-4"></div>
+                  <p className="text-gray-500">Loading graph...</p>
+                </div>
+              ) : (
+                <div className="text-center text-gray-400">
+                  <svg className="h-24 w-24 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                  </svg>
+                  <p>Select an entry to visualize its relations</p>
+                </div>
+              )}
             </div>
           )}
         </div>
