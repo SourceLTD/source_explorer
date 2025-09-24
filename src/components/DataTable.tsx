@@ -118,7 +118,7 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
     return getDefaultColumnWidths();
   });
   const [isResizing, setIsResizing] = useState(false);
-  const [resizingColumn, setResizingColumn] = useState<string | null>(null);
+  const [, setResizingColumn] = useState<string | null>(null);
   const [relationsData, setRelationsData] = useState<Record<string, { parents: string[]; children: string[] }>>({});
 
   const fetchData = useCallback(async () => {

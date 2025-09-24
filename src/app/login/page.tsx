@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useTransition } from 'react'
 import { login } from './actions'
 
 export default function LoginPage() {
@@ -21,11 +21,8 @@ export default function LoginPage() {
         <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-8">
           <div className="text-center mb-8">
             <h1 className="text-3xl font-bold text-gray-900 mb-2">
-              Sign In with Magic Link
+              Sign in
             </h1>
-            <p className="text-gray-600">
-              Enter your email to receive a secure sign-in link
-            </p>
           </div>
           
           <form onSubmit={handleSubmit} className="space-y-6">

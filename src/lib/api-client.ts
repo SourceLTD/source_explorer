@@ -143,41 +143,5 @@ export const api = {
     apiRequest<T>(url, { method: 'DELETE' }, retryConfig, timeoutMs),
 };
 
-/**
- * Hook for React components to use API with loading states
- */
-export function useApiCall<T>() {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  
-  const call = async (
-    apiCall: () => Promise<T>,
-    onSuccess?: (data: T) => void,
-    onError?: (error: string) => void
-  ): Promise<T | null> => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      const result = await apiCall();
-      onSuccess?.(result);
-      return result;
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred';
-      setError(errorMessage);
-      onError?.(errorMessage);
-      return null;
-    } finally {
-      setLoading(false);
-    }
-  };
-  
-  return { call, loading, error };
-}
-
-// Import React hooks only if in a client environment
-let useState: any;
-if (typeof window !== 'undefined') {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  useState = require('react').useState;
-}
+// Note: useApiCall hook is removed from this file to avoid build issues
+// If you need this hook, create it in a separate client-side component file
