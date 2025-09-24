@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import { Group } from '@visx/group';
 import { LinearGradient } from '@visx/gradient';
 import { GraphNode } from '@/lib/types';
@@ -53,7 +53,7 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
   };
 
   // Calculate dynamic height for current node based on content
-  const calculateCurrentNodeHeight = (node: GraphNode): number => {
+  const calculateCurrentNodeHeight = useCallback((node: GraphNode): number => {
     const nodeWidth = 340;
     const contentWidth = nodeWidth - 24; // Account for padding
     let height = 20; // Top padding
@@ -85,9 +85,9 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
       height += Math.max(25, estimatedHeight + 8); // Minimum 25px, or estimated + padding
     }
     
-    height += 20; // Bottom padding
+    height += 20; // Bottom padding    
     return height;
-  };
+  }, []);
 
   // Helper function to calculate node width based on text length
   const calculateNodeWidth = (text: string, minWidth: number = 60, maxWidth: number = 150): number => {
@@ -99,7 +99,7 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
   };
 
   // Helper function to arrange nodes in rows with width constraints
-  const arrangeNodesInRows = (nodeList: GraphNode[], maxRowWidth: number, nodeSpacing: number) => {
+  const arrangeNodesInRows = useCallback((nodeList: GraphNode[], maxRowWidth: number, nodeSpacing: number) => {
     const rows: { nodes: GraphNode[]; totalWidth: number }[] = [];
     let currentRow: GraphNode[] = [];
     let currentRowWidth = 0;
@@ -125,7 +125,7 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
     }
     
     return rows;
-  };
+  }, []);
 
   const positionedNodes = useMemo((): LayoutResult => {
     const nodes: PositionedNode[] = [];
@@ -220,7 +220,7 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
     }
     
     return { nodes, width, height };
-  }, [currentNode]);
+  }, [currentNode, arrangeNodesInRows, calculateCurrentNodeHeight]);
 
   // Create links between nodes
   const links = useMemo(() => {

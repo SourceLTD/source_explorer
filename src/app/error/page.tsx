@@ -1,3 +1,5 @@
+import Link from 'next/link';
+
 export default function ErrorPage() {
   return (
     <div className="h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
@@ -26,7 +28,7 @@ export default function ErrorPage() {
               <ul className="text-sm text-blue-700 space-y-1">
                 <li>• Request a new magic link</li>
                 <li>• Check your email spam folder</li>
-                <li>• Make sure you're using the correct email address</li>
+                <li>• Make sure you&apos;re using the correct email address</li>
                 <li>• Try again in a few minutes</li>
               </ul>
             </div>
@@ -39,12 +41,12 @@ export default function ErrorPage() {
             >
               Try Again
             </a>
-            <a
+            <Link
               href="/"
               className="block w-full text-gray-600 py-3 px-6 rounded-lg font-medium hover:text-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-colors"
             >
               Back to Home
-            </a>
+            </Link>
           </div>
         </div>
       </div>

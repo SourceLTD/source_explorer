@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { TableEntry, PaginatedResult, PaginationParams, POS_LABELS, LexicalEntry, EntryRelation } from '@/lib/types';
+import { TableEntry, PaginatedResult, PaginationParams, POS_LABELS, EntryRelation } from '@/lib/types';
 import FilterPanel, { FilterState } from './FilterPanel';
 import ColumnVisibilityPanel, { ColumnConfig, ColumnVisibilityState } from './ColumnVisibilityPanel';
 
@@ -21,9 +21,9 @@ interface SelectionState {
   selectAll: boolean;
 }
 
-interface ColumnWidthState {
-  [columnKey: string]: number;
-}
+// interface ColumnWidthState {
+//   [columnKey: string]: number;
+// }
 
 // Define all available columns with their configurations
 const DEFAULT_COLUMNS: ColumnConfig[] = [
@@ -45,23 +45,23 @@ const DEFAULT_COLUMNS: ColumnConfig[] = [
 ];
 
 // Default column widths in pixels
-const DEFAULT_COLUMN_WIDTHS: ColumnWidthState = {
-  lemmas: 150,
-  gloss: 300,
-  pos: 120,
-  lexfile: 120,
-  isMwe: 100,
-  transitive: 100,
-  flagged: 100,
-  forbidden: 100,
-  particles: 120,
-  frames: 100,
-  examples: 250,
-  parentsCount: 150,
-  childrenCount: 150,
-  createdAt: 100,
-  updatedAt: 100,
-};
+// const DEFAULT_COLUMN_WIDTHS: ColumnWidthState = {
+//   lemmas: 150,
+//   gloss: 300,
+//   pos: 120,
+//   lexfile: 120,
+//   isMwe: 100,
+//   transitive: 100,
+//   flagged: 100,
+//   forbidden: 100,
+//   particles: 120,
+//   frames: 100,
+//   examples: 250,
+//   parentsCount: 150,
+//   childrenCount: 150,
+//   createdAt: 100,
+//   updatedAt: 100,
+// };
 
 const getDefaultVisibility = (): ColumnVisibilityState => {
   const visibility: ColumnVisibilityState = {};
@@ -188,7 +188,7 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
   const visibleColumns = currentColumns.filter(col => col.visible);
 
   // Fetch relations data for entries when parents or children columns are visible
-  const fetchRelationsForEntry = async (entryId: string): Promise<{ parents: string[]; children: string[] }> => {
+  const fetchRelationsForEntry = useCallback(async (entryId: string): Promise<{ parents: string[]; children: string[] }> => {
     if (relationsData[entryId]) {
       return relationsData[entryId];
     }
@@ -221,7 +221,7 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
       setRelationsData(prev => ({ ...prev, [entryId]: result }));
       return result;
     }
-  };
+  }, [relationsData]);
 
   // Preload relations data when parents or children columns become visible
   useEffect(() => {
@@ -235,7 +235,7 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
         }
       });
     }
-  }, [visibleColumns, data, relationsData]);
+  }, [visibleColumns, data, relationsData, fetchRelationsForEntry]);
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
@@ -518,7 +518,7 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
       case 'updatedAt':
         return <span className="text-xs text-gray-500">{formatDate(entry.updatedAt)}</span>;
       default:
-        return <span className="text-sm text-gray-900">{String((entry as any)[columnKey] || '')}</span>;
+        return <span className="text-sm text-gray-900">{String((entry as unknown as Record<string, unknown>)[columnKey] || '')}</span>;
     }
   };
 

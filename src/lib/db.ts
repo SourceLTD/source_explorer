@@ -1,6 +1,15 @@
 import { prisma } from './prisma';
 import { RelationType, type LexicalEntry, type EntryWithRelations, type GraphNode, type SearchResult, type PaginationParams, type PaginatedResult, type TableEntry } from './types';
 
+// Type for Prisma entry that might have optional fields
+type PrismaEntryWithOptionalFields = {
+  flagged?: boolean;
+  flaggedReason?: string;
+  forbidden?: boolean;
+  forbiddenReason?: string;
+  [key: string]: unknown;
+};
+
 export async function getEntryById(id: string): Promise<EntryWithRelations | null> {
   const entry = await prisma.lexicalEntry.findUnique({
     where: { id },
@@ -24,8 +33,10 @@ export async function getEntryById(id: string): Promise<EntryWithRelations | nul
   return {
     ...entry,
     transitive: entry.transitive || undefined,
-    flaggedReason: (entry as any).flaggedReason || undefined,
-    forbiddenReason: (entry as any).forbiddenReason || undefined,
+    flagged: entry.flagged ?? undefined,
+    flaggedReason: (entry as PrismaEntryWithOptionalFields).flaggedReason || undefined,
+    forbidden: entry.forbidden ?? undefined,
+    forbiddenReason: (entry as PrismaEntryWithOptionalFields).forbiddenReason || undefined,
     sourceRelations: entry.sourceRelations.map(rel => ({
       sourceId: rel.sourceId,
       targetId: rel.targetId,
@@ -33,8 +44,10 @@ export async function getEntryById(id: string): Promise<EntryWithRelations | nul
       target: rel.target ? {
         ...rel.target,
         transitive: rel.target.transitive || undefined,
-        flaggedReason: (rel.target as any).flaggedReason || undefined,
-        forbiddenReason: (rel.target as any).forbiddenReason || undefined
+        flagged: rel.target.flagged ?? undefined,
+        flaggedReason: (rel.target as PrismaEntryWithOptionalFields).flaggedReason || undefined,
+        forbidden: rel.target.forbidden ?? undefined,
+        forbiddenReason: (rel.target as PrismaEntryWithOptionalFields).forbiddenReason || undefined
       } : undefined,
     })),
     targetRelations: entry.targetRelations.map(rel => ({
@@ -44,8 +57,10 @@ export async function getEntryById(id: string): Promise<EntryWithRelations | nul
       source: rel.source ? {
         ...rel.source,
         transitive: rel.source.transitive || undefined,
-        flaggedReason: (rel.source as any).flaggedReason || undefined,
-        forbiddenReason: (rel.source as any).forbiddenReason || undefined
+        flagged: rel.source.flagged ?? undefined,
+        flaggedReason: (rel.source as PrismaEntryWithOptionalFields).flaggedReason || undefined,
+        forbidden: rel.source.forbidden ?? undefined,
+        forbiddenReason: (rel.source as PrismaEntryWithOptionalFields).forbiddenReason || undefined
       } : undefined,
     })),
   };
@@ -97,8 +112,10 @@ export async function updateEntry(id: string, updates: Partial<Pick<LexicalEntry
   return {
     ...updatedEntry,
     transitive: updatedEntry.transitive || undefined,
-    flaggedReason: (updatedEntry as any).flaggedReason || undefined,
-    forbiddenReason: (updatedEntry as any).forbiddenReason || undefined,
+    flagged: updatedEntry.flagged ?? undefined,
+    flaggedReason: (updatedEntry as PrismaEntryWithOptionalFields).flaggedReason || undefined,
+    forbidden: updatedEntry.forbidden ?? undefined,
+    forbiddenReason: (updatedEntry as PrismaEntryWithOptionalFields).forbiddenReason || undefined,
     sourceRelations: updatedEntry.sourceRelations.map(rel => ({
       sourceId: rel.sourceId,
       targetId: rel.targetId,
@@ -106,8 +123,10 @@ export async function updateEntry(id: string, updates: Partial<Pick<LexicalEntry
       target: rel.target ? {
         ...rel.target,
         transitive: rel.target.transitive || undefined,
-        flaggedReason: (rel.target as any).flaggedReason || undefined,
-        forbiddenReason: (rel.target as any).forbiddenReason || undefined
+        flagged: rel.target.flagged ?? undefined,
+        flaggedReason: (rel.target as PrismaEntryWithOptionalFields).flaggedReason || undefined,
+        forbidden: rel.target.forbidden ?? undefined,
+        forbiddenReason: (rel.target as PrismaEntryWithOptionalFields).forbiddenReason || undefined
       } : undefined,
     })),
     targetRelations: updatedEntry.targetRelations.map(rel => ({
@@ -117,8 +136,10 @@ export async function updateEntry(id: string, updates: Partial<Pick<LexicalEntry
       source: rel.source ? {
         ...rel.source,
         transitive: rel.source.transitive || undefined,
-        flaggedReason: (rel.source as any).flaggedReason || undefined,
-        forbiddenReason: (rel.source as any).forbiddenReason || undefined
+        flagged: rel.source.flagged ?? undefined,
+        flaggedReason: (rel.source as PrismaEntryWithOptionalFields).flaggedReason || undefined,
+        forbidden: rel.source.forbidden ?? undefined,
+        forbiddenReason: (rel.source as PrismaEntryWithOptionalFields).forbiddenReason || undefined
       } : undefined,
     })),
   };
@@ -232,10 +253,10 @@ export async function getGraphNode(entryId: string): Promise<GraphNode | null> {
     gloss: entry.gloss,
     pos: entry.pos,
     examples: entry.examples,
-    flagged: (entry as any).flagged || undefined,
-    flaggedReason: (entry as any).flaggedReason || undefined,
-    forbidden: (entry as any).forbidden || undefined,
-    forbiddenReason: (entry as any).forbiddenReason || undefined,
+    flagged: entry.flagged ?? undefined,
+    flaggedReason: entry.flaggedReason || undefined,
+    forbidden: entry.forbidden ?? undefined,
+    forbiddenReason: entry.forbiddenReason || undefined,
     parents,
     children,
     entails,
@@ -500,10 +521,10 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
     particles: entry.particles,
     frames: entry.frames,
     examples: entry.examples,
-    flagged: (entry as any).flagged || undefined,
-    flaggedReason: (entry as any).flaggedReason || undefined,
-    forbidden: (entry as any).forbidden || undefined,
-    forbiddenReason: (entry as any).forbiddenReason || undefined,
+    flagged: (entry as PrismaEntryWithOptionalFields).flagged ?? undefined,
+    flaggedReason: (entry as PrismaEntryWithOptionalFields).flaggedReason || undefined,
+    forbidden: (entry as PrismaEntryWithOptionalFields).forbidden ?? undefined,
+    forbiddenReason: (entry as PrismaEntryWithOptionalFields).forbiddenReason || undefined,
     parentsCount: entry._count.sourceRelations,
     childrenCount: entry._count.targetRelations,
     createdAt: entry.createdAt,

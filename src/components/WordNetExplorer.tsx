@@ -20,7 +20,7 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [, setSearchQuery] = useState<string>('');
   
   // Editing state
   const [editingField, setEditingField] = useState<'lemmas' | 'gloss' | 'examples' | null>(null);

@@ -1,3 +1,5 @@
+import Link from 'next/link';
+
 export default function CheckEmailPage() {
   return (
     <div className="h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
@@ -13,7 +15,7 @@ export default function CheckEmailPage() {
               Check your email
             </h2>
             <p className="text-gray-600 mb-4">
-              We've sent you a secure sign-in link. Click the link in your email to continue.
+              We&apos;ve sent you a secure sign-in link. Click the link in your email to continue.
             </p>
             <p className="text-sm text-gray-500">
               The link will expire in 1 hour for security reasons.
@@ -28,12 +30,12 @@ export default function CheckEmailPage() {
               Send another link
             </a>
             
-            <a
+            <Link
               href="/"
               className="block w-full text-indigo-600 py-3 px-4 rounded-lg font-medium hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-colors"
             >
               Back to Home
-            </a>
+            </Link>
           </div>
         </div>
       </div>

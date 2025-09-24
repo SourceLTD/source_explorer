@@ -40,7 +40,7 @@ export default function LoginPage() {
           
           <div className="mt-6 text-center">
             <p className="text-sm text-gray-500">
-              We'll send you a secure link to sign in without a password
+              We&apos;ll send you a secure link to sign in without a password
             </p>
           </div>
         </div>
