@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPaginatedEntries } from '@/lib/db';
 import { PaginationParams } from '@/lib/types';
+import { handleDatabaseError } from '@/lib/db-utils';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -61,7 +62,17 @@ export async function GET(request: NextRequest) {
     const result = await getPaginatedEntries(params);
     return NextResponse.json(result);
   } catch (error) {
-    console.error('Error fetching paginated entries:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    const { message, status, shouldRetry } = handleDatabaseError(error, 'GET /api/entries/paginated');
+    return NextResponse.json(
+      { 
+        error: message,
+        retryable: shouldRetry,
+        timestamp: new Date().toISOString()
+      },
+      { 
+        status,
+        headers: shouldRetry ? { 'Retry-After': '5' } : {}
+      }
+    );
   }
 }

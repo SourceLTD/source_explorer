@@ -42,9 +42,6 @@ export default function TableMode() {
             <h1 className="text-xl font-bold text-gray-900">
               Verbs
             </h1>
-            <p className="text-sm text-gray-600">
-              Browse and search through all lexical entries
-            </p>
           </div>
           
           <div className="flex items-center gap-4">

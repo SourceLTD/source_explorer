@@ -21,9 +21,9 @@ interface SelectionState {
   selectAll: boolean;
 }
 
-// interface ColumnWidthState {
-//   [columnKey: string]: number;
-// }
+interface ColumnWidthState {
+  [columnKey: string]: number;
+}
 
 // Define all available columns with their configurations
 const DEFAULT_COLUMNS: ColumnConfig[] = [
@@ -45,23 +45,23 @@ const DEFAULT_COLUMNS: ColumnConfig[] = [
 ];
 
 // Default column widths in pixels
-// const DEFAULT_COLUMN_WIDTHS: ColumnWidthState = {
-//   lemmas: 150,
-//   gloss: 300,
-//   pos: 120,
-//   lexfile: 120,
-//   isMwe: 100,
-//   transitive: 100,
-//   flagged: 100,
-//   forbidden: 100,
-//   particles: 120,
-//   frames: 100,
-//   examples: 250,
-//   parentsCount: 150,
-//   childrenCount: 150,
-//   createdAt: 100,
-//   updatedAt: 100,
-// };
+const DEFAULT_COLUMN_WIDTHS: ColumnWidthState = {
+  lemmas: 150,
+  gloss: 300,
+  pos: 120,
+  lexfile: 120,
+  isMwe: 100,
+  transitive: 100,
+  flagged: 100,
+  forbidden: 100,
+  particles: 120,
+  frames: 100,
+  examples: 250,
+  parentsCount: 150,
+  childrenCount: 150,
+  createdAt: 100,
+  updatedAt: 100,
+};
 
 const getDefaultVisibility = (): ColumnVisibilityState => {
   const visibility: ColumnVisibilityState = {};
@@ -69,6 +69,10 @@ const getDefaultVisibility = (): ColumnVisibilityState => {
     visibility[col.key] = col.visible;
   });
   return visibility;
+};
+
+const getDefaultColumnWidths = (): ColumnWidthState => {
+  return { ...DEFAULT_COLUMN_WIDTHS };
 };
 
 export default function DataTable({ onRowClick, searchQuery, className }: DataTableProps) {
@@ -99,6 +103,22 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
     return getDefaultVisibility();
   });
   const [isColumnPanelOpen, setIsColumnPanelOpen] = useState(false);
+  const [columnWidths, setColumnWidths] = useState<ColumnWidthState>(() => {
+    // Try to load from localStorage, fallback to defaults
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('table-column-widths');
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch {
+          return getDefaultColumnWidths();
+        }
+      }
+    }
+    return getDefaultColumnWidths();
+  });
+  const [isResizing, setIsResizing] = useState(false);
+  const [resizingColumn, setResizingColumn] = useState<string | null>(null);
   const [relationsData, setRelationsData] = useState<Record<string, { parents: string[]; children: string[] }>>({});
 
   const fetchData = useCallback(async () => {
@@ -177,6 +197,47 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
     if (typeof window !== 'undefined') {
       localStorage.setItem('table-column-visibility', JSON.stringify(defaultVisibility));
     }
+  };
+
+  const handleColumnWidthChange = (columnKey: string, width: number) => {
+    const newWidths = { ...columnWidths, [columnKey]: Math.max(50, width) }; // Minimum width of 50px
+    setColumnWidths(newWidths);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('table-column-widths', JSON.stringify(newWidths));
+    }
+  };
+
+  const handleResetColumnWidths = () => {
+    const defaultWidths = getDefaultColumnWidths();
+    setColumnWidths(defaultWidths);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('table-column-widths', JSON.stringify(defaultWidths));
+    }
+  };
+
+  const handleMouseDown = (columnKey: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+    setResizingColumn(columnKey);
+    
+    const startX = e.clientX;
+    const startWidth = columnWidths[columnKey] || DEFAULT_COLUMN_WIDTHS[columnKey] || 150;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const diff = e.clientX - startX;
+      const newWidth = startWidth + diff;
+      handleColumnWidthChange(columnKey, newWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      setResizingColumn(null);
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
   };
 
   // Get current column configurations with visibility state
@@ -523,31 +584,41 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
   };
 
   const getColumnWidth = (columnKey: string) => {
-    switch (columnKey) {
-      case 'lemmas':
-        return 'w-32';
-      case 'gloss':
-        return 'w-1/4';
-      case 'examples':
-        return 'w-1/3';
-      case 'parentsCount':
-      case 'childrenCount':
-        return 'w-32';
-      case 'frames':
-        return 'w-24';
-      case 'isMwe':
-      case 'transitive':
-      case 'flagged':
-      case 'forbidden':
-        return 'w-16';
-      case 'pos':
-        return 'w-20';
-      case 'createdAt':
-      case 'updatedAt':
-        return 'w-24';
-      default:
-        return '';
+    const width = columnWidths[columnKey] || DEFAULT_COLUMN_WIDTHS[columnKey] || 150;
+    return `${width}px`;
+  };
+
+  const getRowBackgroundColor = (entry: TableEntry, isSelected: boolean, isHovered: boolean = false) => {
+    // Priority: Selection > Forbidden > Flagged > Default
+    if (isSelected) {
+      return 'bg-blue-50';
     }
+    
+    if (entry.forbidden) {
+      return isHovered ? 'hover:bg-red-200' : '';
+    }
+    
+    if (entry.flagged) {
+      return isHovered ? 'hover:bg-blue-200' : '';
+    }
+    
+    return 'hover:bg-gray-50';
+  };
+
+  const getRowInlineStyles = (entry: TableEntry, isSelected: boolean) => {
+    if (isSelected) {
+      return {};
+    }
+    
+    if (entry.forbidden) {
+      return { backgroundColor: '#ffc7ce' };
+    }
+    
+    if (entry.flagged) {
+      return { backgroundColor: '#add8ff' };
+    }
+    
+    return {};
   };
 
   if (loading && !data) {
@@ -597,7 +668,7 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
   }
 
   return (
-    <div className={`bg-white rounded-lg shadow-sm border border-gray-200 ${className || ''}`}>
+    <div className={`bg-white rounded-lg shadow-sm border border-gray-200 ${className || ''} ${isResizing ? 'select-none' : ''}`}>
       {/* Filters and Controls */}
       <div className="p-4 border-b border-gray-200 bg-gray-50">
         <div className="flex flex-wrap gap-4 items-center justify-between">
@@ -616,6 +687,16 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
               onColumnVisibilityChange={handleColumnVisibilityChange}
               onResetToDefaults={handleResetColumns}
             />
+            <button
+              onClick={handleResetColumnWidths}
+              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              title="Reset column widths to defaults"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12V10m0 0l3 3m-3-3l-3 3" />
+              </svg>
+              Reset Widths
+            </button>
             
             {/* Moderation Actions */}
             {selection.selectedIds.size > 0 && (
@@ -669,10 +750,10 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
             <div className="animate-spin h-8 w-8 border-2 border-gray-300 border-t-blue-600 rounded-full"></div>
           </div>
         )}
-        <table className="w-full">
+        <table className="w-full" style={{ tableLayout: 'fixed' }}>
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
-              <th className="px-4 py-3 text-left">
+              <th className="px-4 py-3 text-left w-12" style={{ width: '48px' }}>
                 <input
                   type="checkbox"
                   checked={selection.selectAll}
@@ -683,26 +764,37 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
               {visibleColumns.map((column) => (
                 <th 
                   key={column.key}
-                  className={`px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${
-                    column.sortable ? 'cursor-pointer hover:bg-gray-100' : ''
-                  } ${getColumnWidth(column.key)}`}
-                  onClick={column.sortable ? () => handleSort(column.key) : undefined}
+                  className="relative px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-r border-gray-200"
+                  style={{ width: getColumnWidth(column.key), minWidth: '50px' }}
               >
-                <div className="flex items-center gap-2">
+                <div 
+                  className={`flex items-center gap-2 ${column.sortable ? 'cursor-pointer hover:bg-gray-100 rounded px-1 py-1' : ''}`}
+                  onClick={column.sortable ? () => handleSort(column.key) : undefined}
+                >
                     {column.label}
                     {column.sortable && getSortIcon(column.key)}
+                </div>
+                {/* Resize handle */}
+                <div
+                  className="absolute top-0 right-0 w-2 h-full cursor-col-resize hover:bg-blue-200 bg-transparent group"
+                  onMouseDown={(e) => handleMouseDown(column.key, e)}
+                >
+                  <div className="w-px h-full bg-gray-300 group-hover:bg-blue-400 ml-auto"></div>
                 </div>
               </th>
               ))}
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {data.data.map((entry) => (
+            {data.data.map((entry) => {
+              const isSelected = selection.selectedIds.has(entry.id);
+              return (
               <tr
                 key={entry.id}
-                className={`hover:bg-gray-50 ${selection.selectedIds.has(entry.id) ? 'bg-blue-50' : ''}`}
+                className={`${getRowBackgroundColor(entry, isSelected)} ${isSelected ? 'bg-blue-50' : ''}`}
+                style={getRowInlineStyles(entry, isSelected)}
               >
-                <td className="px-4 py-4 whitespace-nowrap">
+                <td className="px-4 py-4 whitespace-nowrap w-12" style={{ width: '48px' }}>
                   <input
                     type="checkbox"
                     checked={selection.selectedIds.has(entry.id)}
@@ -716,12 +808,13 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
                 {visibleColumns.map((column) => {
                   const isClickable = onRowClick && column.key !== 'isMwe' && column.key !== 'transitive';
                   const allowsWrap = ['gloss', 'examples', 'frames', 'parentsCount', 'childrenCount'].includes(column.key);
-                  const cellClassName = `px-4 py-4 ${allowsWrap ? '' : 'whitespace-nowrap'} ${isClickable ? 'cursor-pointer' : ''} align-top`;
+                  const cellClassName = `px-4 py-4 ${allowsWrap ? 'break-words' : 'whitespace-nowrap'} ${isClickable ? 'cursor-pointer' : ''} align-top border-r border-gray-200`;
                   
                   return (
                     <td 
                       key={column.key}
                       className={cellClassName}
+                      style={{ width: getColumnWidth(column.key), minWidth: '50px' }}
                       onClick={isClickable ? () => onRowClick?.(entry) : undefined}
                     >
                       {renderCellContent(entry, column.key)}
@@ -729,7 +822,8 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
                   );
                 })}
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>

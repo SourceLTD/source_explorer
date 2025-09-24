@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { searchEntries } from '@/lib/db';
+import { handleDatabaseError } from '@/lib/db-utils';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -15,7 +16,17 @@ export async function GET(request: NextRequest) {
     const results = await searchEntries(query, limit);
     return NextResponse.json(results);
   } catch (error) {
-    console.error('Error searching entries:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    const { message, status, shouldRetry } = handleDatabaseError(error, 'GET /api/search');
+    return NextResponse.json(
+      { 
+        error: message,
+        retryable: shouldRetry,
+        timestamp: new Date().toISOString()
+      },
+      { 
+        status,
+        headers: shouldRetry ? { 'Retry-After': '5' } : {}
+      }
+    );
   }
 }

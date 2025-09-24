@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getEntryById } from '@/lib/db'
+import { handleDatabaseError } from '@/lib/db-utils'
 
 // GET /api/entries/[id]/relations - Get relations for an entry
 export async function GET(
@@ -24,10 +25,20 @@ export async function GET(
     
     return NextResponse.json(relations)
   } catch (error) {
-    console.error('Get relations error:', error)
+    const { message, status, shouldRetry } = handleDatabaseError(error, 'GET /api/entries/[id]/relations');
+    
     return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
+      { 
+        error: message,
+        retryable: shouldRetry,
+        timestamp: new Date().toISOString()
+      },
+      { 
+        status,
+        headers: shouldRetry ? {
+          'Retry-After': '5'
+        } : {}
+      }
     )
   }
 }

@@ -1,4 +1,5 @@
 import { prisma } from './prisma';
+import { withRetry } from './db-utils';
 import { RelationType, type LexicalEntry, type EntryWithRelations, type GraphNode, type SearchResult, type PaginationParams, type PaginatedResult, type TableEntry } from './types';
 
 // Type for Prisma entry that might have optional fields
@@ -11,21 +12,25 @@ type PrismaEntryWithOptionalFields = {
 };
 
 export async function getEntryById(id: string): Promise<EntryWithRelations | null> {
-  const entry = await prisma.lexicalEntry.findUnique({
-    where: { id },
-    include: {
-      sourceRelations: {
-        include: {
-          target: true,
+  const entry = await withRetry(
+    () => prisma.lexicalEntry.findUnique({
+      where: { id },
+      include: {
+        sourceRelations: {
+          include: {
+            target: true,
+          },
+        },
+        targetRelations: {
+          include: {
+            source: true,
+          },
         },
       },
-      targetRelations: {
-        include: {
-          source: true,
-        },
-      },
-    },
-  });
+    }),
+    undefined,
+    `getEntryById(${id})`
+  );
 
   if (!entry) return null;
 
@@ -68,7 +73,8 @@ export async function getEntryById(id: string): Promise<EntryWithRelations | nul
 
 export async function searchEntries(query: string, limit = 20): Promise<SearchResult[]> {
   // Use PostgreSQL full-text search
-  const results = await prisma.$queryRaw<SearchResult[]>`
+  const results = await withRetry(
+    () => prisma.$queryRaw<SearchResult[]>`
     SELECT 
       id,
       lemmas,
@@ -83,13 +89,17 @@ export async function searchEntries(query: string, limit = 20): Promise<SearchRe
       ${query} = ANY(lemmas)
     ORDER BY rank DESC, id
     LIMIT ${limit}
-  `;
+  `,
+    undefined,
+    `searchEntries(${query})`
+  );
 
   return results;
 }
 
 export async function updateEntry(id: string, updates: Partial<Pick<LexicalEntry, 'gloss' | 'lemmas' | 'examples' | 'flagged' | 'flaggedReason' | 'forbidden' | 'forbiddenReason'>>): Promise<EntryWithRelations | null> {
-  const updatedEntry = await prisma.lexicalEntry.update({
+  const updatedEntry = await withRetry(
+    () => prisma.lexicalEntry.update({
     where: { id },
     data: updates,
     include: {
@@ -104,7 +114,10 @@ export async function updateEntry(id: string, updates: Partial<Pick<LexicalEntry
         }
       }
     }
-  });
+  }),
+    undefined,
+    `updateEntry(${id})`
+  );
 
   if (!updatedEntry) return null;
 
@@ -473,9 +486,13 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
   }
 
   // Get total count
-  const total = await prisma.lexicalEntry.count({
-    where: whereClause
-  });
+  const total = await withRetry(
+    () => prisma.lexicalEntry.count({
+      where: whereClause
+    }),
+    undefined,
+    'getPaginatedEntries:count'
+  );
 
   // Build order clause
   const orderBy: Record<string, unknown> = {};
@@ -490,7 +507,8 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
   }
 
   // Fetch entries with relation counts
-  const entries = await prisma.lexicalEntry.findMany({
+  const entries = await withRetry(
+    () => prisma.lexicalEntry.findMany({
     where: whereClause,
     skip,
     take: limit,
@@ -507,7 +525,10 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
         }
       }
     }
-  });
+  }),
+    undefined,
+    'getPaginatedEntries:findMany'
+  );
 
   // Transform to TableEntry format
   let data: TableEntry[] = entries.map(entry => ({

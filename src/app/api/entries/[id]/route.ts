@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getEntryById, updateEntry } from '@/lib/db';
+import { handleDatabaseError } from '@/lib/db-utils';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -17,8 +18,18 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     return NextResponse.json(entry);
   } catch (error) {
-    console.error('Error fetching entry:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    const { message, status, shouldRetry } = handleDatabaseError(error, 'GET /api/entries/[id]');
+    return NextResponse.json(
+      { 
+        error: message,
+        retryable: shouldRetry,
+        timestamp: new Date().toISOString()
+      },
+      { 
+        status,
+        headers: shouldRetry ? { 'Retry-After': '5' } : {}
+      }
+    );
   }
 }
 
@@ -50,7 +61,17 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
     return NextResponse.json(updatedEntry);
   } catch (error) {
-    console.error('Error updating entry:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    const { message, status, shouldRetry } = handleDatabaseError(error, 'PATCH /api/entries/[id]');
+    return NextResponse.json(
+      { 
+        error: message,
+        retryable: shouldRetry,
+        timestamp: new Date().toISOString()
+      },
+      { 
+        status,
+        headers: shouldRetry ? { 'Retry-After': '5' } : {}
+      }
+    );
   }
 }
