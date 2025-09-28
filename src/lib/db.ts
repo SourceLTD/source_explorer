@@ -37,6 +37,8 @@ export async function getEntryById(id: string): Promise<EntryWithRelations | nul
   // Convert Prisma types to our types
   return {
     ...entry,
+    src_id: (entry as any).src_id,
+    src_lemmas: (entry as any).src_lemmas,
     transitive: entry.transitive || undefined,
     flagged: entry.flagged ?? undefined,
     flaggedReason: (entry as PrismaEntryWithOptionalFields).flaggedReason || undefined,
@@ -53,7 +55,7 @@ export async function getEntryById(id: string): Promise<EntryWithRelations | nul
         flaggedReason: (rel.target as PrismaEntryWithOptionalFields).flaggedReason || undefined,
         forbidden: rel.target.forbidden ?? undefined,
         forbiddenReason: (rel.target as PrismaEntryWithOptionalFields).forbiddenReason || undefined
-      } : undefined,
+      } as LexicalEntry : undefined,
     })),
     targetRelations: entry.targetRelations.map(rel => ({
       sourceId: rel.sourceId,
@@ -66,7 +68,7 @@ export async function getEntryById(id: string): Promise<EntryWithRelations | nul
         flaggedReason: (rel.source as PrismaEntryWithOptionalFields).flaggedReason || undefined,
         forbidden: rel.source.forbidden ?? undefined,
         forbiddenReason: (rel.source as PrismaEntryWithOptionalFields).forbiddenReason || undefined
-      } : undefined,
+      } as LexicalEntry : undefined,
     })),
   };
 }
@@ -127,6 +129,8 @@ export async function updateEntry(id: string, updates: Partial<Pick<LexicalEntry
   // Convert Prisma types to our types
   return {
     ...updatedEntry,
+    src_id: (updatedEntry as any).src_id,
+    src_lemmas: (updatedEntry as any).src_lemmas,
     transitive: updatedEntry.transitive || undefined,
     flagged: updatedEntry.flagged ?? undefined,
     flaggedReason: (updatedEntry as PrismaEntryWithOptionalFields).flaggedReason || undefined,
@@ -143,7 +147,7 @@ export async function updateEntry(id: string, updates: Partial<Pick<LexicalEntry
         flaggedReason: (rel.target as PrismaEntryWithOptionalFields).flaggedReason || undefined,
         forbidden: rel.target.forbidden ?? undefined,
         forbiddenReason: (rel.target as PrismaEntryWithOptionalFields).forbiddenReason || undefined
-      } : undefined,
+      } as LexicalEntry : undefined,
     })),
     targetRelations: updatedEntry.targetRelations.map(rel => ({
       sourceId: rel.sourceId,
@@ -156,7 +160,7 @@ export async function updateEntry(id: string, updates: Partial<Pick<LexicalEntry
         flaggedReason: (rel.source as PrismaEntryWithOptionalFields).flaggedReason || undefined,
         forbidden: rel.source.forbidden ?? undefined,
         forbiddenReason: (rel.source as PrismaEntryWithOptionalFields).forbiddenReason || undefined
-      } : undefined,
+      } as LexicalEntry : undefined,
     })),
   };
 }
@@ -563,9 +567,9 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
   // Transform to TableEntry format
   let data: TableEntry[] = entries.map(entry => ({
     id: entry.id,
-    src_id: entry.src_id,
+    src_id: (entry as any).src_id,
     lemmas: entry.lemmas,
-    src_lemmas: entry.src_lemmas,
+    src_lemmas: (entry as any).src_lemmas,
     gloss: entry.gloss,
     pos: entry.pos,
     lexfile: entry.lexfile,
