@@ -424,9 +424,11 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
     const entryRelations = relationsData[entry.id];
     switch (columnKey) {
       case 'lemmas':
+        // Concatenate src_lemmas and lemmas for display
+        const allLemmas = [...(entry.src_lemmas || []), ...(entry.lemmas || [])];
         return (
           <div className="flex flex-wrap gap-1">
-            {entry.lemmas.slice(0, 3).map((lemma, idx) => (
+            {allLemmas.slice(0, 3).map((lemma, idx) => (
               <span 
                 key={idx}
                 className="inline-block px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded"
@@ -434,9 +436,9 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
                 {lemma}
               </span>
             ))}
-            {entry.lemmas.length > 3 && (
+            {allLemmas.length > 3 && (
               <span className="inline-block px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded">
-                +{entry.lemmas.length - 3}
+                +{allLemmas.length - 3}
               </span>
             )}
           </div>

@@ -348,7 +348,7 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                     style={{ pointerEvents: 'none' }}
                     fill="white"
                   >
-                    <tspan fontWeight="bold">{posNode.node.lemmas[0] || posNode.node.id}</tspan>
+                    <tspan fontWeight="bold">{[...(posNode.node.src_lemmas || []), ...(posNode.node.lemmas || [])][0] || posNode.node.id}</tspan>
                     <tspan fontWeight="normal" fontSize={14}> ({posNode.node.id})</tspan>
                   </text>
                   {/* Definition/gloss with text wrapping */}
@@ -392,7 +392,7 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                         cursor: 'pointer'
                       }}
                     >
-                      <span style={{ fontWeight: 'bold' }}>Lemmas:</span> <span style={{ fontWeight: '500' }}>{posNode.node.lemmas.join('; ')}</span>
+                      <span style={{ fontWeight: 'bold' }}>Lemmas:</span> <span style={{ fontWeight: '500' }}>{[...(posNode.node.src_lemmas || []), ...(posNode.node.lemmas || [])].join('; ')}</span>
                     </div>
                   </foreignObject>
                   {/* Examples - only show if examples exist */}

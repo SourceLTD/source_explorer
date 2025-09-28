@@ -94,7 +94,8 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
     setEditingField(field);
     
     if (field === 'lemmas') {
-      setEditListItems([...currentNode.lemmas]);
+      // For editing, combine src_lemmas and lemmas
+      setEditListItems([...(currentNode.src_lemmas || []), ...(currentNode.lemmas || [])]);
     } else if (field === 'examples') {
       setEditListItems([...currentNode.examples]);
     } else if (field === 'gloss') {
@@ -311,7 +312,7 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
               {/* Entry Header */}
               <div>
                 <h2 className="text-lg font-bold text-gray-900 mb-2">
-                  {currentNode.lemmas[0] || currentNode.id} ({currentNode.id})
+                  {[...(currentNode.src_lemmas || []), ...(currentNode.lemmas || [])][0] || currentNode.id} ({currentNode.id})
                 </h2>
                 
                 {/* Status Indicators */}
@@ -451,13 +452,16 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
                     onDoubleClick={() => startEditing('lemmas')}
                     title="Double-click to edit"
                   >
-                    {currentNode.lemmas && currentNode.lemmas.length > 0 ? (
-                      <p className="text-gray-900 text-sm font-medium">
-                        {currentNode.lemmas.join('; ')}
-                      </p>
-                    ) : (
-                      <p className="text-gray-500 text-sm italic">No lemmas (double-click to add)</p>
-                    )}
+                    {(() => {
+                      const allLemmas = [...(currentNode.src_lemmas || []), ...(currentNode.lemmas || [])];
+                      return allLemmas.length > 0 ? (
+                        <p className="text-gray-900 text-sm font-medium">
+                          {allLemmas.join('; ')}
+                        </p>
+                      ) : (
+                        <p className="text-gray-500 text-sm italic">No lemmas (double-click to add)</p>
+                      );
+                    })()}
                   </div>
                 )}
               </div>
@@ -619,7 +623,7 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
                         className="block w-full text-left p-3 bg-green-50 hover:bg-green-100 border border-green-200 rounded-lg transition-colors"
                       >
                         <div className="font-medium text-green-800 text-sm">
-                          {parent.lemmas.join(', ') || parent.id}
+                          {[...(parent.src_lemmas || []), ...(parent.lemmas || [])].join(', ') || parent.id}
                         </div>
                         <div className="text-green-600 text-xs mt-1 line-clamp-2">
                           {parent.gloss}
@@ -644,7 +648,7 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
                         className="block w-full text-left p-3 bg-yellow-50 hover:bg-yellow-100 border border-yellow-200 rounded-lg transition-colors"
                       >
                         <div className="font-medium text-yellow-800 text-sm">
-                          {child.lemmas.join(', ') || child.id}
+                          {[...(child.src_lemmas || []), ...(child.lemmas || [])].join(', ') || child.id}
                         </div>
                         <div className="text-yellow-600 text-xs mt-1 line-clamp-2">
                           {child.gloss}
@@ -669,7 +673,7 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
                         className="block w-full text-left p-3 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-lg transition-colors"
                       >
                         <div className="font-medium text-purple-800 text-sm">
-                          {cause.lemmas.join(', ') || cause.id}
+                          {[...(cause.src_lemmas || []), ...(cause.lemmas || [])].join(', ') || cause.id}
                         </div>
                         <div className="text-purple-600 text-xs mt-1 line-clamp-2">
                           {cause.gloss}
@@ -694,7 +698,7 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
                         className="block w-full text-left p-3 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition-colors"
                       >
                         <div className="font-medium text-indigo-800 text-sm">
-                          {entail.lemmas.join(', ') || entail.id}
+                          {[...(entail.src_lemmas || []), ...(entail.lemmas || [])].join(', ') || entail.id}
                         </div>
                         <div className="text-indigo-600 text-xs mt-1 line-clamp-2">
                           {entail.gloss}
@@ -719,7 +723,7 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
                         className="block w-full text-left p-3 bg-teal-50 hover:bg-teal-100 border border-teal-200 rounded-lg transition-colors"
                       >
                         <div className="font-medium text-teal-800 text-sm">
-                          {similar.lemmas.join(', ') || similar.id}
+                          {[...(similar.src_lemmas || []), ...(similar.lemmas || [])].join(', ') || similar.id}
                         </div>
                         <div className="text-teal-600 text-xs mt-1 line-clamp-2">
                           {similar.gloss}

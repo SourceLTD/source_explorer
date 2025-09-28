@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
   }
 
   // Validate sort fields
-  const validSortFields = ['id', 'gloss', 'pos', 'lexfile', 'lemmas', 'parentsCount', 'childrenCount', 'createdAt', 'updatedAt'];
+  const validSortFields = ['id', 'src_id', 'gloss', 'pos', 'lexfile', 'lemmas', 'src_lemmas', 'parentsCount', 'childrenCount', 'createdAt', 'updatedAt'];
   if (!validSortFields.includes(params.sortBy!)) {
     return NextResponse.json({ error: 'Invalid sortBy field' }, { status: 400 });
   }

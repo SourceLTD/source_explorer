@@ -15,6 +15,7 @@ model LexicalEntry {
   isMwe           Boolean                  @default(false) @map("is_mwe")
   transitive      Boolean?
   lemmas          String[]                 @default([])
+  src_lemmas      String[]                 @default([])
   particles       String[]                 @default([])
   frames          String[]                 @default([])
   examples        String[]                 @default([])
@@ -26,6 +27,7 @@ model LexicalEntry {
   flaggedReason   String?                  @map("flagged_reason")
   forbidden       Boolean?                 @default(false)
   forbiddenReason String?                  @map("forbidden_reason")
+  src_id          String
   sourceRelations EntryRelation[]          @relation("SourceEntry")
   targetRelations EntryRelation[]          @relation("TargetEntry")
 

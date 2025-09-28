@@ -61,7 +61,8 @@ export default function SearchBox({ onSelectResult, onSearchChange, placeholder 
   };
 
   const handleSelectResult = (result: SearchResult) => {
-    setQuery(result.lemmas[0] || result.id);
+    const allLemmas = [...(result.src_lemmas || []), ...(result.lemmas || [])];
+    setQuery(allLemmas[0] || result.id);
     setIsOpen(false);
     onSelectResult(result);
   };
@@ -120,7 +121,7 @@ export default function SearchBox({ onSelectResult, onSearchChange, placeholder 
               <div className="flex items-start justify-between">
                 <div className="flex-1 min-w-0">
                   <div className="font-medium text-gray-900 truncate">
-                    {result.lemmas.join(', ') || result.id}
+                    {[...(result.src_lemmas || []), ...(result.lemmas || [])].join(', ') || result.id}
                     <span className="ml-2 text-xs text-gray-500 font-normal">
                       ({result.pos})
                     </span>

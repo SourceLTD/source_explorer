@@ -77,7 +77,9 @@ export async function searchEntries(query: string, limit = 20): Promise<SearchRe
     () => prisma.$queryRaw<SearchResult[]>`
     SELECT 
       id,
+      src_id,
       lemmas,
+      src_lemmas,
       gloss,
       pos,
       ts_rank(gloss_tsv, plainto_tsquery('english', ${query})) +
@@ -86,7 +88,8 @@ export async function searchEntries(query: string, limit = 20): Promise<SearchRe
     WHERE 
       gloss_tsv @@ plainto_tsquery('english', ${query}) OR
       examples_tsv @@ plainto_tsquery('english', ${query}) OR
-      ${query} = ANY(lemmas)
+      ${query} = ANY(lemmas) OR
+      ${query} = ANY(src_lemmas)
     ORDER BY rank DESC, id
     LIMIT ${limit}
   `,
@@ -170,7 +173,9 @@ export async function getGraphNode(entryId: string): Promise<GraphNode | null> {
     if (relation.type === RelationType.HYPERNYM && relation.target) {
       parents.push({
         id: relation.target.id,
+        src_id: relation.target.src_id,
         lemmas: relation.target.lemmas,
+        src_lemmas: relation.target.src_lemmas,
         gloss: relation.target.gloss,
         pos: relation.target.pos,
         examples: relation.target.examples,
@@ -190,7 +195,9 @@ export async function getGraphNode(entryId: string): Promise<GraphNode | null> {
     if (relation.type === RelationType.HYPERNYM && relation.source) {
       children.push({
         id: relation.source.id,
+        src_id: relation.source.src_id,
         lemmas: relation.source.lemmas,
+        src_lemmas: relation.source.src_lemmas,
         gloss: relation.source.gloss,
         pos: relation.source.pos,
         examples: relation.source.examples,
@@ -209,7 +216,9 @@ export async function getGraphNode(entryId: string): Promise<GraphNode | null> {
     if (relation.type === RelationType.ENTAILS && relation.target) {
       entails.push({
         id: relation.target.id,
+        src_id: relation.target.src_id,
         lemmas: relation.target.lemmas,
+        src_lemmas: relation.target.src_lemmas,
         gloss: relation.target.gloss,
         pos: relation.target.pos,
         examples: relation.target.examples,
@@ -228,7 +237,9 @@ export async function getGraphNode(entryId: string): Promise<GraphNode | null> {
     if (relation.type === RelationType.CAUSES && relation.target) {
       causes.push({
         id: relation.target.id,
+        src_id: relation.target.src_id,
         lemmas: relation.target.lemmas,
+        src_lemmas: relation.target.src_lemmas,
         gloss: relation.target.gloss,
         pos: relation.target.pos,
         examples: relation.target.examples,
@@ -247,7 +258,9 @@ export async function getGraphNode(entryId: string): Promise<GraphNode | null> {
     if (relation.type === RelationType.ALSO_SEE && relation.target) {
       alsoSee.push({
         id: relation.target.id,
+        src_id: relation.target.src_id,
         lemmas: relation.target.lemmas,
+        src_lemmas: relation.target.src_lemmas,
         gloss: relation.target.gloss,
         pos: relation.target.pos,
         examples: relation.target.examples,
@@ -262,7 +275,9 @@ export async function getGraphNode(entryId: string): Promise<GraphNode | null> {
 
   return {
     id: entry.id,
+    src_id: entry.src_id,
     lemmas: entry.lemmas,
+    src_lemmas: entry.src_lemmas,
     gloss: entry.gloss,
     pos: entry.pos,
     examples: entry.examples,
@@ -371,6 +386,11 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
           }
         },
         {
+          src_lemmas: {
+            hasSome: [search]
+          }
+        },
+        {
           examples: {
             hasSome: search.split(' ')
           }
@@ -399,10 +419,20 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
   }
 
   if (lemmas) {
+    const lemmaTerms = lemmas.split(/[\s,]+/).filter(Boolean);
     andConditions.push({
-      lemmas: {
-        hasSome: lemmas.split(/[\s,]+/).filter(Boolean)
-      }
+      OR: [
+        {
+          lemmas: {
+            hasSome: lemmaTerms
+          }
+        },
+        {
+          src_lemmas: {
+            hasSome: lemmaTerms
+          }
+        }
+      ]
     });
   }
 
@@ -496,9 +526,9 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
 
   // Build order clause
   const orderBy: Record<string, unknown> = {};
-  if (sortBy === 'lemmas') {
+  if (sortBy === 'lemmas' || sortBy === 'src_lemmas') {
     // For array fields, we need to use raw SQL for proper sorting
-    orderBy.lemmas = sortOrder;
+    orderBy[sortBy] = sortOrder;
   } else if (sortBy === 'parentsCount' || sortBy === 'childrenCount') {
     // These will be computed after fetching
     orderBy.id = sortOrder; // Default fallback
@@ -533,7 +563,9 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
   // Transform to TableEntry format
   let data: TableEntry[] = entries.map(entry => ({
     id: entry.id,
+    src_id: entry.src_id,
     lemmas: entry.lemmas,
+    src_lemmas: entry.src_lemmas,
     gloss: entry.gloss,
     pos: entry.pos,
     lexfile: entry.lexfile,
