@@ -1,6 +1,7 @@
 import { prisma } from './prisma';
 import { withRetry } from './db-utils';
 import { RelationType, type LexicalEntry, type EntryWithRelations, type GraphNode, type SearchResult, type PaginationParams, type PaginatedResult, type TableEntry } from './types';
+import type { LexicalEntry as PrismaLexicalEntry, EntryRelation as PrismaEntryRelation } from '@prisma/client';
 
 // Type for Prisma entry that might have optional fields
 type PrismaEntryWithOptionalFields = {
@@ -9,6 +10,60 @@ type PrismaEntryWithOptionalFields = {
   forbidden?: boolean;
   forbiddenReason?: string;
   [key: string]: unknown;
+};
+
+// Type for Prisma entry with relations
+type PrismaEntryWithRelations = {
+  id: string;
+  src_id: string;
+  gloss: string;
+  pos: string;
+  lexfile: string;
+  isMwe: boolean;
+  transitive: boolean | null;
+  lemmas: string[];
+  src_lemmas: string[];
+  particles: string[];
+  frames: string[];
+  examples: string[];
+  createdAt: Date;
+  updatedAt: Date;
+  flagged: boolean | null;
+  flaggedReason: string | null;
+  forbidden: boolean | null;
+  forbiddenReason: string | null;
+  sourceRelations: (PrismaEntryRelation & {
+    target: PrismaLexicalEntry | null;
+  })[];
+  targetRelations: (PrismaEntryRelation & {
+    source: PrismaLexicalEntry | null;
+  })[];
+};
+
+// Type for Prisma entry with counts
+type PrismaEntryWithCounts = {
+  id: string;
+  src_id: string;
+  gloss: string;
+  pos: string;
+  lexfile: string;
+  isMwe: boolean;
+  transitive: boolean | null;
+  lemmas: string[];
+  src_lemmas: string[];
+  particles: string[];
+  frames: string[];
+  examples: string[];
+  createdAt: Date;
+  updatedAt: Date;
+  flagged: boolean | null;
+  flaggedReason: string | null;
+  forbidden: boolean | null;
+  forbiddenReason: string | null;
+  _count: {
+    sourceRelations: number;
+    targetRelations: number;
+  };
 };
 
 export async function getEntryById(id: string): Promise<EntryWithRelations | null> {
@@ -30,15 +85,13 @@ export async function getEntryById(id: string): Promise<EntryWithRelations | nul
     }),
     undefined,
     `getEntryById(${id})`
-  );
+  ) as PrismaEntryWithRelations | null;
 
   if (!entry) return null;
 
   // Convert Prisma types to our types
   return {
     ...entry,
-    src_id: (entry as any).src_id,
-    src_lemmas: (entry as any).src_lemmas,
     transitive: entry.transitive || undefined,
     flagged: entry.flagged ?? undefined,
     flaggedReason: (entry as PrismaEntryWithOptionalFields).flaggedReason || undefined,
@@ -122,15 +175,13 @@ export async function updateEntry(id: string, updates: Partial<Pick<LexicalEntry
   }),
     undefined,
     `updateEntry(${id})`
-  );
+  ) as PrismaEntryWithRelations | null;
 
   if (!updatedEntry) return null;
 
   // Convert Prisma types to our types
   return {
     ...updatedEntry,
-    src_id: (updatedEntry as any).src_id,
-    src_lemmas: (updatedEntry as any).src_lemmas,
     transitive: updatedEntry.transitive || undefined,
     flagged: updatedEntry.flagged ?? undefined,
     flaggedReason: (updatedEntry as PrismaEntryWithOptionalFields).flaggedReason || undefined,
@@ -562,14 +613,14 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
   }),
     undefined,
     'getPaginatedEntries:findMany'
-  );
+  ) as PrismaEntryWithCounts[];
 
   // Transform to TableEntry format
   let data: TableEntry[] = entries.map(entry => ({
     id: entry.id,
-    src_id: (entry as any).src_id,
+    src_id: entry.src_id,
     lemmas: entry.lemmas,
-    src_lemmas: (entry as any).src_lemmas,
+    src_lemmas: entry.src_lemmas,
     gloss: entry.gloss,
     pos: entry.pos,
     lexfile: entry.lexfile,
