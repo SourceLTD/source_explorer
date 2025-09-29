@@ -16,6 +16,7 @@ export async function login(formData: FormData) {
 
   const redirectTo = `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/auth/confirm`
   console.log('Sending magic link to:', email)
+  console.log('NEXT_PUBLIC_SITE_URL env var:', process.env.NEXT_PUBLIC_SITE_URL)
   console.log('Redirect URL:', redirectTo)
 
   const { error } = await supabase.auth.signInWithOtp({
