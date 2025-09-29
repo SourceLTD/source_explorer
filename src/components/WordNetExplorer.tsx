@@ -224,6 +224,7 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
     }
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleToggleFlagged = () => {
     const newFlaggedValue = !currentNode?.flagged;
     handleModerationUpdate({ 
@@ -233,6 +234,7 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
     });
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleToggleForbidden = () => {
     const newForbiddenValue = !currentNode?.forbidden;
     handleModerationUpdate({ 

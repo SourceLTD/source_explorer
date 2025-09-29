@@ -383,12 +383,14 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
     }
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleToggleFlagged = () => {
     // For bulk operations, we'll set flagged to true for all selected items
     // Users can manually unflag individual items if needed
     handleModerationUpdate({ flagged: true });
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleToggleForbidden = () => {
     // For bulk operations, we'll set forbidden to true for all selected items
     // Users can manually allow individual items if needed

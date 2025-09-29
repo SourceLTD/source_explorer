@@ -34,7 +34,8 @@ if (isDevelopment || isProduction) {
 
 // Add connection pool parameters to URL for production
 const getConnectionUrl = () => {
-  const baseUrl = process.env.POSTGRES_URL_NON_POOLING || process.env.POSTGRES_PRISMA_URL;
+  // Use POSTGRES_PRISMA_URL as primary (it's the pooled connection that works)
+  const baseUrl = process.env.POSTGRES_PRISMA_URL || process.env.POSTGRES_URL_NON_POOLING;
   if (!baseUrl) return baseUrl;
   
   if (process.env.NODE_ENV === 'production') {
@@ -49,11 +50,7 @@ const getConnectionUrl = () => {
 
 export const prisma = globalForPrisma.prisma ?? new PrismaClient({
   log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn', 'info'] : ['error'],
-  datasources: {
-    db: {
-      url: getConnectionUrl(),
-    },
-  },
+  // Let Prisma use the URLs from schema.prisma (POSTGRES_PRISMA_URL and POSTGRES_URL_NON_POOLING)
   // Optimize for connection reliability
   errorFormat: 'pretty',
   transactionOptions: {

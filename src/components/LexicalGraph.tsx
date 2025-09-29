@@ -44,7 +44,7 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
 
   // Helper function to check if a node has legacy ID beginning with 'src'
   const hasSourceLegacyId = (node: GraphNode): boolean => {
-    return node.legacy_id && node.legacy_id.startsWith('src');
+    return node.legacy_id.startsWith('src');
   };
 
   // Helper function to estimate text height based on content and width
