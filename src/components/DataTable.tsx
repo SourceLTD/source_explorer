@@ -683,20 +683,24 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
       <div className="p-4 border-b border-gray-200 bg-gray-50">
         <div className="flex flex-wrap gap-4 items-center justify-between">
           <div className="flex items-center gap-4">
-            <FilterPanel
-              isOpen={isFilterPanelOpen}
-              onToggle={() => setIsFilterPanelOpen(!isFilterPanelOpen)}
-              filters={filters}
-              onFiltersChange={handleFiltersChange}
-              onClearAll={handleClearAllFilters}
-            />
-            <ColumnVisibilityPanel
-              isOpen={isColumnPanelOpen}
-              onToggle={() => setIsColumnPanelOpen(!isColumnPanelOpen)}
-              columns={currentColumns}
-              onColumnVisibilityChange={handleColumnVisibilityChange}
-              onResetToDefaults={handleResetColumns}
-            />
+            <div className="relative">
+              <FilterPanel
+                isOpen={isFilterPanelOpen}
+                onToggle={() => setIsFilterPanelOpen(!isFilterPanelOpen)}
+                filters={filters}
+                onFiltersChange={handleFiltersChange}
+                onClearAll={handleClearAllFilters}
+              />
+            </div>
+            <div className="relative">
+              <ColumnVisibilityPanel
+                isOpen={isColumnPanelOpen}
+                onToggle={() => setIsColumnPanelOpen(!isColumnPanelOpen)}
+                columns={currentColumns}
+                onColumnVisibilityChange={handleColumnVisibilityChange}
+                onResetToDefaults={handleResetColumns}
+              />
+            </div>
             <button
               onClick={handleResetColumnWidths}
               className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"

@@ -11,12 +11,23 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const ancestorPath = await getAncestorPath(id);
     
-    const breadcrumbs = ancestorPath.map(node => ({
-      id: node.id,
-      legacy_id: node.legacy_id,
-      lemma: [...(node.src_lemmas || []), ...(node.lemmas || [])][0] || node.id,
-      gloss: node.gloss,
-    }));
+    const breadcrumbs = ancestorPath.map(node => {
+      // Extract lemma from synset ID format (e.g. 'attack' from 'attack.v.03')
+      const match = node.id.match(/^([^.]+)/);
+      let lemma = match ? match[1] : node.id;
+      
+      // Fallback to database lemmas if synset ID parsing fails
+      if (lemma === node.id) {
+        lemma = [...(node.src_lemmas || []), ...(node.lemmas || [])][0] || node.id;
+      }
+      
+      return {
+        id: node.id,
+        legacy_id: node.legacy_id,
+        lemma,
+        gloss: node.gloss,
+      };
+    });
 
     return NextResponse.json(breadcrumbs);
   } catch (error) {
