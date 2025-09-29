@@ -16,6 +16,7 @@ export default function SearchBox({ onSelectResult, onSearchChange, placeholder 
   const [isLoading, setIsLoading] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const searchEntries = async (searchQuery: string) => {
     if (!searchQuery.trim()) {
@@ -52,17 +53,19 @@ export default function SearchBox({ onSelectResult, onSearchChange, placeholder 
     // Call the search change callback immediately
     onSearchChange?.(value);
     
-    // Debounce search
-    const timeoutId = setTimeout(() => {
+    // Clear the previous timeout if it exists
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+    }
+    
+    // Debounce search - wait 600ms after the last keystroke
+    debounceTimeoutRef.current = setTimeout(() => {
       searchEntries(value);
-    }, 300);
-
-    return () => clearTimeout(timeoutId);
+    }, 600);
   };
 
   const handleSelectResult = (result: SearchResult) => {
-    const allLemmas = [...(result.src_lemmas || []), ...(result.lemmas || [])];
-    setQuery(allLemmas[0] || result.id);
+    setQuery(result.src_id || result.id);
     setIsOpen(false);
     onSelectResult(result);
   };
@@ -86,8 +89,17 @@ export default function SearchBox({ onSelectResult, onSearchChange, placeholder 
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+      }
+    };
+  }, []);
+
   return (
-    <div ref={searchRef} className="relative w-full max-w-md">
+    <div ref={searchRef} className="relative w-full max-w-2xl">
       <div className="relative">
         <input
           ref={inputRef}
@@ -118,23 +130,16 @@ export default function SearchBox({ onSelectResult, onSearchChange, placeholder 
               onClick={() => handleSelectResult(result)}
               className="w-full px-4 py-3 text-left hover:bg-gray-50 focus:bg-gray-50 focus:outline-none border-b border-gray-100 last:border-b-0"
             >
-              <div className="flex items-start justify-between">
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium text-gray-900 truncate">
-                    {[...(result.src_lemmas || []), ...(result.lemmas || [])].join(', ') || result.id}
-                    <span className="ml-2 text-xs text-gray-500 font-normal">
-                      ({result.pos})
-                    </span>
-                  </div>
-                  <div className="text-sm text-gray-600 mt-1 line-clamp-2">
-                    {result.gloss}
-                  </div>
+              <div className="w-full">
+                <div className="font-medium text-gray-900 truncate mb-1">
+                  {result.src_id || result.id}
+                  <span className="ml-2 text-xs text-gray-500 font-normal">
+                    ({result.pos})
+                  </span>
                 </div>
-                {result.rank && (
-                  <div className="ml-2 text-xs text-gray-400 font-mono">
-                    {result.rank.toFixed(3)}
-                  </div>
-                )}
+                <div className="text-sm text-gray-600 line-clamp-2 w-full">
+                  {result.gloss}
+                </div>
               </div>
             </button>
           ))}

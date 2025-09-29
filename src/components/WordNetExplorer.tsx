@@ -230,20 +230,13 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
     });
   };
 
-  // Load initial entry
+  // Load entry based on URL params or initial prop
   useEffect(() => {
-    if (initialEntryId) {
-      loadGraphNode(initialEntryId);
-    }
-  }, [initialEntryId]);
-
-  // Listen to URL parameter changes for browser back/forward navigation
-  useEffect(() => {
-    const currentEntryId = searchParams.get('entry');
+    const currentEntryId = searchParams.get('entry') || initialEntryId;
     if (currentEntryId && currentEntryId !== currentNode?.id) {
       loadGraphNode(currentEntryId);
     }
-  }, [searchParams, currentNode?.id]);
+  }, [searchParams, initialEntryId, currentNode?.id]);
 
   return (
     <div className="h-screen flex flex-col bg-gray-50">
