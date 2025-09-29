@@ -6,10 +6,24 @@ import { handleDatabaseError } from '@/lib/db-utils';
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   
+  // Debug logging to catch src_id usage
+  const sortByParam = searchParams.get('sortBy');
+  if (sortByParam === 'src_id') {
+    console.warn('⚠️  WARNING: Request received with sortBy=src_id, converting to legacy_id');
+    console.warn('Request URL:', request.url);
+    console.warn('All params:', Object.fromEntries(searchParams.entries()));
+  }
+  
+  // Convert old field names to new ones for backward compatibility
+  let sortBy = searchParams.get('sortBy') || 'id';
+  if (sortBy === 'src_id') {
+    sortBy = 'legacy_id';
+  }
+  
   const params: PaginationParams = {
     page: searchParams.get('page') ? parseInt(searchParams.get('page')!, 10) : 1,
     limit: searchParams.get('limit') ? parseInt(searchParams.get('limit')!, 10) : 20,
-    sortBy: searchParams.get('sortBy') || 'id',
+    sortBy: sortBy,
     sortOrder: (searchParams.get('sortOrder') as 'asc' | 'desc') || 'asc',
     search: searchParams.get('search') || undefined,
     
@@ -53,7 +67,7 @@ export async function GET(request: NextRequest) {
   }
 
   // Validate sort fields
-  const validSortFields = ['id', 'src_id', 'gloss', 'pos', 'lexfile', 'lemmas', 'src_lemmas', 'parentsCount', 'childrenCount', 'createdAt', 'updatedAt'];
+  const validSortFields = ['id', 'legacy_id', 'gloss', 'pos', 'lexfile', 'lemmas', 'src_lemmas', 'parentsCount', 'childrenCount', 'createdAt', 'updatedAt'];
   if (!validSortFields.includes(params.sortBy!)) {
     return NextResponse.json({ error: 'Invalid sortBy field' }, { status: 400 });
   }

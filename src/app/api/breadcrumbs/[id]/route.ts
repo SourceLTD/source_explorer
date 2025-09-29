@@ -13,6 +13,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     
     const breadcrumbs = ancestorPath.map(node => ({
       id: node.id,
+      legacy_id: node.legacy_id,
       lemma: [...(node.src_lemmas || []), ...(node.lemmas || [])][0] || node.id,
       gloss: node.gloss,
     }));

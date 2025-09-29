@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { GraphNode, SearchResult, BreadcrumbItem } from '@/lib/types';
 import LexicalGraph from './LexicalGraph';
@@ -22,6 +22,9 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
   const [error, setError] = useState<string | null>(null);
   const [, setSearchQuery] = useState<string>('');
   
+  // Track last loaded entry to prevent duplicate calls
+  const lastLoadedEntryRef = useRef<string | null>(null);
+  
   // Editing state
   const [editingField, setEditingField] = useState<'lemmas' | 'gloss' | 'examples' | null>(null);
   const [editValue, setEditValue] = useState<string>('');
@@ -36,6 +39,12 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
   };
 
   const loadGraphNode = async (entryId: string) => {
+    // Prevent duplicate calls for the same entry
+    if (lastLoadedEntryRef.current === entryId) {
+      return;
+    }
+    
+    lastLoadedEntryRef.current = entryId;
     setIsLoading(true);
     setError(null);
     
@@ -67,13 +76,15 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
   };
 
   const handleNodeClick = (nodeId: string) => {
+    // Reset the ref to allow loading the new node
+    lastLoadedEntryRef.current = null;
     updateUrlParam(nodeId);
-    loadGraphNode(nodeId);
   };
 
   const handleSearchResult = (result: SearchResult) => {
+    // Reset the ref to allow loading the new node
+    lastLoadedEntryRef.current = null;
     updateUrlParam(result.id);
-    loadGraphNode(result.id);
     setSearchQuery(''); // Clear search after selection
   };
 
@@ -84,8 +95,9 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
   };
 
   const handleBreadcrumbNavigate = (id: string) => {
+    // Reset the ref to allow loading the new node
+    lastLoadedEntryRef.current = null;
     updateUrlParam(id);
-    loadGraphNode(id);
   };
 
   const startEditing = (field: 'lemmas' | 'gloss' | 'examples') => {
@@ -233,10 +245,10 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
   // Load entry based on URL params or initial prop
   useEffect(() => {
     const currentEntryId = searchParams.get('entry') || initialEntryId;
-    if (currentEntryId && currentEntryId !== currentNode?.id) {
+    if (currentEntryId) {
       loadGraphNode(currentEntryId);
     }
-  }, [searchParams, initialEntryId, currentNode?.id]);
+  }, [searchParams, initialEntryId]);
 
   return (
     <div className="h-screen flex flex-col bg-gray-50">

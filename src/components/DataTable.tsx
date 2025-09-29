@@ -27,6 +27,8 @@ interface ColumnWidthState {
 
 // Define all available columns with their configurations
 const DEFAULT_COLUMNS: ColumnConfig[] = [
+  { key: 'id', label: 'ID', visible: true, sortable: true },
+  { key: 'legacy_id', label: 'Legacy ID', visible: false, sortable: true },
   { key: 'lemmas', label: 'Lemmas', visible: true, sortable: true },
   { key: 'gloss', label: 'Definition', visible: true, sortable: true },
   { key: 'pos', label: 'Part of Speech', visible: false, sortable: true },
@@ -46,6 +48,8 @@ const DEFAULT_COLUMNS: ColumnConfig[] = [
 
 // Default column widths in pixels
 const DEFAULT_COLUMN_WIDTHS: ColumnWidthState = {
+  id: 120,
+  legacy_id: 150,
   lemmas: 150,
   gloss: 300,
   pos: 120,
@@ -576,6 +580,10 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
             ))}
           </div>
         );
+      case 'id':
+        return <span className="text-sm font-mono text-blue-600">{entry.id}</span>;
+      case 'legacy_id':
+        return <span className="text-sm font-mono text-gray-600">{entry.legacy_id}</span>;
       case 'createdAt':
         return <span className="text-xs text-gray-500">{formatDate(entry.createdAt)}</span>;
       case 'updatedAt':

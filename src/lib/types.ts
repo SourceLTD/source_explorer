@@ -1,6 +1,6 @@
 export interface LexicalEntry {
   id: string;
-  src_id: string;
+  legacy_id: string;
   gloss: string;
   pos: string;
   lexfile: string;
@@ -42,7 +42,7 @@ export interface EntryWithRelations extends LexicalEntry {
 
 export interface GraphNode {
   id: string;
-  src_id: string;
+  legacy_id: string;
   lemmas: string[];
   src_lemmas: string[];
   gloss: string;
@@ -61,7 +61,7 @@ export interface GraphNode {
 
 export interface SearchResult {
   id: string;
-  src_id: string;
+  legacy_id: string;
   lemmas: string[];
   src_lemmas: string[];
   gloss: string;
@@ -100,7 +100,7 @@ export interface DatabaseStats {
 
 export interface BreadcrumbItem {
   id: string;
-  src_id: string;
+  legacy_id: string;
   lemma: string;
   gloss: string;
 }
@@ -154,7 +154,7 @@ export interface PaginatedResult<T> {
 
 export interface TableEntry {
   id: string;
-  src_id: string;
+  legacy_id: string;
   lemmas: string[];
   src_lemmas: string[];
   gloss: string;

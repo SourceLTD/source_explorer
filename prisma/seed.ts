@@ -9,7 +9,7 @@ async function main() {
   const entries = [
     {
       id: 'have.v.02',
-      src_id: 'have.v.02',
+      legacy_id: 'have.v.02',
       gloss: 'have as a feature',
       pos: 'v',
       lexfile: 'verb.stative',
@@ -19,7 +19,7 @@ async function main() {
     },
     {
       id: 'brim.v.01',
-      src_id: 'brim.v.01',
+      legacy_id: 'brim.v.01',
       gloss: 'be completely full',
       pos: 'v',
       lexfile: 'verb.stative',
@@ -29,7 +29,7 @@ async function main() {
     },
     {
       id: 'abound.v.02',
-      src_id: 'abound.v.02',
+      legacy_id: 'abound.v.02',
       gloss: 'be abundant or plentiful; exist in large quantities',
       pos: 'v',
       lexfile: 'verb.stative',
@@ -39,7 +39,7 @@ async function main() {
     },
     {
       id: 'bear.v.01',
-      src_id: 'bear.v.01',
+      legacy_id: 'bear.v.01',
       gloss: 'have',
       pos: 'v',
       lexfile: 'verb.stative',
@@ -49,7 +49,7 @@ async function main() {
     },
     {
       id: 'carry.v.02',
-      src_id: 'carry.v.02',
+      legacy_id: 'carry.v.02',
       gloss: 'have with oneself; have on one\'s person',
       pos: 'v',
       lexfile: 'verb.possession',
@@ -59,7 +59,7 @@ async function main() {
     },
     {
       id: 'carry.v.18',
-      src_id: 'carry.v.18',
+      legacy_id: 'carry.v.18',
       gloss: 'bear or be able to bear the weight, pressure, or responsibility of',
       pos: 'v',
       lexfile: 'verb.stative',
@@ -69,7 +69,7 @@ async function main() {
     },
     {
       id: 'carry.v.22',
-      src_id: 'carry.v.22',
+      legacy_id: 'carry.v.22',
       gloss: 'have or possess something abstract',
       pos: 'v',
       lexfile: 'verb.stative',
@@ -79,7 +79,7 @@ async function main() {
     },
     {
       id: 'carry.v.35',
-      src_id: 'carry.v.35',
+      legacy_id: 'carry.v.35',
       gloss: 'include as the content; broadcast or publicize',
       pos: 'v',
       lexfile: 'verb.communication',
@@ -89,7 +89,7 @@ async function main() {
     },
     {
       id: 'give_off.v.01',
-      src_id: 'give_off.v.01',
+      legacy_id: 'give_off.v.01',
       gloss: 'have as a by-product',
       pos: 'v',
       lexfile: 'verb.creation',
@@ -99,7 +99,7 @@ async function main() {
     },
     {
       id: 'imply.v.05',
-      src_id: 'imply.v.05',
+      legacy_id: 'imply.v.05',
       gloss: 'have as a logical consequence',
       pos: 'v',
       lexfile: 'verb.stative',
@@ -109,7 +109,7 @@ async function main() {
     },
     {
       id: 'possess.v.01',
-      src_id: 'possess.v.01',
+      legacy_id: 'possess.v.01',
       gloss: 'have as an attribute or quality',
       pos: 'v',
       lexfile: 'verb.stative',
@@ -119,7 +119,7 @@ async function main() {
     },
     {
       id: 'read.v.02',
-      src_id: 'read.v.02',
+      legacy_id: 'read.v.02',
       gloss: 'have or contain a certain wording or form',
       pos: 'v',
       lexfile: 'verb.stative',
@@ -129,7 +129,7 @@ async function main() {
     },
     {
       id: 'sport.v.01',
-      src_id: 'sport.v.01',
+      legacy_id: 'sport.v.01',
       gloss: 'wear or display in an ostentatious or proud manner',
       pos: 'v',
       lexfile: 'verb.body',
@@ -139,7 +139,7 @@ async function main() {
     },
     {
       id: 'star.v.01',
-      src_id: 'star.v.01',
+      legacy_id: 'star.v.01',
       gloss: 'feature as the star',
       pos: 'v',
       lexfile: 'verb.creation',
@@ -149,7 +149,7 @@ async function main() {
     },
     {
       id: 'unite.v.03',
-      src_id: 'unite.v.03',
+      legacy_id: 'unite.v.03',
       gloss: 'have or possess in combination',
       pos: 'v',
       lexfile: 'verb.stative',
@@ -159,7 +159,7 @@ async function main() {
     },
     {
       id: 'wear.v.02',
-      src_id: 'wear.v.02',
+      legacy_id: 'wear.v.02',
       gloss: 'have on one\'s person',
       pos: 'v',
       lexfile: 'verb.body',
@@ -169,7 +169,7 @@ async function main() {
     },
     {
       id: 'wear.v.03',
-      src_id: 'wear.v.03',
+      legacy_id: 'wear.v.03',
       gloss: 'have in one\'s aspect; wear an expression of one\'s attitude or personality',
       pos: 'v',
       lexfile: 'verb.body',
@@ -179,7 +179,7 @@ async function main() {
     },
     {
       id: 'wear.v.05',
-      src_id: 'wear.v.05',
+      legacy_id: 'wear.v.05',
       gloss: 'have or show an appearance of',
       pos: 'v',
       lexfile: 'verb.perception',

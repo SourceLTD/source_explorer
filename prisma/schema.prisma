@@ -9,7 +9,7 @@ datasource db {
 }
 
 model LexicalEntry {
-  id              String                   @id
+  legacy_id       String
   gloss           String
   pos             String                   @db.Char(1)
   lexfile         String
@@ -28,7 +28,7 @@ model LexicalEntry {
   flaggedReason   String?                  @map("flagged_reason")
   forbidden       Boolean?                 @default(false)
   forbiddenReason String?                  @map("forbidden_reason")
-  src_id          String
+  id              String                   @id
   sourceRelations EntryRelation[]          @relation("SourceEntry")
   targetRelations EntryRelation[]          @relation("TargetEntry")
 

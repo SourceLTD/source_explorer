@@ -15,7 +15,7 @@ type PrismaEntryWithOptionalFields = {
 // Type for Prisma entry with relations
 type PrismaEntryWithRelations = {
   id: string;
-  src_id: string;
+  legacy_id: string;
   gloss: string;
   pos: string;
   lexfile: string;
@@ -43,7 +43,7 @@ type PrismaEntryWithRelations = {
 // Type for Prisma entry with counts
 type PrismaEntryWithCounts = {
   id: string;
-  src_id: string;
+  legacy_id: string;
   gloss: string;
   pos: string;
   lexfile: string;
@@ -85,7 +85,7 @@ export async function getEntryById(id: string): Promise<EntryWithRelations | nul
     }),
     undefined,
     `getEntryById(${id})`
-  ) as PrismaEntryWithRelations | null;
+  ) as unknown as PrismaEntryWithRelations | null;
 
   if (!entry) return null;
 
@@ -108,7 +108,7 @@ export async function getEntryById(id: string): Promise<EntryWithRelations | nul
         flaggedReason: (rel.target as PrismaEntryWithOptionalFields).flaggedReason || undefined,
         forbidden: rel.target.forbidden ?? undefined,
         forbiddenReason: (rel.target as PrismaEntryWithOptionalFields).forbiddenReason || undefined
-      } as LexicalEntry : undefined,
+      } as unknown as LexicalEntry : undefined,
     })),
     targetRelations: entry.targetRelations.map(rel => ({
       sourceId: rel.sourceId,
@@ -121,7 +121,7 @@ export async function getEntryById(id: string): Promise<EntryWithRelations | nul
         flaggedReason: (rel.source as PrismaEntryWithOptionalFields).flaggedReason || undefined,
         forbidden: rel.source.forbidden ?? undefined,
         forbiddenReason: (rel.source as PrismaEntryWithOptionalFields).forbiddenReason || undefined
-      } as LexicalEntry : undefined,
+      } as unknown as LexicalEntry : undefined,
     })),
   };
 }
@@ -132,7 +132,7 @@ export async function searchEntries(query: string, limit = 20): Promise<SearchRe
     () => prisma.$queryRaw<SearchResult[]>`
     SELECT 
       id,
-      src_id,
+      legacy_id,
       lemmas,
       src_lemmas,
       gloss,
@@ -175,7 +175,7 @@ export async function updateEntry(id: string, updates: Partial<Pick<LexicalEntry
   }),
     undefined,
     `updateEntry(${id})`
-  ) as PrismaEntryWithRelations | null;
+  ) as unknown as PrismaEntryWithRelations | null;
 
   if (!updatedEntry) return null;
 
@@ -198,7 +198,7 @@ export async function updateEntry(id: string, updates: Partial<Pick<LexicalEntry
         flaggedReason: (rel.target as PrismaEntryWithOptionalFields).flaggedReason || undefined,
         forbidden: rel.target.forbidden ?? undefined,
         forbiddenReason: (rel.target as PrismaEntryWithOptionalFields).forbiddenReason || undefined
-      } as LexicalEntry : undefined,
+      } as unknown as LexicalEntry : undefined,
     })),
     targetRelations: updatedEntry.targetRelations.map(rel => ({
       sourceId: rel.sourceId,
@@ -211,7 +211,7 @@ export async function updateEntry(id: string, updates: Partial<Pick<LexicalEntry
         flaggedReason: (rel.source as PrismaEntryWithOptionalFields).flaggedReason || undefined,
         forbidden: rel.source.forbidden ?? undefined,
         forbiddenReason: (rel.source as PrismaEntryWithOptionalFields).forbiddenReason || undefined
-      } as LexicalEntry : undefined,
+      } as unknown as LexicalEntry : undefined,
     })),
   };
 }
@@ -228,7 +228,7 @@ export async function getGraphNode(entryId: string): Promise<GraphNode | null> {
     if (relation.type === RelationType.HYPERNYM && relation.target) {
       parents.push({
         id: relation.target.id,
-        src_id: relation.target.src_id,
+        legacy_id: relation.target.legacy_id,
         lemmas: relation.target.lemmas,
         src_lemmas: relation.target.src_lemmas,
         gloss: relation.target.gloss,
@@ -250,7 +250,7 @@ export async function getGraphNode(entryId: string): Promise<GraphNode | null> {
     if (relation.type === RelationType.HYPERNYM && relation.source) {
       children.push({
         id: relation.source.id,
-        src_id: relation.source.src_id,
+        legacy_id: relation.source.legacy_id,
         lemmas: relation.source.lemmas,
         src_lemmas: relation.source.src_lemmas,
         gloss: relation.source.gloss,
@@ -271,7 +271,7 @@ export async function getGraphNode(entryId: string): Promise<GraphNode | null> {
     if (relation.type === RelationType.ENTAILS && relation.target) {
       entails.push({
         id: relation.target.id,
-        src_id: relation.target.src_id,
+        legacy_id: relation.target.legacy_id,
         lemmas: relation.target.lemmas,
         src_lemmas: relation.target.src_lemmas,
         gloss: relation.target.gloss,
@@ -292,7 +292,7 @@ export async function getGraphNode(entryId: string): Promise<GraphNode | null> {
     if (relation.type === RelationType.CAUSES && relation.target) {
       causes.push({
         id: relation.target.id,
-        src_id: relation.target.src_id,
+        legacy_id: relation.target.legacy_id,
         lemmas: relation.target.lemmas,
         src_lemmas: relation.target.src_lemmas,
         gloss: relation.target.gloss,
@@ -313,7 +313,7 @@ export async function getGraphNode(entryId: string): Promise<GraphNode | null> {
     if (relation.type === RelationType.ALSO_SEE && relation.target) {
       alsoSee.push({
         id: relation.target.id,
-        src_id: relation.target.src_id,
+        legacy_id: relation.target.legacy_id,
         lemmas: relation.target.lemmas,
         src_lemmas: relation.target.src_lemmas,
         gloss: relation.target.gloss,
@@ -330,7 +330,7 @@ export async function getGraphNode(entryId: string): Promise<GraphNode | null> {
 
   return {
     id: entry.id,
-    src_id: entry.src_id,
+    legacy_id: entry.legacy_id,
     lemmas: entry.lemmas,
     src_lemmas: entry.src_lemmas,
     gloss: entry.gloss,
@@ -581,14 +581,21 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
 
   // Build order clause
   const orderBy: Record<string, unknown> = {};
-  if (sortBy === 'lemmas' || sortBy === 'src_lemmas') {
+  
+  // Map old field names to new ones for backward compatibility
+  let actualSortBy = sortBy;
+  if (sortBy === 'src_id') {
+    actualSortBy = 'legacy_id';
+  }
+  
+  if (actualSortBy === 'lemmas' || actualSortBy === 'src_lemmas') {
     // For array fields, we need to use raw SQL for proper sorting
-    orderBy[sortBy] = sortOrder;
-  } else if (sortBy === 'parentsCount' || sortBy === 'childrenCount') {
+    orderBy[actualSortBy] = sortOrder;
+  } else if (actualSortBy === 'parentsCount' || actualSortBy === 'childrenCount') {
     // These will be computed after fetching
     orderBy.id = sortOrder; // Default fallback
   } else {
-    orderBy[sortBy] = sortOrder;
+    orderBy[actualSortBy] = sortOrder;
   }
 
   // Fetch entries with relation counts
@@ -613,12 +620,12 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
   }),
     undefined,
     'getPaginatedEntries:findMany'
-  ) as PrismaEntryWithCounts[];
+  ) as unknown as PrismaEntryWithCounts[];
 
   // Transform to TableEntry format
   let data: TableEntry[] = entries.map(entry => ({
     id: entry.id,
-    src_id: entry.src_id,
+    legacy_id: entry.legacy_id,
     lemmas: entry.lemmas,
     src_lemmas: entry.src_lemmas,
     gloss: entry.gloss,
