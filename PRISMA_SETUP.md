@@ -7,8 +7,7 @@ This guide explains how to set up and use the Prisma integration with your Postg
 ### Core Prisma Files
 - `prisma/schema.prisma` - Prisma schema definition
 - `prisma/seed.ts` - Database seeding script
-- `.env` - Environment variables (contains your DATABASE_URL)
-- `.env.example` - Template for environment variables
+- `.env` - Environment variables (contains your database connection URLs)
 
 ### Application Code
 - `src/lib/prisma.ts` - Prisma client instance
@@ -28,14 +27,21 @@ This guide explains how to set up and use the Prisma integration with your Postg
 
 ### 1. Configure Database Connection
 
-Edit your `.env` file with your database connection string:
+Edit your `.env` file with your database connection strings:
 
 ```bash
 # For local PostgreSQL
-DATABASE_URL="postgresql://username:password@localhost:5432/database_name?schema=public"
+POSTGRES_PRISMA_URL="postgresql://username:password@localhost:5432/database_name?schema=public"
+POSTGRES_URL_NON_POOLING="postgresql://username:password@localhost:5432/database_name?schema=public"
 
 # For Supabase
-DATABASE_URL="postgresql://postgres:[YOUR-PASSWORD]@db.[YOUR-PROJECT-REF].supabase.co:5432/postgres"
+POSTGRES_PRISMA_URL="postgresql://postgres:[YOUR-PASSWORD]@db.[YOUR-PROJECT-REF].supabase.co:5432/postgres"
+POSTGRES_URL_NON_POOLING="postgresql://postgres:[YOUR-PASSWORD]@db.[YOUR-PROJECT-REF].supabase.co:5432/postgres"
+
+# Supabase Authentication (if using auth features)
+NEXT_PUBLIC_SUPABASE_URL="https://[YOUR-PROJECT-REF].supabase.co"
+NEXT_PUBLIC_SUPABASE_ANON_KEY="your_supabase_anon_key"
+NEXT_PUBLIC_SITE_URL="http://localhost:3000"
 ```
 
 ### 2. Run Your Existing Schema
@@ -265,7 +271,7 @@ const results = await prisma.$queryRaw`
 ### Common Issues
 
 1. **Connection Issues**
-   - Verify DATABASE_URL in `.env`
+   - Verify POSTGRES_PRISMA_URL and POSTGRES_URL_NON_POOLING in `.env`
    - Check database is running and accessible
    - Test with: `npm run db:studio`
 
@@ -294,7 +300,7 @@ console.log(result) // { success: true, message: "Database connection successful
 
 ## 🎯 Next Steps
 
-1. Configure your DATABASE_URL
+1. Configure your POSTGRES_PRISMA_URL and POSTGRES_URL_NON_POOLING
 2. Apply your existing schema.sql
 3. Generate Prisma client: `npm run db:generate`
 4. Test the connection: `npm run db:studio`

@@ -25,16 +25,27 @@ A WordNet-like lexical database explorer built with Next.js, Prisma, PostgreSQL,
 npm install
 ```
 
-### 2. Database Setup
+### 2. Environment Variables Setup
 
 1. Create a PostgreSQL database for the project
-2. Copy the environment file:
+2. Create a `.env` file in the project root:
    ```bash
-   cp .env.example .env
+   touch .env
    ```
-3. Update `.env` with your database connection string:
-   ```
-   DATABASE_URL="postgresql://username:password@localhost:5432/lexical_explorer"
+3. Add the following environment variables to your `.env` file:
+   ```bash
+   # For local PostgreSQL
+   POSTGRES_PRISMA_URL="postgresql://username:password@localhost:5432/lexical_explorer"
+   POSTGRES_URL_NON_POOLING="postgresql://username:password@localhost:5432/lexical_explorer"
+   
+   # For Supabase
+   POSTGRES_PRISMA_URL="postgresql://postgres:[YOUR-PASSWORD]@db.[YOUR-PROJECT-REF].supabase.co:5432/postgres"
+   POSTGRES_URL_NON_POOLING="postgresql://postgres:[YOUR-PASSWORD]@db.[YOUR-PROJECT-REF].supabase.co:5432/postgres"
+   
+   # Supabase Authentication (if using auth features)
+   NEXT_PUBLIC_SUPABASE_URL="https://[YOUR-PROJECT-REF].supabase.co"
+   NEXT_PUBLIC_SUPABASE_ANON_KEY="your_supabase_anon_key"
+   NEXT_PUBLIC_SITE_URL="http://localhost:3000"
    ```
 
 ### 3. Initialize Database Schema
@@ -129,3 +140,42 @@ To add your own lexical data:
 - **Styling**: Tailwind CSS with custom components
 
 The application follows a clean, professional design inspired by modern documentation sites and research tools.
+
+## Environment Variables Reference
+
+Create a `.env` file in your project root with the following variables:
+
+```bash
+# Database Configuration (required)
+# Choose either local PostgreSQL or Supabase configuration
+
+# For local PostgreSQL:
+POSTGRES_PRISMA_URL="postgresql://username:password@localhost:5432/lexical_explorer"
+POSTGRES_URL_NON_POOLING="postgresql://username:password@localhost:5432/lexical_explorer"
+
+# For Supabase (replace with your actual values):
+# POSTGRES_PRISMA_URL="postgresql://postgres:[YOUR-PASSWORD]@db.[YOUR-PROJECT-REF].supabase.co:5432/postgres"
+# POSTGRES_URL_NON_POOLING="postgresql://postgres:[YOUR-PASSWORD]@db.[YOUR-PROJECT-REF].supabase.co:5432/postgres"
+
+# Supabase Authentication (required for login features)
+# Get these from your Supabase project settings > API
+NEXT_PUBLIC_SUPABASE_URL="https://[YOUR-PROJECT-REF].supabase.co"
+NEXT_PUBLIC_SUPABASE_ANON_KEY="your_supabase_anon_key_here"
+
+# Site URL (used for auth redirects)
+NEXT_PUBLIC_SITE_URL="http://localhost:3000"
+
+# In production, set NEXT_PUBLIC_SITE_URL to your actual domain:
+# NEXT_PUBLIC_SITE_URL="https://yourdomain.com"
+```
+
+### Required vs Optional Variables
+
+**Required for basic functionality:**
+- `POSTGRES_PRISMA_URL` - Primary database connection
+- `POSTGRES_URL_NON_POOLING` - Direct database connection (can be same as above for local dev)
+
+**Required for authentication features:**
+- `NEXT_PUBLIC_SUPABASE_URL` - Your Supabase project URL
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` - Your Supabase anonymous key
+- `NEXT_PUBLIC_SITE_URL` - Your site URL for auth redirects
