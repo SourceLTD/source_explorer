@@ -65,7 +65,7 @@ export default function SearchBox({ onSelectResult, onSearchChange, placeholder 
   };
 
   const handleSelectResult = (result: SearchResult) => {
-    setQuery(result.legacy_id || result.id);
+    setQuery(result.id);
     setIsOpen(false);
     onSelectResult(result);
   };
@@ -132,7 +132,7 @@ export default function SearchBox({ onSelectResult, onSearchChange, placeholder 
             >
               <div className="w-full">
                 <div className="font-medium text-gray-900 truncate mb-1">
-                  {result.legacy_id || result.id}
+                  {result.id}
                   <span className="ml-2 text-xs text-gray-500 font-normal">
                     ({result.pos})
                   </span>

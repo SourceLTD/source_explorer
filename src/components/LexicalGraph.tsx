@@ -42,6 +42,11 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
 
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
 
+  // Helper function to check if a node has legacy ID beginning with 'src'
+  const hasSourceLegacyId = (node: GraphNode): boolean => {
+    return node.legacy_id && node.legacy_id.startsWith('src');
+  };
+
   // Helper function to estimate text height based on content and width
   const estimateTextHeight = (text: string, width: number, fontSize: number = 13, lineHeight: number = 1.3): number => {
     // Approximate character width based on font size
@@ -281,6 +286,9 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
               const centerX = -nodeWidth / 2;
               const centerY = -nodeHeight / 2;
               
+              // Check if this node has a legacy ID beginning with 'src' for special styling
+              const isSourceNode = hasSourceLegacyId(posNode.node);
+              
               // Calculate Y positions for each section using the same logic as height calculation
               const contentWidth = nodeWidth - 24; // Account for padding
               let sectionY = centerY + 130; // Start after examples base position
@@ -330,8 +338,8 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                     y={centerY}
                     x={centerX}
                     fill={currentNodeColor}
-                    stroke={currentNodeStroke}
-                    strokeWidth={3}
+                    stroke={isSourceNode ? '#000000' : currentNodeStroke}
+                    strokeWidth={isSourceNode ? 3 : 3}
                     rx={8}
                     ry={8}
                     style={{ cursor: 'pointer' }}
@@ -348,7 +356,7 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                     style={{ pointerEvents: 'none' }}
                     fill="white"
                   >
-                    <tspan fontWeight="bold">{[...(posNode.node.src_lemmas || []), ...(posNode.node.lemmas || [])][0] || posNode.node.id}</tspan>
+                    <tspan fontWeight="bold">{posNode.node.id.split('.v.')[0] || posNode.node.id}</tspan>
                     <tspan fontWeight="normal" fontSize={14}> ({posNode.node.id})</tspan>
                   </text>
                   {/* Definition/gloss with text wrapping */}
@@ -392,7 +400,19 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                         cursor: 'pointer'
                       }}
                     >
-                      <span style={{ fontWeight: 'bold' }}>Lemmas:</span> <span style={{ fontWeight: '500' }}>{[...(posNode.node.src_lemmas || []), ...(posNode.node.lemmas || [])].join('; ')}</span>
+                      <span style={{ fontWeight: 'bold' }}>Lemmas:</span>{' '}
+                      {(posNode.node.src_lemmas || []).map((lemma, idx) => (
+                        <span key={`src-${idx}`}>
+                          <span style={{ fontWeight: 'bold' }}>{lemma}</span>
+                          {(idx < (posNode.node.src_lemmas || []).length - 1 || (posNode.node.lemmas || []).length > 0) ? '; ' : ''}
+                        </span>
+                      ))}
+                      {(posNode.node.lemmas || []).map((lemma, idx) => (
+                        <span key={`regular-${idx}`}>
+                          <span style={{ fontWeight: '500' }}>{lemma}</span>
+                          {idx < (posNode.node.lemmas || []).length - 1 ? '; ' : ''}
+                        </span>
+                      ))}
                     </div>
                   </foreignObject>
                   {/* Examples - only show if examples exist */}
@@ -557,6 +577,9 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
               const fillColor = isParent ? parentNodeColor : childNodeColor;
               const strokeColor = isParent ? parentNodeStroke : childNodeStroke;
               
+              // Check if this node has a legacy ID beginning with 'src' for special styling
+              const isSourceNode = hasSourceLegacyId(posNode.node);
+              
               return (
                 <Group
                   key={`node-${i}`}
@@ -572,8 +595,8 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                     y={centerY}
                     x={centerX}
                     fill={fillColor}
-                    stroke={strokeColor}
-                    strokeWidth={1}
+                    stroke={isSourceNode ? '#000000' : strokeColor}
+                    strokeWidth={isSourceNode ? 2 : 1}
                     rx={4}
                     ry={4}
                     style={{ cursor: 'pointer' }}
