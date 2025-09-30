@@ -1,14 +1,33 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { TableEntry, PaginatedResult, PaginationParams, POS_LABELS, EntryRelation } from '@/lib/types';
+import { TableEntry, PaginatedResult, PaginationParams } from '@/lib/types';
 import FilterPanel, { FilterState } from './FilterPanel';
 import ColumnVisibilityPanel, { ColumnConfig, ColumnVisibilityState } from './ColumnVisibilityPanel';
+import { 
+  VERBS_COLUMNS, 
+  VERBS_COLUMN_WIDTHS, 
+  renderVerbsCell,
+  fetchVerbRelations,
+  ColumnWidthState 
+} from './DataTable.config';
 
 interface DataTableProps {
   onRowClick?: (entry: TableEntry) => void;
   searchQuery?: string;
   className?: string;
+  // Configuration props for different data types
+  columns?: ColumnConfig[];
+  defaultColumnWidths?: ColumnWidthState;
+  apiEndpoint?: string;
+  storageKeyPrefix?: string;
+  renderCell?: (
+    entry: TableEntry, 
+    columnKey: string, 
+    relationsData?: { parents: string[]; children: string[] }
+  ) => React.ReactNode;
+  fetchRelations?: (entryId: string) => Promise<{ parents: string[]; children: string[] }>;
+  moderationEndpoint?: string;
 }
 
 interface SortState {
@@ -21,65 +40,30 @@ interface SelectionState {
   selectAll: boolean;
 }
 
-interface ColumnWidthState {
-  [columnKey: string]: number;
-}
+export default function DataTable({ 
+  onRowClick, 
+  searchQuery, 
+  className,
+  columns = VERBS_COLUMNS,
+  defaultColumnWidths = VERBS_COLUMN_WIDTHS,
+  apiEndpoint = '/api/entries/paginated',
+  storageKeyPrefix = 'table',
+  renderCell = renderVerbsCell,
+  fetchRelations = fetchVerbRelations,
+  moderationEndpoint = '/api/entries/moderation',
+}: DataTableProps) {
+  // Helper functions using the provided columns and widths
+  const getDefaultVisibility = (): ColumnVisibilityState => {
+    const visibility: ColumnVisibilityState = {};
+    columns.forEach(col => {
+      visibility[col.key] = col.visible;
+    });
+    return visibility;
+  };
 
-// Define all available columns with their configurations
-const DEFAULT_COLUMNS: ColumnConfig[] = [
-  { key: 'id', label: 'ID', visible: true, sortable: true },
-  { key: 'legacy_id', label: 'Legacy ID', visible: false, sortable: true },
-  { key: 'lemmas', label: 'Lemmas', visible: true, sortable: true },
-  { key: 'gloss', label: 'Definition', visible: true, sortable: true },
-  { key: 'pos', label: 'Part of Speech', visible: false, sortable: true },
-  { key: 'lexfile', label: 'Lexfile', visible: true, sortable: true },
-  { key: 'isMwe', label: 'Multi-word Expression', visible: false, sortable: true },
-  { key: 'transitive', label: 'Transitive', visible: false, sortable: true },
-  { key: 'flagged', label: 'Flagged', visible: false, sortable: true },
-  { key: 'forbidden', label: 'Forbidden', visible: false, sortable: true },
-  { key: 'particles', label: 'Particles', visible: false, sortable: false },
-  { key: 'frames', label: 'Frames', visible: false, sortable: false },
-  { key: 'examples', label: 'Examples', visible: false, sortable: false },
-  { key: 'parentsCount', label: 'Parents', visible: true, sortable: true },
-  { key: 'childrenCount', label: 'Children', visible: true, sortable: true },
-  { key: 'createdAt', label: 'Created', visible: false, sortable: true },
-  { key: 'updatedAt', label: 'Updated', visible: false, sortable: true },
-];
-
-// Default column widths in pixels
-const DEFAULT_COLUMN_WIDTHS: ColumnWidthState = {
-  id: 120,
-  legacy_id: 150,
-  lemmas: 150,
-  gloss: 300,
-  pos: 120,
-  lexfile: 120,
-  isMwe: 100,
-  transitive: 100,
-  flagged: 100,
-  forbidden: 100,
-  particles: 120,
-  frames: 100,
-  examples: 250,
-  parentsCount: 150,
-  childrenCount: 150,
-  createdAt: 100,
-  updatedAt: 100,
-};
-
-const getDefaultVisibility = (): ColumnVisibilityState => {
-  const visibility: ColumnVisibilityState = {};
-  DEFAULT_COLUMNS.forEach(col => {
-    visibility[col.key] = col.visible;
-  });
-  return visibility;
-};
-
-const getDefaultColumnWidths = (): ColumnWidthState => {
-  return { ...DEFAULT_COLUMN_WIDTHS };
-};
-
-export default function DataTable({ onRowClick, searchQuery, className }: DataTableProps) {
+  const getDefaultColumnWidths = (): ColumnWidthState => {
+    return { ...defaultColumnWidths };
+  };
   const [data, setData] = useState<PaginatedResult<TableEntry> | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -95,7 +79,7 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
   const [columnVisibility, setColumnVisibility] = useState<ColumnVisibilityState>(() => {
     // Try to load from localStorage, fallback to defaults
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('table-column-visibility');
+      const saved = localStorage.getItem(`${storageKeyPrefix}-column-visibility`);
       if (saved) {
         try {
           return JSON.parse(saved);
@@ -110,7 +94,7 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
   const [columnWidths, setColumnWidths] = useState<ColumnWidthState>(() => {
     // Try to load from localStorage, fallback to defaults
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('table-column-widths');
+      const saved = localStorage.getItem(`${storageKeyPrefix}-column-widths`);
       if (saved) {
         try {
           return JSON.parse(saved);
@@ -146,7 +130,7 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
         }
       });
 
-      const response = await fetch(`/api/entries/paginated?${queryParams}`);
+      const response = await fetch(`${apiEndpoint}?${queryParams}`);
       if (!response.ok) {
         throw new Error('Failed to fetch data');
       }
@@ -158,7 +142,7 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
     } finally {
       setLoading(false);
     }
-  }, [currentPage, pageSize, sortState, searchQuery, filters]);
+  }, [currentPage, pageSize, sortState, searchQuery, filters, apiEndpoint]);
 
   useEffect(() => {
     fetchData();
@@ -191,7 +175,7 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
     setColumnVisibility(newVisibility);
     // Save to localStorage
     if (typeof window !== 'undefined') {
-      localStorage.setItem('table-column-visibility', JSON.stringify(newVisibility));
+      localStorage.setItem(`${storageKeyPrefix}-column-visibility`, JSON.stringify(newVisibility));
     }
   };
 
@@ -199,7 +183,7 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
     const defaultVisibility = getDefaultVisibility();
     setColumnVisibility(defaultVisibility);
     if (typeof window !== 'undefined') {
-      localStorage.setItem('table-column-visibility', JSON.stringify(defaultVisibility));
+      localStorage.setItem(`${storageKeyPrefix}-column-visibility`, JSON.stringify(defaultVisibility));
     }
   };
 
@@ -207,7 +191,7 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
     const newWidths = { ...columnWidths, [columnKey]: Math.max(50, width) }; // Minimum width of 50px
     setColumnWidths(newWidths);
     if (typeof window !== 'undefined') {
-      localStorage.setItem('table-column-widths', JSON.stringify(newWidths));
+      localStorage.setItem(`${storageKeyPrefix}-column-widths`, JSON.stringify(newWidths));
     }
   };
 
@@ -215,7 +199,7 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
     const defaultWidths = getDefaultColumnWidths();
     setColumnWidths(defaultWidths);
     if (typeof window !== 'undefined') {
-      localStorage.setItem('table-column-widths', JSON.stringify(defaultWidths));
+      localStorage.setItem(`${storageKeyPrefix}-column-widths`, JSON.stringify(defaultWidths));
     }
   };
 
@@ -225,7 +209,7 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
     setResizingColumn(columnKey);
     
     const startX = e.clientX;
-    const startWidth = columnWidths[columnKey] || DEFAULT_COLUMN_WIDTHS[columnKey] || 150;
+    const startWidth = columnWidths[columnKey] || defaultColumnWidths[columnKey] || 150;
 
     const handleMouseMove = (e: MouseEvent) => {
       const diff = e.clientX - startX;
@@ -245,7 +229,7 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
   };
 
   // Get current column configurations with visibility state
-  const currentColumns = DEFAULT_COLUMNS.map(col => ({
+  const currentColumns = columns.map(col => ({
     ...col,
     visible: columnVisibility[col.key] ?? col.visible
   }));
@@ -259,25 +243,7 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
     }
 
     try {
-      const response = await fetch(`/api/entries/${entryId}/relations`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch relations');
-      }
-      const data = await response.json();
-      
-      // Extract parent IDs (hypernyms - more general concepts this entry points to)
-      const parents = data.sourceRelations
-        .filter((rel: EntryRelation) => rel.type === 'hypernym')
-        .map((rel: EntryRelation) => rel.target?.id)
-        .filter(Boolean);
-      
-      // Extract children IDs (hyponyms - more specific concepts that point to this entry)
-      const children = data.targetRelations
-        .filter((rel: EntryRelation) => rel.type === 'hypernym')
-        .map((rel: EntryRelation) => rel.source?.id)
-        .filter(Boolean);
-      
-      const result = { parents, children };
+      const result = await fetchRelations(entryId);
       setRelationsData(prev => ({ ...prev, [entryId]: result }));
       return result;
     } catch (error) {
@@ -286,7 +252,7 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
       setRelationsData(prev => ({ ...prev, [entryId]: result }));
       return result;
     }
-  }, [relationsData]);
+  }, [relationsData, fetchRelations]);
 
   // Preload relations data when parents or children columns become visible
   useEffect(() => {
@@ -354,7 +320,7 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
     if (selection.selectedIds.size === 0) return;
 
     try {
-      const response = await fetch('/api/entries/moderation', {
+      const response = await fetch(moderationEndpoint, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -417,186 +383,13 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
     );
   };
 
-  const truncateText = (text: string, maxLength: number) => {
-    if (text.length <= maxLength) return text;
-    return text.substring(0, maxLength) + '...';
-  };
-
-  const formatDate = (date: Date) => {
-    return new Date(date).toLocaleDateString();
-  };
-
   const renderCellContent = (entry: TableEntry, columnKey: string) => {
     const entryRelations = relationsData[entry.id];
-    switch (columnKey) {
-      case 'lemmas':
-        // Concatenate src_lemmas and lemmas for display
-        const allLemmas = [...(entry.src_lemmas || []), ...(entry.lemmas || [])];
-        return (
-          <div className="flex flex-wrap gap-1">
-            {allLemmas.slice(0, 3).map((lemma, idx) => (
-              <span 
-                key={idx}
-                className="inline-block px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded"
-              >
-                {lemma}
-              </span>
-            ))}
-            {allLemmas.length > 3 && (
-              <span className="inline-block px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded">
-                +{allLemmas.length - 3}
-              </span>
-            )}
-          </div>
-        );
-      case 'gloss':
-        return (
-          <div className="text-sm text-gray-900" title={entry.gloss}>
-            {truncateText(entry.gloss, 150)}
-          </div>
-        );
-      case 'pos':
-        return (
-          <span className="inline-block px-2 py-1 text-xs bg-green-100 text-green-800 rounded font-medium">
-            {POS_LABELS[entry.pos as keyof typeof POS_LABELS] || entry.pos}
-          </span>
-        );
-      case 'lexfile':
-        return <span className="text-xs text-gray-500">{entry.lexfile.replace(/^verb\./, '')}</span>;
-      case 'isMwe':
-        return (
-          <span className={`inline-block px-2 py-1 text-xs rounded font-medium ${
-            entry.isMwe 
-              ? 'bg-purple-100 text-purple-800' 
-              : 'bg-gray-100 text-gray-600'
-          }`}>
-            {entry.isMwe ? 'Yes' : 'No'}
-          </span>
-        );
-      case 'transitive':
-        if (entry.transitive === null || entry.transitive === undefined) {
-          return <span className="text-gray-400 text-sm">N/A</span>;
-        }
-        return (
-          <span className={`inline-block px-2 py-1 text-xs rounded font-medium ${
-            entry.transitive 
-              ? 'bg-blue-100 text-blue-800' 
-              : 'bg-gray-100 text-gray-600'
-          }`}>
-            {entry.transitive ? 'Yes' : 'No'}
-          </span>
-        );
-      case 'flagged':
-        if (entry.flagged === null || entry.flagged === undefined) {
-          return <span className="text-gray-400 text-sm">N/A</span>;
-        }
-        return (
-          <span className={`inline-block px-2 py-1 text-xs rounded font-medium ${
-            entry.flagged 
-              ? 'bg-orange-100 text-orange-800' 
-              : 'bg-gray-100 text-gray-600'
-          }`}>
-            {entry.flagged ? 'Yes' : 'No'}
-          </span>
-        );
-      case 'forbidden':
-        if (entry.forbidden === null || entry.forbidden === undefined) {
-          return <span className="text-gray-400 text-sm">N/A</span>;
-        }
-        return (
-          <span className={`inline-block px-2 py-1 text-xs rounded font-medium ${
-            entry.forbidden 
-              ? 'bg-red-100 text-red-800' 
-              : 'bg-gray-100 text-gray-600'
-          }`}>
-            {entry.forbidden ? 'Yes' : 'No'}
-          </span>
-        );
-      case 'particles':
-        if (!entry.particles || entry.particles.length === 0) {
-          return <span className="text-gray-400 text-sm">None</span>;
-        }
-        return (
-          <div className="flex flex-wrap gap-1">
-            {entry.particles.slice(0, 2).map((particle, idx) => (
-              <span 
-                key={idx}
-                className="inline-block px-2 py-1 text-xs bg-orange-100 text-orange-800 rounded"
-              >
-                {particle}
-              </span>
-            ))}
-            {entry.particles.length > 2 && (
-              <span className="inline-block px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded">
-                +{entry.particles.length - 2}
-              </span>
-            )}
-          </div>
-        );
-      case 'frames':
-        if (!entry.frames || entry.frames.length === 0) {
-          return <span className="text-gray-400 text-sm">None</span>;
-        }
-        return (
-          <div className="text-xs text-gray-600" title={entry.frames.join(', ')}>
-            {entry.frames.length} frame{entry.frames.length !== 1 ? 's' : ''}
-          </div>
-        );
-      case 'examples':
-        if (!entry.examples || entry.examples.length === 0) {
-          return <span className="text-gray-400 text-sm">None</span>;
-        }
-        return (
-          <div className="space-y-1 text-xs text-gray-700 max-w-md">
-            {entry.examples.map((example, idx) => (
-              <div key={idx} className="leading-relaxed">
-                <span className="text-gray-400 mr-1">{idx + 1}.</span>
-                {example}
-              </div>
-            ))}
-          </div>
-        );
-      case 'parentsCount':
-        if (!entryRelations?.parents || entryRelations.parents.length === 0) {
-          return <span className="text-gray-400 text-sm">None</span>;
-        }
-        return (
-          <div className="space-y-1 text-xs text-gray-700 max-w-sm">
-            {entryRelations.parents.map((parentId, idx) => (
-              <div key={idx} className="font-mono text-blue-600">
-                {parentId}
-              </div>
-            ))}
-          </div>
-        );
-      case 'childrenCount':
-        if (!entryRelations?.children || entryRelations.children.length === 0) {
-          return <span className="text-gray-400 text-sm">None</span>;
-        }
-        return (
-          <div className="space-y-1 text-xs text-gray-700 max-w-sm">
-            {entryRelations.children.map((childId, idx) => (
-              <div key={idx} className="font-mono text-green-600">
-                {childId}
-              </div>
-            ))}
-          </div>
-        );
-      case 'id':
-        return <span className="text-sm font-mono text-blue-600">{entry.id}</span>;
-      case 'legacy_id':
-        return <span className="text-sm font-mono text-gray-600">{entry.legacy_id}</span>;
-      case 'createdAt':
-        return <span className="text-xs text-gray-500">{formatDate(entry.createdAt)}</span>;
-      case 'updatedAt':
-        return <span className="text-xs text-gray-500">{formatDate(entry.updatedAt)}</span>;
-      default:
-        return <span className="text-sm text-gray-900">{String((entry as unknown as Record<string, unknown>)[columnKey] || '')}</span>;
-    }
+    return renderCell(entry, columnKey, entryRelations);
   };
 
   const getColumnWidth = (columnKey: string) => {
-    const width = columnWidths[columnKey] || DEFAULT_COLUMN_WIDTHS[columnKey] || 150;
+    const width = columnWidths[columnKey] || defaultColumnWidths[columnKey] || 150;
     return `${width}px`;
   };
 
