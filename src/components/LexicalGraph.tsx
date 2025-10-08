@@ -47,6 +47,11 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
     return node.legacy_id.startsWith('src');
   };
 
+  // Helper function to remove POS prefix from lexfile
+  const cleanLexfile = (lexfile: string): string => {
+    return lexfile.replace(/^(verb|noun|adj|adv|satellite)\./i, '');
+  };
+
   // Helper function to estimate text height based on content and width
   const estimateTextHeight = (text: string, width: number, fontSize: number = 13, lineHeight: number = 1.3): number => {
     // Approximate character width based on font size
@@ -63,8 +68,16 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
     const contentWidth = nodeWidth - 24; // Account for padding
     let height = 20; // Top padding
     height += 25; // Title height
+    height += 13; // Category (lexfile) height
     height += 45; // Definition section height (already has good spacing)
-    height += 35; // Lemmas section height (already has good spacing)
+    
+    // Calculate dynamic height for lemmas based on content
+    const allLemmas = node.lemmas || [];
+    const srcLemmas = node.src_lemmas || [];
+    const regularLemmas = allLemmas.filter(lemma => !srcLemmas.includes(lemma));
+    const lemmasText = [...regularLemmas, ...srcLemmas].join('; ');
+    const lemmasHeight = Math.max(30, estimateTextHeight(`Lemmas: ${lemmasText}`, contentWidth, 13) + 5);
+    height += lemmasHeight;
     
     if (node.examples && node.examples.length > 0) {
       const exampleText = `Examples: ${node.examples.join('; ')}`;
@@ -291,7 +304,15 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
               
               // Calculate Y positions for each section using the same logic as height calculation
               const contentWidth = nodeWidth - 24; // Account for padding
-              let sectionY = centerY + 130; // Start after examples base position
+              
+              // Calculate lemmas height
+              const allLemmas = posNode.node.lemmas || [];
+              const srcLemmas = posNode.node.src_lemmas || [];
+              const regularLemmas = allLemmas.filter(lemma => !srcLemmas.includes(lemma));
+              const lemmasText = [...regularLemmas, ...srcLemmas].join('; ');
+              const lemmasHeight = Math.max(30, estimateTextHeight(`Lemmas: ${lemmasText}`, contentWidth, 13) + 5);
+              
+              let sectionY = centerY + 100 + lemmasHeight; // Start after lemmas
               
               let examplesHeight = 0;
               if (posNode.node.examples && posNode.node.examples.length > 0) {
@@ -359,10 +380,23 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                     <tspan fontWeight="bold">{posNode.node.id.split('.v.')[0] || posNode.node.id}</tspan>
                     <tspan fontWeight="normal" fontSize={14}> ({posNode.node.id})</tspan>
                   </text>
+                  {/* Category (lexfile) */}
+                  <text
+                    x={centerX + 12}
+                    y={centerY + 48}
+                    fontSize={11}
+                    fontFamily="Arial"
+                    textAnchor="start"
+                    style={{ pointerEvents: 'none' }}
+                    fill="rgba(255, 255, 255, 0.75)"
+                    fontStyle="italic"
+                  >
+                    {cleanLexfile(posNode.node.lexfile)}
+                  </text>
                   {/* Definition/gloss with text wrapping */}
                   <foreignObject
                     x={centerX + 12}
-                    y={centerY + 50}
+                    y={centerY + 55}
                     width={nodeWidth - 24}
                     height={40}
                   >
@@ -385,9 +419,9 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                   {/* Lemmas with text wrapping */}
                   <foreignObject
                     x={centerX + 12}
-                    y={centerY + 95}
+                    y={centerY + 100}
                     width={nodeWidth - 24}
-                    height={30}
+                    height={lemmasHeight - 5}
                   >
                       <div
                       style={{
@@ -434,7 +468,7 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                   {posNode.node.examples && posNode.node.examples.length > 0 && (
                     <foreignObject
                       x={centerX + 12}
-                      y={centerY + 130}
+                      y={centerY + 100 + lemmasHeight}
                       width={nodeWidth - 24}
                       height={examplesHeight - 5}
                     >

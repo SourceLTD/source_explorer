@@ -48,9 +48,12 @@ export async function updateSession(request: NextRequest) {
   // Define public routes that don't require authentication
   const publicRoutes = ['/login', '/auth/confirm', '/auth/check-email', '/error']
   const isPublicRoute = publicRoutes.some(route => request.nextUrl.pathname.startsWith(route))
+  
+  // Allow all API routes without authentication
+  const isApiRoute = request.nextUrl.pathname.startsWith('/api/')
 
-  // Redirect unauthenticated users to login (except for public routes)
-  if (!user && !isPublicRoute) {
+  // Redirect unauthenticated users to login (except for public routes and API routes)
+  if (!user && !isPublicRoute && !isApiRoute) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)

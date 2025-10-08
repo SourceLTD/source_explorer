@@ -5,10 +5,6 @@ interface RouteParams {
   params: Promise<{ id: string }>;
 }
 
-// Enable static route caching - data changes infrequently
-export const dynamic = 'force-static';
-export const revalidate = 3600; // Revalidate every hour
-
 export async function GET(request: NextRequest, { params }: RouteParams) {
   const { id } = await params;
 

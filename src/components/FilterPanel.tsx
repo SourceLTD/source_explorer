@@ -122,19 +122,23 @@ export default function FilterPanel({
     value !== undefined && value !== ''
   ).length;
 
-  // Known lexfile values from the seed data
+  // Verb lexfiles from WordNet
   const lexfileOptions = [
-    'verb.stative',
-    'verb.possession', 
-    'verb.communication',
-    'verb.creation',
     'verb.body',
+    'verb.change',
+    'verb.cognition',
+    'verb.communication',
+    'verb.competition',
+    'verb.consumption',
+    'verb.contact',
+    'verb.creation',
+    'verb.emotion',
+    'verb.motion',
     'verb.perception',
-    'noun.artifact',
-    'noun.person',
-    'noun.animal',
-    'adj.all',
-    'adv.all'
+    'verb.possession',
+    'verb.social',
+    'verb.stative',
+    'verb.weather'
   ];
 
   return (
@@ -264,7 +268,7 @@ export default function FilterPanel({
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Lexical File</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Lexfile</label>
                 <select
                   value={filters.lexfile || ''}
                   onChange={(e) => updateFilter('lexfile', e.target.value)}

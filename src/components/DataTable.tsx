@@ -438,7 +438,7 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
         
         return (
           <div className="flex flex-wrap gap-1">
-            {displayLemmas.slice(0, 3).map((lemma, idx) => {
+            {displayLemmas.map((lemma, idx) => {
               const isSrcLemma = srcLemmas.includes(lemma);
               return (
                 <span 
@@ -453,11 +453,6 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
                 </span>
               );
             })}
-            {displayLemmas.length > 3 && (
-              <span className="inline-block px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded">
-                +{displayLemmas.length - 3}
-              </span>
-            )}
           </div>
         );
       case 'gloss':
@@ -665,7 +660,7 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
           <p>Error loading data: {error}</p>
           <button 
             onClick={fetchData}
-            className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+            className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 cursor-pointer"
           >
             Retry
           </button>
@@ -716,7 +711,7 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
             </div>
             <button
               onClick={handleResetColumnWidths}
-              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent cursor-pointer"
               title="Reset column widths to defaults"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -759,7 +754,7 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
             <select
               value={pageSize}
               onChange={(e) => handlePageSizeChange(parseInt(e.target.value))}
-              className="px-3 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
+              className="px-3 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 cursor-pointer"
             >
               <option value={10}>10</option>
               <option value={20}>20</option>
@@ -865,7 +860,7 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
           <button
             onClick={() => handlePageChange(data.page - 1)}
             disabled={!data.hasPrev || loading}
-            className="px-4 py-2 text-sm font-medium border border-gray-300 rounded-md hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed bg-white text-gray-700"
+            className="px-4 py-2 text-sm font-medium border border-gray-300 rounded-md hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed bg-white text-gray-700 cursor-pointer"
           >
             Previous
           </button>
@@ -884,7 +879,7 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
                     pageNum === data.page
                       ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
                       : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'
-                  } disabled:opacity-50 transition-colors`}
+                  } disabled:opacity-50 transition-colors cursor-pointer`}
                 >
                   {pageNum}
                 </button>
@@ -895,7 +890,7 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
           <button
             onClick={() => handlePageChange(data.page + 1)}
             disabled={!data.hasNext || loading}
-            className="px-4 py-2 text-sm font-medium border border-gray-300 rounded-md hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed bg-white text-gray-700"
+            className="px-4 py-2 text-sm font-medium border border-gray-300 rounded-md hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed bg-white text-gray-700 cursor-pointer"
           >
             Next
           </button>

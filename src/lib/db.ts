@@ -272,6 +272,7 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
                 src_lemmas: true,
                 gloss: true,
                 pos: true,
+                lexfile: true,
                 examples: true,
               }
             }
@@ -290,6 +291,7 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
                 src_lemmas: true,
                 gloss: true,
                 pos: true,
+                lexfile: true,
                 examples: true,
               }
             }
@@ -313,6 +315,7 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
       src_lemmas: rel.target!.src_lemmas,
       gloss: rel.target!.gloss,
       pos: rel.target!.pos,
+      lexfile: rel.target!.lexfile,
       examples: rel.target!.examples,
       parents: [],
       children: [],
@@ -331,6 +334,7 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
       src_lemmas: rel.source!.src_lemmas,
       gloss: rel.source!.gloss,
       pos: rel.source!.pos,
+      lexfile: rel.source!.lexfile,
       examples: rel.source!.examples,
       parents: [],
       children: [],
@@ -349,6 +353,7 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
       src_lemmas: rel.target!.src_lemmas,
       gloss: rel.target!.gloss,
       pos: rel.target!.pos,
+      lexfile: rel.target!.lexfile,
       examples: rel.target!.examples,
       parents: [],
       children: [],
@@ -367,6 +372,7 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
       src_lemmas: rel.target!.src_lemmas,
       gloss: rel.target!.gloss,
       pos: rel.target!.pos,
+      lexfile: rel.target!.lexfile,
       examples: rel.target!.examples,
       parents: [],
       children: [],
@@ -385,6 +391,7 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
       src_lemmas: rel.target!.src_lemmas,
       gloss: rel.target!.gloss,
       pos: rel.target!.pos,
+      lexfile: rel.target!.lexfile,
       examples: rel.target!.examples,
       parents: [],
       children: [],
@@ -400,6 +407,7 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
     src_lemmas: entry.src_lemmas,
     gloss: entry.gloss,
     pos: entry.pos,
+    lexfile: entry.lexfile,
     examples: entry.examples,
     flagged: entry.flagged ?? undefined,
     flaggedReason: (entry as PrismaEntryWithOptionalFields).flaggedReason || undefined,
@@ -432,6 +440,7 @@ async function getAncestorPathInternal(entryId: string): Promise<GraphNode[]> {
       legacy_id: string;
       gloss: string;
       pos: string;
+      lexfile: string;
       lemmas: string[];
       src_lemmas: string[];
       examples: string[];
@@ -444,6 +453,7 @@ async function getAncestorPathInternal(entryId: string): Promise<GraphNode[]> {
           e.legacy_id,
           e.gloss,
           e.pos,
+          e.lexfile,
           e.lemmas,
           e.src_lemmas,
           e.examples,
@@ -454,20 +464,26 @@ async function getAncestorPathInternal(entryId: string): Promise<GraphNode[]> {
         UNION ALL
         
         -- Recursive case: find parent (hypernym)
+        -- If there are multiple parents, pick the first one alphabetically
         SELECT 
           e.id,
           e.legacy_id,
           e.gloss,
           e.pos,
+          e.lexfile,
           e.lemmas,
           e.src_lemmas,
           e.examples,
           ap.depth + 1 as depth
-        FROM lexical_entries e
-        INNER JOIN entry_relations r ON r.target_id = e.id
-        INNER JOIN ancestor_path ap ON r.source_id = ap.id
-        WHERE r.type = 'hypernym'
-        LIMIT 1
+        FROM ancestor_path ap
+        INNER JOIN LATERAL (
+          SELECT e.*
+          FROM entry_relations r
+          INNER JOIN lexical_entries e ON r.target_id = e.id
+          WHERE r.source_id = ap.id AND r.type = 'hypernym'
+          ORDER BY e.id
+          LIMIT 1
+        ) e ON true
       )
       SELECT * FROM ancestor_path
       ORDER BY depth DESC
@@ -484,6 +500,7 @@ async function getAncestorPathInternal(entryId: string): Promise<GraphNode[]> {
     src_lemmas: result.src_lemmas,
     gloss: result.gloss,
     pos: result.pos,
+    lexfile: result.lexfile,
     examples: result.examples,
     parents: [],
     children: [],

@@ -47,6 +47,7 @@ export interface GraphNode {
   src_lemmas: string[];
   gloss: string;
   pos: string;
+  lexfile: string;
   examples: string[];
   flagged?: boolean;
   flaggedReason?: string;
