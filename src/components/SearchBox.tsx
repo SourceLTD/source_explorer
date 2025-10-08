@@ -27,7 +27,7 @@ export default function SearchBox({ onSelectResult, onSearchChange, placeholder 
 
     setIsLoading(true);
     try {
-      const response = await fetch(`/api/search?q=${encodeURIComponent(searchQuery)}&limit=10`);
+      const response = await fetch(`/api/search?q=${encodeURIComponent(searchQuery)}&limit=100`);
       if (response.ok) {
         const searchResults = await response.json();
         setResults(searchResults);
@@ -123,7 +123,7 @@ export default function SearchBox({ onSelectResult, onSearchChange, placeholder 
       </div>
 
       {isOpen && results.length > 0 && (
-        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-96 overflow-y-auto">
+        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-[600px] overflow-y-auto">
                       {results.map((result) => (
             <button
               key={result.id}
@@ -137,6 +137,14 @@ export default function SearchBox({ onSelectResult, onSearchChange, placeholder 
                     ({result.pos})
                   </span>
                 </div>
+                {(() => {
+                  const allLemmas = [...(result.src_lemmas || []), ...(result.lemmas || [])];
+                  return allLemmas.length > 0 && (
+                    <div className="text-sm text-blue-600 mb-1 font-medium">
+                      {allLemmas.join(', ')}
+                    </div>
+                  );
+                })()}
                 <div className="text-sm text-gray-600 line-clamp-2 w-full">
                   {result.gloss}
                 </div>

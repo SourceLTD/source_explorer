@@ -283,12 +283,14 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
             </p>
           </div>
           
-          <div className="flex items-center gap-4">
-            <SearchBox 
-              onSelectResult={handleSearchResult}
-              onSearchChange={handleSearchQueryChange}
-              placeholder="Search graph..."
-            />
+          <div className="flex items-center gap-4 flex-1 justify-end">
+            <div className="flex-1 max-w-2xl">
+              <SearchBox 
+                onSelectResult={handleSearchResult}
+                onSearchChange={handleSearchQueryChange}
+                placeholder="Search graph..."
+              />
+            </div>
             <ViewToggle 
               currentView="graph"
               onViewChange={(view: ViewMode) => {

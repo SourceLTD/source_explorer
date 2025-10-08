@@ -127,7 +127,40 @@ export async function getEntryById(id: string): Promise<EntryWithRelations | nul
 }
 
 export async function searchEntries(query: string, limit = 20): Promise<SearchResult[]> {
-  // Use PostgreSQL full-text search
+  // If query contains a dot, only search IDs
+  const containsDot = query.includes('.');
+  
+  if (containsDot) {
+    // Only search ID fields when dot is present
+    const results = await withRetry(
+      () => prisma.$queryRaw<SearchResult[]>`
+      SELECT 
+        id,
+        legacy_id,
+        lemmas,
+        src_lemmas,
+        gloss,
+        pos,
+        CASE 
+          WHEN id ILIKE ${query} THEN 1000
+          WHEN id ILIKE ${query + '%'} THEN 500
+          WHEN legacy_id ILIKE ${query + '%'} THEN 400
+          ELSE 0
+        END as rank
+      FROM lexical_entries
+      WHERE 
+        id ILIKE ${query + '%'} OR
+        legacy_id ILIKE ${query + '%'}
+      ORDER BY rank DESC, id
+      LIMIT ${limit}
+    `,
+      undefined,
+      `searchEntries(${query})`
+    );
+    return results;
+  }
+  
+  // Use PostgreSQL full-text search for regular queries
   const results = await withRetry(
     () => prisma.$queryRaw<SearchResult[]>`
     SELECT 
