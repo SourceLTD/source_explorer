@@ -401,18 +401,31 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                       }}
                     >
                       <span style={{ fontWeight: 'bold' }}>Lemmas:</span>{' '}
-                      {(posNode.node.src_lemmas || []).map((lemma, idx) => (
-                        <span key={`src-${idx}`}>
-                          <span style={{ fontWeight: 'bold' }}>{lemma}</span>
-                          {(idx < (posNode.node.src_lemmas || []).length - 1 || (posNode.node.lemmas || []).length > 0) ? '; ' : ''}
-                        </span>
-                      ))}
-                      {(posNode.node.lemmas || []).map((lemma, idx) => (
-                        <span key={`regular-${idx}`}>
-                          <span style={{ fontWeight: '500' }}>{lemma}</span>
-                          {idx < (posNode.node.lemmas || []).length - 1 ? '; ' : ''}
-                        </span>
-                      ))}
+                      {(() => {
+                        const regularLemmas = posNode.node.lemmas || [];
+                        const srcLemmas = (posNode.node.src_lemmas || []).filter(
+                          lemma => !regularLemmas.includes(lemma)
+                        );
+                        const totalRegular = regularLemmas.length;
+                        const totalSrc = srcLemmas.length;
+                        
+                        return (
+                          <>
+                            {regularLemmas.map((lemma, idx) => (
+                              <span key={`regular-${idx}`}>
+                                <span style={{ fontWeight: '500' }}>{lemma}</span>
+                                {(idx < totalRegular - 1 || totalSrc > 0) ? '; ' : ''}
+                              </span>
+                            ))}
+                            {srcLemmas.map((lemma, idx) => (
+                              <span key={`src-${idx}`}>
+                                <span style={{ fontWeight: 'bold' }}>{lemma}</span>
+                                {idx < totalSrc - 1 ? '; ' : ''}
+                              </span>
+                            ))}
+                          </>
+                        );
+                      })()}
                     </div>
                   </foreignObject>
                   {/* Examples - only show if examples exist */}

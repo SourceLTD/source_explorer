@@ -8,6 +8,7 @@ import SearchBox from './SearchBox';
 import Breadcrumbs from './Breadcrumbs';
 import ViewToggle, { ViewMode } from './ViewToggle';
 import SignOutButton from './SignOutButton';
+import RootNodesView from './RootNodesView';
 
 interface WordNetExplorerProps {
   initialEntryId?: string;
@@ -98,6 +99,15 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
     // Reset the ref to allow loading the new node
     lastLoadedEntryRef.current = null;
     updateUrlParam(id);
+  };
+
+  const handleHomeClick = () => {
+    // Clear the current node and return to home view
+    lastLoadedEntryRef.current = null;
+    setCurrentNode(null);
+    setBreadcrumbs([]);
+    // Clear the URL parameter
+    router.push('/graph', { scroll: false });
   };
 
   const startEditing = (field: 'lemmas' | 'gloss' | 'examples') => {
@@ -753,7 +763,8 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
               <div className="mb-4">
                 <Breadcrumbs 
                   items={breadcrumbs} 
-                  onNavigate={handleBreadcrumbNavigate} 
+                  onNavigate={handleBreadcrumbNavigate}
+                  onHomeClick={handleHomeClick}
                 />
               </div>
               
@@ -773,12 +784,7 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
                   <p className="text-gray-500">Loading graph...</p>
                 </div>
               ) : (
-                <div className="text-center text-gray-400">
-                  <svg className="h-24 w-24 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                  </svg>
-                  <p>Select an entry to visualize its relations</p>
-                </div>
+                <RootNodesView onNodeClick={handleNodeClick} />
               )}
             </div>
           )}
