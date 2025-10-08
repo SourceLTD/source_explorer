@@ -1,3 +1,4 @@
+import { unstable_cache } from 'next/cache';
 import { prisma } from './prisma';
 import { withRetry } from './db-utils';
 import { RelationType, type LexicalEntry, type EntryWithRelations, type GraphNode, type SearchResult, type PaginationParams, type PaginatedResult, type TableEntry } from './types';
@@ -249,117 +250,148 @@ export async function updateEntry(id: string, updates: Partial<Pick<LexicalEntry
   };
 }
 
-export async function getGraphNode(entryId: string): Promise<GraphNode | null> {
-  const entry = await getEntryById(entryId);
+// Internal implementation without caching
+async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> {
+  // Use a more efficient query that only fetches what we need
+  const entry = await withRetry(
+    () => prisma.lexicalEntry.findUnique({
+      where: { id: entryId },
+      include: {
+        sourceRelations: {
+          where: {
+            type: {
+              in: ['hypernym', 'entails', 'causes', 'also_see']
+            }
+          },
+          include: {
+            target: {
+              select: {
+                id: true,
+                legacy_id: true,
+                lemmas: true,
+                src_lemmas: true,
+                gloss: true,
+                pos: true,
+                examples: true,
+              }
+            }
+          }
+        },
+        targetRelations: {
+          where: {
+            type: 'hypernym' // Only need hypernyms for children
+          },
+          include: {
+            source: {
+              select: {
+                id: true,
+                legacy_id: true,
+                lemmas: true,
+                src_lemmas: true,
+                gloss: true,
+                pos: true,
+                examples: true,
+              }
+            }
+          }
+        }
+      }
+    }),
+    undefined,
+    `getGraphNodeInternal(${entryId})`
+  ) as unknown as PrismaEntryWithRelations | null;
+
   if (!entry) return null;
 
   // Get parents (hypernyms) - these are broader concepts
-  // Since DB stores: child → parent, type = hypernym
-  // When current entry is the SOURCE (child), the TARGET is the parent (hypernym)
-  const parents: GraphNode[] = [];
-  for (const relation of entry.sourceRelations) {
-    if (relation.type === RelationType.HYPERNYM && relation.target) {
-      parents.push({
-        id: relation.target.id,
-        legacy_id: relation.target.legacy_id,
-        lemmas: relation.target.lemmas,
-        src_lemmas: relation.target.src_lemmas,
-        gloss: relation.target.gloss,
-        pos: relation.target.pos,
-        examples: relation.target.examples,
-        parents: [],
-        children: [],
-        entails: [],
-        causes: [],
-        alsoSee: [],
-      });
-    }
-  }
+  const parents: GraphNode[] = entry.sourceRelations
+    .filter(rel => rel.type === 'hypernym' && rel.target)
+    .map(rel => ({
+      id: rel.target!.id,
+      legacy_id: rel.target!.legacy_id,
+      lemmas: rel.target!.lemmas,
+      src_lemmas: rel.target!.src_lemmas,
+      gloss: rel.target!.gloss,
+      pos: rel.target!.pos,
+      examples: rel.target!.examples,
+      parents: [],
+      children: [],
+      entails: [],
+      causes: [],
+      alsoSee: [],
+    }));
 
-  // Get children (hyponyms) - these are more specific concepts  
-  // When current entry is the TARGET (parent), the SOURCE is the child (hyponym)
-  const children: GraphNode[] = [];
-  for (const relation of entry.targetRelations) {
-    if (relation.type === RelationType.HYPERNYM && relation.source) {
-      children.push({
-        id: relation.source.id,
-        legacy_id: relation.source.legacy_id,
-        lemmas: relation.source.lemmas,
-        src_lemmas: relation.source.src_lemmas,
-        gloss: relation.source.gloss,
-        pos: relation.source.pos,
-        examples: relation.source.examples,
-        parents: [],
-        children: [],
-        entails: [],
-        causes: [],
-        alsoSee: [],
-      });
-    }
-  }
+  // Get children (hyponyms) - these are more specific concepts
+  const children: GraphNode[] = entry.targetRelations
+    .filter(rel => rel.type === 'hypernym' && rel.source)
+    .map(rel => ({
+      id: rel.source!.id,
+      legacy_id: rel.source!.legacy_id,
+      lemmas: rel.source!.lemmas,
+      src_lemmas: rel.source!.src_lemmas,
+      gloss: rel.source!.gloss,
+      pos: rel.source!.pos,
+      examples: rel.source!.examples,
+      parents: [],
+      children: [],
+      entails: [],
+      causes: [],
+      alsoSee: [],
+    }));
 
-  // Get entails relationships - when current entry is the SOURCE
-  const entails: GraphNode[] = [];
-  for (const relation of entry.sourceRelations) {
-    if (relation.type === RelationType.ENTAILS && relation.target) {
-      entails.push({
-        id: relation.target.id,
-        legacy_id: relation.target.legacy_id,
-        lemmas: relation.target.lemmas,
-        src_lemmas: relation.target.src_lemmas,
-        gloss: relation.target.gloss,
-        pos: relation.target.pos,
-        examples: relation.target.examples,
-        parents: [],
-        children: [],
-        entails: [],
-        causes: [],
-        alsoSee: [],
-      });
-    }
-  }
+  // Get entails relationships
+  const entails: GraphNode[] = entry.sourceRelations
+    .filter(rel => rel.type === 'entails' && rel.target)
+    .map(rel => ({
+      id: rel.target!.id,
+      legacy_id: rel.target!.legacy_id,
+      lemmas: rel.target!.lemmas,
+      src_lemmas: rel.target!.src_lemmas,
+      gloss: rel.target!.gloss,
+      pos: rel.target!.pos,
+      examples: rel.target!.examples,
+      parents: [],
+      children: [],
+      entails: [],
+      causes: [],
+      alsoSee: [],
+    }));
 
-  // Get causes relationships - when current entry is the SOURCE
-  const causes: GraphNode[] = [];
-  for (const relation of entry.sourceRelations) {
-    if (relation.type === RelationType.CAUSES && relation.target) {
-      causes.push({
-        id: relation.target.id,
-        legacy_id: relation.target.legacy_id,
-        lemmas: relation.target.lemmas,
-        src_lemmas: relation.target.src_lemmas,
-        gloss: relation.target.gloss,
-        pos: relation.target.pos,
-        examples: relation.target.examples,
-        parents: [],
-        children: [],
-        entails: [],
-        causes: [],
-        alsoSee: [],
-      });
-    }
-  }
+  // Get causes relationships
+  const causes: GraphNode[] = entry.sourceRelations
+    .filter(rel => rel.type === 'causes' && rel.target)
+    .map(rel => ({
+      id: rel.target!.id,
+      legacy_id: rel.target!.legacy_id,
+      lemmas: rel.target!.lemmas,
+      src_lemmas: rel.target!.src_lemmas,
+      gloss: rel.target!.gloss,
+      pos: rel.target!.pos,
+      examples: rel.target!.examples,
+      parents: [],
+      children: [],
+      entails: [],
+      causes: [],
+      alsoSee: [],
+    }));
 
-  // Get also_see relationships - when current entry is the SOURCE
-  const alsoSee: GraphNode[] = [];
-  for (const relation of entry.sourceRelations) {
-    if (relation.type === RelationType.ALSO_SEE && relation.target) {
-      alsoSee.push({
-        id: relation.target.id,
-        legacy_id: relation.target.legacy_id,
-        lemmas: relation.target.lemmas,
-        src_lemmas: relation.target.src_lemmas,
-        gloss: relation.target.gloss,
-        pos: relation.target.pos,
-        examples: relation.target.examples,
-        parents: [],
-        children: [],
-        entails: [],
-        causes: [],
-        alsoSee: [],
-      });
-    }
-  }
+  // Get also_see relationships
+  const alsoSee: GraphNode[] = entry.sourceRelations
+    .filter(rel => rel.type === 'also_see' && rel.target)
+    .map(rel => ({
+      id: rel.target!.id,
+      legacy_id: rel.target!.legacy_id,
+      lemmas: rel.target!.lemmas,
+      src_lemmas: rel.target!.src_lemmas,
+      gloss: rel.target!.gloss,
+      pos: rel.target!.pos,
+      examples: rel.target!.examples,
+      parents: [],
+      children: [],
+      entails: [],
+      causes: [],
+      alsoSee: [],
+    }));
 
   return {
     id: entry.id,
@@ -370,9 +402,9 @@ export async function getGraphNode(entryId: string): Promise<GraphNode | null> {
     pos: entry.pos,
     examples: entry.examples,
     flagged: entry.flagged ?? undefined,
-    flaggedReason: entry.flaggedReason || undefined,
+    flaggedReason: (entry as PrismaEntryWithOptionalFields).flaggedReason || undefined,
     forbidden: entry.forbidden ?? undefined,
-    forbiddenReason: entry.forbiddenReason || undefined,
+    forbiddenReason: (entry as PrismaEntryWithOptionalFields).forbiddenReason || undefined,
     parents,
     children,
     entails,
@@ -381,27 +413,95 @@ export async function getGraphNode(entryId: string): Promise<GraphNode | null> {
   };
 }
 
-export async function getAncestorPath(entryId: string): Promise<GraphNode[]> {
-  const path: GraphNode[] = [];
-  let currentId = entryId;
-
-  while (currentId) {
-    const node = await getGraphNode(currentId);
-    if (!node) break;
-
-    path.unshift(node);
-
-    // Find the first parent (hypernym) to continue the path
-    const parent = node.parents[0];
-    if (parent) {
-      currentId = parent.id;
-    } else {
-      break;
-    }
+// Cached wrapper for getGraphNode
+export const getGraphNode = unstable_cache(
+  async (entryId: string) => getGraphNodeInternal(entryId),
+  ['graph-node'],
+  {
+    revalidate: 3600, // Cache for 1 hour
+    tags: ['graph-node'],
   }
+);
 
-  return path;
+// Internal implementation without caching
+async function getAncestorPathInternal(entryId: string): Promise<GraphNode[]> {
+  // Use recursive CTE to get entire ancestor path in a single query
+  const results = await withRetry(
+    () => prisma.$queryRaw<Array<{
+      id: string;
+      legacy_id: string;
+      gloss: string;
+      pos: string;
+      lemmas: string[];
+      src_lemmas: string[];
+      examples: string[];
+      depth: number;
+    }>>`
+      WITH RECURSIVE ancestor_path AS (
+        -- Base case: start with the given entry
+        SELECT 
+          e.id,
+          e.legacy_id,
+          e.gloss,
+          e.pos,
+          e.lemmas,
+          e.src_lemmas,
+          e.examples,
+          0 as depth
+        FROM lexical_entries e
+        WHERE e.id = ${entryId}
+        
+        UNION ALL
+        
+        -- Recursive case: find parent (hypernym)
+        SELECT 
+          e.id,
+          e.legacy_id,
+          e.gloss,
+          e.pos,
+          e.lemmas,
+          e.src_lemmas,
+          e.examples,
+          ap.depth + 1 as depth
+        FROM lexical_entries e
+        INNER JOIN entry_relations r ON r.target_id = e.id
+        INNER JOIN ancestor_path ap ON r.source_id = ap.id
+        WHERE r.type = 'hypernym'
+        LIMIT 1
+      )
+      SELECT * FROM ancestor_path
+      ORDER BY depth DESC
+    `,
+    undefined,
+    `getAncestorPath(${entryId})`
+  );
+
+  // Convert to GraphNode format (without nested relations for efficiency)
+  return results.map(result => ({
+    id: result.id,
+    legacy_id: result.legacy_id,
+    lemmas: result.lemmas,
+    src_lemmas: result.src_lemmas,
+    gloss: result.gloss,
+    pos: result.pos,
+    examples: result.examples,
+    parents: [],
+    children: [],
+    entails: [],
+    causes: [],
+    alsoSee: [],
+  }));
 }
+
+// Cached wrapper for getAncestorPath
+export const getAncestorPath = unstable_cache(
+  async (entryId: string) => getAncestorPathInternal(entryId),
+  ['ancestor-path'],
+  {
+    revalidate: 3600, // Cache for 1 hour
+    tags: ['ancestor-path'],
+  }
+);
 
 export async function updateModerationStatus(
   ids: string[], 

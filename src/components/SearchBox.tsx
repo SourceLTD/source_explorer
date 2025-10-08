@@ -138,10 +138,22 @@ export default function SearchBox({ onSelectResult, onSearchChange, placeholder 
                   </span>
                 </div>
                 {(() => {
-                  const allLemmas = [...(result.src_lemmas || []), ...(result.lemmas || [])];
-                  return allLemmas.length > 0 && (
+                  const allLemmas = result.lemmas || [];
+                  const srcLemmas = result.src_lemmas || [];
+                  // Only show regular lemmas that are NOT in src_lemmas
+                  const regularLemmas = allLemmas.filter(lemma => !srcLemmas.includes(lemma));
+                  const hasLemmas = regularLemmas.length > 0 || srcLemmas.length > 0;
+                  
+                  return hasLemmas && (
                     <div className="text-sm text-blue-600 mb-1 font-medium">
-                      {allLemmas.join(', ')}
+                      {regularLemmas.join(', ')}
+                      {regularLemmas.length > 0 && srcLemmas.length > 0 && ', '}
+                      {srcLemmas.map((lemma, idx) => (
+                        <span key={idx}>
+                          <strong>{lemma}</strong>
+                          {idx < srcLemmas.length - 1 && ', '}
+                        </span>
+                      ))}
                     </div>
                   );
                 })()}

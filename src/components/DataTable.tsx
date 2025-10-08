@@ -430,21 +430,32 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
     const entryRelations = relationsData[entry.id];
     switch (columnKey) {
       case 'lemmas':
-        // Concatenate src_lemmas and lemmas for display
-        const allLemmas = [...(entry.src_lemmas || []), ...(entry.lemmas || [])];
+        // Display regular lemmas first, then src_lemmas in bold at the end
+        const allLemmas = entry.lemmas || [];
+        const srcLemmas = entry.src_lemmas || [];
+        const regularLemmas = allLemmas.filter(lemma => !srcLemmas.includes(lemma));
+        const displayLemmas = [...regularLemmas, ...srcLemmas];
+        
         return (
           <div className="flex flex-wrap gap-1">
-            {allLemmas.slice(0, 3).map((lemma, idx) => (
-              <span 
-                key={idx}
-                className="inline-block px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded"
-              >
-                {lemma}
-              </span>
-            ))}
-            {allLemmas.length > 3 && (
+            {displayLemmas.slice(0, 3).map((lemma, idx) => {
+              const isSrcLemma = srcLemmas.includes(lemma);
+              return (
+                <span 
+                  key={idx}
+                  className={`inline-block px-2 py-1 text-xs rounded ${
+                    isSrcLemma 
+                      ? 'bg-blue-100 text-blue-800 font-bold' 
+                      : 'bg-blue-100 text-blue-800'
+                  }`}
+                >
+                  {lemma}
+                </span>
+              );
+            })}
+            {displayLemmas.length > 3 && (
               <span className="inline-block px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded">
-                +{allLemmas.length - 3}
+                +{displayLemmas.length - 3}
               </span>
             )}
           </div>

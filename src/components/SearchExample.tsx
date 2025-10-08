@@ -92,7 +92,12 @@ function EntryCard({ entry }: { entry: LexicalEntry }) {
     <div className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
       <div className="flex items-start justify-between mb-2">
         <h3 className="font-semibold text-lg text-blue-600">
-          {[...(entry.src_lemmas || []), ...(entry.lemmas || [])][0] || entry.id}
+          {(() => {
+            const allLemmas = entry.lemmas || [];
+            const srcLemmas = entry.src_lemmas || [];
+            const regularLemmas = allLemmas.filter(lemma => !srcLemmas.includes(lemma));
+            return [...regularLemmas, ...srcLemmas][0] || entry.id;
+          })()}
         </h3>
         <div className="flex gap-2">
           <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">
@@ -109,12 +114,23 @@ function EntryCard({ entry }: { entry: LexicalEntry }) {
       <p className="text-gray-700 mb-3">{entry.gloss}</p>
       
       {(() => {
-        const allLemmas = [...(entry.src_lemmas || []), ...(entry.lemmas || [])];
-        return allLemmas.length > 1 && (
+        const allLemmas = entry.lemmas || [];
+        const srcLemmas = entry.src_lemmas || [];
+        const regularLemmas = allLemmas.filter(lemma => !srcLemmas.includes(lemma));
+        const totalLemmas = regularLemmas.length + srcLemmas.length;
+        
+        return totalLemmas > 1 && (
           <div className="mb-2">
             <span className="text-sm font-medium text-gray-600">Lemmas: </span>
             <span className="text-sm text-gray-700">
-              {allLemmas.join(', ')}
+              {regularLemmas.join(', ')}
+              {regularLemmas.length > 0 && srcLemmas.length > 0 && ', '}
+              {srcLemmas.map((lemma, idx) => (
+                <span key={idx}>
+                  <strong>{lemma}</strong>
+                  {idx < srcLemmas.length - 1 && ', '}
+                </span>
+              ))}
             </span>
           </div>
         );

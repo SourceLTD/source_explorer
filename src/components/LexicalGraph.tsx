@@ -402,9 +402,11 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                     >
                       <span style={{ fontWeight: 'bold' }}>Lemmas:</span>{' '}
                       {(() => {
-                        const regularLemmas = posNode.node.lemmas || [];
-                        const srcLemmas = (posNode.node.src_lemmas || []).filter(
-                          lemma => !regularLemmas.includes(lemma)
+                        const allLemmas = posNode.node.lemmas || [];
+                        const srcLemmas = posNode.node.src_lemmas || [];
+                        // Only show regular lemmas that are NOT in src_lemmas
+                        const regularLemmas = allLemmas.filter(
+                          lemma => !srcLemmas.includes(lemma)
                         );
                         const totalRegular = regularLemmas.length;
                         const totalSrc = srcLemmas.length;
