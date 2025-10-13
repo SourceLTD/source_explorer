@@ -9,35 +9,44 @@ datasource db {
 }
 
 model LexicalEntry {
-  legacy_id       String
-  gloss           String
-  pos             String                   @db.Char(1)
-  lexfile         String
-  isMwe           Boolean                  @default(false) @map("is_mwe")
-  transitive      Boolean?
-  lemmas          String[]                 @default([])
-  src_lemmas      String[]                 @default([])
-  particles       String[]                 @default([])
-  frames          String[]                 @default([])
-  examples        String[]                 @default([])
-  glossTsv        Unsupported("tsvector")? @map("gloss_tsv")
-  examplesTsv     Unsupported("tsvector")? @map("examples_tsv")
-  createdAt       DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime                 @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  flagged         Boolean?                 @default(false)
-  flaggedReason   String?                  @map("flagged_reason")
-  forbidden       Boolean?                 @default(false)
-  forbiddenReason String?                  @map("forbidden_reason")
-  id              String                   @id
-  sourceRelations EntryRelation[]          @relation("SourceEntry")
-  targetRelations EntryRelation[]          @relation("TargetEntry")
+  id                                                               String                   @id
+  legacy_id                                                        String
+  gloss                                                            String
+  pos                                                              String                   @db.Char(1)
+  lexfile                                                          String
+  isMwe                                                            Boolean                  @default(false) @map("is_mwe")
+  transitive                                                       Boolean?
+  lemmas                                                           String[]                 @default([])
+  src_lemmas                                                       String[]                 @default([])
+  particles                                                        String[]                 @default([])
+  frames                                                           String[]                 @default([])
+  examples                                                         String[]                 @default([])
+  glossTsv                                                         Unsupported("tsvector")? @map("gloss_tsv")
+  examplesTsv                                                      Unsupported("tsvector")? @map("examples_tsv")
+  createdAt                                                        DateTime                 @default(now()) @map("created_at")
+  updatedAt                                                        DateTime                 @default(now()) @updatedAt @map("updated_at")
+  flagged                                                          Boolean?                 @default(false)
+  flaggedReason                                                    String?                  @map("flagged_reason")
+  forbidden                                                        Boolean?                 @default(false)
+  forbiddenReason                                                  String?                  @map("forbidden_reason")
+  frame_id                                                         String?
+  vendler_class                                                    vendler_class_type?
+  alt_roles                                                        alt_roles[]
+  sourceRelations                                                  EntryRelation[]          @relation("SourceEntry")
+  targetRelations                                                  EntryRelation[]          @relation("TargetEntry")
+  frame                                                            frames?                  @relation(fields: [frame_id], references: [id])
+  main_roles_main_roles_lexical_entry_id_frame_idTolexical_entries main_roles[]             @relation("main_roles_lexical_entry_id_frame_idTolexical_entries")
+  main_roles_main_roles_lexical_entry_idTolexical_entries          main_roles[]             @relation("main_roles_lexical_entry_idTolexical_entries")
 
+  @@unique([id, frame_id], map: "uq_lex_entry_id_frame")
   @@index([examplesTsv], map: "idx_lex_examples_tsv", type: Gin)
   @@index([frames], map: "idx_lex_frames_gin", type: Gin)
   @@index([glossTsv], map: "idx_lex_gloss_tsv", type: Gin)
   @@index([lemmas], map: "idx_lex_lemmas_gin", type: Gin)
   @@index([particles], map: "idx_lex_particles_gin", type: Gin)
   @@index([pos], map: "idx_lex_pos")
+  @@index([vendler_class], map: "idx_lex_vendler_class")
+  @@index([frame_id], map: "idx_lex_frame")
   @@map("lexical_entries")
 }
 
@@ -45,12 +54,102 @@ model EntryRelation {
   sourceId String       @map("source_id")
   targetId String       @map("target_id")
   type     RelationType
-  source   LexicalEntry @relation("SourceEntry", fields: [sourceId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  target   LexicalEntry @relation("TargetEntry", fields: [targetId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  source   LexicalEntry @relation("SourceEntry", fields: [sourceId], references: [id], onDelete: Cascade)
+  target   LexicalEntry @relation("TargetEntry", fields: [targetId], references: [id], onDelete: Cascade)
 
   @@id([sourceId, type, targetId])
   @@index([targetId, type], map: "idx_rel_target_type")
   @@map("entry_relations")
+}
+
+model alt_roles {
+  lexical_entry_id       String
+  role_type_id           String
+  description            String?
+  created_at             DateTime     @default(now())
+  updated_at             DateTime     @default(now())
+  id                     Int          @id @default(autoincrement())
+  example_sentence       String?
+  instantiation_type_ids String[]     @default([])
+  lexical_entries        LexicalEntry @relation(fields: [lexical_entry_id], references: [id], onUpdate: NoAction)
+  role_types             role_types   @relation(fields: [role_type_id], references: [id], onUpdate: NoAction)
+
+  @@index([instantiation_type_ids], map: "idx_alt_roles_inst_types", type: Gin)
+  @@index([lexical_entry_id], map: "idx_alt_roles_lexical_entry_id")
+}
+
+model frame_roles {
+  id                                                        String       @id
+  frame_id                                                  String
+  role_type_id                                              String
+  created_at                                                DateTime     @default(now())
+  updated_at                                                DateTime     @default(now())
+  frames                                                    frames       @relation(fields: [frame_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  role_types                                                role_types   @relation(fields: [role_type_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  main_roles_main_roles_frame_role_id_frame_idToframe_roles main_roles[] @relation("main_roles_frame_role_id_frame_idToframe_roles")
+  main_roles_main_roles_frame_role_idToframe_roles          main_roles[] @relation("main_roles_frame_role_idToframe_roles")
+
+  @@unique([frame_id, role_type_id], map: "uq_frame_role")
+  @@unique([id, frame_id], map: "uq_frame_roles_id_frame")
+  @@index([frame_id], map: "idx_frame_roles_frame")
+  @@index([role_type_id], map: "idx_frame_roles_role_type")
+}
+
+model frames {
+  id                             String         @id
+  framebank_id                   String         @unique
+  frame_name                     String
+  definition                     String
+  prototypical_synset            String
+  prototypical_synset_definition String
+  short_definition               String
+  is_supporting_frame            Boolean        @default(false)
+  created_at                     DateTime       @default(now())
+  updated_at                     DateTime       @default(now())
+  frame_roles                    frame_roles[]
+  lexical_entries                LexicalEntry[]
+  main_roles                     main_roles[]
+
+  @@index([framebank_id], map: "idx_framebank_id")
+  @@index([frame_name], map: "idx_frames_frame_name")
+  @@index([is_supporting_frame], map: "idx_frames_is_supporting")
+}
+
+model instantiation_types {
+  id          String  @id
+  label       String  @unique
+  wikidata_id String? @unique
+}
+
+model main_roles {
+  id                                                                    String       @id
+  lexical_entry_id                                                      String
+  frame_id                                                              String
+  frame_role_id                                                         String
+  description                                                           String?
+  created_at                                                            DateTime     @default(now())
+  updated_at                                                            DateTime     @default(now())
+  instantiation_type_ids                                                String[]     @default([])
+  frame_roles_main_roles_frame_role_id_frame_idToframe_roles            frame_roles  @relation("main_roles_frame_role_id_frame_idToframe_roles", fields: [frame_role_id, frame_id], references: [id, frame_id], onUpdate: NoAction, map: "fk_main_role_frame_role_same_frame")
+  lexical_entries_main_roles_lexical_entry_id_frame_idTolexical_entries LexicalEntry @relation("main_roles_lexical_entry_id_frame_idTolexical_entries", fields: [lexical_entry_id, frame_id], references: [id, frame_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_main_role_lex_entry_same_frame")
+  frames                                                                frames       @relation(fields: [frame_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  frame_roles_main_roles_frame_role_idToframe_roles                     frame_roles  @relation("main_roles_frame_role_idToframe_roles", fields: [frame_role_id], references: [id], onUpdate: NoAction)
+  lexical_entries_main_roles_lexical_entry_idTolexical_entries          LexicalEntry @relation("main_roles_lexical_entry_idTolexical_entries", fields: [lexical_entry_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([lexical_entry_id, frame_role_id], map: "uq_main_roles_entry_frame_role")
+  @@index([frame_id], map: "idx_main_roles_frame")
+  @@index([frame_role_id], map: "idx_main_roles_frame_role")
+  @@index([instantiation_type_ids], map: "idx_main_roles_inst_types", type: Gin)
+  @@index([lexical_entry_id], map: "idx_main_roles_lex")
+}
+
+model role_types {
+  id                  String        @id
+  label               String        @unique
+  generic_description String
+  explanation         String?
+  alt_roles           alt_roles[]
+  frame_roles         frame_roles[]
 }
 
 enum RelationType {
@@ -61,4 +160,11 @@ enum RelationType {
   hyponym
 
   @@map("relation_type")
+}
+
+enum vendler_class_type {
+  state
+  activity
+  accomplishment
+  achievement
 }

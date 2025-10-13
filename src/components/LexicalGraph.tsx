@@ -62,13 +62,36 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
     return Math.max(1, lines) * fontSize * lineHeight;
   };
 
+  // Helper function to get Vendler class colors
+  const getVendlerClassColor = (vendlerClass: 'state' | 'activity' | 'accomplishment' | 'achievement') => {
+    const colors = {
+      state: { bg: '#10b981', text: '#ffffff' },        // Green
+      activity: { bg: '#3b82f6', text: '#ffffff' },     // Blue
+      accomplishment: { bg: '#f59e0b', text: '#ffffff' },// Amber
+      achievement: { bg: '#ef4444', text: '#ffffff' },  // Red
+    };
+    return colors[vendlerClass];
+  };
+
   // Calculate dynamic height for current node based on content
   const calculateCurrentNodeHeight = useCallback((node: GraphNode): number => {
-    const nodeWidth = 340;
+    const nodeWidth = 600; // Match the wider node width
     const contentWidth = nodeWidth - 24; // Account for padding
     let height = 20; // Top padding
     height += 25; // Title height
+    
+    // Add space for vendler class badge if present
+    if (node.vendler_class) {
+      height += 20; // Vendler class badge height with spacing
+    }
+    
     height += 13; // Category (lexfile) height
+    
+    // Add space for frame badge if present
+    if (node.frame) {
+      height += 22; // Frame badge height with spacing
+    }
+    
     height += 45; // Definition section height (already has good spacing)
     
     // Calculate dynamic height for lemmas based on content
@@ -77,7 +100,30 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
     const regularLemmas = allLemmas.filter(lemma => !srcLemmas.includes(lemma));
     const lemmasText = [...regularLemmas, ...srcLemmas].join('; ');
     const lemmasHeight = Math.max(30, estimateTextHeight(`Lemmas: ${lemmasText}`, contentWidth, 13) + 5);
+    
     height += lemmasHeight;
+    
+    // Add space for combined roles if present - AFTER lemmas, BEFORE examples
+    if ((node.main_roles && node.main_roles.length > 0) || (node.alt_roles && node.alt_roles.length > 0)) {
+      let rolesHeight = 20; // Header + padding
+      if (node.main_roles) {
+        node.main_roles.forEach(role => {
+          const roleText = `${role.frame_role.role_type.label}: ${role.description || 'No description'}`;
+          const estimatedLines = Math.ceil(roleText.length / 60);
+          const roleHeight = estimatedLines <= 2 ? 45 : 60;
+          rolesHeight += roleHeight;
+        });
+      }
+      if (node.alt_roles) {
+        node.alt_roles.forEach(role => {
+          const roleText = `${role.role_type.label}: ${role.description || 'No description'}`;
+          const estimatedLines = Math.ceil(roleText.length / 60);
+          const roleHeight = estimatedLines <= 2 ? 45 : 60;
+          rolesHeight += roleHeight;
+        });
+      }
+      height += rolesHeight + 10; // Extra padding
+    }
     
     if (node.examples && node.examples.length > 0) {
       const exampleText = `Examples: ${node.examples.join('; ')}`;
@@ -292,7 +338,7 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
           {positionedNodes.nodes.map((posNode, i) => {
             if (posNode.nodeType === 'current') {
               // Current node - show full information with dynamic height
-              const nodeWidth = 340;
+              const nodeWidth = 600; // Made wider to reduce height
               
               // Use the pre-calculated node height
               const nodeHeight = calculateCurrentNodeHeight(posNode.node);
@@ -312,7 +358,32 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
               const lemmasText = [...regularLemmas, ...srcLemmas].join('; ');
               const lemmasHeight = Math.max(30, estimateTextHeight(`Lemmas: ${lemmasText}`, contentWidth, 13) + 5);
               
-              let sectionY = centerY + 100 + lemmasHeight; // Start after lemmas
+              const badgeOffset = (posNode.node.vendler_class ? 20 : 0) + (posNode.node.frame ? 22 : 0);
+              
+              // Calculate combined roles heights
+              let rolesHeight = 0;
+              if ((posNode.node.main_roles && posNode.node.main_roles.length > 0) || (posNode.node.alt_roles && posNode.node.alt_roles.length > 0)) {
+                rolesHeight += 20; // Header
+                if (posNode.node.main_roles) {
+                  posNode.node.main_roles.forEach(role => {
+                    const roleText = `${role.frame_role.role_type.label}: ${role.description || 'No description'}`;
+                    const estimatedLines = Math.ceil(roleText.length / 60);
+                    const roleHeight = estimatedLines <= 2 ? 45 : 60;
+                    rolesHeight += roleHeight;
+                  });
+                }
+                if (posNode.node.alt_roles) {
+                  posNode.node.alt_roles.forEach(role => {
+                    const roleText = `${role.role_type.label}: ${role.description || 'No description'}`;
+                    const estimatedLines = Math.ceil(roleText.length / 60);
+                    const roleHeight = estimatedLines <= 2 ? 45 : 60;
+                    rolesHeight += roleHeight;
+                  });
+                }
+                rolesHeight += 10; // Bottom padding
+              }
+              
+              let sectionY = centerY + 100 + lemmasHeight + badgeOffset + rolesHeight; // Start after lemmas and roles
               
               let examplesHeight = 0;
               if (posNode.node.examples && posNode.node.examples.length > 0) {
@@ -380,10 +451,35 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                     <tspan fontWeight="bold">{posNode.node.id.split('.v.')[0] || posNode.node.id}</tspan>
                     <tspan fontWeight="normal" fontSize={14}> ({posNode.node.id})</tspan>
                   </text>
+                  {/* Vendler Class Badge */}
+                  {posNode.node.vendler_class && (
+                    <g>
+                      <rect
+                        x={centerX + 12}
+                        y={centerY + 42}
+                        width={100}
+                        height={16}
+                        rx={3}
+                        fill={getVendlerClassColor(posNode.node.vendler_class).bg}
+                      />
+                      <text
+                        x={centerX + 62}
+                        y={centerY + 53}
+                        fontSize={10}
+                        fontFamily="Arial"
+                        textAnchor="middle"
+                        style={{ pointerEvents: 'none' }}
+                        fill={getVendlerClassColor(posNode.node.vendler_class).text}
+                        fontWeight="600"
+                      >
+                        {posNode.node.vendler_class.toUpperCase()}
+                      </text>
+                    </g>
+                  )}
                   {/* Category (lexfile) */}
                   <text
                     x={centerX + 12}
-                    y={centerY + 48}
+                    y={centerY + (posNode.node.vendler_class ? 68 : 48)}
                     fontSize={11}
                     fontFamily="Arial"
                     textAnchor="start"
@@ -393,10 +489,54 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                   >
                     {cleanLexfile(posNode.node.lexfile)}
                   </text>
+                  {/* Frame Badge */}
+                  {posNode.node.frame && (
+                    <foreignObject
+                      x={centerX + 12}
+                      y={centerY + (posNode.node.vendler_class ? 73 : 53)}
+                      width={nodeWidth - 24}
+                      height={20}
+                    >
+                      <div
+                        style={{
+                          fontSize: '11px',
+                          fontFamily: 'Arial',
+                          color: 'white',
+                          lineHeight: '1.3',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                        }}
+                        title={posNode.node.frame.short_definition}
+                      >
+                        <span style={{ 
+                          backgroundColor: '#8b5cf6', 
+                          padding: '2px 6px', 
+                          borderRadius: '3px',
+                          fontWeight: '600',
+                          fontSize: '10px',
+                        }}>
+                          FRAME
+                        </span>
+                        <span style={{ fontWeight: '500', fontSize: '10px' }}>
+                          {posNode.node.frame.frame_name}
+                        </span>
+                        {posNode.node.frame.is_supporting_frame && (
+                          <span style={{ 
+                            fontSize: '9px',
+                            opacity: 0.8,
+                            fontStyle: 'italic'
+                          }}>
+                            (sup)
+                          </span>
+                        )}
+                      </div>
+                    </foreignObject>
+                  )}
                   {/* Definition/gloss with text wrapping */}
                   <foreignObject
                     x={centerX + 12}
-                    y={centerY + 55}
+                    y={centerY + 55 + (posNode.node.vendler_class ? 20 : 0) + (posNode.node.frame ? 22 : 0)}
                     width={nodeWidth - 24}
                     height={40}
                   >
@@ -419,7 +559,7 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                   {/* Lemmas with text wrapping */}
                   <foreignObject
                     x={centerX + 12}
-                    y={centerY + 100}
+                    y={centerY + 100 + (posNode.node.vendler_class ? 20 : 0) + (posNode.node.frame ? 22 : 0)}
                     width={nodeWidth - 24}
                     height={lemmasHeight - 5}
                   >
@@ -464,11 +604,113 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                       })()}
                     </div>
                   </foreignObject>
+                  {/* Combined Roles - after lemmas, before examples */}
+                  {((posNode.node.main_roles && posNode.node.main_roles.length > 0) || (posNode.node.alt_roles && posNode.node.alt_roles.length > 0)) && (() => {
+                    const rolesStartY = centerY + 100 + (posNode.node.vendler_class ? 20 : 0) + (posNode.node.frame ? 22 : 0) + lemmasHeight;
+                    let currentRoleY = rolesStartY + 20;
+                    const roleElements: JSX.Element[] = [];
+                    
+                    // Add main roles first
+                    if (posNode.node.main_roles && posNode.node.main_roles.length > 0) {
+                      posNode.node.main_roles.forEach((role, idx) => {
+                        const roleText = `${role.frame_role.role_type.label}: ${role.description || 'No description'}`;
+                        const estimatedLines = Math.ceil(roleText.length / 60); // Approximate chars per line
+                        const roleHeight = estimatedLines <= 2 ? 45 : 60;
+                        
+                        roleElements.push(
+                          <foreignObject
+                            key={`main-role-${idx}`}
+                            x={centerX + 12}
+                            y={currentRoleY}
+                            width={nodeWidth - 24}
+                            height={roleHeight}
+                          >
+                            <div style={{
+                              fontSize: '13px',
+                              fontFamily: 'Arial',
+                              color: 'white',
+                              lineHeight: '1.3',
+                              wordWrap: 'break-word',
+                              padding: '4px 6px',
+                              backgroundColor: 'rgba(79, 70, 229, 0.4)',
+                              borderRadius: '3px',
+                              height: '100%',
+                              overflow: 'hidden',
+                            }}>
+                              <span style={{ fontWeight: 'bold' }}>{role.frame_role.role_type.label}:</span>{' '}
+                              {role.description || 'No description'}
+                            </div>
+                          </foreignObject>
+                        );
+                        currentRoleY += roleHeight;
+                      });
+                    }
+                    
+                    // Add alt roles after main roles
+                    if (posNode.node.alt_roles && posNode.node.alt_roles.length > 0) {
+                      posNode.node.alt_roles.forEach((role, idx) => {
+                        const roleText = `${role.role_type.label}: ${role.description || 'No description'}`;
+                        const estimatedLines = Math.ceil(roleText.length / 60); // Approximate chars per line
+                        const roleHeight = estimatedLines <= 2 ? 45 : 60;
+                        
+                        roleElements.push(
+                          <foreignObject
+                            key={`alt-role-${idx}`}
+                            x={centerX + 12}
+                            y={currentRoleY}
+                            width={nodeWidth - 24}
+                            height={roleHeight}
+                          >
+                            <div style={{
+                              fontSize: '13px',
+                              fontFamily: 'Arial',
+                              color: 'white',
+                              lineHeight: '1.3',
+                              wordWrap: 'break-word',
+                              padding: '4px 6px',
+                              backgroundColor: 'rgba(79, 70, 229, 0.2)',
+                              borderRadius: '3px',
+                              height: '100%',
+                              overflow: 'hidden',
+                            }}>
+                              <span style={{ fontWeight: 'bold' }}>{role.role_type.label}:</span>{' '}
+                              {role.description || 'No description'}
+                            </div>
+                          </foreignObject>
+                        );
+                        currentRoleY += roleHeight;
+                      });
+                    }
+                    
+                    return (
+                      <>
+                        <foreignObject
+                          x={centerX + 12}
+                          y={rolesStartY}
+                          width={nodeWidth - 24}
+                          height={20}
+                        >
+                          <div style={{
+                            fontSize: '13px',
+                            fontFamily: 'Arial',
+                            color: 'white',
+                            fontWeight: 'bold',
+                            padding: '2px 6px',
+                            backgroundColor: 'rgba(79, 70, 229, 0.6)',
+                            borderRadius: '3px 3px 0 0',
+                          }}>
+                            Roles:
+                          </div>
+                        </foreignObject>
+                        {roleElements}
+                      </>
+                    );
+                  })()}
                   {/* Examples - only show if examples exist */}
                   {posNode.node.examples && posNode.node.examples.length > 0 && (
                     <foreignObject
                       x={centerX + 12}
-                      y={centerY + 100 + lemmasHeight}
+                      y={centerY + 100 + lemmasHeight + badgeOffset + rolesHeight}
                       width={nodeWidth - 24}
                       height={examplesHeight - 5}
                     >
@@ -663,6 +905,19 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                   >
                     {posNode.node.id}
                   </text>
+                  {/* Small vendler class badge for closed nodes */}
+                  {posNode.node.vendler_class && (
+                    <circle
+                      cx={centerX + nodeWidth - 8}
+                      cy={centerY + 8}
+                      r={6}
+                      fill={getVendlerClassColor(posNode.node.vendler_class).bg}
+                      stroke="white"
+                      strokeWidth={1}
+                    >
+                      <title>{posNode.node.vendler_class}</title>
+                    </circle>
+                  )}
                 </Group>
               );
             }

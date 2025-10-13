@@ -40,6 +40,39 @@ export interface EntryWithRelations extends LexicalEntry {
   targetRelations: EntryRelation[];
 }
 
+export interface Frame {
+  id: string;
+  framebank_id: string;
+  frame_name: string;
+  definition: string;
+  short_definition: string;
+  is_supporting_frame: boolean;
+}
+
+export interface RoleType {
+  id: string;
+  label: string;
+  generic_description: string;
+  explanation?: string;
+}
+
+export interface MainRole {
+  id: string;
+  description?: string;
+  instantiation_type_ids: string[];
+  frame_role: {
+    role_type: RoleType;
+  };
+}
+
+export interface AltRole {
+  id: number;
+  description?: string;
+  example_sentence?: string;
+  instantiation_type_ids: string[];
+  role_type: RoleType;
+}
+
 export interface GraphNode {
   id: string;
   legacy_id: string;
@@ -53,6 +86,11 @@ export interface GraphNode {
   flaggedReason?: string;
   forbidden?: boolean;
   forbiddenReason?: string;
+  frame_id?: string | null;
+  vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null;
+  frame?: Frame | null;
+  main_roles?: MainRole[];
+  alt_roles?: AltRole[];
   parents: GraphNode[];
   children: GraphNode[];
   entails: GraphNode[];

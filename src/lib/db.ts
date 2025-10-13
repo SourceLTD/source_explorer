@@ -1,7 +1,7 @@
 import { unstable_cache } from 'next/cache';
 import { prisma } from './prisma';
 import { withRetry } from './db-utils';
-import { RelationType, type LexicalEntry, type EntryWithRelations, type GraphNode, type SearchResult, type PaginationParams, type PaginatedResult, type TableEntry } from './types';
+import { RelationType, type LexicalEntry, type EntryWithRelations, type GraphNode, type SearchResult, type PaginationParams, type PaginatedResult, type TableEntry, type MainRole, type AltRole } from './types';
 import type { LexicalEntry as PrismaLexicalEntry, EntryRelation as PrismaEntryRelation } from '@prisma/client';
 
 // Type for Prisma entry that might have optional fields
@@ -257,6 +257,53 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
     () => prisma.lexicalEntry.findUnique({
       where: { id: entryId },
       include: {
+        frame: {
+          select: {
+            id: true,
+            framebank_id: true,
+            frame_name: true,
+            definition: true,
+            short_definition: true,
+            is_supporting_frame: true,
+          }
+        },
+        main_roles_main_roles_lexical_entry_idTolexical_entries: {
+          select: {
+            id: true,
+            description: true,
+            instantiation_type_ids: true,
+            frame_roles_main_roles_frame_role_idToframe_roles: {
+              select: {
+                role_types: {
+                  select: {
+                    id: true,
+                    label: true,
+                    generic_description: true,
+                    explanation: true,
+                  }
+                }
+              }
+            }
+          },
+          take: 5, // Limit to first 5 to avoid overwhelming the display
+        },
+        alt_roles: {
+          select: {
+            id: true,
+            description: true,
+            example_sentence: true,
+            instantiation_type_ids: true,
+            role_types: {
+              select: {
+                id: true,
+                label: true,
+                generic_description: true,
+                explanation: true,
+              }
+            }
+          },
+          take: 3, // Limit to first 3
+        },
         sourceRelations: {
           where: {
             type: {
@@ -274,6 +321,8 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
                 pos: true,
                 lexfile: true,
                 examples: true,
+                frame_id: true,
+                vendler_class: true,
               }
             }
           }
@@ -293,6 +342,8 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
                 pos: true,
                 lexfile: true,
                 examples: true,
+                frame_id: true,
+                vendler_class: true,
               }
             }
           }
@@ -317,6 +368,8 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
       pos: rel.target!.pos,
       lexfile: rel.target!.lexfile,
       examples: rel.target!.examples,
+      frame_id: (rel.target as { frame_id?: string | null }).frame_id ?? null,
+      vendler_class: (rel.target as { vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null }).vendler_class ?? null,
       parents: [],
       children: [],
       entails: [],
@@ -336,6 +389,8 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
       pos: rel.source!.pos,
       lexfile: rel.source!.lexfile,
       examples: rel.source!.examples,
+      frame_id: (rel.source as { frame_id?: string | null }).frame_id ?? null,
+      vendler_class: (rel.source as { vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null }).vendler_class ?? null,
       parents: [],
       children: [],
       entails: [],
@@ -355,6 +410,8 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
       pos: rel.target!.pos,
       lexfile: rel.target!.lexfile,
       examples: rel.target!.examples,
+      frame_id: (rel.target as { frame_id?: string | null }).frame_id ?? null,
+      vendler_class: (rel.target as { vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null }).vendler_class ?? null,
       parents: [],
       children: [],
       entails: [],
@@ -374,6 +431,8 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
       pos: rel.target!.pos,
       lexfile: rel.target!.lexfile,
       examples: rel.target!.examples,
+      frame_id: (rel.target as { frame_id?: string | null }).frame_id ?? null,
+      vendler_class: (rel.target as { vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null }).vendler_class ?? null,
       parents: [],
       children: [],
       entails: [],
@@ -393,6 +452,8 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
       pos: rel.target!.pos,
       lexfile: rel.target!.lexfile,
       examples: rel.target!.examples,
+      frame_id: (rel.target as { frame_id?: string | null }).frame_id ?? null,
+      vendler_class: (rel.target as { vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null }).vendler_class ?? null,
       parents: [],
       children: [],
       entails: [],
@@ -413,6 +474,24 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
     flaggedReason: (entry as PrismaEntryWithOptionalFields).flaggedReason || undefined,
     forbidden: entry.forbidden ?? undefined,
     forbiddenReason: (entry as PrismaEntryWithOptionalFields).forbiddenReason || undefined,
+    frame_id: (entry as { frame_id?: string | null }).frame_id ?? null,
+    vendler_class: (entry as { vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null }).vendler_class ?? null,
+    frame: (entry as { frame?: { id: string; framebank_id: string; frame_name: string; definition: string; short_definition: string; is_supporting_frame: boolean } | null }).frame ?? null,
+    main_roles: (entry as { main_roles_main_roles_lexical_entry_idTolexical_entries?: any[] }).main_roles_main_roles_lexical_entry_idTolexical_entries?.map((role: any) => ({
+      id: role.id,
+      description: role.description,
+      instantiation_type_ids: role.instantiation_type_ids,
+      frame_role: {
+        role_type: role.frame_roles_main_roles_frame_role_idToframe_roles?.role_types || { id: '', label: '', generic_description: '', explanation: '' }
+      }
+    })),
+    alt_roles: (entry as { alt_roles?: any[] }).alt_roles?.map((role: any) => ({
+      id: role.id,
+      description: role.description,
+      example_sentence: role.example_sentence,
+      instantiation_type_ids: role.instantiation_type_ids,
+      role_type: role.role_types || { id: '', label: '', generic_description: '', explanation: '' }
+    })),
     parents,
     children,
     entails,
