@@ -41,6 +41,12 @@ interface LayoutResult {
 export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphProps) {
 
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+  const [rolesExpanded, setRolesExpanded] = useState<boolean>(false);
+  const [lemmasExpanded, setLemmasExpanded] = useState<boolean>(true);
+  const [examplesExpanded, setExamplesExpanded] = useState<boolean>(true);
+  const [causesExpanded, setCausesExpanded] = useState<boolean>(false);
+  const [entailsExpanded, setEntailsExpanded] = useState<boolean>(false);
+  const [alsoSeeExpanded, setAlsoSeeExpanded] = useState<boolean>(false);
 
   // Helper function to check if a node has legacy ID beginning with 'src'
   const hasSourceLegacyId = (node: GraphNode): boolean => {
@@ -73,8 +79,8 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
     return colors[vendlerClass];
   };
 
-  // Calculate dynamic height for current node based on content
-  const calculateCurrentNodeHeight = useCallback((node: GraphNode): number => {
+  // Calculate dynamic heights for current node sections
+  const calculateNodeHeights = useCallback((node: GraphNode) => {
     const nodeWidth = 600; // Match the wider node width
     const contentWidth = nodeWidth - 24; // Account for padding
     let height = 20; // Top padding
@@ -85,7 +91,7 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
       height += 20; // Vendler class badge height with spacing
     }
     
-    height += 13; // Category (lexfile) height
+    height += 22; // Category badge height with spacing
     
     // Add space for frame badge if present
     if (node.frame) {
@@ -99,59 +105,95 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
     const srcLemmas = node.src_lemmas || [];
     const regularLemmas = allLemmas.filter(lemma => !srcLemmas.includes(lemma));
     const lemmasText = [...regularLemmas, ...srcLemmas].join('; ');
-    const lemmasHeight = Math.max(30, estimateTextHeight(`Lemmas: ${lemmasText}`, contentWidth, 13) + 5);
+    let lemmasHeight = 20; // Header height (always visible)
+    if (lemmasExpanded && lemmasText) {
+      lemmasHeight += Math.max(30, estimateTextHeight(`Lemmas: ${lemmasText}`, contentWidth, 13) + 5);
+    }
     
     height += lemmasHeight;
     
-    // Add space for combined roles if present - AFTER lemmas, BEFORE examples
-    if ((node.main_roles && node.main_roles.length > 0) || (node.alt_roles && node.alt_roles.length > 0)) {
-      let rolesHeight = 20; // Header + padding
-      if (node.main_roles) {
-        node.main_roles.forEach(role => {
-          const roleText = `${role.frame_role.role_type.label}: ${role.description || 'No description'}`;
-          const estimatedLines = Math.ceil(roleText.length / 60);
-          const roleHeight = estimatedLines <= 2 ? 45 : 60;
-          rolesHeight += roleHeight;
-        });
-      }
-      if (node.alt_roles) {
-        node.alt_roles.forEach(role => {
-          const roleText = `${role.role_type.label}: ${role.description || 'No description'}`;
-          const estimatedLines = Math.ceil(roleText.length / 60);
-          const roleHeight = estimatedLines <= 2 ? 45 : 60;
-          rolesHeight += roleHeight;
-        });
-      }
-      height += rolesHeight + 10; // Extra padding
-    }
-    
+    // Add space for examples if present - AFTER lemmas, BEFORE roles
+    let examplesHeight = 0;
     if (node.examples && node.examples.length > 0) {
-      const exampleText = `Examples: ${node.examples.join('; ')}`;
-      const estimatedHeight = estimateTextHeight(exampleText, contentWidth);
-      height += Math.max(30, estimatedHeight + 10); // Minimum 30px, or estimated + padding
+      examplesHeight = 20; // Header height (always visible)
+      if (examplesExpanded) {
+        const exampleText = `Examples: ${node.examples.join('; ')}`;
+        const estimatedHeight = estimateTextHeight(exampleText, contentWidth);
+        examplesHeight += Math.max(30, estimatedHeight + 10); // Minimum 30px, or estimated + padding
+      }
+      height += examplesHeight;
     }
     
+    // Add space for combined roles if present - AFTER examples
+    let rolesHeight = 0;
+    if ((node.main_roles && node.main_roles.length > 0) || (node.alt_roles && node.alt_roles.length > 0)) {
+      rolesHeight = 20; // Header + padding (always visible)
+      if (rolesExpanded) {
+        if (node.main_roles) {
+          node.main_roles.forEach(role => {
+            const roleText = `${role.frame_role.role_type.label}: ${role.description || 'No description'}`;
+            const estimatedLines = Math.ceil(roleText.length / 60);
+            const roleHeight = estimatedLines <= 2 ? 45 : 60;
+            rolesHeight += roleHeight;
+          });
+        }
+        if (node.alt_roles) {
+          node.alt_roles.forEach(role => {
+            const roleText = `${role.role_type.label}: ${role.description || 'No description'}`;
+            const estimatedLines = Math.ceil(roleText.length / 60);
+            const roleHeight = estimatedLines <= 2 ? 45 : 60;
+            rolesHeight += roleHeight;
+          });
+        }
+      }
+      height += rolesHeight; // No padding
+    }
+    
+    let causesHeight = 0;
     if (node.causes && node.causes.length > 0) {
-      const causesText = `Causes: ${node.causes.map(c => c.id).join('; ')}`;
-      const estimatedHeight = estimateTextHeight(causesText, contentWidth);
-      height += Math.max(25, estimatedHeight + 8); // Minimum 25px, or estimated + padding
+      causesHeight = 20; // Header height (always visible)
+      if (causesExpanded) {
+        const causesText = `Causes: ${node.causes.map(c => c.id).join('; ')}`;
+        const estimatedHeight = estimateTextHeight(causesText, contentWidth);
+        causesHeight += Math.max(25, estimatedHeight + 8); // Minimum 25px, or estimated + padding
+      }
+      height += causesHeight;
     }
     
+    let entailsHeight = 0;
     if (node.entails && node.entails.length > 0) {
-      const entailsText = `Entails: ${node.entails.map(e => e.id).join('; ')}`;
-      const estimatedHeight = estimateTextHeight(entailsText, contentWidth);
-      height += Math.max(25, estimatedHeight + 8); // Minimum 25px, or estimated + padding
+      entailsHeight = 20; // Header height (always visible)
+      if (entailsExpanded) {
+        const entailsText = `Entails: ${node.entails.map(e => e.id).join('; ')}`;
+        const estimatedHeight = estimateTextHeight(entailsText, contentWidth);
+        entailsHeight += Math.max(25, estimatedHeight + 8); // Minimum 25px, or estimated + padding
+      }
+      height += entailsHeight;
     }
     
+    let alsoSeeHeight = 0;
     if (node.alsoSee && node.alsoSee.length > 0) {
-      const alsoSeeText = `Similar to: ${node.alsoSee.map(a => a.id).join('; ')}`;
-      const estimatedHeight = estimateTextHeight(alsoSeeText, contentWidth);
-      height += Math.max(25, estimatedHeight + 8); // Minimum 25px, or estimated + padding
+      alsoSeeHeight = 20; // Header height (always visible)
+      if (alsoSeeExpanded) {
+        const alsoSeeText = `Similar to: ${node.alsoSee.map(a => a.id).join('; ')}`;
+        const estimatedHeight = estimateTextHeight(alsoSeeText, contentWidth);
+        alsoSeeHeight += Math.max(25, estimatedHeight + 8); // Minimum 25px, or estimated + padding
+      }
+      height += alsoSeeHeight;
     }
     
     height += 20; // Bottom padding    
-    return height;
-  }, []);
+    
+    return {
+      totalHeight: height,
+      lemmasHeight,
+      examplesHeight,
+      rolesHeight,
+      causesHeight,
+      entailsHeight,
+      alsoSeeHeight
+    };
+  }, [rolesExpanded, lemmasExpanded, examplesExpanded, causesExpanded, entailsExpanded, alsoSeeExpanded]);
 
   // Helper function to calculate node width based on text length
   const calculateNodeWidth = (text: string, minWidth: number = 60, maxWidth: number = 150): number => {
@@ -202,7 +244,8 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
     
     // Calculate required height based on number of nodes
     const closedNodeHeight = 45; // Bigger closed nodes
-    const currentNodeHeight = calculateCurrentNodeHeight(currentNode);
+    const nodeHeights = calculateNodeHeights(currentNode);
+    const currentNodeHeight = nodeHeights.totalHeight;
     const rowSpacing = 50; // Reduced spacing for closed nodes
     const margin = 50;
     const spacingFromCenter = 80;
@@ -284,7 +327,7 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
     }
     
     return { nodes, width, height };
-  }, [currentNode, arrangeNodesInRows, calculateCurrentNodeHeight]);
+  }, [currentNode, arrangeNodesInRows, calculateNodeHeights]);
 
   // Create links between nodes
   const links = useMemo(() => {
@@ -340,8 +383,9 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
               // Current node - show full information with dynamic height
               const nodeWidth = 600; // Made wider to reduce height
               
-              // Use the pre-calculated node height
-              const nodeHeight = calculateCurrentNodeHeight(posNode.node);
+              // Use the pre-calculated node heights
+              const nodeHeights = calculateNodeHeights(posNode.node);
+              const nodeHeight = nodeHeights.totalHeight;
               const centerX = -nodeWidth / 2;
               const centerY = -nodeHeight / 2;
               
@@ -351,68 +395,42 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
               // Calculate Y positions for each section using the same logic as height calculation
               const contentWidth = nodeWidth - 24; // Account for padding
               
-              // Calculate lemmas height
-              const allLemmas = posNode.node.lemmas || [];
-              const srcLemmas = posNode.node.src_lemmas || [];
-              const regularLemmas = allLemmas.filter(lemma => !srcLemmas.includes(lemma));
-              const lemmasText = [...regularLemmas, ...srcLemmas].join('; ');
-              const lemmasHeight = Math.max(30, estimateTextHeight(`Lemmas: ${lemmasText}`, contentWidth, 13) + 5);
+              // Use pre-calculated heights from nodeHeights
+              const { lemmasHeight, examplesHeight, rolesHeight } = nodeHeights;
               
-              const badgeOffset = (posNode.node.vendler_class ? 20 : 0) + (posNode.node.frame ? 22 : 0);
-              
-              // Calculate combined roles heights
-              let rolesHeight = 0;
-              if ((posNode.node.main_roles && posNode.node.main_roles.length > 0) || (posNode.node.alt_roles && posNode.node.alt_roles.length > 0)) {
-                rolesHeight += 20; // Header
-                if (posNode.node.main_roles) {
-                  posNode.node.main_roles.forEach(role => {
-                    const roleText = `${role.frame_role.role_type.label}: ${role.description || 'No description'}`;
-                    const estimatedLines = Math.ceil(roleText.length / 60);
-                    const roleHeight = estimatedLines <= 2 ? 45 : 60;
-                    rolesHeight += roleHeight;
-                  });
-                }
-                if (posNode.node.alt_roles) {
-                  posNode.node.alt_roles.forEach(role => {
-                    const roleText = `${role.role_type.label}: ${role.description || 'No description'}`;
-                    const estimatedLines = Math.ceil(roleText.length / 60);
-                    const roleHeight = estimatedLines <= 2 ? 45 : 60;
-                    rolesHeight += roleHeight;
-                  });
-                }
-                rolesHeight += 10; // Bottom padding
-              }
-              
-              let sectionY = centerY + 100 + lemmasHeight + badgeOffset + rolesHeight; // Start after lemmas and roles
-              
-              let examplesHeight = 0;
-              if (posNode.node.examples && posNode.node.examples.length > 0) {
-                const exampleText = `Examples: ${posNode.node.examples.join('; ')}`;
-                examplesHeight = Math.max(30, estimateTextHeight(exampleText, contentWidth) + 10);
-                sectionY += examplesHeight;
-              }
+              let sectionY = centerY + 100 + (posNode.node.vendler_class ? 20 : 0) + 22 + (posNode.node.frame ? 22 : 0) + lemmasHeight + examplesHeight + rolesHeight; // Start after lemmas, examples, and roles
               
               const causesY = sectionY;
               let causesHeight = 0;
               if (posNode.node.causes && posNode.node.causes.length > 0) {
-                const causesText = `Causes: ${posNode.node.causes.map(c => c.id).join('; ')}`;
-                causesHeight = Math.max(25, estimateTextHeight(causesText, contentWidth) + 8);
+                causesHeight = 20; // Header height (always visible)
+                if (causesExpanded) {
+                  const causesText = `Causes: ${posNode.node.causes.map(c => c.id).join('; ')}`;
+                  causesHeight += Math.max(25, estimateTextHeight(causesText, contentWidth) + 8);
+                }
                 sectionY += causesHeight;
               }
               
               const entailsY = sectionY;
               let entailsHeight = 0;
               if (posNode.node.entails && posNode.node.entails.length > 0) {
-                const entailsText = `Entails: ${posNode.node.entails.map(e => e.id).join('; ')}`;
-                entailsHeight = Math.max(25, estimateTextHeight(entailsText, contentWidth) + 8);
+                entailsHeight = 20; // Header height (always visible)
+                if (entailsExpanded) {
+                  const entailsText = `Entails: ${posNode.node.entails.map(e => e.id).join('; ')}`;
+                  entailsHeight += Math.max(25, estimateTextHeight(entailsText, contentWidth) + 8);
+                }
                 sectionY += entailsHeight;
               }
               
               const alsoSeeY = sectionY;
               let alsoSeeHeight = 0;
               if (posNode.node.alsoSee && posNode.node.alsoSee.length > 0) {
-                const alsoSeeText = `Similar to: ${posNode.node.alsoSee.map(a => a.id).join('; ')}`;
-                alsoSeeHeight = Math.max(25, estimateTextHeight(alsoSeeText, contentWidth) + 8);
+                alsoSeeHeight = 20; // Header height (always visible)
+                if (alsoSeeExpanded) {
+                  const alsoSeeText = `Similar to: ${posNode.node.alsoSee.map(a => a.id).join('; ')}`;
+                  alsoSeeHeight += Math.max(25, estimateTextHeight(alsoSeeText, contentWidth) + 8);
+                }
+                sectionY += alsoSeeHeight;
               }
               
               return (
@@ -476,24 +494,39 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                       </text>
                     </g>
                   )}
-                  {/* Category (lexfile) */}
-                  <text
+                  {/* Category Badge */}
+                  <foreignObject
                     x={centerX + 12}
                     y={centerY + (posNode.node.vendler_class ? 68 : 48)}
-                    fontSize={11}
-                    fontFamily="Arial"
-                    textAnchor="start"
-                    style={{ pointerEvents: 'none' }}
-                    fill="rgba(255, 255, 255, 0.75)"
-                    fontStyle="italic"
+                    width={nodeWidth - 24}
+                    height={20}
                   >
-                    {cleanLexfile(posNode.node.lexfile)}
-                  </text>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}
+                    >
+                      <span style={{ 
+                        backgroundColor: '#059669', 
+                        padding: '2px 6px', 
+                        borderRadius: '3px',
+                        fontWeight: '600',
+                        fontSize: '10px',
+                      }}>
+                        CATEGORY
+                      </span>
+                      <span style={{ fontWeight: '500', fontSize: '10px' }}>
+                        {cleanLexfile(posNode.node.lexfile).toUpperCase()}
+                      </span>
+                    </div>
+                  </foreignObject>
                   {/* Frame Badge */}
                   {posNode.node.frame && (
                     <foreignObject
                       x={centerX + 12}
-                      y={centerY + (posNode.node.vendler_class ? 73 : 53)}
+                      y={centerY + (posNode.node.vendler_class ? 90 : 70)}
                       width={nodeWidth - 24}
                       height={20}
                     >
@@ -536,7 +569,7 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                   {/* Definition/gloss with text wrapping */}
                   <foreignObject
                     x={centerX + 12}
-                    y={centerY + 55 + (posNode.node.vendler_class ? 20 : 0) + (posNode.node.frame ? 22 : 0)}
+                    y={centerY + 55 + (posNode.node.vendler_class ? 20 : 0) + 22 + (posNode.node.frame ? 22 : 0)}
                     width={nodeWidth - 24}
                     height={40}
                   >
@@ -556,62 +589,156 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                       {posNode.node.gloss}
                     </div>
                   </foreignObject>
-                  {/* Lemmas with text wrapping */}
-                  <foreignObject
-                    x={centerX + 12}
-                    y={centerY + 100 + (posNode.node.vendler_class ? 20 : 0) + (posNode.node.frame ? 22 : 0)}
-                    width={nodeWidth - 24}
-                    height={lemmasHeight - 5}
-                  >
-                      <div
-                      style={{
-                        fontSize: '13px',
-                        fontFamily: 'Arial',
-                        color: 'white',
-                        lineHeight: '1.3',
-                        wordWrap: 'break-word',
-                        overflow: 'hidden',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      <span style={{ fontWeight: 'bold' }}>Lemmas:</span>{' '}
-                      {(() => {
-                        const allLemmas = posNode.node.lemmas || [];
-                        const srcLemmas = posNode.node.src_lemmas || [];
-                        // Only show regular lemmas that are NOT in src_lemmas
-                        const regularLemmas = allLemmas.filter(
-                          lemma => !srcLemmas.includes(lemma)
-                        );
-                        const totalRegular = regularLemmas.length;
-                        const totalSrc = srcLemmas.length;
+                  {/* Lemmas with collapsible dropdown */}
+                  {(() => {
+                    const allLemmas = posNode.node.lemmas || [];
+                    const srcLemmas = posNode.node.src_lemmas || [];
+                    const regularLemmas = allLemmas.filter(lemma => !srcLemmas.includes(lemma));
+                    const lemmasText = [...regularLemmas, ...srcLemmas].join('; ');
+                    
+                    if (!lemmasText) return null;
+                    
+                    return (
+                      <>
+                        {/* Lemmas Header */}
+                        <foreignObject
+                          x={centerX + 12}
+                          y={centerY + 100 + (posNode.node.vendler_class ? 20 : 0) + 22 + (posNode.node.frame ? 22 : 0)}
+                          width={nodeWidth - 24}
+                          height={20}
+                        >
+                          <div 
+                            style={{
+                              fontSize: '13px',
+                              fontFamily: 'Arial',
+                              color: 'white',
+                              fontWeight: 'bold',
+                              padding: '2px 6px',
+                              backgroundColor: 'rgba(79, 70, 229, 0.6)',
+                              borderRadius: '3px 3px 0 0',
+                              cursor: 'pointer',
+                              userSelect: 'none',
+                            }}
+                            onClick={() => setLemmasExpanded(!lemmasExpanded)}
+                          >
+                            Lemmas: {lemmasExpanded ? '▼' : '▶'}
+                          </div>
+                        </foreignObject>
                         
-                        return (
-                          <>
-                            {regularLemmas.map((lemma, idx) => (
-                              <span key={`regular-${idx}`}>
-                                <span style={{ fontWeight: '500' }}>{lemma}</span>
-                                {(idx < totalRegular - 1 || totalSrc > 0) ? '; ' : ''}
-                              </span>
-                            ))}
-                            {srcLemmas.map((lemma, idx) => (
-                              <span key={`src-${idx}`}>
-                                <span style={{ fontWeight: 'bold' }}>{lemma}</span>
-                                {idx < totalSrc - 1 ? '; ' : ''}
-                              </span>
-                            ))}
-                          </>
-                        );
-                      })()}
-                    </div>
-                  </foreignObject>
-                  {/* Combined Roles - after lemmas, before examples */}
+                        {/* Lemmas Content */}
+                        {lemmasExpanded && (
+                          <foreignObject
+                            x={centerX + 12}
+                            y={centerY + 100 + (posNode.node.vendler_class ? 20 : 0) + 22 + (posNode.node.frame ? 22 : 0) + 20}
+                            width={nodeWidth - 24}
+                            height={lemmasHeight - 20}
+                          >
+                            <div
+                              style={{
+                                fontSize: '13px',
+                                fontFamily: 'Arial',
+                                color: 'white',
+                                lineHeight: '1.3',
+                                wordWrap: 'break-word',
+                                overflow: 'hidden',
+                                cursor: 'pointer',
+                                padding: '4px 6px',
+                                backgroundColor: 'rgba(79, 70, 229, 0.3)',
+                                borderRadius: '0 0 3px 3px',
+                              }}
+                            >
+                              {(() => {
+                                const totalRegular = regularLemmas.length;
+                                const totalSrc = srcLemmas.length;
+                                
+                                return (
+                                  <>
+                                    {regularLemmas.map((lemma, idx) => (
+                                      <span key={`regular-${idx}`}>
+                                        <span style={{ fontWeight: '500' }}>{lemma}</span>
+                                        {(idx < totalRegular - 1 || totalSrc > 0) ? '; ' : ''}
+                                      </span>
+                                    ))}
+                                    {srcLemmas.map((lemma, idx) => (
+                                      <span key={`src-${idx}`}>
+                                        <span style={{ fontWeight: 'bold' }}>{lemma}</span>
+                                        {idx < totalSrc - 1 ? '; ' : ''}
+                                      </span>
+                                    ))}
+                                  </>
+                                );
+                              })()}
+                            </div>
+                          </foreignObject>
+                        )}
+                      </>
+                    );
+                  })()}
+                  {/* Examples with collapsible dropdown - after lemmas, before roles */}
+                  {posNode.node.examples && posNode.node.examples.length > 0 && (
+                    <>
+                      {/* Examples Header */}
+                      <foreignObject
+                        x={centerX + 12}
+                        y={centerY + 100 + (posNode.node.vendler_class ? 20 : 0) + 22 + (posNode.node.frame ? 22 : 0) + lemmasHeight}
+                        width={nodeWidth - 24}
+                        height={20}
+                      >
+                        <div 
+                          style={{
+                            fontSize: '13px',
+                            fontFamily: 'Arial',
+                            color: 'white',
+                            fontWeight: 'bold',
+                            padding: '2px 6px',
+                            backgroundColor: 'rgba(79, 70, 229, 0.6)',
+                            borderRadius: '3px 3px 0 0',
+                            cursor: 'pointer',
+                            userSelect: 'none',
+                          }}
+                          onClick={() => setExamplesExpanded(!examplesExpanded)}
+                        >
+                          Examples: {examplesExpanded ? '▼' : '▶'}
+                        </div>
+                      </foreignObject>
+                      
+                      {/* Examples Content */}
+                      {examplesExpanded && (
+                        <foreignObject
+                          x={centerX + 12}
+                          y={centerY + 100 + (posNode.node.vendler_class ? 20 : 0) + 22 + (posNode.node.frame ? 22 : 0) + lemmasHeight + 20}
+                          width={nodeWidth - 24}
+                          height={examplesHeight - 20}
+                        >
+                          <div
+                            style={{
+                              fontSize: '13px',
+                              fontFamily: 'Arial',
+                              color: 'white',
+                              lineHeight: '1.3',
+                              wordWrap: 'break-word',
+                              overflow: 'hidden',
+                              cursor: 'pointer',
+                              padding: '4px 6px',
+                              backgroundColor: 'rgba(79, 70, 229, 0.3)',
+                              borderRadius: '0 0 3px 3px',
+                            }}
+                          >
+                            <span style={{ fontWeight: '400' }}>{posNode.node.examples.join('; ')}</span>
+                          </div>
+                        </foreignObject>
+                      )}
+                    </>
+                  )}
+                  
+                  {/* Combined Roles - after examples */}
                   {((posNode.node.main_roles && posNode.node.main_roles.length > 0) || (posNode.node.alt_roles && posNode.node.alt_roles.length > 0)) && (() => {
-                    const rolesStartY = centerY + 100 + (posNode.node.vendler_class ? 20 : 0) + (posNode.node.frame ? 22 : 0) + lemmasHeight;
+                    const rolesStartY = centerY + 100 + (posNode.node.vendler_class ? 20 : 0) + 22 + (posNode.node.frame ? 22 : 0) + lemmasHeight + examplesHeight;
                     let currentRoleY = rolesStartY + 20;
                     const roleElements: JSX.Element[] = [];
                     
-                    // Add main roles first
-                    if (posNode.node.main_roles && posNode.node.main_roles.length > 0) {
+                    // Add main roles first (only if expanded)
+                    if (rolesExpanded && posNode.node.main_roles && posNode.node.main_roles.length > 0) {
                       posNode.node.main_roles.forEach((role, idx) => {
                         const roleText = `${role.frame_role.role_type.label}: ${role.description || 'No description'}`;
                         const estimatedLines = Math.ceil(roleText.length / 60); // Approximate chars per line
@@ -646,8 +773,8 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                       });
                     }
                     
-                    // Add alt roles after main roles
-                    if (posNode.node.alt_roles && posNode.node.alt_roles.length > 0) {
+                    // Add alt roles after main roles (only if expanded)
+                    if (rolesExpanded && posNode.node.alt_roles && posNode.node.alt_roles.length > 0) {
                       posNode.node.alt_roles.forEach((role, idx) => {
                         const roleText = `${role.role_type.label}: ${role.description || 'No description'}`;
                         const estimatedLines = Math.ceil(roleText.length / 60); // Approximate chars per line
@@ -690,7 +817,40 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                           width={nodeWidth - 24}
                           height={20}
                         >
-                          <div style={{
+                          <div 
+                            style={{
+                              fontSize: '13px',
+                              fontFamily: 'Arial',
+                              color: 'white',
+                              fontWeight: 'bold',
+                              padding: '2px 6px',
+                              backgroundColor: 'rgba(79, 70, 229, 0.6)',
+                              borderRadius: '3px 3px 0 0',
+                              cursor: 'pointer',
+                              userSelect: 'none',
+                            }}
+                            onClick={() => setRolesExpanded(!rolesExpanded)}
+                          >
+                            Roles: {rolesExpanded ? '▼' : '▶'}
+                          </div>
+                        </foreignObject>
+                        {roleElements}
+                      </>
+                    );
+                  })()}
+                  
+                  {/* Relationship links - Causes */}
+                  {posNode.node.causes && posNode.node.causes.length > 0 && (
+                    <>
+                      {/* Causes Header */}
+                      <foreignObject
+                        x={centerX + 12}
+                        y={causesY}
+                        width={nodeWidth - 24}
+                        height={20}
+                      >
+                        <div 
+                          style={{
                             fontSize: '13px',
                             fontFamily: 'Arial',
                             color: 'white',
@@ -698,162 +858,207 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                             padding: '2px 6px',
                             backgroundColor: 'rgba(79, 70, 229, 0.6)',
                             borderRadius: '3px 3px 0 0',
-                          }}>
-                            Roles:
+                            cursor: 'pointer',
+                            userSelect: 'none',
+                          }}
+                          onClick={() => setCausesExpanded(!causesExpanded)}
+                        >
+                          Causes: {causesExpanded ? '▼' : '▶'}
+                        </div>
+                      </foreignObject>
+                      
+                      {/* Causes Content */}
+                      {causesExpanded && (
+                        <foreignObject
+                          x={centerX + 12}
+                          y={causesY + 20}
+                          width={nodeWidth - 24}
+                          height={causesHeight - 20}
+                        >
+                          <div
+                            style={{
+                              fontSize: '13px',
+                              fontFamily: 'Arial',
+                              color: 'white',
+                              lineHeight: '1.3',
+                              wordWrap: 'break-word',
+                              overflow: 'hidden',
+                              cursor: 'pointer',
+                              padding: '4px 6px',
+                              backgroundColor: 'rgba(79, 70, 229, 0.3)',
+                              borderRadius: '0 0 3px 3px',
+                            }}
+                          >
+                            {posNode.node.causes.map((causeNode, idx) => (
+                              <span key={causeNode.id}>
+                                <span 
+                                  style={{ 
+                                    fontWeight: '400', 
+                                    textDecoration: 'underline', 
+                                    cursor: 'pointer' 
+                                  }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onNodeClick(causeNode.id);
+                                  }}
+                                >
+                                  {causeNode.id}
+                                </span>
+                                {idx < posNode.node.causes.length - 1 ? '; ' : ''}
+                              </span>
+                            ))}
                           </div>
                         </foreignObject>
-                        {roleElements}
-                      </>
-                    );
-                  })()}
-                  {/* Examples - only show if examples exist */}
-                  {posNode.node.examples && posNode.node.examples.length > 0 && (
-                    <foreignObject
-                      x={centerX + 12}
-                      y={centerY + 100 + lemmasHeight + badgeOffset + rolesHeight}
-                      width={nodeWidth - 24}
-                      height={examplesHeight - 5}
-                    >
-                      <div
-                        style={{
-                          fontSize: '13px',
-                          fontFamily: 'Arial',
-                          color: 'white',
-                          lineHeight: '1.3',
-                          wordWrap: 'break-word',
-                          overflow: 'hidden',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        <span style={{ fontWeight: 'bold' }}>Examples:</span> <span style={{ fontWeight: '400' }}>{posNode.node.examples.join('; ')}</span>
-                      </div>
-                    </foreignObject>
-                  )}
-                  
-                  {/* Relationship links - Causes */}
-                  {posNode.node.causes && posNode.node.causes.length > 0 && (
-                    <foreignObject
-                      x={centerX + 12}
-                      y={causesY}
-                      width={nodeWidth - 24}
-                      height={causesHeight - 3}
-                    >
-                      <div
-                        style={{
-                          fontSize: '13px',
-                          fontFamily: 'Arial',
-                          color: 'white',
-                          lineHeight: '1.3',
-                          wordWrap: 'break-word',
-                          overflow: 'hidden',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        <span style={{ fontWeight: 'bold' }}>Causes:</span>{' '}
-                        {posNode.node.causes.map((causeNode, idx) => (
-                          <span key={causeNode.id}>
-                            <span 
-                              style={{ 
-                                fontWeight: '400', 
-                                textDecoration: 'underline', 
-                                cursor: 'pointer' 
-                              }}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onNodeClick(causeNode.id);
-                              }}
-                            >
-                              {causeNode.id}
-                            </span>
-                            {idx < posNode.node.causes.length - 1 ? '; ' : ''}
-                          </span>
-                        ))}
-                      </div>
-                    </foreignObject>
+                      )}
+                    </>
                   )}
                   
                   {/* Relationship links - Entails */}
                   {posNode.node.entails && posNode.node.entails.length > 0 && (
-                    <foreignObject
-                      x={centerX + 12}
-                      y={entailsY}
-                      width={nodeWidth - 24}
-                      height={entailsHeight - 3}
-                    >
-                      <div
-                        style={{
-                          fontSize: '13px',
-                          fontFamily: 'Arial',
-                          color: 'white',
-                          lineHeight: '1.3',
-                          wordWrap: 'break-word',
-                          overflow: 'hidden',
-                          cursor: 'pointer'
-                        }}
+                    <>
+                      {/* Entails Header */}
+                      <foreignObject
+                        x={centerX + 12}
+                        y={entailsY}
+                        width={nodeWidth - 24}
+                        height={20}
                       >
-                        <span style={{ fontWeight: 'bold' }}>Entails:</span>{' '}
-                        {posNode.node.entails.map((entailsNode, idx) => (
-                          <span key={entailsNode.id}>
-                            <span 
-                              style={{ 
-                                fontWeight: '400', 
-                                textDecoration: 'underline', 
-                                cursor: 'pointer' 
-                              }}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onNodeClick(entailsNode.id);
-                              }}
-                            >
-                              {entailsNode.id}
-                            </span>
-                            {idx < posNode.node.entails.length - 1 ? '; ' : ''}
-                          </span>
-                        ))}
-                      </div>
-                    </foreignObject>
+                        <div 
+                          style={{
+                            fontSize: '13px',
+                            fontFamily: 'Arial',
+                            color: 'white',
+                            fontWeight: 'bold',
+                            padding: '2px 6px',
+                            backgroundColor: 'rgba(79, 70, 229, 0.6)',
+                            borderRadius: '3px 3px 0 0',
+                            cursor: 'pointer',
+                            userSelect: 'none',
+                          }}
+                          onClick={() => setEntailsExpanded(!entailsExpanded)}
+                        >
+                          Entails: {entailsExpanded ? '▼' : '▶'}
+                        </div>
+                      </foreignObject>
+                      
+                      {/* Entails Content */}
+                      {entailsExpanded && (
+                        <foreignObject
+                          x={centerX + 12}
+                          y={entailsY + 20}
+                          width={nodeWidth - 24}
+                          height={entailsHeight - 20}
+                        >
+                          <div
+                            style={{
+                              fontSize: '13px',
+                              fontFamily: 'Arial',
+                              color: 'white',
+                              lineHeight: '1.3',
+                              wordWrap: 'break-word',
+                              overflow: 'hidden',
+                              cursor: 'pointer',
+                              padding: '4px 6px',
+                              backgroundColor: 'rgba(79, 70, 229, 0.3)',
+                              borderRadius: '0 0 3px 3px',
+                            }}
+                          >
+                            {posNode.node.entails.map((entailsNode, idx) => (
+                              <span key={entailsNode.id}>
+                                <span 
+                                  style={{ 
+                                    fontWeight: '400', 
+                                    textDecoration: 'underline', 
+                                    cursor: 'pointer' 
+                                  }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onNodeClick(entailsNode.id);
+                                  }}
+                                >
+                                  {entailsNode.id}
+                                </span>
+                                {idx < posNode.node.entails.length - 1 ? '; ' : ''}
+                              </span>
+                            ))}
+                          </div>
+                        </foreignObject>
+                      )}
+                    </>
                   )}
                   
                   {/* Relationship links - Similar to (Also See) */}
                   {posNode.node.alsoSee && posNode.node.alsoSee.length > 0 && (
-                    <foreignObject
-                      x={centerX + 12}
-                      y={alsoSeeY}
-                      width={nodeWidth - 24}
-                      height={alsoSeeHeight - 3}
-                    >
-                      <div
-                        style={{
-                          fontSize: '13px',
-                          fontFamily: 'Arial',
-                          color: 'white',
-                          lineHeight: '1.3',
-                          wordWrap: 'break-word',
-                          overflow: 'hidden',
-                          cursor: 'pointer'
-                        }}
+                    <>
+                      {/* Also See Header */}
+                      <foreignObject
+                        x={centerX + 12}
+                        y={alsoSeeY}
+                        width={nodeWidth - 24}
+                        height={20}
                       >
-                        <span style={{ fontWeight: 'bold' }}>Similar to:</span>{' '}
-                        {posNode.node.alsoSee.map((alsoSeeNode, idx) => (
-                          <span key={alsoSeeNode.id}>
-                            <span 
-                              style={{ 
-                                fontWeight: '400', 
-                                textDecoration: 'underline', 
-                                cursor: 'pointer' 
-                              }}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onNodeClick(alsoSeeNode.id);
-                              }}
-                            >
-                              {alsoSeeNode.id}
-                            </span>
-                            {idx < posNode.node.alsoSee.length - 1 ? '; ' : ''}
-                          </span>
-                        ))}
-                      </div>
-                    </foreignObject>
+                        <div 
+                          style={{
+                            fontSize: '13px',
+                            fontFamily: 'Arial',
+                            color: 'white',
+                            fontWeight: 'bold',
+                            padding: '2px 6px',
+                            backgroundColor: 'rgba(79, 70, 229, 0.6)',
+                            borderRadius: '3px 3px 0 0',
+                            cursor: 'pointer',
+                            userSelect: 'none',
+                          }}
+                          onClick={() => setAlsoSeeExpanded(!alsoSeeExpanded)}
+                        >
+                          Similar to: {alsoSeeExpanded ? '▼' : '▶'}
+                        </div>
+                      </foreignObject>
+                      
+                      {/* Also See Content */}
+                      {alsoSeeExpanded && (
+                        <foreignObject
+                          x={centerX + 12}
+                          y={alsoSeeY + 20}
+                          width={nodeWidth - 24}
+                          height={alsoSeeHeight - 20}
+                        >
+                          <div
+                            style={{
+                              fontSize: '13px',
+                              fontFamily: 'Arial',
+                              color: 'white',
+                              lineHeight: '1.3',
+                              wordWrap: 'break-word',
+                              overflow: 'hidden',
+                              cursor: 'pointer',
+                              padding: '4px 6px',
+                              backgroundColor: 'rgba(79, 70, 229, 0.3)',
+                              borderRadius: '0 0 3px 3px',
+                            }}
+                          >
+                            {posNode.node.alsoSee.map((alsoSeeNode, idx) => (
+                              <span key={alsoSeeNode.id}>
+                                <span 
+                                  style={{ 
+                                    fontWeight: '400', 
+                                    textDecoration: 'underline', 
+                                    cursor: 'pointer' 
+                                  }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onNodeClick(alsoSeeNode.id);
+                                  }}
+                                >
+                                  {alsoSeeNode.id}
+                                </span>
+                                {idx < posNode.node.alsoSee.length - 1 ? '; ' : ''}
+                              </span>
+                            ))}
+                          </div>
+                        </foreignObject>
+                      )}
+                    </>
                   )}
                 </Group>
               );
