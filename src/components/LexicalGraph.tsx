@@ -12,6 +12,8 @@ const parentNodeColor = '#10b981';
 const parentNodeStroke = '#059669';
 const childNodeColor = '#f59e0b';
 const childNodeStroke = '#d97706';
+const forbiddenNodeColor = '#fca5a5'; // Pale red for forbidden nodes
+const forbiddenNodeStroke = '#dc2626'; // Darker red stroke for forbidden nodes
 const linkColor = '#e5e7eb';
 const backgroundColor = '#ffffff';
 
@@ -392,6 +394,9 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
               // Check if this node has a legacy ID beginning with 'src' for special styling
               const isSourceNode = hasSourceLegacyId(posNode.node);
               
+              // Check if this node is forbidden for special styling
+              const isForbiddenNode = posNode.node.forbidden;
+              
               // Calculate Y positions for each section using the same logic as height calculation
               const contentWidth = nodeWidth - 24; // Account for padding
               
@@ -447,8 +452,8 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                     height={nodeHeight}
                     y={centerY}
                     x={centerX}
-                    fill={currentNodeColor}
-                    stroke={isSourceNode ? '#000000' : currentNodeStroke}
+                    fill={isForbiddenNode ? forbiddenNodeColor : currentNodeColor}
+                    stroke={isSourceNode ? '#000000' : (isForbiddenNode ? forbiddenNodeStroke : currentNodeStroke)}
                     strokeWidth={isSourceNode ? 3 : 3}
                     rx={8}
                     ry={8}
@@ -1070,8 +1075,9 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
               const centerY = -nodeHeight / 2;
               
               const isParent = posNode.nodeType === 'parent';
-              const fillColor = isParent ? parentNodeColor : childNodeColor;
-              const strokeColor = isParent ? parentNodeStroke : childNodeStroke;
+              const isForbiddenNode = posNode.node.forbidden;
+              const fillColor = isForbiddenNode ? forbiddenNodeColor : (isParent ? parentNodeColor : childNodeColor);
+              const strokeColor = isForbiddenNode ? forbiddenNodeStroke : (isParent ? parentNodeStroke : childNodeStroke);
               
               // Check if this node has a legacy ID beginning with 'src' for special styling
               const isSourceNode = hasSourceLegacyId(posNode.node);

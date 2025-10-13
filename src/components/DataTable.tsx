@@ -728,8 +728,8 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
                 </span>
                 <div className="h-4 w-px bg-gray-300"></div>
                 <button
-                  disabled
-                  className="flex items-center gap-1 px-3 py-1 text-sm font-medium text-gray-400 bg-gray-100 border border-gray-200 rounded-md cursor-not-allowed"
+                  onClick={() => handleModerationUpdate({ flagged: true })}
+                  className="flex items-center gap-1 px-3 py-1 text-sm font-medium text-orange-700 bg-orange-100 border border-orange-200 rounded-md hover:bg-orange-200 transition-colors cursor-pointer"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 2H21l-3 6 3 6h-8.5l-1-2H5a2 2 0 00-2 2zm9-13.5V9" />
@@ -737,8 +737,8 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
                   Mark Flagged
                 </button>
                 <button
-                  disabled
-                  className="flex items-center gap-1 px-3 py-1 text-sm font-medium text-gray-400 bg-gray-100 border border-gray-200 rounded-md cursor-not-allowed"
+                  onClick={() => handleModerationUpdate({ forbidden: true })}
+                  className="flex items-center gap-1 px-3 py-1 text-sm font-medium text-red-700 bg-red-100 border border-red-200 rounded-md hover:bg-red-200 transition-colors cursor-pointer"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636m12.728 12.728L18.364 5.636M5.636 18.364l12.728-12.728" />

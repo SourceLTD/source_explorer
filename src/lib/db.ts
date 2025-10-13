@@ -1,7 +1,7 @@
-import { unstable_cache } from 'next/cache';
+import { unstable_cache, revalidateTag } from 'next/cache';
 import { prisma } from './prisma';
 import { withRetry } from './db-utils';
-import { RelationType, type LexicalEntry, type EntryWithRelations, type GraphNode, type SearchResult, type PaginationParams, type PaginatedResult, type TableEntry, type MainRole, type AltRole } from './types';
+import { RelationType, type LexicalEntry, type EntryWithRelations, type GraphNode, type SearchResult, type PaginationParams, type PaginatedResult, type TableEntry } from './types';
 import type { LexicalEntry as PrismaLexicalEntry, EntryRelation as PrismaEntryRelation } from '@prisma/client';
 
 // Type for Prisma entry that might have optional fields
@@ -213,6 +213,9 @@ export async function updateEntry(id: string, updates: Partial<Pick<LexicalEntry
 
   if (!updatedEntry) return null;
 
+  // Invalidate cache for graph nodes since moderation status affects display
+  revalidateTag('graph-node');
+
   // Convert Prisma types to our types
   return {
     ...updatedEntry,
@@ -323,6 +326,10 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
                 examples: true,
                 frame_id: true,
                 vendler_class: true,
+                forbidden: true,
+                forbiddenReason: true,
+                flagged: true,
+                flaggedReason: true,
               }
             }
           }
@@ -344,6 +351,10 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
                 examples: true,
                 frame_id: true,
                 vendler_class: true,
+                forbidden: true,
+                forbiddenReason: true,
+                flagged: true,
+                flaggedReason: true,
               }
             }
           }
@@ -368,6 +379,10 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
       pos: rel.target!.pos,
       lexfile: rel.target!.lexfile,
       examples: rel.target!.examples,
+      flagged: (rel.target as { flagged?: boolean | null }).flagged ?? undefined,
+      flaggedReason: (rel.target as { flaggedReason?: string | null }).flaggedReason || undefined,
+      forbidden: (rel.target as { forbidden?: boolean | null }).forbidden ?? undefined,
+      forbiddenReason: (rel.target as { forbiddenReason?: string | null }).forbiddenReason || undefined,
       frame_id: (rel.target as { frame_id?: string | null }).frame_id ?? null,
       vendler_class: (rel.target as { vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null }).vendler_class ?? null,
       parents: [],
@@ -381,21 +396,25 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
   const children: GraphNode[] = entry.targetRelations
     .filter(rel => rel.type === 'hypernym' && rel.source)
     .map(rel => ({
-      id: rel.source!.id,
-      legacy_id: rel.source!.legacy_id,
-      lemmas: rel.source!.lemmas,
-      src_lemmas: rel.source!.src_lemmas,
-      gloss: rel.source!.gloss,
-      pos: rel.source!.pos,
-      lexfile: rel.source!.lexfile,
-      examples: rel.source!.examples,
-      frame_id: (rel.source as { frame_id?: string | null }).frame_id ?? null,
-      vendler_class: (rel.source as { vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null }).vendler_class ?? null,
-      parents: [],
-      children: [],
-      entails: [],
-      causes: [],
-      alsoSee: [],
+        id: rel.source!.id,
+        legacy_id: rel.source!.legacy_id,
+        lemmas: rel.source!.lemmas,
+        src_lemmas: rel.source!.src_lemmas,
+        gloss: rel.source!.gloss,
+        pos: rel.source!.pos,
+        lexfile: rel.source!.lexfile,
+        examples: rel.source!.examples,
+        flagged: (rel.source as { flagged?: boolean | null }).flagged ?? undefined,
+        flaggedReason: (rel.source as { flaggedReason?: string | null }).flaggedReason || undefined,
+        forbidden: (rel.source as { forbidden?: boolean | null }).forbidden ?? undefined,
+        forbiddenReason: (rel.source as { forbiddenReason?: string | null }).forbiddenReason || undefined,
+        frame_id: (rel.source as { frame_id?: string | null }).frame_id ?? null,
+        vendler_class: (rel.source as { vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null }).vendler_class ?? null,
+        parents: [],
+        children: [],
+        entails: [],
+        causes: [],
+        alsoSee: [],
     }));
 
   // Get entails relationships
@@ -410,6 +429,10 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
       pos: rel.target!.pos,
       lexfile: rel.target!.lexfile,
       examples: rel.target!.examples,
+      flagged: (rel.target as { flagged?: boolean | null }).flagged ?? undefined,
+      flaggedReason: (rel.target as { flaggedReason?: string | null }).flaggedReason || undefined,
+      forbidden: (rel.target as { forbidden?: boolean | null }).forbidden ?? undefined,
+      forbiddenReason: (rel.target as { forbiddenReason?: string | null }).forbiddenReason || undefined,
       frame_id: (rel.target as { frame_id?: string | null }).frame_id ?? null,
       vendler_class: (rel.target as { vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null }).vendler_class ?? null,
       parents: [],
@@ -431,6 +454,10 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
       pos: rel.target!.pos,
       lexfile: rel.target!.lexfile,
       examples: rel.target!.examples,
+      flagged: (rel.target as { flagged?: boolean | null }).flagged ?? undefined,
+      flaggedReason: (rel.target as { flaggedReason?: string | null }).flaggedReason || undefined,
+      forbidden: (rel.target as { forbidden?: boolean | null }).forbidden ?? undefined,
+      forbiddenReason: (rel.target as { forbiddenReason?: string | null }).forbiddenReason || undefined,
       frame_id: (rel.target as { frame_id?: string | null }).frame_id ?? null,
       vendler_class: (rel.target as { vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null }).vendler_class ?? null,
       parents: [],
@@ -452,6 +479,10 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
       pos: rel.target!.pos,
       lexfile: rel.target!.lexfile,
       examples: rel.target!.examples,
+      flagged: (rel.target as { flagged?: boolean | null }).flagged ?? undefined,
+      flaggedReason: (rel.target as { flaggedReason?: string | null }).flaggedReason || undefined,
+      forbidden: (rel.target as { forbidden?: boolean | null }).forbidden ?? undefined,
+      forbiddenReason: (rel.target as { forbiddenReason?: string | null }).forbiddenReason || undefined,
       frame_id: (rel.target as { frame_id?: string | null }).frame_id ?? null,
       vendler_class: (rel.target as { vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null }).vendler_class ?? null,
       parents: [],
@@ -477,21 +508,27 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
     frame_id: (entry as { frame_id?: string | null }).frame_id ?? null,
     vendler_class: (entry as { vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null }).vendler_class ?? null,
     frame: (entry as { frame?: { id: string; framebank_id: string; frame_name: string; definition: string; short_definition: string; is_supporting_frame: boolean } | null }).frame ?? null,
-    main_roles: (entry as { main_roles_main_roles_lexical_entry_idTolexical_entries?: any[] }).main_roles_main_roles_lexical_entry_idTolexical_entries?.map((role: any) => ({
-      id: role.id,
-      description: role.description,
-      instantiation_type_ids: role.instantiation_type_ids,
-      frame_role: {
-        role_type: role.frame_roles_main_roles_frame_role_idToframe_roles?.role_types || { id: '', label: '', generic_description: '', explanation: '' }
-      }
-    })),
-    alt_roles: (entry as { alt_roles?: any[] }).alt_roles?.map((role: any) => ({
-      id: role.id,
-      description: role.description,
-      example_sentence: role.example_sentence,
-      instantiation_type_ids: role.instantiation_type_ids,
-      role_type: role.role_types || { id: '', label: '', generic_description: '', explanation: '' }
-    })),
+    main_roles: (entry as { main_roles_main_roles_lexical_entry_idTolexical_entries?: unknown[] }).main_roles_main_roles_lexical_entry_idTolexical_entries?.map((role: unknown) => {
+      const roleData = role as { id: string; description?: string; instantiation_type_ids: string[]; frame_roles_main_roles_frame_role_idToframe_roles?: { role_types?: { id: string; label: string; generic_description: string; explanation?: string } } };
+      return {
+        id: roleData.id,
+        description: roleData.description,
+        instantiation_type_ids: roleData.instantiation_type_ids,
+        frame_role: {
+          role_type: roleData.frame_roles_main_roles_frame_role_idToframe_roles?.role_types || { id: '', label: '', generic_description: '', explanation: '' }
+        }
+      };
+    }),
+    alt_roles: (entry as { alt_roles?: unknown[] }).alt_roles?.map((role: unknown) => {
+      const roleData = role as { id: number; description?: string; example_sentence?: string; instantiation_type_ids: string[]; role_types?: { id: string; label: string; generic_description: string; explanation?: string } };
+      return {
+        id: roleData.id,
+        description: roleData.description,
+        example_sentence: roleData.example_sentence,
+        instantiation_type_ids: roleData.instantiation_type_ids,
+        role_type: roleData.role_types || { id: '', label: '', generic_description: '', explanation: '' }
+      };
+    }),
     parents,
     children,
     entails,
@@ -505,7 +542,7 @@ export const getGraphNode = unstable_cache(
   async (entryId: string) => getGraphNodeInternal(entryId),
   ['graph-node'],
   {
-    revalidate: 3600, // Cache for 1 hour
+    revalidate: 60, // Cache for 1 minute instead of 1 hour
     tags: ['graph-node'],
   }
 );
@@ -616,6 +653,9 @@ export async function updateModerationStatus(
     },
     data: updates
   });
+
+  // Invalidate cache for graph nodes since moderation status affects display
+  revalidateTag('graph-node');
 
   return result.count;
 }
