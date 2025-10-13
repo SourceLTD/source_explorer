@@ -18,6 +18,7 @@ type PrismaEntryWithRelations = {
   id: string;
   legacy_id: string;
   gloss: string;
+  legal_gloss: string | null;
   pos: string;
   lexfile: string;
   isMwe: boolean;
@@ -46,6 +47,7 @@ type PrismaEntryWithCounts = {
   id: string;
   legacy_id: string;
   gloss: string;
+  legal_gloss: string | null;
   pos: string;
   lexfile: string;
   isMwe: boolean;
@@ -189,11 +191,19 @@ export async function searchEntries(query: string, limit = 20): Promise<SearchRe
   return results;
 }
 
-export async function updateEntry(id: string, updates: Partial<Pick<LexicalEntry, 'gloss' | 'lemmas' | 'examples' | 'flagged' | 'flaggedReason' | 'forbidden' | 'forbiddenReason'>>): Promise<EntryWithRelations | null> {
+export async function updateEntry(id: string, updates: Partial<Pick<LexicalEntry, 'gloss' | 'lemmas' | 'examples' | 'flagged' | 'flaggedReason' | 'forbidden' | 'forbiddenReason'> & { main_roles?: unknown[]; alt_roles?: unknown[] }>): Promise<EntryWithRelations | null> {
+  // Handle roles updates separately
+  if (updates.main_roles || updates.alt_roles) {
+    await updateEntryRoles(id, updates.main_roles, updates.alt_roles);
+  }
+
+  // Extract non-roles fields for the main update
+  const { main_roles, alt_roles, ...otherUpdates } = updates;
+
   const updatedEntry = await withRetry(
     () => prisma.lexicalEntry.update({
     where: { id },
-    data: updates,
+    data: otherUpdates,
     include: {
       sourceRelations: {
         include: {
@@ -251,6 +261,87 @@ export async function updateEntry(id: string, updates: Partial<Pick<LexicalEntry
       } as unknown as LexicalEntry : undefined,
     })),
   };
+}
+
+async function updateEntryRoles(entryId: string, mainRoles?: unknown[], altRoles?: unknown[]) {
+  // Handle main roles updates
+  if (mainRoles) {
+    // Delete existing main roles for this entry
+    await prisma.main_roles.deleteMany({
+      where: { lexical_entry_id: entryId }
+    });
+
+    // Insert new main roles
+    for (const role of mainRoles) {
+      const roleData = role as { id: string; description: string; roleType: string };
+      if (roleData.description.trim()) {
+        // Find existing role type
+        const roleType = await prisma.role_types.findFirst({
+          where: { label: roleData.roleType }
+        });
+        
+        if (!roleType) {
+          console.warn(`Role type "${roleData.roleType}" not found in database. Skipping role creation.`);
+          continue;
+        }
+
+        // Find frame role
+        const frameRole = await prisma.frame_roles.findFirst({
+          where: {
+            frame_id: (await prisma.lexicalEntry.findUnique({ where: { id: entryId } }))?.frame_id || '',
+            role_type_id: roleType.id
+          }
+        });
+
+        if (frameRole) {
+          await prisma.main_roles.create({
+            data: {
+              id: `main_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              lexical_entry_id: entryId,
+              frame_id: frameRole.frame_id,
+              frame_role_id: frameRole.id,
+              description: roleData.description,
+              instantiation_type_ids: []
+            }
+          });
+        }
+      }
+    }
+  }
+
+  // Handle alt roles updates
+  if (altRoles) {
+    // Delete existing alt roles for this entry
+    await prisma.alt_roles.deleteMany({
+      where: { lexical_entry_id: entryId }
+    });
+
+    // Insert new alt roles
+    for (const role of altRoles) {
+      const roleData = role as { id: number; description: string; roleType: string; exampleSentence: string };
+      if (roleData.description.trim()) {
+        // Find existing role type
+        const roleType = await prisma.role_types.findFirst({
+          where: { label: roleData.roleType }
+        });
+        
+        if (!roleType) {
+          console.warn(`Role type "${roleData.roleType}" not found in database. Skipping role creation.`);
+          continue;
+        }
+
+        await prisma.alt_roles.create({
+          data: {
+            lexical_entry_id: entryId,
+            role_type_id: roleType.id,
+            description: roleData.description,
+            example_sentence: roleData.exampleSentence || null,
+            instantiation_type_ids: []
+          }
+        });
+      }
+    }
+  }
 }
 
 // Internal implementation without caching
@@ -498,6 +589,7 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
     lemmas: entry.lemmas,
     src_lemmas: entry.src_lemmas,
     gloss: entry.gloss,
+    legal_gloss: (entry as { legal_gloss?: string | null }).legal_gloss ?? null,
     pos: entry.pos,
     lexfile: entry.lexfile,
     examples: entry.examples,

@@ -79,6 +79,7 @@ export interface GraphNode {
   lemmas: string[];
   src_lemmas: string[];
   gloss: string;
+  legal_gloss?: string | null;
   pos: string;
   lexfile: string;
   examples: string[];

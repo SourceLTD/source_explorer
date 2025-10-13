@@ -591,7 +591,7 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                         cursor: 'pointer'
                       }}
                     >
-                      {posNode.node.gloss}
+                      {posNode.node.legal_gloss || posNode.node.gloss}
                     </div>
                   </foreignObject>
                   {/* Lemmas with collapsible dropdown */}

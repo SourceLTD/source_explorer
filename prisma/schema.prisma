@@ -31,6 +31,7 @@ model LexicalEntry {
   forbiddenReason                                                  String?                  @map("forbidden_reason")
   frame_id                                                         String?
   vendler_class                                                    vendler_class_type?
+  legal_gloss                                                      String?
   alt_roles                                                        alt_roles[]
   sourceRelations                                                  EntryRelation[]          @relation("SourceEntry")
   targetRelations                                                  EntryRelation[]          @relation("TargetEntry")
