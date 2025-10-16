@@ -53,10 +53,17 @@ This project is ready for deployment on Vercel. Follow these steps to deploy suc
 ### 3. Post-Deployment
 
 1. **Update Site URL**
-   - After deployment, update `NEXT_PUBLIC_SITE_URL` with your actual Vercel domain
-   - Add this domain to your Supabase auth settings if using authentication
+   - After deployment, update `NEXT_PUBLIC_SITE_URL` with your actual Vercel domain in Vercel environment variables
+   
+2. **Configure Supabase Authentication URLs** (CRITICAL for magic links)
+   - Go to your Supabase Dashboard → Authentication → URL Configuration
+   - Set **Site URL** to your production URL (e.g., `https://your-app.vercel.app`)
+   - Add to **Redirect URLs**:
+     - `https://your-app.vercel.app/auth/confirm` (production)
+     - `http://localhost:3000/auth/confirm` (local development)
+   - Without these settings, magic links will redirect to localhost even in production!
 
-2. **Seed Database (Optional)**
+3. **Seed Database (Optional)**
    - You can run the seed script locally: `npm run db:seed`
    - Or add sample data through your database provider's interface
 
@@ -103,6 +110,14 @@ The project is configured with:
 - Verify your database allows connections from Vercel's IP ranges
 - Check if your database provider requires SSL (most do)
 - Ensure connection strings include proper SSL parameters
+
+### Magic Link Redirects to Localhost
+If magic links redirect to localhost in production:
+1. Verify `NEXT_PUBLIC_SITE_URL` is set in Vercel environment variables
+2. **Most importantly**: Go to Supabase Dashboard → Authentication → URL Configuration
+3. Update **Site URL** to your production domain
+4. Add your production `/auth/confirm` URL to **Redirect URLs**
+5. Redeploy your app after making these changes (or wait for cache to clear)
 
 ## Support
 

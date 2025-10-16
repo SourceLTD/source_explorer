@@ -12,11 +12,6 @@ export default function TableMode() {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState<string>('');
 
-  const handleTableRowClick = (entry: TableEntry) => {
-    // Navigate to the graph mode with this entry
-    router.push(`/graph?entry=${entry.id}`);
-  };
-
   const handleSearchResult = (result: SearchResult) => {
     // Navigate to the graph mode with this entry
     router.push(`/graph?entry=${result.id}`);
@@ -70,7 +65,6 @@ export default function TableMode() {
         <div className="m-6 bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
           <Suspense fallback={<div className="p-8 text-center text-gray-500">Loading...</div>}>
             <DataTable 
-              onRowClick={handleTableRowClick}
               searchQuery={searchQuery}
             />
           </Suspense>
