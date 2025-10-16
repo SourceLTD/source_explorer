@@ -15,6 +15,9 @@ export interface LexicalEntry {
   flaggedReason?: string;
   forbidden?: boolean;
   forbiddenReason?: string;
+  frame_id?: string | null;
+  vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null;
+  legal_constraints?: string[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -53,23 +56,15 @@ export interface RoleType {
   id: string;
   label: string;
   generic_description: string;
-  explanation?: string;
+  explanation?: string | null;
 }
 
-export interface MainRole {
+export interface Role {
   id: string;
-  description?: string;
-  instantiation_type_ids: string[];
-  frame_role: {
-    role_type: RoleType;
-  };
-}
-
-export interface AltRole {
-  id: number;
   description?: string;
   example_sentence?: string;
   instantiation_type_ids: string[];
+  main: boolean;
   role_type: RoleType;
 }
 
@@ -80,6 +75,7 @@ export interface GraphNode {
   src_lemmas: string[];
   gloss: string;
   legal_gloss?: string | null;
+  legal_constraints: string[];
   pos: string;
   lexfile: string;
   examples: string[];
@@ -90,8 +86,7 @@ export interface GraphNode {
   frame_id?: string | null;
   vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null;
   frame?: Frame | null;
-  main_roles?: MainRole[];
-  alt_roles?: AltRole[];
+  roles?: Role[];
   parents: GraphNode[];
   children: GraphNode[];
   entails: GraphNode[];
@@ -155,6 +150,7 @@ export interface PaginationParams {
   // Basic filters (legacy)
   pos?: string;
   lexfile?: string;
+  frame_id?: string; // Comma-separated frame IDs
   
   // Advanced filters
   gloss?: string;
@@ -209,6 +205,10 @@ export interface TableEntry {
   flaggedReason?: string;
   forbidden?: boolean;
   forbiddenReason?: string;
+  frame_id?: string | null;
+  vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null;
+  legal_constraints?: string[];
+  roles?: Role[];
   parentsCount: number;
   childrenCount: number;
   createdAt: Date;
@@ -230,3 +230,51 @@ export const RELATION_LABELS = {
   [RelationType.CAUSES]: 'Causes',
   [RelationType.ENTAILS]: 'Entails'
 } as const;
+
+// Role precedence order - higher number = higher precedence
+export const ROLE_PRECEDENCE: Record<string, number> = {
+  'AGENT': 24,
+  'CO_AGENT': 23,
+  'TOPIC': 22,
+  'THEME': 21,
+  'CO_THEME': 20,
+  'PATIENT': 19,
+  'EXPERIENCER': 18,
+  'RECIPIENT': 17,
+  'INSTRUMENT': 16,
+  'SOURCE': 15,
+  'DESTINATION': 14,
+  'BENEFICIARY': 13,
+  'EXTENT': 12,
+  'GOAL': 11,
+  'TIME': 10,
+  'LOCATION': 9,
+  'STIMULUS': 8,
+  'CO_PATIENT': 7,
+  'PURPOSE': 6,
+  'CAUSE': 5,
+  'RESULT': 4,
+  'PRODUCT': 3,
+  'MATERIAL': 2,
+  'ATTRIBUTE': 1,
+  'VALUE': 0,
+  'ASSET': -1,
+  'IDIOM': -2
+};
+
+// Helper function to sort roles by precedence
+export function sortRolesByPrecedence<T extends { role_type: { label: string } }>(roles: T[]): T[] {
+  return [...roles].sort((a, b) => {
+    const roleA = a.role_type?.label || '';
+    const roleB = b.role_type?.label || '';
+    
+    const precedenceA = ROLE_PRECEDENCE[roleA] ?? -999;
+    const precedenceB = ROLE_PRECEDENCE[roleB] ?? -999;
+    
+    // Sort by precedence (descending), then by label (ascending) for ties
+    if (precedenceA !== precedenceB) {
+      return precedenceB - precedenceA;
+    }
+    return roleA.localeCompare(roleB);
+  });
+}

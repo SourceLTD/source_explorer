@@ -33,20 +33,20 @@ if (isDevelopment || isProduction) {
 }
 
 // Add connection pool parameters to URL for production
-const getConnectionUrl = () => {
-  // Use POSTGRES_PRISMA_URL as primary (it's the pooled connection that works)
-  const baseUrl = process.env.POSTGRES_PRISMA_URL || process.env.POSTGRES_URL_NON_POOLING;
-  if (!baseUrl) return baseUrl;
-  
-  if (process.env.NODE_ENV === 'production') {
-    const url = new URL(baseUrl);
-    url.searchParams.set('connection_limit', '10');
-    url.searchParams.set('pool_timeout', '30');
-    return url.toString();
-  }
-  
-  return baseUrl;
-};
+// const getConnectionUrl = () => {
+//   // Use POSTGRES_PRISMA_URL as primary (it's the pooled connection that works)
+//   const baseUrl = process.env.POSTGRES_PRISMA_URL || process.env.POSTGRES_URL_NON_POOLING;
+//   if (!baseUrl) return baseUrl;
+//   
+//   if (process.env.NODE_ENV === 'production') {
+//     const url = new URL(baseUrl);
+//     url.searchParams.set('connection_limit', '10');
+//     url.searchParams.set('pool_timeout', '30');
+//     return url.toString();
+//   }
+//   
+//   return baseUrl;
+// };
 
 export const prisma = globalForPrisma.prisma ?? new PrismaClient({
   log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn', 'info'] : ['error'],

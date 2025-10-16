@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { TableEntry, PaginatedResult, PaginationParams, POS_LABELS, EntryRelation } from '@/lib/types';
 import FilterPanel, { FilterState } from './FilterPanel';
 import ColumnVisibilityPanel, { ColumnConfig, ColumnVisibilityState } from './ColumnVisibilityPanel';
@@ -29,6 +30,7 @@ interface ColumnWidthState {
 const DEFAULT_COLUMNS: ColumnConfig[] = [
   { key: 'id', label: 'ID', visible: true, sortable: true },
   { key: 'legacy_id', label: 'Legacy ID', visible: false, sortable: true },
+  { key: 'frame_id', label: 'Frame ID', visible: false, sortable: true },
   { key: 'lemmas', label: 'Lemmas', visible: true, sortable: true },
   { key: 'gloss', label: 'Definition', visible: true, sortable: true },
   { key: 'pos', label: 'Part of Speech', visible: false, sortable: true },
@@ -38,8 +40,10 @@ const DEFAULT_COLUMNS: ColumnConfig[] = [
   { key: 'flagged', label: 'Flagged', visible: false, sortable: true },
   { key: 'forbidden', label: 'Forbidden', visible: false, sortable: true },
   { key: 'particles', label: 'Particles', visible: false, sortable: false },
-  { key: 'frames', label: 'Frames', visible: false, sortable: false },
   { key: 'examples', label: 'Examples', visible: false, sortable: false },
+  { key: 'vendler_class', label: 'Vendler Class', visible: false, sortable: true },
+  { key: 'legal_constraints', label: 'Legal Constraints', visible: false, sortable: false },
+  { key: 'roles', label: 'Roles', visible: false, sortable: false },
   { key: 'parentsCount', label: 'Parents', visible: true, sortable: true },
   { key: 'childrenCount', label: 'Children', visible: true, sortable: true },
   { key: 'createdAt', label: 'Created', visible: false, sortable: true },
@@ -59,8 +63,11 @@ const DEFAULT_COLUMN_WIDTHS: ColumnWidthState = {
   flagged: 100,
   forbidden: 100,
   particles: 120,
-  frames: 100,
   examples: 250,
+  frame_id: 200,
+  vendler_class: 150,
+  legal_constraints: 200,
+  roles: 250,
   parentsCount: 150,
   childrenCount: 150,
   createdAt: 100,
@@ -80,20 +87,106 @@ const getDefaultColumnWidths = (): ColumnWidthState => {
 };
 
 export default function DataTable({ onRowClick, searchQuery, className }: DataTableProps) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [isInitialized, setIsInitialized] = useState(false);
+
+  // Helper function to parse URL params on mount
+  const getInitialStateFromURL = useCallback(() => {
+    const params = new URLSearchParams(searchParams?.toString() || '');
+    
+    // Parse filters
+    const filters: FilterState = {};
+    
+    // Parse text filters
+    ['gloss', 'lemmas', 'examples', 'particles', 'frames'].forEach(key => {
+      const value = params.get(key);
+      if (value !== null) {
+        filters[key as 'gloss' | 'lemmas' | 'examples' | 'particles' | 'frames'] = value;
+      }
+    });
+    
+    // Parse categorical filters
+    ['pos', 'lexfile', 'frame_id'].forEach(key => {
+      const value = params.get(key);
+      if (value !== null) {
+        filters[key as 'pos' | 'lexfile' | 'frame_id'] = value;
+      }
+    });
+    
+    // Parse boolean filters
+    ['isMwe', 'transitive', 'flagged', 'forbidden'].forEach(key => {
+      const value = params.get(key);
+      if (value !== null) {
+        filters[key as 'isMwe' | 'transitive' | 'flagged' | 'forbidden'] = value === 'true';
+      }
+    });
+    
+    // Parse numeric filters
+    ['parentsCountMin', 'parentsCountMax', 'childrenCountMin', 'childrenCountMax'].forEach(key => {
+      const value = params.get(key);
+      if (value !== null) {
+        filters[key as 'parentsCountMin' | 'parentsCountMax' | 'childrenCountMin' | 'childrenCountMax'] = parseInt(value);
+      }
+    });
+    
+    // Parse date filters
+    ['createdAfter', 'createdBefore', 'updatedAfter', 'updatedBefore'].forEach(key => {
+      const value = params.get(key);
+      if (value !== null) {
+        filters[key as 'createdAfter' | 'createdBefore' | 'updatedAfter' | 'updatedBefore'] = value;
+      }
+    });
+
+    // Parse column visibility
+    const columnsParam = params.get('columns');
+    let columnVisibility: ColumnVisibilityState | null = null;
+    if (columnsParam) {
+      try {
+        columnVisibility = JSON.parse(decodeURIComponent(columnsParam));
+      } catch {
+        // Fallback to default
+      }
+    }
+
+    // Parse sort state
+    const sortBy = params.get('sortBy') || 'id';
+    const sortOrder = (params.get('sortOrder') as 'asc' | 'desc') || 'asc';
+
+    // Parse pagination
+    const page = parseInt(params.get('page') || '1');
+    const limit = parseInt(params.get('limit') || '10');
+
+    return {
+      filters,
+      columnVisibility,
+      sortState: { field: sortBy, order: sortOrder },
+      currentPage: page,
+      pageSize: limit
+    };
+  }, [searchParams]);
+
+  const initialState = getInitialStateFromURL();
+
   const [data, setData] = useState<PaginatedResult<TableEntry> | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-  const [sortState, setSortState] = useState<SortState>({ field: 'id', order: 'asc' });
-  const [filters, setFilters] = useState<FilterState>({});
+  const [currentPage, setCurrentPage] = useState(initialState.currentPage);
+  const [pageSize, setPageSize] = useState(initialState.pageSize);
+  const [sortState, setSortState] = useState<SortState>(initialState.sortState);
+  const [filters, setFilters] = useState<FilterState>(initialState.filters);
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
   const [selection, setSelection] = useState<SelectionState>({
     selectedIds: new Set(),
     selectAll: false,
   });
   const [columnVisibility, setColumnVisibility] = useState<ColumnVisibilityState>(() => {
-    // Try to load from localStorage, fallback to defaults
+    // First try URL params
+    if (initialState.columnVisibility) {
+      return initialState.columnVisibility;
+    }
+    // Then try localStorage
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('table-column-visibility');
       if (saved) {
@@ -124,6 +217,52 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
   const [isResizing, setIsResizing] = useState(false);
   const [, setResizingColumn] = useState<string | null>(null);
   const [relationsData, setRelationsData] = useState<Record<string, { parents: string[]; children: string[] }>>({});
+
+  // Mark as initialized after first render
+  useEffect(() => {
+    setIsInitialized(true);
+  }, []);
+
+  // Update URL params when state changes (but not on initial load)
+  useEffect(() => {
+    if (!isInitialized) return;
+
+    const params = new URLSearchParams();
+    
+    // Add filters
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        params.set(key, String(value));
+      }
+    });
+
+    // Add column visibility (only if different from default)
+    const defaultVisibility = getDefaultVisibility();
+    const hasNonDefaultColumns = Object.entries(columnVisibility).some(
+      ([key, value]) => value !== defaultVisibility[key]
+    );
+    if (hasNonDefaultColumns) {
+      params.set('columns', encodeURIComponent(JSON.stringify(columnVisibility)));
+    }
+
+    // Add sort state (only if different from default)
+    if (sortState.field !== 'id' || sortState.order !== 'asc') {
+      params.set('sortBy', sortState.field);
+      params.set('sortOrder', sortState.order);
+    }
+
+    // Add pagination (only if different from default)
+    if (currentPage !== 1) {
+      params.set('page', String(currentPage));
+    }
+    if (pageSize !== 10) {
+      params.set('limit', String(pageSize));
+    }
+
+    // Update URL without causing navigation
+    const newUrl = params.toString() ? `${pathname}?${params.toString()}` : pathname;
+    router.replace(newUrl, { scroll: false });
+  }, [isInitialized, filters, columnVisibility, sortState, currentPage, pageSize, pathname, router]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -383,18 +522,20 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
     }
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const handleToggleFlagged = () => {
-    // For bulk operations, we'll set flagged to true for all selected items
-    // Users can manually unflag individual items if needed
-    handleModerationUpdate({ flagged: true });
-  };
-
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const handleToggleForbidden = () => {
-    // For bulk operations, we'll set forbidden to true for all selected items
-    // Users can manually allow individual items if needed
-    handleModerationUpdate({ forbidden: true });
+  // Calculate moderation states of selected entries
+  const getSelectionModerationState = () => {
+    if (!data || selection.selectedIds.size === 0) {
+      return { allFlagged: false, noneFlagged: true, allForbidden: false, noneForbidden: true };
+    }
+    
+    const selectedEntries = data.data.filter(entry => selection.selectedIds.has(entry.id));
+    
+    const allFlagged = selectedEntries.every(entry => entry.flagged);
+    const noneFlagged = selectedEntries.every(entry => !entry.flagged);
+    const allForbidden = selectedEntries.every(entry => entry.forbidden);
+    const noneForbidden = selectedEntries.every(entry => !entry.forbidden);
+    
+    return { allFlagged, noneFlagged, allForbidden, noneForbidden };
   };
 
   const getSortIcon = (field: string) => {
@@ -539,15 +680,6 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
             )}
           </div>
         );
-      case 'frames':
-        if (!entry.frames || entry.frames.length === 0) {
-          return <span className="text-gray-400 text-sm">None</span>;
-        }
-        return (
-          <div className="text-xs text-gray-600" title={entry.frames.join(', ')}>
-            {entry.frames.length} frame{entry.frames.length !== 1 ? 's' : ''}
-          </div>
-        );
       case 'examples':
         if (!entry.examples || entry.examples.length === 0) {
           return <span className="text-gray-400 text-sm">None</span>;
@@ -584,6 +716,73 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
             {entryRelations.children.map((childId, idx) => (
               <div key={idx} className="font-mono text-green-600">
                 {childId}
+              </div>
+            ))}
+          </div>
+        );
+      case 'frame_id':
+        if (!entry.frame_id) {
+          return <span className="text-gray-400 text-sm">None</span>;
+        }
+        return <span className="text-sm font-mono text-purple-600">{entry.frame_id}</span>;
+      case 'vendler_class':
+        if (!entry.vendler_class) {
+          return <span className="text-gray-400 text-sm">None</span>;
+        }
+        const vendlerColors: Record<string, string> = {
+          state: 'bg-blue-100 text-blue-800',
+          activity: 'bg-green-100 text-green-800',
+          accomplishment: 'bg-orange-100 text-orange-800',
+          achievement: 'bg-red-100 text-red-800',
+        };
+        const colorClass = vendlerColors[entry.vendler_class] || 'bg-gray-100 text-gray-800';
+        return (
+          <span className={`inline-block px-2 py-1 text-xs rounded font-medium ${colorClass}`}>
+            {entry.vendler_class}
+          </span>
+        );
+      case 'legal_constraints':
+        if (!entry.legal_constraints || entry.legal_constraints.length === 0) {
+          return <span className="text-gray-400 text-sm">None</span>;
+        }
+        return (
+          <div className="flex flex-wrap gap-1">
+            {entry.legal_constraints.slice(0, 3).map((constraint, idx) => (
+              <span 
+                key={idx}
+                className="inline-block px-2 py-1 text-xs bg-yellow-100 text-yellow-800 rounded"
+                title={constraint}
+              >
+                {constraint.length > 20 ? constraint.substring(0, 20) + '...' : constraint}
+              </span>
+            ))}
+            {entry.legal_constraints.length > 3 && (
+              <span className="inline-block px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded">
+                +{entry.legal_constraints.length - 3}
+              </span>
+            )}
+          </div>
+        );
+      case 'roles':
+        if (!entry.roles || entry.roles.length === 0) {
+          return <span className="text-gray-400 text-sm">None</span>;
+        }
+        return (
+          <div className="space-y-1 text-xs">
+            {entry.roles.map((role, idx) => (
+              <div key={idx} className="flex items-start gap-1">
+                <span className={`inline-block px-2 py-1 rounded font-medium ${
+                  role.main 
+                    ? 'bg-indigo-100 text-indigo-800' 
+                    : 'bg-gray-100 text-gray-700'
+                }`}>
+                  {role.role_type.label}
+                </span>
+                {role.description && (
+                  <span className="text-gray-600 text-xs" title={role.description}>
+                    {role.description.length > 30 ? role.description.substring(0, 30) + '...' : role.description}
+                  </span>
+                )}
               </div>
             ))}
           </div>
@@ -721,32 +920,68 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
             </button>
             
             {/* Moderation Actions */}
-            {selection.selectedIds.size > 0 && (
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-600">
-                  {selection.selectedIds.size} selected
-                </span>
-                <div className="h-4 w-px bg-gray-300"></div>
-                <button
-                  onClick={() => handleModerationUpdate({ flagged: true })}
-                  className="flex items-center gap-1 px-3 py-1 text-sm font-medium text-orange-700 bg-orange-100 border border-orange-200 rounded-md hover:bg-orange-200 transition-colors cursor-pointer"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 2H21l-3 6 3 6h-8.5l-1-2H5a2 2 0 00-2 2zm9-13.5V9" />
-                  </svg>
-                  Mark Flagged
-                </button>
-                <button
-                  onClick={() => handleModerationUpdate({ forbidden: true })}
-                  className="flex items-center gap-1 px-3 py-1 text-sm font-medium text-red-700 bg-red-100 border border-red-200 rounded-md hover:bg-red-200 transition-colors cursor-pointer"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636m12.728 12.728L18.364 5.636M5.636 18.364l12.728-12.728" />
-                  </svg>
-                  Mark Forbidden
-                </button>
-              </div>
-            )}
+            {selection.selectedIds.size > 0 && (() => {
+              const { allFlagged, noneFlagged, allForbidden, noneForbidden } = getSelectionModerationState();
+              const mixedFlagged = !allFlagged && !noneFlagged;
+              const mixedForbidden = !allForbidden && !noneForbidden;
+              
+              return (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-600">
+                    {selection.selectedIds.size} selected
+                  </span>
+                  <div className="h-4 w-px bg-gray-300"></div>
+                  
+                  {/* Flagged Actions */}
+                  {(noneFlagged || mixedFlagged) && (
+                    <button
+                      onClick={() => handleModerationUpdate({ flagged: true })}
+                      className="flex items-center gap-1 px-3 py-1 text-sm font-medium text-orange-700 bg-orange-100 border border-orange-200 rounded-md hover:bg-orange-200 transition-colors cursor-pointer"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 2H21l-3 6 3 6h-8.5l-1-2H5a2 2 0 00-2 2zm9-13.5V9" />
+                      </svg>
+                      Mark Flagged
+                    </button>
+                  )}
+                  {(allFlagged || mixedFlagged) && (
+                    <button
+                      onClick={() => handleModerationUpdate({ flagged: false })}
+                      className="flex items-center gap-1 px-3 py-1 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-200 rounded-md hover:bg-gray-200 transition-colors cursor-pointer"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      Unflag
+                    </button>
+                  )}
+                  
+                  {/* Forbidden Actions */}
+                  {(noneForbidden || mixedForbidden) && (
+                    <button
+                      onClick={() => handleModerationUpdate({ forbidden: true })}
+                      className="flex items-center gap-1 px-3 py-1 text-sm font-medium text-red-700 bg-red-100 border border-red-200 rounded-md hover:bg-red-200 transition-colors cursor-pointer"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636m12.728 12.728L18.364 5.636M5.636 18.364l12.728-12.728" />
+                      </svg>
+                      Mark Forbidden
+                    </button>
+                  )}
+                  {(allForbidden || mixedForbidden) && (
+                    <button
+                      onClick={() => handleModerationUpdate({ forbidden: false })}
+                      className="flex items-center gap-1 px-3 py-1 text-sm font-medium text-green-700 bg-green-100 border border-green-200 rounded-md hover:bg-green-200 transition-colors cursor-pointer"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      Allow
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
           </div>
 
           <div className="flex items-center gap-2">
@@ -829,7 +1064,7 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
                 </td>
                 {visibleColumns.map((column) => {
                   const isClickable = onRowClick && column.key !== 'isMwe' && column.key !== 'transitive';
-                  const allowsWrap = ['gloss', 'examples', 'frames', 'parentsCount', 'childrenCount'].includes(column.key);
+                  const allowsWrap = ['gloss', 'examples', 'parentsCount', 'childrenCount', 'legal_constraints', 'roles'].includes(column.key);
                   const cellClassName = `px-4 py-4 ${allowsWrap ? 'break-words' : 'whitespace-nowrap'} ${isClickable ? 'cursor-pointer' : ''} align-top border-r border-gray-200`;
                   
                   return (

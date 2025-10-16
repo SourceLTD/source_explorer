@@ -3,7 +3,7 @@
 import React, { useMemo, useState, useCallback } from 'react';
 import { Group } from '@visx/group';
 import { LinearGradient } from '@visx/gradient';
-import { GraphNode } from '@/lib/types';
+import { GraphNode, sortRolesByPrecedence } from '@/lib/types';
 
 // Color scheme
 const currentNodeColor = '#3b82f6';
@@ -46,6 +46,7 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
   const [rolesExpanded, setRolesExpanded] = useState<boolean>(false);
   const [lemmasExpanded, setLemmasExpanded] = useState<boolean>(true);
   const [examplesExpanded, setExamplesExpanded] = useState<boolean>(true);
+  const [legalConstraintsExpanded, setLegalConstraintsExpanded] = useState<boolean>(false);
   const [causesExpanded, setCausesExpanded] = useState<boolean>(false);
   const [entailsExpanded, setEntailsExpanded] = useState<boolean>(false);
   const [alsoSeeExpanded, setAlsoSeeExpanded] = useState<boolean>(false);
@@ -100,7 +101,10 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
       height += 22; // Frame badge height with spacing
     }
     
-    height += 45; // Definition section height (already has good spacing)
+    // Calculate dynamic height for gloss/definition based on content
+    const glossText = node.gloss || '';
+    const glossHeight = glossText ? Math.max(40, estimateTextHeight(glossText, contentWidth, 14, 1.3) + 10) : 40;
+    height += glossHeight;
     
     // Calculate dynamic height for lemmas based on content
     const allLemmas = node.lemmas || [];
@@ -128,27 +132,28 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
     
     // Add space for combined roles if present - AFTER examples
     let rolesHeight = 0;
-    if ((node.main_roles && node.main_roles.length > 0) || (node.alt_roles && node.alt_roles.length > 0)) {
+    if (node.roles && node.roles.length > 0) {
       rolesHeight = 20; // Header + padding (always visible)
       if (rolesExpanded) {
-        if (node.main_roles) {
-          node.main_roles.forEach(role => {
-            const roleText = `${role.frame_role.role_type.label}: ${role.description || 'No description'}`;
-            const estimatedLines = Math.ceil(roleText.length / 60);
-            const roleHeight = estimatedLines <= 2 ? 45 : 60;
-            rolesHeight += roleHeight;
-          });
-        }
-        if (node.alt_roles) {
-          node.alt_roles.forEach(role => {
-            const roleText = `${role.role_type.label}: ${role.description || 'No description'}`;
-            const estimatedLines = Math.ceil(roleText.length / 60);
-            const roleHeight = estimatedLines <= 2 ? 45 : 60;
-            rolesHeight += roleHeight;
-          });
-        }
+        node.roles.forEach(role => {
+          const roleText = `${role.role_type.label}: ${role.description || 'No description'}`;
+          const estimatedLines = Math.ceil(roleText.length / 60);
+          const roleHeight = estimatedLines <= 2 ? 45 : 60;
+          rolesHeight += roleHeight;
+        });
       }
       height += rolesHeight; // No padding
+    }
+    
+    let legalConstraintsHeight = 0;
+    if (node.legal_constraints && node.legal_constraints.length > 0) {
+      legalConstraintsHeight = 20; // Header height (always visible)
+      if (legalConstraintsExpanded) {
+        const constraintsText = `Legal Constraints: ${node.legal_constraints.join('; ')}`;
+        const estimatedHeight = estimateTextHeight(constraintsText, contentWidth);
+        legalConstraintsHeight += Math.max(25, estimatedHeight + 8); // Minimum 25px, or estimated + padding
+      }
+      height += legalConstraintsHeight;
     }
     
     let causesHeight = 0;
@@ -188,14 +193,16 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
     
     return {
       totalHeight: height,
+      glossHeight,
       lemmasHeight,
       examplesHeight,
       rolesHeight,
+      legalConstraintsHeight,
       causesHeight,
       entailsHeight,
       alsoSeeHeight
     };
-  }, [rolesExpanded, lemmasExpanded, examplesExpanded, causesExpanded, entailsExpanded, alsoSeeExpanded]);
+  }, [rolesExpanded, lemmasExpanded, examplesExpanded, legalConstraintsExpanded, causesExpanded, entailsExpanded, alsoSeeExpanded]);
 
   // Helper function to calculate node width based on text length
   const calculateNodeWidth = (text: string, minWidth: number = 60, maxWidth: number = 150): number => {
@@ -401,9 +408,9 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
               const contentWidth = nodeWidth - 24; // Account for padding
               
               // Use pre-calculated heights from nodeHeights
-              const { lemmasHeight, examplesHeight, rolesHeight } = nodeHeights;
+              const { glossHeight, lemmasHeight, examplesHeight, rolesHeight, legalConstraintsHeight } = nodeHeights;
               
-              let sectionY = centerY + 100 + (posNode.node.vendler_class ? 20 : 0) + 22 + (posNode.node.frame ? 22 : 0) + lemmasHeight + examplesHeight + rolesHeight; // Start after lemmas, examples, and roles
+              let sectionY = centerY + 55 + (posNode.node.vendler_class ? 20 : 0) + 22 + (posNode.node.frame ? 22 : 0) + glossHeight + lemmasHeight + examplesHeight + rolesHeight + legalConstraintsHeight; // Start after gloss, lemmas, examples, roles, and legal constraints
               
               const causesY = sectionY;
               let causesHeight = 0;
@@ -576,7 +583,7 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                     x={centerX + 12}
                     y={centerY + 55 + (posNode.node.vendler_class ? 20 : 0) + 22 + (posNode.node.frame ? 22 : 0)}
                     width={nodeWidth - 24}
-                    height={40}
+                    height={glossHeight}
                   >
                     <div
                       style={{
@@ -591,7 +598,7 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                         cursor: 'pointer'
                       }}
                     >
-                      {posNode.node.legal_gloss || posNode.node.gloss}
+                      {posNode.node.gloss || 'No definition available'}
                     </div>
                   </foreignObject>
                   {/* Lemmas with collapsible dropdown */}
@@ -608,7 +615,7 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                         {/* Lemmas Header */}
                         <foreignObject
                           x={centerX + 12}
-                          y={centerY + 100 + (posNode.node.vendler_class ? 20 : 0) + 22 + (posNode.node.frame ? 22 : 0)}
+                          y={centerY + 55 + (posNode.node.vendler_class ? 20 : 0) + 22 + (posNode.node.frame ? 22 : 0) + glossHeight}
                           width={nodeWidth - 24}
                           height={20}
                         >
@@ -634,7 +641,7 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                         {lemmasExpanded && (
                           <foreignObject
                             x={centerX + 12}
-                            y={centerY + 100 + (posNode.node.vendler_class ? 20 : 0) + 22 + (posNode.node.frame ? 22 : 0) + 20}
+                            y={centerY + 55 + (posNode.node.vendler_class ? 20 : 0) + 22 + (posNode.node.frame ? 22 : 0) + glossHeight + 20}
                             width={nodeWidth - 24}
                             height={lemmasHeight - 20}
                           >
@@ -685,7 +692,7 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                       {/* Examples Header */}
                       <foreignObject
                         x={centerX + 12}
-                        y={centerY + 100 + (posNode.node.vendler_class ? 20 : 0) + 22 + (posNode.node.frame ? 22 : 0) + lemmasHeight}
+                        y={centerY + 55 + (posNode.node.vendler_class ? 20 : 0) + 22 + (posNode.node.frame ? 22 : 0) + glossHeight + lemmasHeight}
                         width={nodeWidth - 24}
                         height={20}
                       >
@@ -711,7 +718,7 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                       {examplesExpanded && (
                         <foreignObject
                           x={centerX + 12}
-                          y={centerY + 100 + (posNode.node.vendler_class ? 20 : 0) + 22 + (posNode.node.frame ? 22 : 0) + lemmasHeight + 20}
+                          y={centerY + 55 + (posNode.node.vendler_class ? 20 : 0) + 22 + (posNode.node.frame ? 22 : 0) + glossHeight + lemmasHeight + 20}
                           width={nodeWidth - 24}
                           height={examplesHeight - 20}
                         >
@@ -737,57 +744,21 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                   )}
                   
                   {/* Combined Roles - after examples */}
-                  {((posNode.node.main_roles && posNode.node.main_roles.length > 0) || (posNode.node.alt_roles && posNode.node.alt_roles.length > 0)) && (() => {
-                    const rolesStartY = centerY + 100 + (posNode.node.vendler_class ? 20 : 0) + 22 + (posNode.node.frame ? 22 : 0) + lemmasHeight + examplesHeight;
+                  {posNode.node.roles && posNode.node.roles.length > 0 && (() => {
+                    const rolesStartY = centerY + 55 + (posNode.node.vendler_class ? 20 : 0) + 22 + (posNode.node.frame ? 22 : 0) + glossHeight + lemmasHeight + examplesHeight;
                     let currentRoleY = rolesStartY + 20;
                     const roleElements: JSX.Element[] = [];
                     
-                    // Add main roles first (only if expanded)
-                    if (rolesExpanded && posNode.node.main_roles && posNode.node.main_roles.length > 0) {
-                      posNode.node.main_roles.forEach((role, idx) => {
-                        const roleText = `${role.frame_role.role_type.label}: ${role.description || 'No description'}`;
-                        const estimatedLines = Math.ceil(roleText.length / 60); // Approximate chars per line
-                        const roleHeight = estimatedLines <= 2 ? 45 : 60;
-                        
-                        roleElements.push(
-                          <foreignObject
-                            key={`main-role-${idx}`}
-                            x={centerX + 12}
-                            y={currentRoleY}
-                            width={nodeWidth - 24}
-                            height={roleHeight}
-                          >
-                            <div style={{
-                              fontSize: '13px',
-                              fontFamily: 'Arial',
-                              color: 'white',
-                              lineHeight: '1.3',
-                              wordWrap: 'break-word',
-                              padding: '4px 6px',
-                              backgroundColor: 'rgba(79, 70, 229, 0.4)',
-                              borderRadius: '3px',
-                              height: '100%',
-                              overflow: 'hidden',
-                            }}>
-                              <span style={{ fontWeight: 'bold' }}>{role.frame_role.role_type.label}:</span>{' '}
-                              {role.description || 'No description'}
-                            </div>
-                          </foreignObject>
-                        );
-                        currentRoleY += roleHeight;
-                      });
-                    }
-                    
-                    // Add alt roles after main roles (only if expanded)
-                    if (rolesExpanded && posNode.node.alt_roles && posNode.node.alt_roles.length > 0) {
-                      posNode.node.alt_roles.forEach((role, idx) => {
+                    // Add roles (only if expanded) - sorted by precedence
+                    if (rolesExpanded) {
+                      sortRolesByPrecedence(posNode.node.roles).forEach((role, idx) => {
                         const roleText = `${role.role_type.label}: ${role.description || 'No description'}`;
                         const estimatedLines = Math.ceil(roleText.length / 60); // Approximate chars per line
                         const roleHeight = estimatedLines <= 2 ? 45 : 60;
                         
                         roleElements.push(
                           <foreignObject
-                            key={`alt-role-${idx}`}
+                            key={`role-${idx}`}
                             x={centerX + 12}
                             y={currentRoleY}
                             width={nodeWidth - 24}
@@ -800,7 +771,7 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                               lineHeight: '1.3',
                               wordWrap: 'break-word',
                               padding: '4px 6px',
-                              backgroundColor: 'rgba(79, 70, 229, 0.2)',
+                              backgroundColor: role.main ? 'rgba(79, 70, 229, 0.4)' : 'rgba(79, 70, 229, 0.2)',
                               borderRadius: '3px',
                               height: '100%',
                               overflow: 'hidden',
@@ -840,6 +811,72 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                           </div>
                         </foreignObject>
                         {roleElements}
+                      </>
+                    );
+                  })()}
+                  
+                  {/* Legal Constraints - after roles, before causes */}
+                  {posNode.node.legal_constraints && posNode.node.legal_constraints.length > 0 && (() => {
+                    const legalConstraintsStartY = centerY + 55 + (posNode.node.vendler_class ? 20 : 0) + 22 + (posNode.node.frame ? 22 : 0) + glossHeight + lemmasHeight + examplesHeight + rolesHeight;
+                    
+                    return (
+                      <>
+                        {/* Legal Constraints Header */}
+                        <foreignObject
+                          x={centerX + 12}
+                          y={legalConstraintsStartY}
+                          width={nodeWidth - 24}
+                          height={20}
+                        >
+                          <div 
+                            style={{
+                              fontSize: '13px',
+                              fontFamily: 'Arial',
+                              color: 'white',
+                              fontWeight: 'bold',
+                              padding: '2px 6px',
+                              backgroundColor: 'rgba(79, 70, 229, 0.6)',
+                              borderRadius: '3px 3px 0 0',
+                              cursor: 'pointer',
+                              userSelect: 'none',
+                            }}
+                            onClick={() => setLegalConstraintsExpanded(!legalConstraintsExpanded)}
+                          >
+                            Legal Constraints: {legalConstraintsExpanded ? '▼' : '▶'}
+                          </div>
+                        </foreignObject>
+                        
+                        {/* Legal Constraints Content */}
+                        {legalConstraintsExpanded && (
+                          <foreignObject
+                            x={centerX + 12}
+                            y={legalConstraintsStartY + 20}
+                            width={nodeWidth - 24}
+                            height={legalConstraintsHeight - 20}
+                          >
+                            <div
+                              style={{
+                                fontSize: '13px',
+                                fontFamily: 'Arial',
+                                color: 'white',
+                                lineHeight: '1.3',
+                                wordWrap: 'break-word',
+                                overflow: 'hidden',
+                                cursor: 'pointer',
+                                padding: '4px 6px',
+                                backgroundColor: 'rgba(79, 70, 229, 0.3)',
+                                borderRadius: '0 0 3px 3px',
+                              }}
+                            >
+                              {posNode.node.legal_constraints.map((constraint, idx) => (
+                                <span key={idx}>
+                                  <span style={{ fontWeight: '400' }}>{constraint}</span>
+                                  {idx < posNode.node.legal_constraints.length - 1 ? '; ' : ''}
+                                </span>
+                              ))}
+                            </div>
+                          </foreignObject>
+                        )}
                       </>
                     );
                   })()}

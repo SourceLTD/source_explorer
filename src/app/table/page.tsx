@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
 import DataTable from '@/components/DataTable';
 import SearchBox from '@/components/SearchBox';
@@ -68,10 +68,12 @@ export default function TableMode() {
       <main className="flex-1 flex flex-col bg-white">
         {/* Data Table */}
         <div className="m-6 bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-          <DataTable 
-            onRowClick={handleTableRowClick}
-            searchQuery={searchQuery}
-          />
+          <Suspense fallback={<div className="p-8 text-center text-gray-500">Loading...</div>}>
+            <DataTable 
+              onRowClick={handleTableRowClick}
+              searchQuery={searchQuery}
+            />
+          </Suspense>
         </div>
       </main>
     </div>

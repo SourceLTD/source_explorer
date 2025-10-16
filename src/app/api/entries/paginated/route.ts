@@ -30,6 +30,7 @@ export async function GET(request: NextRequest) {
     // Basic filters (legacy)
     pos: searchParams.get('pos') || undefined,
     lexfile: searchParams.get('lexfile') || undefined,
+    frame_id: searchParams.get('frame_id') || undefined,
     
     // Advanced filters
     gloss: searchParams.get('gloss') || undefined,
@@ -67,7 +68,7 @@ export async function GET(request: NextRequest) {
   }
 
   // Validate sort fields
-  const validSortFields = ['id', 'legacy_id', 'gloss', 'pos', 'lexfile', 'lemmas', 'src_lemmas', 'parentsCount', 'childrenCount', 'createdAt', 'updatedAt'];
+  const validSortFields = ['id', 'legacy_id', 'gloss', 'pos', 'lexfile', 'lemmas', 'src_lemmas', 'frame_id', 'vendler_class', 'parentsCount', 'childrenCount', 'createdAt', 'updatedAt'];
   if (!validSortFields.includes(params.sortBy!)) {
     return NextResponse.json({ error: 'Invalid sortBy field' }, { status: 400 });
   }

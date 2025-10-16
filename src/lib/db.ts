@@ -1,7 +1,7 @@
 import { unstable_cache, revalidateTag } from 'next/cache';
 import { prisma } from './prisma';
-import { withRetry } from './db-utils';
-import { RelationType, type LexicalEntry, type EntryWithRelations, type GraphNode, type SearchResult, type PaginationParams, type PaginatedResult, type TableEntry } from './types';
+import { withRetry } from './db-utils'; 
+import { RelationType, type LexicalEntry, type EntryWithRelations, type GraphNode, type SearchResult, type PaginationParams, type PaginatedResult, type TableEntry, sortRolesByPrecedence } from './types';
 import type { LexicalEntry as PrismaLexicalEntry, EntryRelation as PrismaEntryRelation } from '@prisma/client';
 
 // Type for Prisma entry that might have optional fields
@@ -63,6 +63,22 @@ type PrismaEntryWithCounts = {
   flaggedReason: string | null;
   forbidden: boolean | null;
   forbiddenReason: string | null;
+  frame_id: string | null;
+  vendler_class: 'state' | 'activity' | 'accomplishment' | 'achievement' | null;
+  legal_constraints: string[];
+  roles?: Array<{
+    id: string;
+    description?: string | null;
+    example_sentence?: string | null;
+    instantiation_type_ids: string[];
+    main: boolean;
+    role_types?: {
+      id: string;
+      label: string;
+      generic_description: string;
+      explanation?: string | null;
+    };
+  }>;
   _count: {
     sourceRelations: number;
     targetRelations: number;
@@ -191,14 +207,15 @@ export async function searchEntries(query: string, limit = 20): Promise<SearchRe
   return results;
 }
 
-export async function updateEntry(id: string, updates: Partial<Pick<LexicalEntry, 'gloss' | 'lemmas' | 'examples' | 'flagged' | 'flaggedReason' | 'forbidden' | 'forbiddenReason'> & { main_roles?: unknown[]; alt_roles?: unknown[] }>): Promise<EntryWithRelations | null> {
+export async function updateEntry(id: string, updates: Partial<Pick<LexicalEntry, 'gloss' | 'lemmas' | 'examples' | 'flagged' | 'flaggedReason' | 'forbidden' | 'forbiddenReason'> & { roles?: unknown[] }>): Promise<EntryWithRelations | null> {
   // Handle roles updates separately
-  if (updates.main_roles || updates.alt_roles) {
-    await updateEntryRoles(id, updates.main_roles, updates.alt_roles);
+  if (updates.roles) {
+    await updateEntryRoles(id, updates.roles);
   }
 
   // Extract non-roles fields for the main update
-  const { main_roles, alt_roles, ...otherUpdates } = updates;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { roles: _roles, ...otherUpdates } = updates;
 
   const updatedEntry = await withRetry(
     () => prisma.lexicalEntry.update({
@@ -263,17 +280,16 @@ export async function updateEntry(id: string, updates: Partial<Pick<LexicalEntry
   };
 }
 
-async function updateEntryRoles(entryId: string, mainRoles?: unknown[], altRoles?: unknown[]) {
-  // Handle main roles updates
-  if (mainRoles) {
-    // Delete existing main roles for this entry
-    await prisma.main_roles.deleteMany({
+async function updateEntryRoles(entryId: string, roles?: unknown[]) {
+  if (roles) {
+    // Delete existing roles for this entry
+    await prisma.roles.deleteMany({
       where: { lexical_entry_id: entryId }
     });
 
-    // Insert new main roles
-    for (const role of mainRoles) {
-      const roleData = role as { id: string; description: string; roleType: string };
+    // Insert new roles
+    for (const role of roles) {
+      const roleData = role as { id: string; description: string; roleType: string; exampleSentence?: string; main: boolean };
       if (roleData.description.trim()) {
         // Find existing role type
         const roleType = await prisma.role_types.findFirst({
@@ -285,58 +301,15 @@ async function updateEntryRoles(entryId: string, mainRoles?: unknown[], altRoles
           continue;
         }
 
-        // Find frame role
-        const frameRole = await prisma.frame_roles.findFirst({
-          where: {
-            frame_id: (await prisma.lexicalEntry.findUnique({ where: { id: entryId } }))?.frame_id || '',
-            role_type_id: roleType.id
-          }
-        });
-
-        if (frameRole) {
-          await prisma.main_roles.create({
-            data: {
-              id: `main_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-              lexical_entry_id: entryId,
-              frame_id: frameRole.frame_id,
-              frame_role_id: frameRole.id,
-              description: roleData.description,
-              instantiation_type_ids: []
-            }
-          });
-        }
-      }
-    }
-  }
-
-  // Handle alt roles updates
-  if (altRoles) {
-    // Delete existing alt roles for this entry
-    await prisma.alt_roles.deleteMany({
-      where: { lexical_entry_id: entryId }
-    });
-
-    // Insert new alt roles
-    for (const role of altRoles) {
-      const roleData = role as { id: number; description: string; roleType: string; exampleSentence: string };
-      if (roleData.description.trim()) {
-        // Find existing role type
-        const roleType = await prisma.role_types.findFirst({
-          where: { label: roleData.roleType }
-        });
-        
-        if (!roleType) {
-          console.warn(`Role type "${roleData.roleType}" not found in database. Skipping role creation.`);
-          continue;
-        }
-
-        await prisma.alt_roles.create({
+        await prisma.roles.create({
           data: {
+            id: `${roleData.main ? 'main' : 'alt'}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
             lexical_entry_id: entryId,
             role_type_id: roleType.id,
             description: roleData.description,
             example_sentence: roleData.exampleSentence || null,
-            instantiation_type_ids: []
+            instantiation_type_ids: [],
+            main: roleData.main
           }
         });
       }
@@ -361,32 +334,13 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
             is_supporting_frame: true,
           }
         },
-        main_roles_main_roles_lexical_entry_idTolexical_entries: {
-          select: {
-            id: true,
-            description: true,
-            instantiation_type_ids: true,
-            frame_roles_main_roles_frame_role_idToframe_roles: {
-              select: {
-                role_types: {
-                  select: {
-                    id: true,
-                    label: true,
-                    generic_description: true,
-                    explanation: true,
-                  }
-                }
-              }
-            }
-          },
-          take: 5, // Limit to first 5 to avoid overwhelming the display
-        },
-        alt_roles: {
+        roles: {
           select: {
             id: true,
             description: true,
             example_sentence: true,
             instantiation_type_ids: true,
+            main: true,
             role_types: {
               select: {
                 id: true,
@@ -396,7 +350,6 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
               }
             }
           },
-          take: 3, // Limit to first 3
         },
         sourceRelations: {
           where: {
@@ -467,6 +420,7 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
       lemmas: rel.target!.lemmas,
       src_lemmas: rel.target!.src_lemmas,
       gloss: rel.target!.gloss,
+      legal_constraints: [],
       pos: rel.target!.pos,
       lexfile: rel.target!.lexfile,
       examples: rel.target!.examples,
@@ -492,6 +446,7 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
         lemmas: rel.source!.lemmas,
         src_lemmas: rel.source!.src_lemmas,
         gloss: rel.source!.gloss,
+        legal_constraints: [],
         pos: rel.source!.pos,
         lexfile: rel.source!.lexfile,
         examples: rel.source!.examples,
@@ -517,6 +472,7 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
       lemmas: rel.target!.lemmas,
       src_lemmas: rel.target!.src_lemmas,
       gloss: rel.target!.gloss,
+      legal_constraints: [],
       pos: rel.target!.pos,
       lexfile: rel.target!.lexfile,
       examples: rel.target!.examples,
@@ -542,6 +498,7 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
       lemmas: rel.target!.lemmas,
       src_lemmas: rel.target!.src_lemmas,
       gloss: rel.target!.gloss,
+      legal_constraints: [],
       pos: rel.target!.pos,
       lexfile: rel.target!.lexfile,
       examples: rel.target!.examples,
@@ -567,6 +524,7 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
       lemmas: rel.target!.lemmas,
       src_lemmas: rel.target!.src_lemmas,
       gloss: rel.target!.gloss,
+      legal_constraints: [],
       pos: rel.target!.pos,
       lexfile: rel.target!.lexfile,
       examples: rel.target!.examples,
@@ -590,6 +548,7 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
     src_lemmas: entry.src_lemmas,
     gloss: entry.gloss,
     legal_gloss: (entry as { legal_gloss?: string | null }).legal_gloss ?? null,
+    legal_constraints: (entry as { legal_constraints?: string[] }).legal_constraints ?? [],
     pos: entry.pos,
     lexfile: entry.lexfile,
     examples: entry.examples,
@@ -600,27 +559,17 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
     frame_id: (entry as { frame_id?: string | null }).frame_id ?? null,
     vendler_class: (entry as { vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null }).vendler_class ?? null,
     frame: (entry as { frame?: { id: string; framebank_id: string; frame_name: string; definition: string; short_definition: string; is_supporting_frame: boolean } | null }).frame ?? null,
-    main_roles: (entry as { main_roles_main_roles_lexical_entry_idTolexical_entries?: unknown[] }).main_roles_main_roles_lexical_entry_idTolexical_entries?.map((role: unknown) => {
-      const roleData = role as { id: string; description?: string; instantiation_type_ids: string[]; frame_roles_main_roles_frame_role_idToframe_roles?: { role_types?: { id: string; label: string; generic_description: string; explanation?: string } } };
-      return {
-        id: roleData.id,
-        description: roleData.description,
-        instantiation_type_ids: roleData.instantiation_type_ids,
-        frame_role: {
-          role_type: roleData.frame_roles_main_roles_frame_role_idToframe_roles?.role_types || { id: '', label: '', generic_description: '', explanation: '' }
-        }
-      };
-    }),
-    alt_roles: (entry as { alt_roles?: unknown[] }).alt_roles?.map((role: unknown) => {
-      const roleData = role as { id: number; description?: string; example_sentence?: string; instantiation_type_ids: string[]; role_types?: { id: string; label: string; generic_description: string; explanation?: string } };
+    roles: sortRolesByPrecedence((entry as { roles?: unknown[] }).roles?.map((role: unknown) => {
+      const roleData = role as { id: string; description?: string; example_sentence?: string; instantiation_type_ids: string[]; main: boolean; role_types?: { id: string; label: string; generic_description: string; explanation?: string } };
       return {
         id: roleData.id,
         description: roleData.description,
         example_sentence: roleData.example_sentence,
         instantiation_type_ids: roleData.instantiation_type_ids,
+        main: roleData.main,
         role_type: roleData.role_types || { id: '', label: '', generic_description: '', explanation: '' }
       };
-    }),
+    }) || []),
     parents,
     children,
     entails,
@@ -638,6 +587,11 @@ export const getGraphNode = unstable_cache(
     tags: ['graph-node'],
   }
 );
+
+// Helper function to revalidate graph node cache
+export function revalidateGraphNodeCache() {
+  revalidateTag('graph-node');
+}
 
 // Internal implementation without caching
 async function getAncestorPathInternal(entryId: string): Promise<GraphNode[]> {
@@ -707,6 +661,7 @@ async function getAncestorPathInternal(entryId: string): Promise<GraphNode[]> {
     lemmas: result.lemmas,
     src_lemmas: result.src_lemmas,
     gloss: result.gloss,
+    legal_constraints: [],
     pos: result.pos,
     lexfile: result.lexfile,
     examples: result.examples,
@@ -761,6 +716,7 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
     search,
     pos,
     lexfile,
+    frame_id,
     gloss,
     lemmas,
     examples,
@@ -817,11 +773,36 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
 
   // Basic filters
   if (pos) {
-    andConditions.push({ pos });
+    const posValues = pos.split(',').map(p => p.trim()).filter(Boolean);
+    if (posValues.length > 0) {
+      andConditions.push({
+        pos: {
+          in: posValues
+        }
+      });
+    }
   }
 
   if (lexfile) {
-    andConditions.push({ lexfile });
+    const lexfiles = lexfile.split(',').map(lf => lf.trim()).filter(Boolean);
+    if (lexfiles.length > 0) {
+      andConditions.push({
+        lexfile: {
+          in: lexfiles
+        }
+      });
+    }
+  }
+
+  if (frame_id) {
+    const frameIds = frame_id.split(',').map(id => id.trim()).filter(Boolean);
+    if (frameIds.length > 0) {
+      andConditions.push({
+        frame_id: {
+          in: frameIds
+        }
+      });
+    }
   }
 
   // Advanced text filters
@@ -959,7 +940,7 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
     orderBy[actualSortBy] = sortOrder;
   }
 
-  // Fetch entries with relation counts
+  // Fetch entries with relation counts and roles
   const entries = await withRetry(
     () => prisma.lexicalEntry.findMany({
     where: whereClause,
@@ -974,6 +955,23 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
           },
           targetRelations: {
             where: { type: 'hypernym' }
+          }
+        }
+      },
+      roles: {
+        select: {
+          id: true,
+          description: true,
+          example_sentence: true,
+          instantiation_type_ids: true,
+          main: true,
+          role_types: {
+            select: {
+              id: true,
+              label: true,
+              generic_description: true,
+              explanation: true,
+            }
           }
         }
       }
@@ -1001,6 +999,17 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
     flaggedReason: (entry as PrismaEntryWithOptionalFields).flaggedReason || undefined,
     forbidden: (entry as PrismaEntryWithOptionalFields).forbidden ?? undefined,
     forbiddenReason: (entry as PrismaEntryWithOptionalFields).forbiddenReason || undefined,
+    frame_id: entry.frame_id ?? null,
+    vendler_class: entry.vendler_class ?? null,
+    legal_constraints: entry.legal_constraints || [],
+    roles: entry.roles?.map(role => ({
+      id: role.id,
+      description: role.description || undefined,
+      example_sentence: role.example_sentence || undefined,
+      instantiation_type_ids: role.instantiation_type_ids,
+      main: role.main,
+      role_type: role.role_types || { id: '', label: '', generic_description: '', explanation: '' }
+    })),
     parentsCount: entry._count.sourceRelations,
     childrenCount: entry._count.targetRelations,
     createdAt: entry.createdAt,

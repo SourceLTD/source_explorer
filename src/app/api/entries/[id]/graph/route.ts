@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getGraphNode } from '@/lib/db';
+import { getGraphNode, revalidateGraphNodeCache } from '@/lib/db';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -9,6 +9,14 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   const { id } = await params;
 
   try {
+    // Check for cache invalidation parameter
+    const { searchParams } = new URL(request.url);
+    const invalidateCache = searchParams.get('invalidate') === 'true';
+    
+    if (invalidateCache) {
+      revalidateGraphNodeCache();
+    }
+
     const graphNode = await getGraphNode(id);
     
     if (!graphNode) {
