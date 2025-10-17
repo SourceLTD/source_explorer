@@ -10,8 +10,6 @@ interface BreadcrumbsProps {
 }
 
 export default function Breadcrumbs({ items, onNavigate, onHomeClick, onRefreshClick }: BreadcrumbsProps) {
-  if (items.length === 0) return null;
-
   return (
     <nav className="flex items-start flex-wrap gap-x-1 gap-y-1 text-sm text-gray-600">
       {/* Home icon */}

@@ -26,6 +26,25 @@ interface ColumnWidthState {
   [columnKey: string]: number;
 }
 
+interface ModerationModalState {
+  isOpen: boolean;
+  action: 'flag' | 'unflag' | 'forbid' | 'allow' | null;
+  reason: string;
+}
+
+interface EditingState {
+  entryId: string | null;
+  field: string | null;
+  value: string;
+}
+
+interface ContextMenuState {
+  isOpen: boolean;
+  x: number;
+  y: number;
+  entryId: string | null;
+}
+
 // Define all available columns with their configurations
 const DEFAULT_COLUMNS: ColumnConfig[] = [
   { key: 'id', label: 'ID', visible: true, sortable: true },
@@ -38,7 +57,9 @@ const DEFAULT_COLUMNS: ColumnConfig[] = [
   { key: 'isMwe', label: 'Multi-word Expression', visible: false, sortable: true },
   { key: 'transitive', label: 'Transitive', visible: false, sortable: true },
   { key: 'flagged', label: 'Flagged', visible: false, sortable: true },
+  { key: 'flaggedReason', label: 'Flagged Reason', visible: false, sortable: false },
   { key: 'forbidden', label: 'Forbidden', visible: false, sortable: true },
+  { key: 'forbiddenReason', label: 'Forbidden Reason', visible: false, sortable: false },
   { key: 'particles', label: 'Particles', visible: false, sortable: false },
   { key: 'examples', label: 'Examples', visible: false, sortable: false },
   { key: 'vendler_class', label: 'Vendler Class', visible: false, sortable: true },
@@ -61,7 +82,9 @@ const DEFAULT_COLUMN_WIDTHS: ColumnWidthState = {
   isMwe: 100,
   transitive: 100,
   flagged: 100,
+  flaggedReason: 250,
   forbidden: 100,
+  forbiddenReason: 250,
   particles: 120,
   examples: 250,
   frame_id: 200,
@@ -217,11 +240,41 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
   const [isResizing, setIsResizing] = useState(false);
   const [, setResizingColumn] = useState<string | null>(null);
   const [relationsData, setRelationsData] = useState<Record<string, { parents: string[]; children: string[] }>>({});
+  const [moderationModal, setModerationModal] = useState<ModerationModalState>({
+    isOpen: false,
+    action: null,
+    reason: ''
+  });
+  const [editing, setEditing] = useState<EditingState>({
+    entryId: null,
+    field: null,
+    value: ''
+  });
+  const [contextMenu, setContextMenu] = useState<ContextMenuState>({
+    isOpen: false,
+    x: 0,
+    y: 0,
+    entryId: null
+  });
 
   // Mark as initialized after first render
   useEffect(() => {
     setIsInitialized(true);
   }, []);
+
+  // Close context menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = () => {
+      if (contextMenu.isOpen) {
+        setContextMenu({ isOpen: false, x: 0, y: 0, entryId: null });
+      }
+    };
+
+    if (contextMenu.isOpen) {
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }
+  }, [contextMenu.isOpen]);
 
   // Update URL params when state changes (but not on initial load)
   useEffect(() => {
@@ -489,7 +542,12 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
     });
   };
 
-  const handleModerationUpdate = async (updates: { flagged?: boolean; forbidden?: boolean }) => {
+  const handleModerationUpdate = async (updates: { 
+    flagged?: boolean; 
+    flaggedReason?: string;
+    forbidden?: boolean;
+    forbiddenReason?: string;
+  }) => {
     if (selection.selectedIds.size === 0) return;
 
     try {
@@ -508,11 +566,25 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
         throw new Error('Failed to update entries');
       }
 
-      // Refresh the data to show updated status
-      await fetchData();
+      // Update only the specific entries in local state
+      setData(prevData => {
+        if (!prevData) return prevData;
+        return {
+          ...prevData,
+          data: prevData.data.map(entry => {
+            if (selection.selectedIds.has(entry.id)) {
+              return { ...entry, ...updates };
+            }
+            return entry;
+          })
+        };
+      });
       
       // Clear selection
       setSelection({ selectedIds: new Set(), selectAll: false });
+
+      // Close modal and reset
+      setModerationModal({ isOpen: false, action: null, reason: '' });
 
       // Show success message (you could add a toast notification here)
       console.log('Successfully updated entries');
@@ -520,6 +592,135 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
       console.error('Error updating entries:', error);
       // You could add error notification here
     }
+  };
+
+  const handleOpenModerationModal = (action: 'flag' | 'unflag' | 'forbid' | 'allow') => {
+    setModerationModal({ isOpen: true, action, reason: '' });
+  };
+
+  const handleCloseModerationModal = () => {
+    setModerationModal({ isOpen: false, action: null, reason: '' });
+  };
+
+  const handleConfirmModeration = () => {
+    const { action, reason } = moderationModal;
+    
+    if (!action) return;
+
+    const updates: {
+      flagged?: boolean;
+      flaggedReason?: string;
+      forbidden?: boolean;
+      forbiddenReason?: string;
+    } = {};
+
+    switch (action) {
+      case 'flag':
+        updates.flagged = true;
+        if (reason.trim()) {
+          updates.flaggedReason = reason.trim();
+        }
+        break;
+      case 'unflag':
+        updates.flagged = false;
+        updates.flaggedReason = null as unknown as string;
+        break;
+      case 'forbid':
+        updates.forbidden = true;
+        if (reason.trim()) {
+          updates.forbiddenReason = reason.trim();
+        }
+        break;
+      case 'allow':
+        updates.forbidden = false;
+        updates.forbiddenReason = null as unknown as string;
+        break;
+    }
+
+    handleModerationUpdate(updates);
+  };
+
+  const handleStartEdit = (entryId: string, field: string, currentValue: string) => {
+    setEditing({
+      entryId,
+      field,
+      value: currentValue
+    });
+  };
+
+  const handleCancelEdit = () => {
+    setEditing({
+      entryId: null,
+      field: null,
+      value: ''
+    });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editing.entryId || !editing.field) return;
+
+    try {
+      const response = await fetch(`/api/entries/${editing.entryId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          [editing.field]: editing.value
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update entry');
+      }
+
+      // Update only the specific entry in local state
+      setData(prevData => {
+        if (!prevData) return prevData;
+        return {
+          ...prevData,
+          data: prevData.data.map(entry => 
+            entry.id === editing.entryId
+              ? { ...entry, [editing.field!]: editing.value }
+              : entry
+          )
+        };
+      });
+      
+      // Clear editing state
+      handleCancelEdit();
+
+      console.log('Successfully updated entry');
+    } catch (error) {
+      console.error('Error updating entry:', error);
+      // You could add error notification here
+    }
+  };
+
+  const handleContextMenu = (e: React.MouseEvent, entryId: string) => {
+    e.preventDefault();
+    setContextMenu({
+      isOpen: true,
+      x: e.clientX,
+      y: e.clientY,
+      entryId
+    });
+  };
+
+  const handleContextMenuAction = (action: 'flag' | 'unflag' | 'forbid' | 'allow') => {
+    if (!contextMenu.entryId) return;
+    
+    // Set selection to just this entry
+    setSelection({
+      selectedIds: new Set([contextMenu.entryId]),
+      selectAll: false
+    });
+    
+    // Close context menu
+    setContextMenu({ isOpen: false, x: 0, y: 0, entryId: null });
+    
+    // Open moderation modal
+    handleOpenModerationModal(action);
   };
 
   // Calculate moderation states of selected entries
@@ -597,8 +798,40 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
           </div>
         );
       case 'gloss':
+        const isEditingThisGloss = editing.entryId === entry.id && editing.field === 'gloss';
+        
+        if (isEditingThisGloss) {
+          return (
+            <div className="relative">
+              <textarea
+                value={editing.value}
+                onChange={(e) => setEditing(prev => ({ ...prev, value: e.target.value }))}
+                onBlur={handleSaveEdit}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSaveEdit();
+                  } else if (e.key === 'Escape') {
+                    handleCancelEdit();
+                  }
+                }}
+                autoFocus
+                className="w-full px-2 py-1 text-sm border border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                rows={3}
+              />
+              <div className="text-xs text-gray-500 mt-1">
+                Press Enter to save, Esc to cancel
+              </div>
+            </div>
+          );
+        }
+        
         return (
-          <div className="text-sm text-gray-900" title={entry.gloss}>
+          <div 
+            className="text-sm text-gray-900 cursor-text hover:bg-blue-50 px-2 py-1 rounded transition-colors" 
+            title={`Double-click to edit\n\n${entry.gloss}`}
+            onDoubleClick={() => handleStartEdit(entry.id, 'gloss', entry.gloss)}
+          >
             {truncateText(entry.gloss, 150)}
           </div>
         );
@@ -638,26 +871,68 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
           return <span className="text-gray-400 text-sm">N/A</span>;
         }
         return (
-          <span className={`inline-block px-2 py-1 text-xs rounded font-medium ${
-            entry.flagged 
-              ? 'bg-orange-100 text-orange-800' 
-              : 'bg-gray-100 text-gray-600'
-          }`}>
-            {entry.flagged ? 'Yes' : 'No'}
-          </span>
+          <div className="flex items-center gap-1">
+            <span className={`inline-block px-2 py-1 text-xs rounded font-medium ${
+              entry.flagged 
+                ? 'bg-orange-100 text-orange-800' 
+                : 'bg-gray-100 text-gray-600'
+            }`}>
+              {entry.flagged ? 'Yes' : 'No'}
+            </span>
+            {entry.flagged && entry.flaggedReason && (
+              <div className="group relative">
+                <svg className="w-4 h-4 text-orange-600 cursor-help" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div className="absolute left-0 top-6 hidden group-hover:block z-50 w-64 p-2 bg-gray-900 text-white text-xs rounded shadow-lg">
+                  {entry.flaggedReason}
+                </div>
+              </div>
+            )}
+          </div>
         );
       case 'forbidden':
         if (entry.forbidden === null || entry.forbidden === undefined) {
           return <span className="text-gray-400 text-sm">N/A</span>;
         }
         return (
-          <span className={`inline-block px-2 py-1 text-xs rounded font-medium ${
-            entry.forbidden 
-              ? 'bg-red-100 text-red-800' 
-              : 'bg-gray-100 text-gray-600'
-          }`}>
-            {entry.forbidden ? 'Yes' : 'No'}
-          </span>
+          <div className="flex items-center gap-1">
+            <span className={`inline-block px-2 py-1 text-xs rounded font-medium ${
+              entry.forbidden 
+                ? 'bg-red-100 text-red-800' 
+                : 'bg-gray-100 text-gray-600'
+            }`}>
+              {entry.forbidden ? 'Yes' : 'No'}
+            </span>
+            {entry.forbidden && entry.forbiddenReason && (
+              <div className="group relative">
+                <svg className="w-4 h-4 text-red-600 cursor-help" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div className="absolute left-0 top-6 hidden group-hover:block z-50 w-64 p-2 bg-gray-900 text-white text-xs rounded shadow-lg">
+                  {entry.forbiddenReason}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      case 'flaggedReason':
+        if (!entry.flaggedReason) {
+          return <span className="text-gray-400 text-sm">None</span>;
+        }
+        return (
+          <div className="text-sm text-gray-700 break-words">
+            {entry.flaggedReason}
+          </div>
+        );
+      case 'forbiddenReason':
+        if (!entry.forbiddenReason) {
+          return <span className="text-gray-400 text-sm">None</span>;
+        }
+        return (
+          <div className="text-sm text-gray-700 break-words">
+            {entry.forbiddenReason}
+          </div>
         );
       case 'particles':
         if (!entry.particles || entry.particles.length === 0) {
@@ -827,6 +1102,14 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
       return {};
     }
     
+    // When both forbidden and flagged, use red background with blue left border
+    if (entry.forbidden && entry.flagged) {
+      return { 
+        backgroundColor: '#ffc7ce',
+        borderLeft: '4px solid #3b82f6'
+      };
+    }
+    
     if (entry.forbidden) {
       return { backgroundColor: '#ffc7ce' };
     }
@@ -888,6 +1171,23 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
     <div className={`bg-white rounded-lg shadow-sm border border-gray-200 ${className || ''} ${isResizing ? 'select-none' : ''}`}>
       {/* Filters and Controls */}
       <div className="p-4 border-b border-gray-200 bg-gray-50">
+        {/* Row Status Legend */}
+        <div className="mb-3 flex items-center gap-4 text-xs">
+          <span className="font-medium text-gray-600">Row Colors:</span>
+          <div className="flex items-center gap-1">
+            <div className="w-6 h-4 rounded" style={{ backgroundColor: '#add8ff' }}></div>
+            <span className="text-gray-600">Flagged</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-6 h-4 rounded" style={{ backgroundColor: '#ffc7ce' }}></div>
+            <span className="text-gray-600">Forbidden</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-6 h-4 rounded" style={{ backgroundColor: '#ffc7ce', borderLeft: '3px solid #3b82f6' }}></div>
+            <span className="text-gray-600">Both (blue left border)</span>
+          </div>
+        </div>
+        
         <div className="flex flex-wrap gap-4 items-center justify-between">
           <div className="flex items-center gap-4">
             <div className="relative">
@@ -935,7 +1235,7 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
                   {/* Flagged Actions */}
                   {(noneFlagged || mixedFlagged) && (
                     <button
-                      onClick={() => handleModerationUpdate({ flagged: true })}
+                      onClick={() => handleOpenModerationModal('flag')}
                       className="flex items-center gap-1 px-3 py-1 text-sm font-medium text-orange-700 bg-orange-100 border border-orange-200 rounded-md hover:bg-orange-200 transition-colors cursor-pointer"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -946,7 +1246,7 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
                   )}
                   {(allFlagged || mixedFlagged) && (
                     <button
-                      onClick={() => handleModerationUpdate({ flagged: false })}
+                      onClick={() => handleOpenModerationModal('unflag')}
                       className="flex items-center gap-1 px-3 py-1 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-200 rounded-md hover:bg-gray-200 transition-colors cursor-pointer"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -959,7 +1259,7 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
                   {/* Forbidden Actions */}
                   {(noneForbidden || mixedForbidden) && (
                     <button
-                      onClick={() => handleModerationUpdate({ forbidden: true })}
+                      onClick={() => handleOpenModerationModal('forbid')}
                       className="flex items-center gap-1 px-3 py-1 text-sm font-medium text-red-700 bg-red-100 border border-red-200 rounded-md hover:bg-red-200 transition-colors cursor-pointer"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -970,7 +1270,7 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
                   )}
                   {(allForbidden || mixedForbidden) && (
                     <button
-                      onClick={() => handleModerationUpdate({ forbidden: false })}
+                      onClick={() => handleOpenModerationModal('allow')}
                       className="flex items-center gap-1 px-3 py-1 text-sm font-medium text-green-700 bg-green-100 border border-green-200 rounded-md hover:bg-green-200 transition-colors cursor-pointer"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1050,6 +1350,7 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
                 key={entry.id}
                 className={`${getRowBackgroundColor(entry, isSelected)} ${isSelected ? 'bg-blue-50' : ''}`}
                 style={getRowInlineStyles(entry, isSelected)}
+                onContextMenu={(e) => handleContextMenu(e, entry.id)}
               >
                 <td className="px-4 py-4 whitespace-nowrap w-12" style={{ width: '48px' }}>
                   <input
@@ -1063,8 +1364,8 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
                   />
                 </td>
                 {visibleColumns.map((column) => {
-                  const isClickable = onRowClick && column.key !== 'isMwe' && column.key !== 'transitive';
-                  const allowsWrap = ['gloss', 'examples', 'parentsCount', 'childrenCount', 'legal_constraints', 'roles'].includes(column.key);
+                  const isClickable = onRowClick && column.key !== 'isMwe' && column.key !== 'transitive' && column.key !== 'gloss';
+                  const allowsWrap = ['gloss', 'examples', 'parentsCount', 'childrenCount', 'legal_constraints', 'roles', 'flaggedReason', 'forbiddenReason'].includes(column.key);
                   const cellClassName = `px-4 py-4 ${allowsWrap ? 'break-words' : 'whitespace-nowrap'} ${isClickable ? 'cursor-pointer' : ''} align-top border-r border-gray-200`;
                   
                   return (
@@ -1131,6 +1432,208 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
           </button>
         </div>
       </div>
+
+      {/* Context Menu */}
+      {contextMenu.isOpen && contextMenu.entryId && (() => {
+        const entry = data?.data.find(e => e.id === contextMenu.entryId);
+        if (!entry) return null;
+
+        return (
+          <div
+            className="fixed bg-white rounded-lg shadow-xl border border-gray-200 py-1 z-50 min-w-48"
+            style={{
+              left: `${contextMenu.x}px`,
+              top: `${contextMenu.y}px`,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Entry info header */}
+            <div className="px-4 py-2 border-b border-gray-200 bg-gray-50">
+              <div className="text-xs font-mono text-blue-600">{entry.id}</div>
+              <div className="text-xs text-gray-600 mt-1 truncate max-w-xs">
+                {entry.gloss.substring(0, 50)}{entry.gloss.length > 50 ? '...' : ''}
+              </div>
+            </div>
+
+            {/* Menu items */}
+            <div className="py-1">
+              <button
+                onClick={() => {
+                  setContextMenu({ isOpen: false, x: 0, y: 0, entryId: null });
+                  router.push(`/graph?entry=${entry.id}`);
+                }}
+                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-800 flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                Open in Graph Mode
+              </button>
+
+              <div className="border-t border-gray-200 my-1"></div>
+
+              {!entry.flagged ? (
+                <button
+                  onClick={() => handleContextMenuAction('flag')}
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-orange-50 hover:text-orange-800 flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 2H21l-3 6 3 6h-8.5l-1-2H5a2 2 0 00-2 2zm9-13.5V9" />
+                  </svg>
+                  Flag Entry
+                </button>
+              ) : (
+                <button
+                  onClick={() => handleContextMenuAction('unflag')}
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Unflag Entry
+                </button>
+              )}
+
+              {!entry.forbidden ? (
+                <button
+                  onClick={() => handleContextMenuAction('forbid')}
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-red-50 hover:text-red-800 flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636m12.728 12.728L18.364 5.636M5.636 18.364l12.728-12.728" />
+                  </svg>
+                  Mark as Forbidden
+                </button>
+              ) : (
+                <button
+                  onClick={() => handleContextMenuAction('allow')}
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-green-50 hover:text-green-800 flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Allow Entry
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Moderation Modal */}
+      {moderationModal.isOpen && (() => {
+        const selectedEntries = data?.data.filter(entry => selection.selectedIds.has(entry.id)) || [];
+        const existingReasons = {
+          flagged: selectedEntries
+            .filter(e => e.flagged && e.flaggedReason)
+            .map(e => ({ id: e.id, reason: e.flaggedReason! })),
+          forbidden: selectedEntries
+            .filter(e => e.forbidden && e.forbiddenReason)
+            .map(e => ({ id: e.id, reason: e.forbiddenReason! }))
+        };
+        
+        return (
+          <div className="fixed inset-0 flex items-center justify-center z-50">
+            <div 
+              className="absolute inset-0"
+              style={{ backgroundColor: 'rgba(0, 0, 0, 0.25)' }}
+              onClick={handleCloseModerationModal}
+            ></div>
+            <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto relative z-10">
+              <div className="p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                  {moderationModal.action === 'flag' && 'Flag Entries'}
+                  {moderationModal.action === 'unflag' && 'Unflag Entries'}
+                  {moderationModal.action === 'forbid' && 'Mark as Forbidden'}
+                  {moderationModal.action === 'allow' && 'Allow Entries'}
+                </h3>
+                
+                <p className="text-sm text-gray-600 mb-4">
+                  You are about to {moderationModal.action} {selection.selectedIds.size} {selection.selectedIds.size === 1 ? 'entry' : 'entries'}.
+                </p>
+
+                {/* Show existing reasons */}
+                {moderationModal.action === 'unflag' && existingReasons.flagged.length > 0 && (
+                  <div className="mb-4 p-3 bg-orange-50 border border-orange-200 rounded-md">
+                    <h4 className="text-sm font-medium text-orange-900 mb-2">Existing Flag Reasons:</h4>
+                    <div className="space-y-2 max-h-32 overflow-y-auto">
+                      {existingReasons.flagged.map(({ id, reason }) => (
+                        <div key={id} className="text-xs text-orange-800">
+                          <span className="font-mono text-orange-600">{id}:</span> {reason}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {moderationModal.action === 'allow' && existingReasons.forbidden.length > 0 && (
+                  <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
+                    <h4 className="text-sm font-medium text-red-900 mb-2">Existing Forbidden Reasons:</h4>
+                    <div className="space-y-2 max-h-32 overflow-y-auto">
+                      {existingReasons.forbidden.map(({ id, reason }) => (
+                        <div key={id} className="text-xs text-red-800">
+                          <span className="font-mono text-red-600">{id}:</span> {reason}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {(moderationModal.action === 'flag' || moderationModal.action === 'forbid') && (
+                  <div className="mb-4">
+                    <label htmlFor="reason" className="block text-sm font-medium text-gray-700 mb-2">
+                      Reason (optional)
+                    </label>
+                    <textarea
+                      id="reason"
+                      value={moderationModal.reason}
+                      onChange={(e) => setModerationModal(prev => ({ ...prev, reason: e.target.value }))}
+                      placeholder={`Enter reason for ${moderationModal.action === 'flag' ? 'flagging' : 'marking as forbidden'}...`}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                      rows={4}
+                    />
+                  </div>
+                )}
+
+                <div className="flex justify-end gap-3">
+                  <button
+                    onClick={handleCloseModerationModal}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                <button
+                  onClick={handleConfirmModeration}
+                  className={`px-4 py-2 text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 cursor-pointer ${
+                    moderationModal.action === 'flag' 
+                      ? 'bg-orange-600 hover:bg-orange-700 text-white focus:ring-orange-500'
+                      : moderationModal.action === 'forbid'
+                      ? 'text-gray-900 focus:ring-red-300'
+                      : 'bg-green-600 hover:bg-green-700 text-white focus:ring-green-500'
+                  }`}
+                  style={moderationModal.action === 'forbid' ? {
+                    backgroundColor: '#ff8799',
+                    borderColor: '#ff8799'
+                  } : {}}
+                  onMouseEnter={(e) => {
+                    if (moderationModal.action === 'forbid') {
+                      e.currentTarget.style.backgroundColor = '#ff6b81';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (moderationModal.action === 'forbid') {
+                      e.currentTarget.style.backgroundColor = '#ff8799';
+                    }
+                  }}
+                >
+                  Confirm
+                </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

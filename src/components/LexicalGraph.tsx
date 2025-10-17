@@ -22,10 +22,6 @@ interface LexicalGraphProps {
   onNodeClick: (nodeId: string) => void;
 }
 
-// function truncateText(text: string, maxLength: number): string {
-//   if (text.length <= maxLength) return text;
-//   return text.substring(0, maxLength) + '...';
-// }
 
 interface PositionedNode {
   node: GraphNode;
@@ -130,20 +126,17 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
       height += examplesHeight;
     }
     
-    // Add space for combined roles if present - AFTER examples
-    let rolesHeight = 0;
-    if (node.roles && node.roles.length > 0) {
-      rolesHeight = 20; // Header + padding (always visible)
-      if (rolesExpanded) {
-        node.roles.forEach(role => {
-          const roleText = `${role.role_type.label}: ${role.description || 'No description'}`;
-          const estimatedLines = Math.ceil(roleText.length / 60);
-          const roleHeight = estimatedLines <= 2 ? 45 : 60;
-          rolesHeight += roleHeight;
-        });
-      }
-      height += rolesHeight; // No padding
+    // Add space for combined roles header always - AFTER examples
+    let rolesHeight = 20; // Always show Roles header
+    if (rolesExpanded && node.roles && node.roles.length > 0) {
+      node.roles.forEach(role => {
+        const roleText = `${role.role_type.label}: ${role.description || 'No description'}`;
+        const estimatedLines = Math.ceil(roleText.length / 60);
+        const roleHeight = estimatedLines <= 2 ? 45 : 60;
+        rolesHeight += roleHeight;
+      });
     }
+    height += rolesHeight; // Include header even when no roles
     
     let legalConstraintsHeight = 0;
     if (node.legal_constraints && node.legal_constraints.length > 0) {
@@ -744,13 +737,13 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                   )}
                   
                   {/* Combined Roles - after examples */}
-                  {posNode.node.roles && posNode.node.roles.length > 0 && (() => {
+                  {(() => {
                     const rolesStartY = centerY + 55 + (posNode.node.vendler_class ? 20 : 0) + 22 + (posNode.node.frame ? 22 : 0) + glossHeight + lemmasHeight + examplesHeight;
                     let currentRoleY = rolesStartY + 20;
                     const roleElements: JSX.Element[] = [];
                     
-                    // Add roles (only if expanded) - sorted by precedence
-                    if (rolesExpanded) {
+                    // Add roles (only if expanded and exist) - sorted by precedence
+                    if (rolesExpanded && posNode.node.roles && posNode.node.roles.length > 0) {
                       sortRolesByPrecedence(posNode.node.roles).forEach((role, idx) => {
                         const roleText = `${role.role_type.label}: ${role.description || 'No description'}`;
                         const estimatedLines = Math.ceil(roleText.length / 60); // Approximate chars per line

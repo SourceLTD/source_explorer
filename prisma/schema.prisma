@@ -33,9 +33,13 @@ model LexicalEntry {
   vendler_class     vendler_class_type?
   legal_gloss       String?
   legal_constraints String[]
+  concrete          Boolean?                 @default(false)
+  predicate         Boolean?                 @default(false)
   sourceRelations   EntryRelation[]          @relation("SourceEntry")
   targetRelations   EntryRelation[]          @relation("TargetEntry")
   frame             frames?                  @relation(fields: [frame_id], references: [id])
+  recipe_predicates recipe_predicates[]
+  recipes           recipes[]
   roles             roles[]
 
   @@unique([id, frame_id], map: "uq_lex_entry_id_frame")
@@ -113,22 +117,107 @@ model role_types {
 }
 
 model roles {
-  id                     String       @id @db.VarChar(255)
-  lexical_entry_id       String       @db.VarChar(255)
-  role_type_id           String       @db.VarChar(255)
-  main                   Boolean      @default(false)
-  description            String?
-  example_sentence       String?
-  instantiation_type_ids String[]     @default([]) @db.VarChar(255)
-  created_at             DateTime     @default(now()) @db.Timestamp(6)
-  updated_at             DateTime     @default(now()) @db.Timestamp(6)
-  lexical_entries        LexicalEntry @relation(fields: [lexical_entry_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_roles_lexical_entry")
-  role_types             role_types   @relation(fields: [role_type_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_roles_role_type")
+  id                                                                                         String                           @id @db.VarChar(255)
+  lexical_entry_id                                                                           String                           @db.VarChar(255)
+  role_type_id                                                                               String                           @db.VarChar(255)
+  main                                                                                       Boolean                          @default(false)
+  description                                                                                String?
+  example_sentence                                                                           String?
+  instantiation_type_ids                                                                     String[]                         @default([]) @db.VarChar(255)
+  created_at                                                                                 DateTime                         @default(now()) @db.Timestamp(6)
+  updated_at                                                                                 DateTime                         @default(now()) @db.Timestamp(6)
+  recipe_predicate_role_bindings_recipe_predicate_role_bindings_lexical_entry_role_idToroles recipe_predicate_role_bindings[] @relation("recipe_predicate_role_bindings_lexical_entry_role_idToroles")
+  recipe_predicate_role_bindings_recipe_predicate_role_bindings_predicate_role_idToroles     recipe_predicate_role_bindings[] @relation("recipe_predicate_role_bindings_predicate_role_idToroles")
+  lexical_entries                                                                            LexicalEntry                     @relation(fields: [lexical_entry_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_roles_lexical_entry")
+  role_types                                                                                 role_types                       @relation(fields: [role_type_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_roles_role_type")
 
   @@index([instantiation_type_ids], map: "idx_roles_inst_types", type: Gin)
   @@index([lexical_entry_id], map: "idx_roles_lexical_entry")
   @@index([main], map: "idx_roles_main")
   @@index([role_type_id], map: "idx_roles_role_type")
+}
+
+model predicate_variable_types {
+  id                             String                           @id
+  label                          String                           @unique
+  description                    String?
+  data_type                      String?
+  unit                           String?
+  created_at                     DateTime                         @default(now()) @db.Timestamp(6)
+  updated_at                     DateTime                         @default(now()) @db.Timestamp(6)
+  recipe_predicate_role_bindings recipe_predicate_role_bindings[]
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model recipe_predicate_relations {
+  id                                                                                         String            @id
+  recipe_id                                                                                  String
+  source_recipe_predicate_id                                                                 String
+  target_recipe_predicate_id                                                                 String
+  relation_type                                                                              RelationType
+  properties                                                                                 Json?
+  created_at                                                                                 DateTime          @default(now()) @db.Timestamp(6)
+  updated_at                                                                                 DateTime          @default(now()) @db.Timestamp(6)
+  recipes                                                                                    recipes           @relation(fields: [recipe_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  recipe_predicates_recipe_predicate_relations_source_recipe_predicate_idTorecipe_predicates recipe_predicates @relation("recipe_predicate_relations_source_recipe_predicate_idTorecipe_predicates", fields: [source_recipe_predicate_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  recipe_predicates_recipe_predicate_relations_target_recipe_predicate_idTorecipe_predicates recipe_predicates @relation("recipe_predicate_relations_target_recipe_predicate_idTorecipe_predicates", fields: [target_recipe_predicate_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([source_recipe_predicate_id, target_recipe_predicate_id], map: "idx_rpr_edges")
+  @@index([recipe_id], map: "idx_rpr_recipe")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model recipe_predicate_role_bindings {
+  id                                                                String                    @id
+  recipe_predicate_id                                               String
+  predicate_role_id                                                 String                    @db.VarChar
+  bind_kind                                                         String
+  lexical_entry_role_id                                             String?                   @db.VarChar
+  predicate_variable_type_id                                        String?
+  constant                                                          Json?
+  created_at                                                        DateTime                  @default(now()) @db.Timestamp(6)
+  updated_at                                                        DateTime                  @default(now()) @db.Timestamp(6)
+  roles_recipe_predicate_role_bindings_lexical_entry_role_idToroles roles?                    @relation("recipe_predicate_role_bindings_lexical_entry_role_idToroles", fields: [lexical_entry_role_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  roles_recipe_predicate_role_bindings_predicate_role_idToroles     roles                     @relation("recipe_predicate_role_bindings_predicate_role_idToroles", fields: [predicate_role_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  predicate_variable_types                                          predicate_variable_types? @relation(fields: [predicate_variable_type_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  recipe_predicates                                                 recipe_predicates         @relation(fields: [recipe_predicate_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([recipe_predicate_id, predicate_role_id], map: "recipe_predicate_role_binding_recipe_predicate_id_predicate_key")
+  @@index([recipe_predicate_id], map: "idx_rprb_predicate")
+}
+
+model recipe_predicates {
+  id                                                                                                  String                           @id
+  recipe_id                                                                                           String
+  predicate_lexical_entry_id                                                                          String
+  alias                                                                                               String?
+  position                                                                                            Int?
+  optional                                                                                            Boolean                          @default(false)
+  negated                                                                                             Boolean                          @default(false)
+  min_count                                                                                           Int?                             @default(1)
+  max_count                                                                                           Int?
+  created_at                                                                                          DateTime                         @default(now()) @db.Timestamp(6)
+  updated_at                                                                                          DateTime                         @default(now()) @db.Timestamp(6)
+  recipe_predicate_relations_recipe_predicate_relations_source_recipe_predicate_idTorecipe_predicates recipe_predicate_relations[]     @relation("recipe_predicate_relations_source_recipe_predicate_idTorecipe_predicates")
+  recipe_predicate_relations_recipe_predicate_relations_target_recipe_predicate_idTorecipe_predicates recipe_predicate_relations[]     @relation("recipe_predicate_relations_target_recipe_predicate_idTorecipe_predicates")
+  recipe_predicate_role_bindings                                                                      recipe_predicate_role_bindings[]
+  lexical_entries                                                                                     LexicalEntry                     @relation(fields: [predicate_lexical_entry_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  recipes                                                                                             recipes                          @relation(fields: [recipe_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([recipe_id], map: "idx_recipe_predicates_recipe")
+}
+
+model recipes {
+  id                         String                       @id
+  lexical_entry_id           String
+  label                      String?
+  description                String?
+  is_default                 Boolean                      @default(false)
+  created_at                 DateTime                     @default(now()) @db.Timestamp(6)
+  updated_at                 DateTime                     @default(now()) @db.Timestamp(6)
+  recipe_predicate_relations recipe_predicate_relations[]
+  recipe_predicates          recipe_predicates[]
+  lexical_entries            LexicalEntry                 @relation(fields: [lexical_entry_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 }
 
 enum RelationType {
@@ -137,6 +226,11 @@ enum RelationType {
   entails
   hypernym
   hyponym
+  starts
+  ends
+  precedes
+  during
+  enables
 
   @@map("relation_type")
 }

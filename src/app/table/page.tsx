@@ -6,7 +6,7 @@ import DataTable from '@/components/DataTable';
 import SearchBox from '@/components/SearchBox';
 import ViewToggle, { ViewMode } from '@/components/ViewToggle';
 import SignOutButton from '@/components/SignOutButton';
-import { TableEntry, SearchResult } from '@/lib/types';
+import { SearchResult } from '@/lib/types';
 
 export default function TableMode() {
   const router = useRouter();

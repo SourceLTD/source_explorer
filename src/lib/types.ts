@@ -231,6 +231,54 @@ export const RELATION_LABELS = {
   [RelationType.ENTAILS]: 'Entails'
 } as const;
 
+// Recipes graph types
+export type RecipeRelationType =
+  | 'also_see'
+  | 'causes'
+  | 'entails'
+  | 'hypernym'
+  | 'hyponym'
+  | 'starts'
+  | 'ends'
+  | 'precedes'
+  | 'during'
+  | 'enables';
+
+export interface RecipePredicateRoleMapping {
+  predicateRoleLabel: string;
+  entryRoleLabel: string;
+}
+
+export interface RecipePredicateNode {
+  id: string;
+  alias?: string | null;
+  position?: number | null;
+  optional?: boolean;
+  negated?: boolean;
+  lexical: GraphNode;
+  roleMappings: RecipePredicateRoleMapping[];
+}
+
+export interface RecipePredicateEdge {
+  sourcePredicateId: string;
+  targetPredicateId: string;
+  relation_type: RecipeRelationType;
+}
+
+export interface Recipe {
+  id: string;
+  label?: string | null;
+  description?: string | null;
+  is_default: boolean;
+  predicates: RecipePredicateNode[];
+  relations: RecipePredicateEdge[];
+}
+
+export interface EntryRecipes {
+  entryId: string;
+  recipes: Recipe[];
+}
+
 // Role precedence order - higher number = higher precedence
 export const ROLE_PRECEDENCE: Record<string, number> = {
   'AGENT': 24,
@@ -263,18 +311,28 @@ export const ROLE_PRECEDENCE: Record<string, number> = {
 };
 
 // Helper function to sort roles by precedence
-export function sortRolesByPrecedence<T extends { role_type: { label: string } }>(roles: T[]): T[] {
+export function sortRolesByPrecedence<T extends { role_type: { label: string }; main?: boolean }>(roles: T[]): T[] {
   return [...roles].sort((a, b) => {
+    // First, sort by main (main roles first)
+    const mainA = a.main ?? false;
+    const mainB = b.main ?? false;
+    
+    if (mainA !== mainB) {
+      return mainB ? 1 : -1; // main roles (true) come first
+    }
+    
+    // Then sort by precedence (descending)
     const roleA = a.role_type?.label || '';
     const roleB = b.role_type?.label || '';
     
     const precedenceA = ROLE_PRECEDENCE[roleA] ?? -999;
     const precedenceB = ROLE_PRECEDENCE[roleB] ?? -999;
     
-    // Sort by precedence (descending), then by label (ascending) for ties
     if (precedenceA !== precedenceB) {
       return precedenceB - precedenceA;
     }
+    
+    // Finally, sort by label (ascending) for ties
     return roleA.localeCompare(roleB);
   });
 }

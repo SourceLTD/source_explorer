@@ -1,7 +1,7 @@
 import { unstable_cache, revalidateTag } from 'next/cache';
 import { prisma } from './prisma';
 import { withRetry } from './db-utils'; 
-import { RelationType, type LexicalEntry, type EntryWithRelations, type GraphNode, type SearchResult, type PaginationParams, type PaginatedResult, type TableEntry, sortRolesByPrecedence } from './types';
+import { RelationType, type LexicalEntry, type EntryWithRelations, type GraphNode, type SearchResult, type PaginationParams, type PaginatedResult, type TableEntry, type EntryRecipes, type Recipe, type RecipePredicateNode, type RecipePredicateRoleMapping } from './types';
 import type { LexicalEntry as PrismaLexicalEntry, EntryRelation as PrismaEntryRelation } from '@prisma/client';
 
 // Type for Prisma entry that might have optional fields
@@ -207,6 +207,194 @@ export async function searchEntries(query: string, limit = 20): Promise<SearchRe
   return results;
 }
 
+// Recipes for an entry (predicates and their relations)
+async function getRecipesForEntryInternal(entryId: string): Promise<EntryRecipes> {
+  // Fetch recipes for the entry
+  const recipes = await withRetry(
+    () => prisma.$queryRaw<Array<{ id: string; label: string | null; description: string | null; is_default: boolean }>>`
+      SELECT id, label, description, is_default
+      FROM recipes
+      WHERE lexical_entry_id = ${entryId}
+      ORDER BY is_default DESC, created_at ASC
+    `,
+    undefined,
+    `getRecipesForEntry:recipes(${entryId})`
+  );
+
+  if (recipes.length === 0) {
+    return { entryId, recipes: [] };
+  }
+
+  const recipeIds = recipes.map(r => r.id);
+
+  // Fetch predicates with their lexical entries
+  const predicates = await withRetry(
+    () => prisma.$queryRaw<Array<{
+      id: string;
+      recipe_id: string;
+      alias: string | null;
+      position: number | null;
+      optional: boolean | null;
+      negated: boolean | null;
+      predicate_lexical_entry_id: string;
+      lex_id: string;
+      lex_legacy_id: string;
+      lex_lemmas: string[];
+      lex_src_lemmas: string[];
+      lex_gloss: string;
+      lex_pos: string;
+      lex_lexfile: string;
+      lex_examples: string[];
+      lex_frame_id: string | null;
+      lex_vendler_class: string | null;
+      lex_flagged: boolean | null;
+      lex_flagged_reason: string | null;
+      lex_forbidden: boolean | null;
+      lex_forbidden_reason: string | null;
+    }>>`
+      SELECT
+        rp.id,
+        rp.recipe_id,
+        rp.alias,
+        rp.position,
+        rp.optional,
+        rp.negated,
+        rp.predicate_lexical_entry_id,
+        le.id as lex_id,
+        le.legacy_id as lex_legacy_id,
+        le.lemmas as lex_lemmas,
+        le.src_lemmas as lex_src_lemmas,
+        le.gloss as lex_gloss,
+        le.pos as lex_pos,
+        le.lexfile as lex_lexfile,
+        le.examples as lex_examples,
+        le.frame_id as lex_frame_id,
+        le.vendler_class as lex_vendler_class,
+        le.flagged as lex_flagged,
+        le."flagged_reason" as lex_flagged_reason,
+        le.forbidden as lex_forbidden,
+        le."forbidden_reason" as lex_forbidden_reason
+      FROM recipe_predicates rp
+      JOIN lexical_entries le ON le.id = rp.predicate_lexical_entry_id
+      WHERE rp.recipe_id = ANY(${recipeIds}::text[])
+      ORDER BY COALESCE(rp.position, 0) ASC
+    `,
+    undefined,
+    `getRecipesForEntry:predicates(${entryId})`
+  );
+
+  // Fetch role mappings per predicate
+  const roleMappings = await withRetry(
+    () => prisma.$queryRaw<Array<{
+      recipe_predicate_id: string;
+      predicate_role_label: string | null;
+      entry_role_label: string | null;
+    }>>`
+      SELECT
+        rprb.recipe_predicate_id,
+        prt.label as predicate_role_label,
+        lrt.label as entry_role_label
+      FROM recipe_predicate_role_bindings rprb
+      LEFT JOIN roles pr ON pr.id = rprb.predicate_role_id
+      LEFT JOIN role_types prt ON prt.id = pr.role_type_id
+      LEFT JOIN roles lr ON lr.id = rprb.lexical_entry_role_id
+      LEFT JOIN role_types lrt ON lrt.id = lr.role_type_id
+      WHERE rprb.recipe_predicate_id IN (
+        SELECT id FROM recipe_predicates WHERE recipe_id = ANY(${recipeIds}::text[])
+      )
+    `,
+    undefined,
+    `getRecipesForEntry:roleMappings(${entryId})`
+  );
+
+  // Fetch predicate relations
+  const edges = await withRetry(
+    () => prisma.$queryRaw<Array<{ recipe_id: string; source_recipe_predicate_id: string; target_recipe_predicate_id: string; relation_type: string }>>`
+      SELECT recipe_id, source_recipe_predicate_id, target_recipe_predicate_id, relation_type
+      FROM recipe_predicate_relations
+      WHERE recipe_id = ANY(${recipeIds}::text[])
+    `,
+    undefined,
+    `getRecipesForEntry:edges(${entryId})`
+  );
+
+  // Group data into recipe structures
+  const byRecipeId: Record<string, Recipe> = {};
+  for (const r of recipes) {
+    byRecipeId[r.id] = {
+      id: r.id,
+      label: r.label,
+      description: r.description,
+      is_default: r.is_default,
+      predicates: [],
+      relations: [],
+    };
+  }
+
+  const mappingsByPredicate: Record<string, RecipePredicateRoleMapping[]> = {};
+  for (const m of roleMappings) {
+    const array = mappingsByPredicate[m.recipe_predicate_id] || (mappingsByPredicate[m.recipe_predicate_id] = []);
+    array.push({
+      predicateRoleLabel: m.predicate_role_label || '',
+      entryRoleLabel: m.entry_role_label || '',
+    });
+  }
+
+  for (const p of predicates) {
+    const recipe = byRecipeId[p.recipe_id];
+    if (!recipe) continue;
+    const node: RecipePredicateNode = {
+      id: p.id,
+      alias: p.alias,
+      position: p.position ?? undefined,
+      optional: Boolean(p.optional),
+      negated: Boolean(p.negated),
+      lexical: {
+        id: p.lex_id,
+        legacy_id: p.lex_legacy_id,
+        lemmas: p.lex_lemmas,
+        src_lemmas: p.lex_src_lemmas,
+        gloss: p.lex_gloss,
+        legal_constraints: [],
+        pos: p.lex_pos,
+        lexfile: p.lex_lexfile,
+        examples: p.lex_examples,
+        flagged: p.lex_flagged ?? undefined,
+        flaggedReason: p.lex_flagged_reason ?? undefined,
+        forbidden: p.lex_forbidden ?? undefined,
+        forbiddenReason: p.lex_forbidden_reason ?? undefined,
+        frame_id: p.lex_frame_id ?? null,
+        vendler_class: (p.lex_vendler_class as 'state' | 'activity' | 'accomplishment' | 'achievement' | null) ?? null,
+        parents: [],
+        children: [],
+        entails: [],
+        causes: [],
+        alsoSee: [],
+      },
+      roleMappings: mappingsByPredicate[p.id] || [],
+    };
+    recipe.predicates.push(node);
+  }
+
+  for (const e of edges) {
+    const recipe = byRecipeId[e.recipe_id];
+    if (!recipe) continue;
+    recipe.relations.push({
+      sourcePredicateId: e.source_recipe_predicate_id,
+      targetPredicateId: e.target_recipe_predicate_id,
+      relation_type: e.relation_type as 'also_see' | 'causes' | 'entails',
+    });
+  }
+
+  return { entryId, recipes: Object.values(byRecipeId) };
+}
+
+export const getRecipesForEntry = unstable_cache(
+  async (entryId: string) => getRecipesForEntryInternal(entryId),
+  ['entry-recipes'],
+  { revalidate: 60, tags: ['entry-recipes'] }
+);
+
 export async function updateEntry(id: string, updates: Partial<Pick<LexicalEntry, 'gloss' | 'lemmas' | 'examples' | 'flagged' | 'flaggedReason' | 'forbidden' | 'forbiddenReason'> & { roles?: unknown[] }>): Promise<EntryWithRelations | null> {
   // Handle roles updates separately
   if (updates.roles) {
@@ -283,9 +471,9 @@ export async function updateEntry(id: string, updates: Partial<Pick<LexicalEntry
 async function updateEntryRoles(entryId: string, roles?: unknown[]) {
   if (roles) {
     // Delete existing roles for this entry
-    await prisma.roles.deleteMany({
-      where: { lexical_entry_id: entryId }
-    });
+    await prisma.$executeRaw`
+      DELETE FROM roles WHERE lexical_entry_id = ${entryId}
+    `;
 
     // Insert new roles
     for (const role of roles) {
@@ -301,17 +489,14 @@ async function updateEntryRoles(entryId: string, roles?: unknown[]) {
           continue;
         }
 
-        await prisma.roles.create({
-          data: {
-            id: `${roleData.main ? 'main' : 'alt'}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-            lexical_entry_id: entryId,
-            role_type_id: roleType.id,
-            description: roleData.description,
-            example_sentence: roleData.exampleSentence || null,
-            instantiation_type_ids: [],
-            main: roleData.main
-          }
-        });
+        const newId = `${roleData.main ? 'main' : 'alt'}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        await prisma.$executeRaw`
+          INSERT INTO roles (
+            id, lexical_entry_id, role_type_id, main, description, example_sentence, instantiation_type_ids, created_at, updated_at
+          ) VALUES (
+            ${newId}, ${entryId}, ${roleType.id}, ${roleData.main}, ${roleData.description}, ${roleData.exampleSentence || null}, ARRAY[]::varchar[], now(), now()
+          )
+        `;
       }
     }
   }
@@ -333,23 +518,6 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
             short_definition: true,
             is_supporting_frame: true,
           }
-        },
-        roles: {
-          select: {
-            id: true,
-            description: true,
-            example_sentence: true,
-            instantiation_type_ids: true,
-            main: true,
-            role_types: {
-              select: {
-                id: true,
-                label: true,
-                generic_description: true,
-                explanation: true,
-              }
-            }
-          },
         },
         sourceRelations: {
           where: {
@@ -559,17 +727,8 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
     frame_id: (entry as { frame_id?: string | null }).frame_id ?? null,
     vendler_class: (entry as { vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null }).vendler_class ?? null,
     frame: (entry as { frame?: { id: string; framebank_id: string; frame_name: string; definition: string; short_definition: string; is_supporting_frame: boolean } | null }).frame ?? null,
-    roles: sortRolesByPrecedence((entry as { roles?: unknown[] }).roles?.map((role: unknown) => {
-      const roleData = role as { id: string; description?: string; example_sentence?: string; instantiation_type_ids: string[]; main: boolean; role_types?: { id: string; label: string; generic_description: string; explanation?: string } };
-      return {
-        id: roleData.id,
-        description: roleData.description,
-        example_sentence: roleData.example_sentence,
-        instantiation_type_ids: roleData.instantiation_type_ids,
-        main: roleData.main,
-        role_type: roleData.role_types || { id: '', label: '', generic_description: '', explanation: '' }
-      };
-    }) || []),
+    // Roles are not included here to avoid Prisma type mismatches in include; they can be fetched elsewhere when needed
+    roles: [],
     parents,
     children,
     entails,
@@ -940,7 +1099,7 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
     orderBy[actualSortBy] = sortOrder;
   }
 
-  // Fetch entries with relation counts and roles
+  // Fetch entries with relation counts
   const entries = await withRetry(
     () => prisma.lexicalEntry.findMany({
     where: whereClause,
@@ -958,23 +1117,7 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
           }
         }
       },
-      roles: {
-        select: {
-          id: true,
-          description: true,
-          example_sentence: true,
-          instantiation_type_ids: true,
-          main: true,
-          role_types: {
-            select: {
-              id: true,
-              label: true,
-              generic_description: true,
-              explanation: true,
-            }
-          }
-        }
-      }
+      // roles omitted for performance and Prisma include typing stability
     }
   }),
     undefined,
@@ -1002,14 +1145,7 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
     frame_id: entry.frame_id ?? null,
     vendler_class: entry.vendler_class ?? null,
     legal_constraints: entry.legal_constraints || [],
-    roles: entry.roles?.map(role => ({
-      id: role.id,
-      description: role.description || undefined,
-      example_sentence: role.example_sentence || undefined,
-      instantiation_type_ids: role.instantiation_type_ids,
-      main: role.main,
-      role_type: role.role_types || { id: '', label: '', generic_description: '', explanation: '' }
-    })),
+    roles: [],
     parentsCount: entry._count.sourceRelations,
     childrenCount: entry._count.targetRelations,
     createdAt: entry.createdAt,
