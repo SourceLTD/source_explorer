@@ -25,8 +25,17 @@ const colors = {
 };
 
 export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, onSelectRecipe, onNodeClick }: RecipesGraphProps) {
-  const [_hoveredId, setHoveredId] = useState<string | null>(null);
+  const [, setHoveredId] = useState<string | null>(null);
   const [roleTypes, setRoleTypes] = useState<RoleType[]>([]);
+  
+  // Track expansion states for main node to calculate correct layout
+  const [rolesExpanded, setRolesExpanded] = useState<boolean>(false);
+  const [lemmasExpanded, setLemmasExpanded] = useState<boolean>(true);
+  const [examplesExpanded, setExamplesExpanded] = useState<boolean>(true);
+  const [legalConstraintsExpanded, setLegalConstraintsExpanded] = useState<boolean>(false);
+  const [causesExpanded, setCausesExpanded] = useState<boolean>(false);
+  const [entailsExpanded, setEntailsExpanded] = useState<boolean>(false);
+  const [alsoSeeExpanded, setAlsoSeeExpanded] = useState<boolean>(false);
 
   // Fetch role types for tooltips
   useEffect(() => {
@@ -77,9 +86,18 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
     const margin = 40;
     const centerX = width / 2;
 
-    // Current node - use shared height calculation
+    // Current node - use shared height calculation with current expansion states
     const currentNodeWidth = 600;
-    const currentNodeHeight = calculateMainNodeHeight(currentNode);
+    const currentNodeHeight = calculateMainNodeHeight(
+      currentNode,
+      lemmasExpanded,
+      examplesExpanded,
+      rolesExpanded,
+      legalConstraintsExpanded,
+      causesExpanded,
+      entailsExpanded,
+      alsoSeeExpanded
+    );
     const centerY = margin + currentNodeHeight / 2;
 
     const nodes: Array<{ type: 'current' | 'predicate'; x: number; y: number; width: number; height: number; node: GraphNode | RecipePredicateNode }> = [];
@@ -177,7 +195,7 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
 
     const height = nodes.reduce((h, n) => Math.max(h, n.y + n.height / 2 + margin), centerY + currentNodeHeight / 2 + margin);
     return { width, height, nodes, edges };
-  }, [currentNode, activeRecipe]);
+  }, [currentNode, activeRecipe, lemmasExpanded, examplesExpanded, rolesExpanded, legalConstraintsExpanded, causesExpanded, entailsExpanded, alsoSeeExpanded]);
 
   return (
     <div className="w-full h-full flex items-start justify-center pt-4">
@@ -264,6 +282,20 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
                   x={n.x}
                   y={n.y}
                   onNodeClick={onNodeClick}
+                  controlledRolesExpanded={rolesExpanded}
+                  controlledLemmasExpanded={lemmasExpanded}
+                  controlledExamplesExpanded={examplesExpanded}
+                  controlledLegalConstraintsExpanded={legalConstraintsExpanded}
+                  controlledCausesExpanded={causesExpanded}
+                  controlledEntailsExpanded={entailsExpanded}
+                  controlledAlsoSeeExpanded={alsoSeeExpanded}
+                  onRolesExpandedChange={setRolesExpanded}
+                  onLemmasExpandedChange={setLemmasExpanded}
+                  onExamplesExpandedChange={setExamplesExpanded}
+                  onLegalConstraintsExpandedChange={setLegalConstraintsExpanded}
+                  onCausesExpandedChange={setCausesExpanded}
+                  onEntailsExpandedChange={setEntailsExpanded}
+                  onAlsoSeeExpandedChange={setAlsoSeeExpanded}
                 />
               );
             }
@@ -302,14 +334,32 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
                       {pred.roleMappings.map((m, i) => {
                         const y = baseY + i * lineHeight;
                         const predicateRoleInfo = getRoleInfo(m.predicateRoleLabel);
-                        const entryRoleInfo = getRoleInfo(m.entryRoleLabel);
-                        const tooltip = `${m.predicateRoleLabel}: ${predicateRoleInfo?.generic_description || 'No description'} \n→ ${m.entryRoleLabel}: ${entryRoleInfo?.generic_description || 'No description'}`;
+                        
+                        let targetDisplay = '';
+                        let targetDescription = '';
+                        
+                        if (m.bindKind === 'role' && m.entryRoleLabel) {
+                          const entryRoleInfo = getRoleInfo(m.entryRoleLabel);
+                          targetDisplay = m.entryRoleLabel;
+                          targetDescription = entryRoleInfo?.generic_description || 'No description';
+                        } else if (m.bindKind === 'variable' && m.variableTypeLabel) {
+                          targetDisplay = `[${m.variableTypeLabel}]`;
+                          targetDescription = 'Variable binding';
+                        } else if (m.bindKind === 'constant') {
+                          targetDisplay = '[constant]';
+                          targetDescription = 'Constant binding';
+                        }
+                        
+                        const tooltip = `${m.predicateRoleLabel}: ${predicateRoleInfo?.generic_description || 'No description'} \n= ${targetDisplay}: ${targetDescription}`;
+                        
                         return (
                           <text key={i} x={centerX + 10} y={y} fontSize={11} fontFamily="Arial" textAnchor="start" fill="white">
                             <title>{tooltip}</title>
                             <tspan fontWeight="bold">{m.predicateRoleLabel}</tspan>
-                            <tspan> → </tspan>
-                            <tspan fontWeight="500">{m.entryRoleLabel}</tspan>
+                            <tspan> = </tspan>
+                            <tspan fontWeight="500" fontStyle={m.bindKind !== 'role' ? 'italic' : 'normal'}>
+                              {targetDisplay}
+                            </tspan>
                           </text>
                         );
                       })}

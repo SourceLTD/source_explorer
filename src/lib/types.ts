@@ -246,7 +246,13 @@ export type RecipeRelationType =
 
 export interface RecipePredicateRoleMapping {
   predicateRoleLabel: string;
-  entryRoleLabel: string;
+  bindKind: 'role' | 'variable' | 'constant';
+  // For role-to-role bindings
+  entryRoleLabel?: string;
+  // For role-to-variable bindings
+  variableTypeLabel?: string;
+  // For role-to-constant bindings
+  constant?: unknown;
 }
 
 export interface RecipePredicateNode {

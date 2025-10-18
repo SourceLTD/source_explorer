@@ -10,7 +10,6 @@ import Breadcrumbs from './Breadcrumbs';
 import ViewToggle, { ViewMode } from './ViewToggle';
 import SignOutButton from './SignOutButton';
 import RootNodesView from './RootNodesView';
-import GraphModeToggle, { GraphMode } from './GraphModeToggle';
 
 interface WordNetExplorerProps {
   initialEntryId?: string;
@@ -24,7 +23,7 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [, setSearchQuery] = useState<string>('');
-  const [graphMode, setGraphMode] = useState<GraphMode>('troponymy');
+  const [currentView, setCurrentView] = useState<ViewMode>('graph');
   const [entryRecipes, setEntryRecipes] = useState<EntryRecipes | null>(null);
   const [selectedRecipeId, setSelectedRecipeId] = useState<string | undefined>(undefined);
   
@@ -63,10 +62,10 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
     router.push(`/graph?${params.toString()}`, { scroll: false });
   };
 
-  // Helper to update mode in URL
-  const updateModeParam = (mode: GraphMode) => {
+  // Helper to update view in URL
+  const updateViewParam = (view: ViewMode) => {
     const params = new URLSearchParams(searchParams);
-    params.set('mode', mode);
+    params.set('view', view);
     const qs = params.toString();
     router.push(qs ? `/graph?${qs}` : '/graph', { scroll: false });
   };
@@ -154,7 +153,7 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
     lastLoadedEntryRef.current = null;
     setCurrentNode(null);
     setBreadcrumbs([]);
-    // Remove entry from URL but preserve mode
+    // Remove entry from URL but preserve view
     const params = new URLSearchParams(searchParams);
     params.delete('entry');
     const qs = params.toString();
@@ -393,11 +392,11 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
     });
   };
 
-  // Load entry based on URL params or initial prop and sync mode from URL
+  // Load entry based on URL params or initial prop and sync view from URL
   useEffect(() => {
-    const modeParam = searchParams.get('mode');
-    if (modeParam === 'troponymy' || modeParam === 'recipes') {
-      setGraphMode(modeParam);
+    const viewParam = searchParams.get('view');
+    if (viewParam === 'graph' || viewParam === 'recipes' || viewParam === 'table') {
+      setCurrentView(viewParam as ViewMode);
     }
     const currentEntryId = searchParams.get('entry') || initialEntryId;
     if (currentEntryId) {
@@ -434,18 +433,14 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
                 placeholder="Search graph..."
               />
             </div>
-              <GraphModeToggle
-                mode={graphMode}
-                onChange={(mode: GraphMode) => {
-                  setGraphMode(mode);
-                  updateModeParam(mode);
-                }}
-              />
             <ViewToggle 
-              currentView="graph"
+              currentView={currentView}
               onViewChange={(view: ViewMode) => {
                 if (view === 'table') {
                   router.push('/table');
+                } else {
+                  setCurrentView(view);
+                  updateViewParam(view);
                 }
               }}
             />
@@ -1152,10 +1147,10 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
         <div className="flex-1 p-6 bg-white">
           {currentNode && !isLoading ? (
             <div className="h-full flex flex-col">
-              {/* Breadcrumbs - only show in troponymy mode */}
+              {/* Breadcrumbs - only show in graph mode (troponymy) */}
               <div className="mb-4">
                 <Breadcrumbs 
-                  items={graphMode === 'troponymy' ? breadcrumbs : []} 
+                  items={currentView === 'graph' ? breadcrumbs : []} 
                   onNavigate={handleBreadcrumbNavigate}
                   onHomeClick={handleHomeClick}
                   onRefreshClick={handleRefreshClick}
@@ -1164,7 +1159,7 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
               
               {/* Graph */}
               <div className="flex-1">
-                {graphMode === 'troponymy' ? (
+                {currentView === 'graph' ? (
                   <LexicalGraph 
                     currentNode={currentNode} 
                     onNodeClick={handleNodeClick} 

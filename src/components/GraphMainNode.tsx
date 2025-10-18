@@ -9,17 +9,89 @@ interface GraphMainNodeProps {
   x: number;
   y: number;
   onNodeClick: (nodeId: string) => void;
+  // Optional controlled expansion states
+  controlledRolesExpanded?: boolean;
+  controlledLemmasExpanded?: boolean;
+  controlledExamplesExpanded?: boolean;
+  controlledLegalConstraintsExpanded?: boolean;
+  controlledCausesExpanded?: boolean;
+  controlledEntailsExpanded?: boolean;
+  controlledAlsoSeeExpanded?: boolean;
+  onRolesExpandedChange?: (expanded: boolean) => void;
+  onLemmasExpandedChange?: (expanded: boolean) => void;
+  onExamplesExpandedChange?: (expanded: boolean) => void;
+  onLegalConstraintsExpandedChange?: (expanded: boolean) => void;
+  onCausesExpandedChange?: (expanded: boolean) => void;
+  onEntailsExpandedChange?: (expanded: boolean) => void;
+  onAlsoSeeExpandedChange?: (expanded: boolean) => void;
 }
 
-export default function GraphMainNode({ node, x, y, onNodeClick }: GraphMainNodeProps) {
+export default function GraphMainNode({ 
+  node, 
+  x, 
+  y, 
+  onNodeClick,
+  controlledRolesExpanded,
+  controlledLemmasExpanded,
+  controlledExamplesExpanded,
+  controlledLegalConstraintsExpanded,
+  controlledCausesExpanded,
+  controlledEntailsExpanded,
+  controlledAlsoSeeExpanded,
+  onRolesExpandedChange,
+  onLemmasExpandedChange,
+  onExamplesExpandedChange,
+  onLegalConstraintsExpandedChange,
+  onCausesExpandedChange,
+  onEntailsExpandedChange,
+  onAlsoSeeExpandedChange,
+}: GraphMainNodeProps) {
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
-  const [rolesExpanded, setRolesExpanded] = useState<boolean>(false);
-  const [lemmasExpanded, setLemmasExpanded] = useState<boolean>(true);
-  const [examplesExpanded, setExamplesExpanded] = useState<boolean>(true);
-  const [legalConstraintsExpanded, setLegalConstraintsExpanded] = useState<boolean>(false);
-  const [causesExpanded, setCausesExpanded] = useState<boolean>(false);
-  const [entailsExpanded, setEntailsExpanded] = useState<boolean>(false);
-  const [alsoSeeExpanded, setAlsoSeeExpanded] = useState<boolean>(false);
+  const [internalRolesExpanded, setInternalRolesExpanded] = useState<boolean>(false);
+  const [internalLemmasExpanded, setInternalLemmasExpanded] = useState<boolean>(true);
+  const [internalExamplesExpanded, setInternalExamplesExpanded] = useState<boolean>(true);
+  const [internalLegalConstraintsExpanded, setInternalLegalConstraintsExpanded] = useState<boolean>(false);
+  const [internalCausesExpanded, setInternalCausesExpanded] = useState<boolean>(false);
+  const [internalEntailsExpanded, setInternalEntailsExpanded] = useState<boolean>(false);
+  const [internalAlsoSeeExpanded, setInternalAlsoSeeExpanded] = useState<boolean>(false);
+
+  // Use controlled values if provided, otherwise use internal state
+  const rolesExpanded = controlledRolesExpanded !== undefined ? controlledRolesExpanded : internalRolesExpanded;
+  const lemmasExpanded = controlledLemmasExpanded !== undefined ? controlledLemmasExpanded : internalLemmasExpanded;
+  const examplesExpanded = controlledExamplesExpanded !== undefined ? controlledExamplesExpanded : internalExamplesExpanded;
+  const legalConstraintsExpanded = controlledLegalConstraintsExpanded !== undefined ? controlledLegalConstraintsExpanded : internalLegalConstraintsExpanded;
+  const causesExpanded = controlledCausesExpanded !== undefined ? controlledCausesExpanded : internalCausesExpanded;
+  const entailsExpanded = controlledEntailsExpanded !== undefined ? controlledEntailsExpanded : internalEntailsExpanded;
+  const alsoSeeExpanded = controlledAlsoSeeExpanded !== undefined ? controlledAlsoSeeExpanded : internalAlsoSeeExpanded;
+
+  const setRolesExpanded = (val: boolean) => {
+    if (onRolesExpandedChange) onRolesExpandedChange(val);
+    else setInternalRolesExpanded(val);
+  };
+  const setLemmasExpanded = (val: boolean) => {
+    if (onLemmasExpandedChange) onLemmasExpandedChange(val);
+    else setInternalLemmasExpanded(val);
+  };
+  const setExamplesExpanded = (val: boolean) => {
+    if (onExamplesExpandedChange) onExamplesExpandedChange(val);
+    else setInternalExamplesExpanded(val);
+  };
+  const setLegalConstraintsExpanded = (val: boolean) => {
+    if (onLegalConstraintsExpandedChange) onLegalConstraintsExpandedChange(val);
+    else setInternalLegalConstraintsExpanded(val);
+  };
+  const setCausesExpanded = (val: boolean) => {
+    if (onCausesExpandedChange) onCausesExpandedChange(val);
+    else setInternalCausesExpanded(val);
+  };
+  const setEntailsExpanded = (val: boolean) => {
+    if (onEntailsExpandedChange) onEntailsExpandedChange(val);
+    else setInternalEntailsExpanded(val);
+  };
+  const setAlsoSeeExpanded = (val: boolean) => {
+    if (onAlsoSeeExpandedChange) onAlsoSeeExpandedChange(val);
+    else setInternalAlsoSeeExpanded(val);
+  };
 
   // Helper function to remove POS prefix from lexfile
   const cleanLexfile = (lexfile: string): string => {

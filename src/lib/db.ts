@@ -283,25 +283,33 @@ async function getRecipesForEntryInternal(entryId: string): Promise<EntryRecipes
     `getRecipesForEntry:predicates(${entryId})`
   );
 
-  // Fetch role mappings per predicate
+  // Fetch role mappings per predicate (all binding types)
   const roleMappings = await withRetry(
     () => prisma.$queryRaw<Array<{
       recipe_predicate_id: string;
+      bind_kind: string;
       predicate_role_label: string | null;
       entry_role_label: string | null;
+      variable_type_label: string | null;
+      constant: unknown;
     }>>`
       SELECT
         rprb.recipe_predicate_id,
+        rprb.bind_kind,
         prt.label as predicate_role_label,
-        lrt.label as entry_role_label
+        lrt.label as entry_role_label,
+        pvt.label as variable_type_label,
+        rprb.constant
       FROM recipe_predicate_role_bindings rprb
       LEFT JOIN roles pr ON pr.id = rprb.predicate_role_id
       LEFT JOIN role_types prt ON prt.id = pr.role_type_id
       LEFT JOIN roles lr ON lr.id = rprb.lexical_entry_role_id
       LEFT JOIN role_types lrt ON lrt.id = lr.role_type_id
+      LEFT JOIN predicate_variable_types pvt ON pvt.id = rprb.predicate_variable_type_id
       WHERE rprb.recipe_predicate_id IN (
         SELECT id FROM recipe_predicates WHERE recipe_id = ANY(${recipeIds}::text[])
       )
+      AND prt.label IS NOT NULL
     `,
     undefined,
     `getRecipesForEntry:roleMappings(${entryId})`
@@ -333,11 +341,37 @@ async function getRecipesForEntryInternal(entryId: string): Promise<EntryRecipes
 
   const mappingsByPredicate: Record<string, RecipePredicateRoleMapping[]> = {};
   for (const m of roleMappings) {
+    // Skip mappings where predicate role label is missing
+    if (!m.predicate_role_label) {
+      continue;
+    }
+    
     const array = mappingsByPredicate[m.recipe_predicate_id] || (mappingsByPredicate[m.recipe_predicate_id] = []);
-    array.push({
-      predicateRoleLabel: m.predicate_role_label || '',
-      entryRoleLabel: m.entry_role_label || '',
-    });
+    
+    // Determine binding type and create appropriate mapping
+    // Priority: if entry_role_label exists, it's a role binding
+    if (m.entry_role_label) {
+      // Role-to-role binding
+      array.push({
+        predicateRoleLabel: m.predicate_role_label,
+        bindKind: 'role',
+        entryRoleLabel: m.entry_role_label,
+      });
+    } else if (m.variable_type_label) {
+      // Role-to-variable binding
+      array.push({
+        predicateRoleLabel: m.predicate_role_label,
+        bindKind: 'variable',
+        variableTypeLabel: m.variable_type_label,
+      });
+    } else if (m.constant !== null && m.constant !== undefined) {
+      // Role-to-constant binding
+      array.push({
+        predicateRoleLabel: m.predicate_role_label,
+        bindKind: 'constant',
+        constant: m.constant,
+      });
+    }
   }
 
   for (const p of predicates) {
@@ -579,6 +613,38 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
 
   if (!entry) return null;
 
+  // Fetch roles separately to avoid type issues
+  const rolesData = await withRetry(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    () => (prisma as any).roles.findMany({
+      where: { lexical_entry_id: entryId },
+      include: {
+        role_types: {
+          select: {
+            id: true,
+            label: true,
+            generic_description: true,
+            explanation: true,
+          }
+        }
+      }
+    }),
+    undefined,
+    `getRoles(${entryId})`
+  ) as Array<{
+    id: string;
+    description: string | null;
+    example_sentence: string | null;
+    instantiation_type_ids: string[];
+    main: boolean;
+    role_types: {
+      id: string;
+      label: string;
+      generic_description: string;
+      explanation: string | null;
+    };
+  }>;
+
   // Get parents (hypernyms) - these are broader concepts
   const parents: GraphNode[] = entry.sourceRelations
     .filter(rel => rel.type === 'hypernym' && rel.target)
@@ -709,6 +775,21 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
       alsoSee: [],
     }));
 
+  // Map roles data to the expected format
+  const roles = rolesData.map(role => ({
+    id: role.id,
+    description: role.description ?? undefined,
+    example_sentence: role.example_sentence ?? undefined,
+    instantiation_type_ids: role.instantiation_type_ids,
+    main: role.main,
+    role_type: {
+      id: role.role_types.id,
+      label: role.role_types.label,
+      generic_description: role.role_types.generic_description,
+      explanation: role.role_types.explanation ?? undefined,
+    },
+  }));
+
   return {
     id: entry.id,
     legacy_id: entry.legacy_id,
@@ -727,8 +808,7 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
     frame_id: (entry as { frame_id?: string | null }).frame_id ?? null,
     vendler_class: (entry as { vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null }).vendler_class ?? null,
     frame: (entry as { frame?: { id: string; framebank_id: string; frame_name: string; definition: string; short_definition: string; is_supporting_frame: boolean } | null }).frame ?? null,
-    // Roles are not included here to avoid Prisma type mismatches in include; they can be fetched elsewhere when needed
-    roles: [],
+    roles,
     parents,
     children,
     entails,

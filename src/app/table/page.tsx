@@ -49,7 +49,9 @@ export default function TableMode() {
               currentView="table"
               onViewChange={(view: ViewMode) => {
                 if (view === 'graph') {
-                  router.push('/graph');
+                  router.push('/graph?view=graph');
+                } else if (view === 'recipes') {
+                  router.push('/graph?view=recipes');
                 }
               }}
             />
