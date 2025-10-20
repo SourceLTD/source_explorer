@@ -8,7 +8,7 @@ async function main() {
   // Create sample lexical entries
   const entries = [
     {
-      id: 'have.v.02',
+      code: 'have.v.02',
       legacy_id: 'have.v.02',
       gloss: 'have as a feature',
       pos: 'v',
@@ -18,7 +18,7 @@ async function main() {
       examples: ['This restaurant features the most famous chefs in France'],
     },
     {
-      id: 'brim.v.01',
+      code: 'brim.v.01',
       legacy_id: 'brim.v.01',
       gloss: 'be completely full',
       pos: 'v',
@@ -28,7 +28,7 @@ async function main() {
       examples: ['His eyes brimmed with tears'],
     },
     {
-      id: 'abound.v.02',
+      code: 'abound.v.02',
       legacy_id: 'abound.v.02',
       gloss: 'be abundant or plentiful; exist in large quantities',
       pos: 'v',
@@ -38,7 +38,7 @@ async function main() {
       examples: ['The plaza is bursting with life'],
     },
     {
-      id: 'bear.v.01',
+      code: 'bear.v.01',
       legacy_id: 'bear.v.01',
       gloss: 'have',
       pos: 'v',
@@ -48,7 +48,7 @@ async function main() {
       examples: ['bear a resemblance', 'bear a signature'],
     },
     {
-      id: 'carry.v.02',
+      code: 'carry.v.02',
       legacy_id: 'carry.v.02',
       gloss: 'have with oneself; have on one\'s person',
       pos: 'v',
@@ -58,7 +58,7 @@ async function main() {
       examples: ['She always takes an umbrella'],
     },
     {
-      id: 'carry.v.18',
+      code: 'carry.v.18',
       legacy_id: 'carry.v.18',
       gloss: 'bear or be able to bear the weight, pressure, or responsibility of',
       pos: 'v',
@@ -68,7 +68,7 @@ async function main() {
       examples: ['Can you carry this suitcase?'],
     },
     {
-      id: 'carry.v.22',
+      code: 'carry.v.22',
       legacy_id: 'carry.v.22',
       gloss: 'have or possess something abstract',
       pos: 'v',
@@ -78,7 +78,7 @@ async function main() {
       examples: ['I carry her image in my mind\'s eye'],
     },
     {
-      id: 'carry.v.35',
+      code: 'carry.v.35',
       legacy_id: 'carry.v.35',
       gloss: 'include as the content; broadcast or publicize',
       pos: 'v',
@@ -88,7 +88,7 @@ async function main() {
       examples: ['All major networks carried the press conference'],
     },
     {
-      id: 'give_off.v.01',
+      code: 'give_off.v.01',
       legacy_id: 'give_off.v.01',
       gloss: 'have as a by-product',
       pos: 'v',
@@ -98,7 +98,7 @@ async function main() {
       examples: ['The big cities gave off so many wonderful American qualities'],
     },
     {
-      id: 'imply.v.05',
+      code: 'imply.v.05',
       legacy_id: 'imply.v.05',
       gloss: 'have as a logical consequence',
       pos: 'v',
@@ -108,7 +108,7 @@ async function main() {
       examples: ['The water shortage means that we have to stop taking long showers'],
     },
     {
-      id: 'possess.v.01',
+      code: 'possess.v.01',
       legacy_id: 'possess.v.01',
       gloss: 'have as an attribute or quality',
       pos: 'v',
@@ -118,7 +118,7 @@ async function main() {
       examples: ['he possesses great knowledge in that area'],
     },
     {
-      id: 'read.v.02',
+      code: 'read.v.02',
       legacy_id: 'read.v.02',
       gloss: 'have or contain a certain wording or form',
       pos: 'v',
@@ -128,7 +128,7 @@ async function main() {
       examples: ['The passage reads as follows'],
     },
     {
-      id: 'sport.v.01',
+      code: 'sport.v.01',
       legacy_id: 'sport.v.01',
       gloss: 'wear or display in an ostentatious or proud manner',
       pos: 'v',
@@ -138,7 +138,7 @@ async function main() {
       examples: ['she was sporting a new hat'],
     },
     {
-      id: 'star.v.01',
+      code: 'star.v.01',
       legacy_id: 'star.v.01',
       gloss: 'feature as the star',
       pos: 'v',
@@ -148,7 +148,7 @@ async function main() {
       examples: ['The movie stars Dustin Hoffman as an autistic man'],
     },
     {
-      id: 'unite.v.03',
+      code: 'unite.v.03',
       legacy_id: 'unite.v.03',
       gloss: 'have or possess in combination',
       pos: 'v',
@@ -158,7 +158,7 @@ async function main() {
       examples: ['she unites charm with a good business sense'],
     },
     {
-      id: 'wear.v.02',
+      code: 'wear.v.02',
       legacy_id: 'wear.v.02',
       gloss: 'have on one\'s person',
       pos: 'v',
@@ -168,7 +168,7 @@ async function main() {
       examples: ['He always wears a smile'],
     },
     {
-      id: 'wear.v.03',
+      code: 'wear.v.03',
       legacy_id: 'wear.v.03',
       gloss: 'have in one\'s aspect; wear an expression of one\'s attitude or personality',
       pos: 'v',
@@ -178,7 +178,7 @@ async function main() {
       examples: ['He always wears a smile'],
     },
     {
-      id: 'wear.v.05',
+      code: 'wear.v.05',
       legacy_id: 'wear.v.05',
       gloss: 'have or show an appearance of',
       pos: 'v',
@@ -192,7 +192,7 @@ async function main() {
   // Insert entries
   for (const entry of entries) {
     await prisma.lexicalEntry.upsert({
-      where: { id: entry.id },
+      where: { code: entry.code }, // Use code for lookup
       update: {},
       create: entry,
     });
@@ -239,20 +239,36 @@ async function main() {
     { source: 'have.v.02', target: 'wear.v.05', type: RelationType.hyponym },
   ];
 
-  // Insert relations
+  // Insert relations - convert codes to numeric IDs
   for (const relation of relations) {
+    // Get numeric IDs from codes
+    const sourceEntry = await prisma.lexicalEntry.findUnique({
+      where: { code: relation.source },
+      select: { id: true }
+    });
+    
+    const targetEntry = await prisma.lexicalEntry.findUnique({
+      where: { code: relation.target },
+      select: { id: true }
+    });
+    
+    if (!sourceEntry || !targetEntry) {
+      console.warn(`Skipping relation: ${relation.source} -> ${relation.target} (entry not found)`);
+      continue;
+    }
+    
     await prisma.entryRelation.upsert({
       where: {
         sourceId_type_targetId: {
-          sourceId: relation.source,
+          sourceId: sourceEntry.id,
           type: relation.type,
-          targetId: relation.target,
+          targetId: targetEntry.id,
         },
       },
       update: {},
       create: {
-        sourceId: relation.source,
-        targetId: relation.target,
+        sourceId: sourceEntry.id,
+        targetId: targetEntry.id,
         type: relation.type,
       },
     });

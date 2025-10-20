@@ -2,12 +2,12 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import type { 
-  LexicalEntry, 
-  LexicalEntryWithRelations, 
+  Verb, 
+  VerbWithRelations, 
   SearchOptions, 
   PaginatedSearchResult,
   DatabaseStats,
-  EntryRelationWithEntries,
+  VerbRelationWithEntries,
   RelationType
 } from './types'
 
@@ -54,9 +54,9 @@ export function useSearchEntries() {
   return { results, loading, error, search }
 }
 
-// Custom hook for managing a single lexical entry
-export function useLexicalEntry(id: string | null) {
-  const [entry, setEntry] = useState<LexicalEntryWithRelations | null>(null)
+// Custom hook for managing a single verb entry
+export function useVerb(id: string | null) {
+  const [entry, setEntry] = useState<VerbWithRelations | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -81,7 +81,7 @@ export function useLexicalEntry(id: string | null) {
     }
   }, [])
 
-  const updateEntry = useCallback(async (entryId: string, updates: Partial<LexicalEntry>) => {
+  const updateEntry = useCallback(async (entryId: string, updates: Partial<Verb>) => {
     setLoading(true)
     setError(null)
 
@@ -140,9 +140,9 @@ export function useLexicalEntry(id: string | null) {
   return { entry, loading, error, updateEntry, deleteEntry, refetch: () => id && fetchEntry(id) }
 }
 
-// Custom hook for managing entry relations
-export function useEntryRelations(entryId: string | null) {
-  const [relations, setRelations] = useState<EntryRelationWithEntries[]>([])
+// Custom hook for managing verb relations
+export function useVerbRelations(entryId: string | null) {
+  const [relations, setRelations] = useState<VerbRelationWithEntries[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 

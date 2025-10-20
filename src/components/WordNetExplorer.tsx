@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { GraphNode, SearchResult, BreadcrumbItem, RoleType, sortRolesByPrecedence, EntryRecipes } from '@/lib/types';
 import LexicalGraph from './LexicalGraph';
@@ -894,19 +894,65 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
                     >
                       {currentNode.roles && currentNode.roles.length > 0 ? (
                         <div className="space-y-2">
-                          {sortRolesByPrecedence(currentNode.roles).map((role, index) => (
-                            <div key={index} className="text-sm">
-                              <span className={`font-medium ${role.main ? 'text-blue-800' : 'text-purple-800'}`}>
-                                {role.role_type.label}:
-                              </span>{' '}
-                              <span className="text-gray-900">{role.description || 'No description'}</span>
-                              {role.example_sentence && (
-                                <div className="text-xs text-gray-600 italic mt-1">
-                                  &quot;{role.example_sentence}&quot;
-                                </div>
-                              )}
-                            </div>
-                          ))}
+                          {(() => {
+                            // Create a map of role IDs to check which roles are in groups
+                            const rolesInGroups = new Set<string>();
+                            const roleGroups = currentNode.role_groups || [];
+                            roleGroups.forEach(group => {
+                              group.role_ids.forEach(roleId => rolesInGroups.add(roleId));
+                            });
+                            
+                            // Separate roles that are not in groups
+                            const sortedRoles = sortRolesByPrecedence(currentNode.roles);
+                            const ungroupedRoles = sortedRoles.filter(role => !rolesInGroups.has(role.id));
+                            
+                            return (
+                              <>
+                                {/* Render ungrouped roles */}
+                                {ungroupedRoles.map((role, index) => (
+                                  <div key={`role-${index}`} className="text-sm">
+                                    <span className={`font-medium ${role.main ? 'text-blue-800' : 'text-purple-800'}`}>
+                                      {role.role_type.label}:
+                                    </span>{' '}
+                                    <span className="text-gray-900">{role.description || 'No description'}</span>
+                                    {role.example_sentence && (
+                                      <div className="text-xs text-gray-600 italic mt-1">
+                                        &quot;{role.example_sentence}&quot;
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                                
+                                {/* Render role groups with OR indicators */}
+                                {roleGroups.map((group, groupIdx) => {
+                                  const groupRoles = currentNode.roles!.filter(role => group.role_ids.includes(role.id));
+                                  if (groupRoles.length === 0) return null;
+                                  
+                                  return (
+                                    <div 
+                                      key={`group-${groupIdx}`}
+                                      className="border border-black rounded px-3 py-2 bg-gray-50"
+                                      title={group.description || 'OR group: one of these roles is required'}
+                                    >
+                                      {groupRoles.map((role, roleIdx) => (
+                                        <React.Fragment key={`group-${groupIdx}-role-${roleIdx}`}>
+                                          {roleIdx > 0 && (
+                                            <span className="mx-2 text-sm font-bold text-gray-700">OR</span>
+                                          )}
+                                          <div className="inline-block text-sm">
+                                            <span className={`font-medium ${role.main ? 'text-blue-800' : 'text-purple-800'}`}>
+                                              {role.role_type.label}:
+                                            </span>{' '}
+                                            <span className="text-gray-900">{role.description || 'No description'}</span>
+                                          </div>
+                                        </React.Fragment>
+                                      ))}
+                                    </div>
+                                  );
+                                })}
+                              </>
+                            );
+                          })()}
                         </div>
                       ) : (
                         <p className="text-gray-500 text-sm italic">No roles (double-click to add)</p>

@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import type { RelationType } from '@prisma/client'
+import type { RelationType, Prisma } from '@prisma/client'
 
 interface RelationRequest {
-  sourceId: string
-  targetId: string
+  sourceId: string  // These are codes (e.g., "attack.v.01")
+  targetId: string  // These are codes (e.g., "fight.v.01")
   type: RelationType
 }
 
@@ -38,10 +38,28 @@ export async function POST(request: NextRequest) {
       )
     }
     
+    // Convert codes to numeric IDs
+    const sourceEntry = await prisma.verbs.findUnique({
+      where: { code: body.sourceId } as unknown as Prisma.verbsWhereUniqueInput,
+      select: { id: true }
+    })
+    
+    const targetEntry = await prisma.verbs.findUnique({
+      where: { code: body.targetId } as unknown as Prisma.verbsWhereUniqueInput,
+      select: { id: true }
+    })
+    
+    if (!sourceEntry || !targetEntry) {
+      return NextResponse.json(
+        { error: 'One or both entries do not exist' },
+        { status: 400 }
+      )
+    }
+    
     const relation = await prisma.entryRelation.create({
       data: {
-        sourceId: body.sourceId,
-        targetId: body.targetId,
+        sourceId: sourceEntry.id,
+        targetId: targetEntry.id,
         type: body.type
       }
     })
@@ -86,11 +104,29 @@ export async function DELETE(request: NextRequest) {
       )
     }
     
+    // Convert codes to numeric IDs
+    const sourceEntry = await prisma.verbs.findUnique({
+      where: { code: body.sourceId } as unknown as Prisma.verbsWhereUniqueInput,
+      select: { id: true }
+    })
+    
+    const targetEntry = await prisma.verbs.findUnique({
+      where: { code: body.targetId } as unknown as Prisma.verbsWhereUniqueInput,
+      select: { id: true }
+    })
+    
+    if (!sourceEntry || !targetEntry) {
+      return NextResponse.json(
+        { error: 'One or both entries do not exist' },
+        { status: 404 }
+      )
+    }
+    
     await prisma.entryRelation.delete({
       where: {
         sourceId_type_targetId: {
-          sourceId: body.sourceId,
-          targetId: body.targetId,
+          sourceId: sourceEntry.id,
+          targetId: targetEntry.id,
           type: body.type
         }
       }

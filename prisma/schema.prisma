@@ -8,93 +8,46 @@ datasource db {
   directUrl = env("POSTGRES_URL_NON_POOLING")
 }
 
-model LexicalEntry {
-  id                String                   @id
-  legacy_id         String
-  gloss             String
-  pos               String                   @db.Char(1)
-  lexfile           String
-  isMwe             Boolean                  @default(false) @map("is_mwe")
-  transitive        Boolean?
-  lemmas            String[]                 @default([])
-  src_lemmas        String[]                 @default([])
-  particles         String[]                 @default([])
-  frames            String[]                 @default([])
-  examples          String[]                 @default([])
-  glossTsv          Unsupported("tsvector")? @map("gloss_tsv")
-  examplesTsv       Unsupported("tsvector")? @map("examples_tsv")
-  createdAt         DateTime                 @default(now()) @map("created_at")
-  updatedAt         DateTime                 @default(now()) @updatedAt @map("updated_at")
-  flagged           Boolean?                 @default(false)
-  flaggedReason     String?                  @map("flagged_reason")
-  forbidden         Boolean?                 @default(false)
-  forbiddenReason   String?                  @map("forbidden_reason")
-  frame_id          String?
-  vendler_class     vendler_class_type?
-  legal_gloss       String?
-  legal_constraints String[]
-  concrete          Boolean?                 @default(false)
-  predicate         Boolean?                 @default(false)
-  sourceRelations   EntryRelation[]          @relation("SourceEntry")
-  targetRelations   EntryRelation[]          @relation("TargetEntry")
-  frame             frames?                  @relation(fields: [frame_id], references: [id])
-  recipe_predicates recipe_predicates[]
-  recipes           recipes[]
-  roles             roles[]
-
-  @@unique([id, frame_id], map: "uq_lex_entry_id_frame")
-  @@index([examplesTsv], map: "idx_lex_examples_tsv", type: Gin)
-  @@index([frames], map: "idx_lex_frames_gin", type: Gin)
-  @@index([glossTsv], map: "idx_lex_gloss_tsv", type: Gin)
-  @@index([lemmas], map: "idx_lex_lemmas_gin", type: Gin)
-  @@index([particles], map: "idx_lex_particles_gin", type: Gin)
-  @@index([pos], map: "idx_lex_pos")
-  @@index([vendler_class], map: "idx_lex_vendler_class")
-  @@index([frame_id], map: "idx_lex_frame")
-  @@map("lexical_entries")
-}
-
 model EntryRelation {
-  sourceId String       @map("source_id")
-  targetId String       @map("target_id")
   type     RelationType
-  source   LexicalEntry @relation("SourceEntry", fields: [sourceId], references: [id], onDelete: Cascade)
-  target   LexicalEntry @relation("TargetEntry", fields: [targetId], references: [id], onDelete: Cascade)
+  id       BigInt       @id @default(autoincrement())
+  sourceId BigInt       @map("source_id")
+  targetId BigInt       @map("target_id")
+  source   verbs        @relation("SourceEntry", fields: [sourceId], references: [id], onDelete: Cascade)
+  target   verbs        @relation("TargetEntry", fields: [targetId], references: [id], onDelete: Cascade)
 
-  @@id([sourceId, type, targetId])
-  @@index([targetId, type], map: "idx_rel_target_type")
+  @@unique([sourceId, type, targetId], map: "uq_entry_relation")
   @@map("entry_relations")
 }
 
 model frame_roles {
-  id           String     @id
-  frame_id     String
-  role_type_id String
   created_at   DateTime   @default(now())
   updated_at   DateTime   @default(now())
-  frames       frames     @relation(fields: [frame_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id           BigInt     @id @default(autoincrement())
+  frame_id     BigInt
+  role_type_id BigInt
+  frames       frames     @relation(fields: [frame_id], references: [id], onDelete: Cascade)
   role_types   role_types @relation(fields: [role_type_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@unique([frame_id, role_type_id], map: "uq_frame_role")
   @@unique([id, frame_id], map: "uq_frame_roles_id_frame")
-  @@index([frame_id], map: "idx_frame_roles_frame")
-  @@index([role_type_id], map: "idx_frame_roles_role_type")
 }
 
 model frames {
-  id                             String         @id
-  framebank_id                   String         @unique
+  framebank_id                   String        @unique
   frame_name                     String
   definition                     String
   prototypical_synset            String
   prototypical_synset_definition String
   short_definition               String
-  is_supporting_frame            Boolean        @default(false)
-  created_at                     DateTime       @default(now())
-  updated_at                     DateTime       @default(now())
+  is_supporting_frame            Boolean       @default(false)
+  created_at                     DateTime      @default(now())
+  updated_at                     DateTime      @default(now())
   communication                  Boolean?
+  id                             BigInt        @id @default(autoincrement())
+  code                           String        @unique(map: "frames_code_unique") @db.VarChar
   frame_roles                    frame_roles[]
-  lexical_entries                LexicalEntry[]
+  verbs                          verbs[]
 
   @@index([framebank_id], map: "idx_framebank_id")
   @@index([frame_name], map: "idx_frames_frame_name")
@@ -102,94 +55,87 @@ model frames {
 }
 
 model instantiation_types {
-  id          String  @id
   label       String  @unique
   wikidata_id String? @unique
+  id          BigInt  @id @default(autoincrement())
+  code        String  @unique(map: "instantiation_types_code_unique") @db.VarChar
 }
 
 model role_types {
-  id                  String        @id
   label               String        @unique
   generic_description String
   explanation         String?
+  id                  BigInt        @id @default(autoincrement())
+  code                String        @unique(map: "role_types_code_unique") @db.VarChar
   frame_roles         frame_roles[]
   roles               roles[]
 }
 
 model roles {
-  id                                                                                         String                           @id @db.VarChar(255)
-  lexical_entry_id                                                                           String                           @db.VarChar(255)
-  role_type_id                                                                               String                           @db.VarChar(255)
   main                                                                                       Boolean                          @default(false)
   description                                                                                String?
   example_sentence                                                                           String?
-  instantiation_type_ids                                                                     String[]                         @default([]) @db.VarChar(255)
   created_at                                                                                 DateTime                         @default(now()) @db.Timestamp(6)
   updated_at                                                                                 DateTime                         @default(now()) @db.Timestamp(6)
+  id                                                                                         BigInt                           @id @default(autoincrement())
+  lexical_entry_id                                                                           BigInt
+  role_type_id                                                                               BigInt
+  instantiation_type_ids                                                                     BigInt[]                         @default([])
+  recipe_preconditions                                                                       recipe_preconditions[]
   recipe_predicate_role_bindings_recipe_predicate_role_bindings_lexical_entry_role_idToroles recipe_predicate_role_bindings[] @relation("recipe_predicate_role_bindings_lexical_entry_role_idToroles")
   recipe_predicate_role_bindings_recipe_predicate_role_bindings_predicate_role_idToroles     recipe_predicate_role_bindings[] @relation("recipe_predicate_role_bindings_predicate_role_idToroles")
-  lexical_entries                                                                            LexicalEntry                     @relation(fields: [lexical_entry_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_roles_lexical_entry")
+  role_group_members                                                                         role_group_members[]
+  lexical_entries                                                                            verbs                            @relation(fields: [lexical_entry_id], references: [id], onDelete: Cascade, map: "fk_roles_lexical_entry")
   role_types                                                                                 role_types                       @relation(fields: [role_type_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_roles_role_type")
 
-  @@index([instantiation_type_ids], map: "idx_roles_inst_types", type: Gin)
-  @@index([lexical_entry_id], map: "idx_roles_lexical_entry")
   @@index([main], map: "idx_roles_main")
-  @@index([role_type_id], map: "idx_roles_role_type")
 }
 
 model predicate_variable_types {
-  id                             String                           @id
   label                          String                           @unique
   description                    String?
-  data_type                      String?
   unit                           String?
   created_at                     DateTime                         @default(now()) @db.Timestamp(6)
   updated_at                     DateTime                         @default(now()) @db.Timestamp(6)
+  id                             BigInt                           @id @default(autoincrement())
   recipe_predicate_role_bindings recipe_predicate_role_bindings[]
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model recipe_predicate_relations {
-  id                                                                                         String            @id
-  recipe_id                                                                                  String
-  source_recipe_predicate_id                                                                 String
-  target_recipe_predicate_id                                                                 String
   relation_type                                                                              RelationType
   properties                                                                                 Json?
   created_at                                                                                 DateTime          @default(now()) @db.Timestamp(6)
   updated_at                                                                                 DateTime          @default(now()) @db.Timestamp(6)
-  recipes                                                                                    recipes           @relation(fields: [recipe_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  recipe_predicates_recipe_predicate_relations_source_recipe_predicate_idTorecipe_predicates recipe_predicates @relation("recipe_predicate_relations_source_recipe_predicate_idTorecipe_predicates", fields: [source_recipe_predicate_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  recipe_predicates_recipe_predicate_relations_target_recipe_predicate_idTorecipe_predicates recipe_predicates @relation("recipe_predicate_relations_target_recipe_predicate_idTorecipe_predicates", fields: [target_recipe_predicate_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-
-  @@index([source_recipe_predicate_id, target_recipe_predicate_id], map: "idx_rpr_edges")
-  @@index([recipe_id], map: "idx_rpr_recipe")
+  id                                                                                         BigInt            @id @default(autoincrement())
+  recipe_id                                                                                  BigInt
+  source_recipe_predicate_id                                                                 BigInt
+  target_recipe_predicate_id                                                                 BigInt
+  recipes                                                                                    recipes           @relation(fields: [recipe_id], references: [id], onDelete: Cascade)
+  recipe_predicates_recipe_predicate_relations_source_recipe_predicate_idTorecipe_predicates recipe_predicates @relation("recipe_predicate_relations_source_recipe_predicate_idTorecipe_predicates", fields: [source_recipe_predicate_id], references: [id], onDelete: Cascade)
+  recipe_predicates_recipe_predicate_relations_target_recipe_predicate_idTorecipe_predicates recipe_predicates @relation("recipe_predicate_relations_target_recipe_predicate_idTorecipe_predicates", fields: [target_recipe_predicate_id], references: [id], onDelete: Cascade)
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model recipe_predicate_role_bindings {
-  id                                                                String                    @id
-  recipe_predicate_id                                               String
-  predicate_role_id                                                 String                    @db.VarChar
   bind_kind                                                         String
-  lexical_entry_role_id                                             String?                   @db.VarChar
-  predicate_variable_type_id                                        String?
   constant                                                          Json?
   created_at                                                        DateTime                  @default(now()) @db.Timestamp(6)
   updated_at                                                        DateTime                  @default(now()) @db.Timestamp(6)
+  id                                                                BigInt                    @id @default(autoincrement())
+  recipe_predicate_id                                               BigInt
+  predicate_role_id                                                 BigInt
+  lexical_entry_role_id                                             BigInt?
+  predicate_variable_type_id                                        BigInt?
   roles_recipe_predicate_role_bindings_lexical_entry_role_idToroles roles?                    @relation("recipe_predicate_role_bindings_lexical_entry_role_idToroles", fields: [lexical_entry_role_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   roles_recipe_predicate_role_bindings_predicate_role_idToroles     roles                     @relation("recipe_predicate_role_bindings_predicate_role_idToroles", fields: [predicate_role_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   predicate_variable_types                                          predicate_variable_types? @relation(fields: [predicate_variable_type_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  recipe_predicates                                                 recipe_predicates         @relation(fields: [recipe_predicate_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  recipe_predicates                                                 recipe_predicates         @relation(fields: [recipe_predicate_id], references: [id], onDelete: Cascade)
 
-  @@unique([recipe_predicate_id, predicate_role_id], map: "recipe_predicate_role_binding_recipe_predicate_id_predicate_key")
-  @@index([recipe_predicate_id], map: "idx_rprb_predicate")
+  @@unique([recipe_predicate_id, predicate_role_id], map: "uq_recipe_predicate_role_binding")
 }
 
 model recipe_predicates {
-  id                                                                                                  String                           @id
-  recipe_id                                                                                           String
-  predicate_lexical_entry_id                                                                          String
   alias                                                                                               String?
   position                                                                                            Int?
   optional                                                                                            Boolean                          @default(false)
@@ -198,26 +144,286 @@ model recipe_predicates {
   max_count                                                                                           Int?
   created_at                                                                                          DateTime                         @default(now()) @db.Timestamp(6)
   updated_at                                                                                          DateTime                         @default(now()) @db.Timestamp(6)
+  id                                                                                                  BigInt                           @id @default(autoincrement())
+  recipe_id                                                                                           BigInt
+  predicate_lexical_entry_id                                                                          BigInt
+  example                                                                                             String?
+  predicate_group_members                                                                             predicate_group_members[]
+  recipe_preconditions                                                                                recipe_preconditions[]
   recipe_predicate_relations_recipe_predicate_relations_source_recipe_predicate_idTorecipe_predicates recipe_predicate_relations[]     @relation("recipe_predicate_relations_source_recipe_predicate_idTorecipe_predicates")
   recipe_predicate_relations_recipe_predicate_relations_target_recipe_predicate_idTorecipe_predicates recipe_predicate_relations[]     @relation("recipe_predicate_relations_target_recipe_predicate_idTorecipe_predicates")
   recipe_predicate_role_bindings                                                                      recipe_predicate_role_bindings[]
-  lexical_entries                                                                                     LexicalEntry                     @relation(fields: [predicate_lexical_entry_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  recipes                                                                                             recipes                          @relation(fields: [recipe_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-
-  @@index([recipe_id], map: "idx_recipe_predicates_recipe")
+  lexical_entries                                                                                     verbs                            @relation(fields: [predicate_lexical_entry_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  recipes                                                                                             recipes                          @relation(fields: [recipe_id], references: [id], onDelete: Cascade)
 }
 
 model recipes {
-  id                         String                       @id
-  lexical_entry_id           String
   label                      String?
   description                String?
   is_default                 Boolean                      @default(false)
   created_at                 DateTime                     @default(now()) @db.Timestamp(6)
   updated_at                 DateTime                     @default(now()) @db.Timestamp(6)
+  id                         BigInt                       @id @default(autoincrement())
+  lexical_entry_id           BigInt
+  example                    String?
+  predicate_groups           predicate_groups[]
+  recipe_preconditions       recipe_preconditions[]
   recipe_predicate_relations recipe_predicate_relations[]
   recipe_predicates          recipe_predicates[]
-  lexical_entries            LexicalEntry                 @relation(fields: [lexical_entry_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  lexical_entries            verbs                        @relation(fields: [lexical_entry_id], references: [id], onDelete: Cascade)
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model predicate_group_members {
+  id                  BigInt            @id @default(autoincrement())
+  predicate_group_id  BigInt
+  recipe_predicate_id BigInt
+  created_at          DateTime          @default(now()) @db.Timestamp(6)
+  predicate_groups    predicate_groups  @relation(fields: [predicate_group_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_predicate_group_members_group")
+  recipe_predicates   recipe_predicates @relation(fields: [recipe_predicate_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_predicate_group_members_predicate")
+
+  @@unique([predicate_group_id, recipe_predicate_id], map: "uq_predicate_group_member")
+  @@index([predicate_group_id], map: "idx_predicate_group_members_group")
+  @@index([recipe_predicate_id], map: "idx_predicate_group_members_predicate")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model predicate_groups {
+  id                      BigInt                    @id @default(autoincrement())
+  recipe_id               BigInt
+  description             String?
+  require_at_least_one    Boolean                   @default(true)
+  created_at              DateTime                  @default(now()) @db.Timestamp(6)
+  updated_at              DateTime                  @default(now()) @db.Timestamp(6)
+  predicate_group_members predicate_group_members[]
+  recipes                 recipes                   @relation(fields: [recipe_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_predicate_groups_recipe")
+
+  @@index([recipe_id], map: "idx_predicate_groups_recipe_id")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model recipe_preconditions {
+  id                         BigInt             @id @default(autoincrement())
+  recipe_id                  BigInt
+  condition_type             String             @db.VarChar(50)
+  target_role_id             BigInt?
+  target_recipe_predicate_id BigInt?
+  condition_params           Json?
+  description                String?
+  error_message              String?
+  created_at                 DateTime           @default(now()) @db.Timestamp(6)
+  updated_at                 DateTime           @default(now()) @db.Timestamp(6)
+  recipe_predicates          recipe_predicates? @relation(fields: [target_recipe_predicate_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_recipe_preconditions_predicate")
+  recipes                    recipes            @relation(fields: [recipe_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_recipe_preconditions_recipe")
+  roles                      roles?             @relation(fields: [target_role_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_recipe_preconditions_role")
+
+  @@index([target_recipe_predicate_id], map: "idx_recipe_preconditions_predicate")
+  @@index([recipe_id], map: "idx_recipe_preconditions_recipe")
+  @@index([target_role_id], map: "idx_recipe_preconditions_role")
+  @@index([condition_type], map: "idx_recipe_preconditions_type")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model role_group_members {
+  id            BigInt      @id @default(autoincrement())
+  role_group_id BigInt
+  role_id       BigInt
+  created_at    DateTime    @default(now()) @db.Timestamp(6)
+  role_groups   role_groups @relation(fields: [role_group_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_role_group_members_group")
+  roles         roles       @relation(fields: [role_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_role_group_members_role")
+
+  @@unique([role_group_id, role_id], map: "uq_role_group_member")
+  @@index([role_group_id], map: "idx_role_group_members_group")
+  @@index([role_id], map: "idx_role_group_members_role")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model role_groups {
+  id                   BigInt               @id @default(autoincrement())
+  description          String?
+  require_at_least_one Boolean              @default(true)
+  created_at           DateTime             @default(now()) @db.Timestamp(6)
+  updated_at           DateTime             @default(now()) @db.Timestamp(6)
+  lexical_entry_id     BigInt?
+  role_group_members   role_group_members[]
+  lexical_entries      verbs?               @relation(fields: [lexical_entry_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([lexical_entry_id], map: "idx_role_groups_lexical_entry_id")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model adjective_relations {
+  id                                                   BigInt                  @id @default(autoincrement())
+  source_id                                            BigInt
+  target_id                                            BigInt
+  type                                                 adjective_relation_type
+  weight                                               Float?
+  properties                                           Json?
+  created_at                                           DateTime                @default(now()) @db.Timestamp(6)
+  updated_at                                           DateTime                @default(now()) @db.Timestamp(6)
+  adjectives_adjective_relations_source_idToadjectives adjectives              @relation("adjective_relations_source_idToadjectives", fields: [source_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_adjective_relations_source")
+  adjectives_adjective_relations_target_idToadjectives adjectives              @relation("adjective_relations_target_idToadjectives", fields: [target_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_adjective_relations_target")
+
+  @@unique([source_id, type, target_id], map: "uq_adjective_relation")
+  @@index([properties], map: "idx_adjective_relations_properties", type: Gin)
+  @@index([source_id], map: "idx_adjective_relations_source")
+  @@index([source_id, type], map: "idx_adjective_relations_source_type")
+  @@index([target_id], map: "idx_adjective_relations_target")
+  @@index([target_id, type], map: "idx_adjective_relations_target_type")
+  @@index([type], map: "idx_adjective_relations_type")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model adjectives {
+  id                                                            BigInt                   @id @default(autoincrement())
+  code                                                          String                   @unique @db.VarChar
+  legacy_id                                                     String
+  lemmas                                                        String[]                 @default([])
+  src_lemmas                                                    String[]                 @default([])
+  gloss                                                         String
+  lexfile                                                       String
+  examples                                                      String[]                 @default([])
+  is_mwe                                                        Boolean                  @default(false)
+  is_satellite                                                  Boolean                  @default(false)
+  gradable                                                      Boolean?
+  predicative                                                   Boolean?                 @default(true)
+  attributive                                                   Boolean?                 @default(true)
+  subjective                                                    Boolean?                 @default(false)
+  relational                                                    Boolean?                 @default(false)
+  gloss_tsv                                                     Unsupported("tsvector")?
+  examples_tsv                                                  Unsupported("tsvector")?
+  flagged                                                       Boolean?                 @default(false)
+  flagged_reason                                                String?
+  forbidden                                                     Boolean?                 @default(false)
+  forbidden_reason                                              String?
+  legal_gloss                                                   String?
+  legal_constraints                                             String[]
+  created_at                                                    DateTime                 @default(now()) @db.Timestamp(6)
+  updated_at                                                    DateTime                 @default(now()) @db.Timestamp(6)
+  adjective_relations_adjective_relations_source_idToadjectives adjective_relations[]    @relation("adjective_relations_source_idToadjectives")
+  adjective_relations_adjective_relations_target_idToadjectives adjective_relations[]    @relation("adjective_relations_target_idToadjectives")
+
+  @@index([attributive], map: "idx_adjectives_attributive")
+  @@index([examples_tsv], map: "idx_adjectives_examples_tsv", type: Gin)
+  @@index([flagged], map: "idx_adjectives_flagged")
+  @@index([forbidden], map: "idx_adjectives_forbidden")
+  @@index([gloss_tsv], map: "idx_adjectives_gloss_tsv", type: Gin)
+  @@index([gradable], map: "idx_adjectives_gradable")
+  @@index([is_mwe], map: "idx_adjectives_is_mwe")
+  @@index([is_satellite], map: "idx_adjectives_is_satellite")
+  @@index([lemmas], map: "idx_adjectives_lemmas_gin", type: Gin)
+  @@index([lexfile], map: "idx_adjectives_lexfile")
+  @@index([predicative], map: "idx_adjectives_predicative")
+  @@index([relational], map: "idx_adjectives_relational")
+  @@index([subjective], map: "idx_adjectives_subjective")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model noun_relations {
+  id                                    BigInt             @id @default(autoincrement())
+  source_id                             BigInt
+  target_id                             BigInt
+  type                                  noun_relation_type
+  weight                                Float?
+  properties                            Json?
+  created_at                            DateTime           @default(now()) @db.Timestamp(6)
+  updated_at                            DateTime           @default(now()) @db.Timestamp(6)
+  nouns_noun_relations_source_idTonouns nouns              @relation("noun_relations_source_idTonouns", fields: [source_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_noun_relations_source")
+  nouns_noun_relations_target_idTonouns nouns              @relation("noun_relations_target_idTonouns", fields: [target_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_noun_relations_target")
+
+  @@unique([source_id, type, target_id], map: "uq_noun_relation")
+  @@index([properties], map: "idx_noun_relations_properties", type: Gin)
+  @@index([source_id], map: "idx_noun_relations_source")
+  @@index([source_id, type], map: "idx_noun_relations_source_type")
+  @@index([target_id], map: "idx_noun_relations_target")
+  @@index([target_id, type], map: "idx_noun_relations_target_type")
+  @@index([type], map: "idx_noun_relations_type")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model nouns {
+  id                                             BigInt                   @id @default(autoincrement())
+  code                                           String                   @unique @db.VarChar
+  legacy_id                                      String
+  lemmas                                         String[]                 @default([])
+  src_lemmas                                     String[]                 @default([])
+  gloss                                          String
+  lexfile                                        String
+  examples                                       String[]                 @default([])
+  is_mwe                                         Boolean                  @default(false)
+  countable                                      Boolean?
+  proper                                         Boolean?                 @default(false)
+  collective                                     Boolean?                 @default(false)
+  concrete                                       Boolean?                 @default(false)
+  predicate                                      Boolean?                 @default(false)
+  gloss_tsv                                      Unsupported("tsvector")?
+  examples_tsv                                   Unsupported("tsvector")?
+  flagged                                        Boolean?                 @default(false)
+  flagged_reason                                 String?
+  forbidden                                      Boolean?                 @default(false)
+  forbidden_reason                               String?
+  legal_gloss                                    String?
+  legal_constraints                              String[]
+  created_at                                     DateTime                 @default(now()) @db.Timestamp(6)
+  updated_at                                     DateTime                 @default(now()) @db.Timestamp(6)
+  noun_relations_noun_relations_source_idTonouns noun_relations[]         @relation("noun_relations_source_idTonouns")
+  noun_relations_noun_relations_target_idTonouns noun_relations[]         @relation("noun_relations_target_idTonouns")
+
+  @@index([collective], map: "idx_nouns_collective")
+  @@index([concrete], map: "idx_nouns_concrete")
+  @@index([countable], map: "idx_nouns_countable")
+  @@index([examples_tsv], map: "idx_nouns_examples_tsv", type: Gin)
+  @@index([flagged], map: "idx_nouns_flagged")
+  @@index([forbidden], map: "idx_nouns_forbidden")
+  @@index([gloss_tsv], map: "idx_nouns_gloss_tsv", type: Gin)
+  @@index([is_mwe], map: "idx_nouns_is_mwe")
+  @@index([lemmas], map: "idx_nouns_lemmas_gin", type: Gin)
+  @@index([lexfile], map: "idx_nouns_lexfile")
+  @@index([proper], map: "idx_nouns_proper")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model verbs {
+  legacy_id         String
+  gloss             String
+  lexfile           String
+  is_mwe            Boolean                  @default(false)
+  transitive        Boolean?
+  lemmas            String[]                 @default([])
+  src_lemmas        String[]                 @default([])
+  particles         String[]                 @default([])
+  examples          String[]                 @default([])
+  gloss_tsv         Unsupported("tsvector")?
+  examples_tsv      Unsupported("tsvector")?
+  created_at        DateTime                 @default(now())
+  updated_at        DateTime                 @default(now())
+  flagged           Boolean?                 @default(false)
+  flagged_reason    String?
+  forbidden         Boolean?                 @default(false)
+  forbidden_reason  String?
+  vendler_class     vendler_class_type?
+  legal_gloss       String?
+  legal_constraints String[]
+  concrete          Boolean?                 @default(false)
+  predicate         Boolean?                 @default(false)
+  id                BigInt                   @id(map: "lexical_entries_pkey") @default(autoincrement())
+  code              String                   @unique(map: "lexical_entries_code_unique") @db.VarChar
+  frame_id          BigInt?
+  sourceRelations   EntryRelation[]          @relation("SourceEntry")
+  targetRelations   EntryRelation[]          @relation("TargetEntry")
+  recipe_predicates recipe_predicates[]
+  recipes           recipes[]
+  role_groups       role_groups[]
+  roles             roles[]
+  frames            frames?                  @relation(fields: [frame_id], references: [id], map: "lexical_entries_frame_id_fkey")
+
+  @@unique([id, frame_id], map: "uq_lex_entry_id_frame")
+  @@index([examples_tsv], map: "idx_lex_examples_tsv", type: Gin)
+  @@index([gloss_tsv], map: "idx_lex_gloss_tsv", type: Gin)
+  @@index([lemmas], map: "idx_lex_lemmas_gin", type: Gin)
+  @@index([particles], map: "idx_lex_particles_gin", type: Gin)
+  @@index([vendler_class], map: "idx_lex_vendler_class")
 }
 
 enum RelationType {
@@ -240,4 +446,47 @@ enum vendler_class_type {
   activity
   accomplishment
   achievement
+}
+
+enum adjective_relation_type {
+  similar
+  also_see
+  attribute
+  antonym
+  domain_topic
+  domain_region
+  domain_usage
+  member_of_domain_topic
+  member_of_domain_region
+  member_of_domain_usage
+  exemplifies
+  derivationally_related
+  pertainym
+  participle_of
+  related_to
+  causes
+}
+
+enum noun_relation_type {
+  hypernym
+  hyponym
+  instance_hypernym
+  instance_hyponym
+  meronym_part
+  holonym_part
+  meronym_member
+  holonym_member
+  meronym_substance
+  holonym_substance
+  similar_to
+  also_see
+  attribute
+  derivationally_related
+  pertainym
+  domain_topic
+  domain_region
+  domain_usage
+  member_of_domain_topic
+  member_of_domain_region
+  member_of_domain_usage
 }

@@ -1,8 +1,8 @@
 import { unstable_cache, revalidateTag } from 'next/cache';
 import { prisma } from './prisma';
 import { withRetry } from './db-utils'; 
-import { RelationType, type LexicalEntry, type EntryWithRelations, type GraphNode, type SearchResult, type PaginationParams, type PaginatedResult, type TableEntry, type EntryRecipes, type Recipe, type RecipePredicateNode, type RecipePredicateRoleMapping } from './types';
-import type { LexicalEntry as PrismaLexicalEntry, EntryRelation as PrismaEntryRelation } from '@prisma/client';
+import { RelationType, type Verb, type VerbWithRelations, type VerbRelation, type GraphNode, type SearchResult, type PaginationParams, type PaginatedResult, type TableEntry, type EntryRecipes, type Recipe, type RecipePredicateNode, type RecipePredicateRoleMapping } from './types';
+import type { verbs as PrismaVerb, EntryRelation as PrismaVerbRelation, Prisma } from '@prisma/client';
 
 // Type for Prisma entry that might have optional fields
 type PrismaEntryWithOptionalFields = {
@@ -34,11 +34,11 @@ type PrismaEntryWithRelations = {
   flaggedReason: string | null;
   forbidden: boolean | null;
   forbiddenReason: string | null;
-  sourceRelations: (PrismaEntryRelation & {
-    target: PrismaLexicalEntry | null;
+  sourceRelations: (PrismaVerbRelation & {
+    target: PrismaVerb | null;
   })[];
-  targetRelations: (PrismaEntryRelation & {
-    source: PrismaLexicalEntry | null;
+  targetRelations: (PrismaVerbRelation & {
+    source: PrismaVerb | null;
   })[];
 };
 
@@ -85,10 +85,10 @@ type PrismaEntryWithCounts = {
   };
 };
 
-export async function getEntryById(id: string): Promise<EntryWithRelations | null> {
+export async function getEntryById(id: string): Promise<VerbWithRelations | null> {
   const entry = await withRetry(
-    () => prisma.lexicalEntry.findUnique({
-      where: { id },
+    () => prisma.verbs.findUnique({
+      where: { code: id } as unknown as Prisma.verbsWhereUniqueInput, // Query by code (human-readable ID)
       include: {
         sourceRelations: {
           include: {
@@ -111,36 +111,39 @@ export async function getEntryById(id: string): Promise<EntryWithRelations | nul
   // Convert Prisma types to our types
   return {
     ...entry,
+    id: (entry as { code?: string }).code || entry.id, // Use code as id
     transitive: entry.transitive || undefined,
     flagged: entry.flagged ?? undefined,
     flaggedReason: (entry as PrismaEntryWithOptionalFields).flaggedReason || undefined,
     forbidden: entry.forbidden ?? undefined,
     forbiddenReason: (entry as PrismaEntryWithOptionalFields).forbiddenReason || undefined,
     sourceRelations: entry.sourceRelations.map(rel => ({
-      sourceId: rel.sourceId,
-      targetId: rel.targetId,
+      sourceId: rel.sourceId.toString(),
+      targetId: rel.targetId.toString(),
       type: rel.type as RelationType,
       target: rel.target ? {
         ...rel.target,
+        id: (rel.target as { code?: string }).code || rel.target.id,
         transitive: rel.target.transitive || undefined,
         flagged: rel.target.flagged ?? undefined,
         flaggedReason: (rel.target as PrismaEntryWithOptionalFields).flaggedReason || undefined,
         forbidden: rel.target.forbidden ?? undefined,
         forbiddenReason: (rel.target as PrismaEntryWithOptionalFields).forbiddenReason || undefined
-      } as unknown as LexicalEntry : undefined,
+      } as unknown as Verb : undefined,
     })),
     targetRelations: entry.targetRelations.map(rel => ({
-      sourceId: rel.sourceId,
-      targetId: rel.targetId,
+      sourceId: rel.sourceId.toString(),
+      targetId: rel.targetId.toString(),
       type: rel.type as RelationType,
       source: rel.source ? {
         ...rel.source,
+        id: (rel.source as { code?: string }).code || rel.source.id,
         transitive: rel.source.transitive || undefined,
         flagged: rel.source.flagged ?? undefined,
         flaggedReason: (rel.source as PrismaEntryWithOptionalFields).flaggedReason || undefined,
         forbidden: rel.source.forbidden ?? undefined,
         forbiddenReason: (rel.source as PrismaEntryWithOptionalFields).forbiddenReason || undefined
-      } as unknown as LexicalEntry : undefined,
+      } as unknown as Verb : undefined,
     })),
   };
 }
@@ -154,23 +157,23 @@ export async function searchEntries(query: string, limit = 20): Promise<SearchRe
     const results = await withRetry(
       () => prisma.$queryRaw<SearchResult[]>`
       SELECT 
-        id,
+        code as id,
         legacy_id,
         lemmas,
         src_lemmas,
         gloss,
         pos,
         CASE 
-          WHEN id ILIKE ${query} THEN 1000
-          WHEN id ILIKE ${query + '%'} THEN 500
+          WHEN code ILIKE ${query} THEN 1000
+          WHEN code ILIKE ${query + '%'} THEN 500
           WHEN legacy_id ILIKE ${query + '%'} THEN 400
           ELSE 0
         END as rank
-      FROM lexical_entries
+      FROM verbs
       WHERE 
-        id ILIKE ${query + '%'} OR
+        code ILIKE ${query + '%'} OR
         legacy_id ILIKE ${query + '%'}
-      ORDER BY rank DESC, id
+      ORDER BY rank DESC, code
       LIMIT ${limit}
     `,
       undefined,
@@ -183,7 +186,7 @@ export async function searchEntries(query: string, limit = 20): Promise<SearchRe
   const results = await withRetry(
     () => prisma.$queryRaw<SearchResult[]>`
     SELECT 
-      id,
+      code as id,
       legacy_id,
       lemmas,
       src_lemmas,
@@ -191,13 +194,13 @@ export async function searchEntries(query: string, limit = 20): Promise<SearchRe
       pos,
       ts_rank(gloss_tsv, plainto_tsquery('english', ${query})) +
       ts_rank(examples_tsv, plainto_tsquery('english', ${query})) as rank
-    FROM lexical_entries
+    FROM verbs
     WHERE 
       gloss_tsv @@ plainto_tsquery('english', ${query}) OR
       examples_tsv @@ plainto_tsquery('english', ${query}) OR
       ${query} = ANY(lemmas) OR
       ${query} = ANY(src_lemmas)
-    ORDER BY rank DESC, id
+    ORDER BY rank DESC, code
     LIMIT ${limit}
   `,
     undefined,
@@ -209,12 +212,26 @@ export async function searchEntries(query: string, limit = 20): Promise<SearchRe
 
 // Recipes for an entry (predicates and their relations)
 async function getRecipesForEntryInternal(entryId: string): Promise<EntryRecipes> {
+  // First get the numeric ID from the code
+  const entry = await withRetry(
+    () => prisma.verbs.findUnique({
+      where: { code: entryId } as unknown as Prisma.verbsWhereUniqueInput,
+      select: { id: true }
+    }),
+    undefined,
+    `getRecipesForEntry:getEntry(${entryId})`
+  );
+
+  if (!entry) {
+    return { entryId, recipes: [] };
+  }
+
   // Fetch recipes for the entry
   const recipes = await withRetry(
-    () => prisma.$queryRaw<Array<{ id: string; label: string | null; description: string | null; is_default: boolean }>>`
+    () => prisma.$queryRaw<Array<{ id: bigint; label: string | null; description: string | null; is_default: boolean }>>`
       SELECT id, label, description, is_default
       FROM recipes
-      WHERE lexical_entry_id = ${entryId}
+      WHERE verb_id = ${entry.id}
       ORDER BY is_default DESC, created_at ASC
     `,
     undefined,
@@ -225,19 +242,21 @@ async function getRecipesForEntryInternal(entryId: string): Promise<EntryRecipes
     return { entryId, recipes: [] };
   }
 
-  const recipeIds = recipes.map(r => r.id);
+  const recipeIds = recipes.map(r => r.id.toString());
 
   // Fetch predicates with their lexical entries
   const predicates = await withRetry(
     () => prisma.$queryRaw<Array<{
-      id: string;
-      recipe_id: string;
+      id: bigint;
+      recipe_id: bigint;
       alias: string | null;
       position: number | null;
       optional: boolean | null;
       negated: boolean | null;
-      predicate_lexical_entry_id: string;
-      lex_id: string;
+      example: string | null;
+      predicate_verb_id: bigint;
+      lex_id: bigint;
+      lex_code: string;
       lex_legacy_id: string;
       lex_lemmas: string[];
       lex_src_lemmas: string[];
@@ -245,7 +264,7 @@ async function getRecipesForEntryInternal(entryId: string): Promise<EntryRecipes
       lex_pos: string;
       lex_lexfile: string;
       lex_examples: string[];
-      lex_frame_id: string | null;
+      lex_frame_id: bigint | null;
       lex_vendler_class: string | null;
       lex_flagged: boolean | null;
       lex_flagged_reason: string | null;
@@ -259,13 +278,15 @@ async function getRecipesForEntryInternal(entryId: string): Promise<EntryRecipes
         rp.position,
         rp.optional,
         rp.negated,
-        rp.predicate_lexical_entry_id,
+        rp.example,
+        rp.predicate_verb_id,
         le.id as lex_id,
+        le.code as lex_code,
         le.legacy_id as lex_legacy_id,
         le.lemmas as lex_lemmas,
         le.src_lemmas as lex_src_lemmas,
         le.gloss as lex_gloss,
-        le.pos as lex_pos,
+        'v' as lex_pos,
         le.lexfile as lex_lexfile,
         le.examples as lex_examples,
         le.frame_id as lex_frame_id,
@@ -275,8 +296,8 @@ async function getRecipesForEntryInternal(entryId: string): Promise<EntryRecipes
         le.forbidden as lex_forbidden,
         le."forbidden_reason" as lex_forbidden_reason
       FROM recipe_predicates rp
-      JOIN lexical_entries le ON le.id = rp.predicate_lexical_entry_id
-      WHERE rp.recipe_id = ANY(${recipeIds}::text[])
+      JOIN verbs le ON le.id = rp.predicate_verb_id
+      WHERE rp.recipe_id = ANY(${recipeIds}::bigint[])
       ORDER BY COALESCE(rp.position, 0) ASC
     `,
     undefined,
@@ -286,7 +307,7 @@ async function getRecipesForEntryInternal(entryId: string): Promise<EntryRecipes
   // Fetch role mappings per predicate (all binding types)
   const roleMappings = await withRetry(
     () => prisma.$queryRaw<Array<{
-      recipe_predicate_id: string;
+      recipe_predicate_id: bigint;
       bind_kind: string;
       predicate_role_label: string | null;
       entry_role_label: string | null;
@@ -303,11 +324,11 @@ async function getRecipesForEntryInternal(entryId: string): Promise<EntryRecipes
       FROM recipe_predicate_role_bindings rprb
       LEFT JOIN roles pr ON pr.id = rprb.predicate_role_id
       LEFT JOIN role_types prt ON prt.id = pr.role_type_id
-      LEFT JOIN roles lr ON lr.id = rprb.lexical_entry_role_id
+        LEFT JOIN roles lr ON lr.id = rprb.verb_role_id
       LEFT JOIN role_types lrt ON lrt.id = lr.role_type_id
       LEFT JOIN predicate_variable_types pvt ON pvt.id = rprb.predicate_variable_type_id
       WHERE rprb.recipe_predicate_id IN (
-        SELECT id FROM recipe_predicates WHERE recipe_id = ANY(${recipeIds}::text[])
+        SELECT id FROM recipe_predicates WHERE recipe_id = ANY(${recipeIds}::bigint[])
       )
       AND prt.label IS NOT NULL
     `,
@@ -317,24 +338,49 @@ async function getRecipesForEntryInternal(entryId: string): Promise<EntryRecipes
 
   // Fetch predicate relations
   const edges = await withRetry(
-    () => prisma.$queryRaw<Array<{ recipe_id: string; source_recipe_predicate_id: string; target_recipe_predicate_id: string; relation_type: string }>>`
+    () => prisma.$queryRaw<Array<{ recipe_id: bigint; source_recipe_predicate_id: bigint; target_recipe_predicate_id: bigint; relation_type: string }>>`
       SELECT recipe_id, source_recipe_predicate_id, target_recipe_predicate_id, relation_type
       FROM recipe_predicate_relations
-      WHERE recipe_id = ANY(${recipeIds}::text[])
+      WHERE recipe_id = ANY(${recipeIds}::bigint[])
     `,
     undefined,
     `getRecipesForEntry:edges(${entryId})`
   );
 
+  // Fetch predicate groups
+  const predicateGroups = await withRetry(
+    () => prisma.$queryRaw<Array<{ id: bigint; recipe_id: bigint; description: string | null; require_at_least_one: boolean }>>`
+      SELECT id, recipe_id, description, require_at_least_one
+      FROM predicate_groups
+      WHERE recipe_id = ANY(${recipeIds}::bigint[])
+    `,
+    undefined,
+    `getRecipesForEntry:predicateGroups(${entryId})`
+  );
+
+  // Fetch predicate group members
+  const predicateGroupMembers = await withRetry(
+    () => prisma.$queryRaw<Array<{ predicate_group_id: bigint; recipe_predicate_id: bigint }>>`
+      SELECT predicate_group_id, recipe_predicate_id
+      FROM predicate_group_members
+      WHERE predicate_group_id IN (
+        SELECT id FROM predicate_groups WHERE recipe_id = ANY(${recipeIds}::bigint[])
+      )
+    `,
+    undefined,
+    `getRecipesForEntry:predicateGroupMembers(${entryId})`
+  );
+
   // Group data into recipe structures
   const byRecipeId: Record<string, Recipe> = {};
   for (const r of recipes) {
-    byRecipeId[r.id] = {
-      id: r.id,
+    byRecipeId[r.id.toString()] = {
+      id: r.id.toString(),
       label: r.label,
       description: r.description,
       is_default: r.is_default,
       predicates: [],
+      predicate_groups: [],
       relations: [],
     };
   }
@@ -346,7 +392,8 @@ async function getRecipesForEntryInternal(entryId: string): Promise<EntryRecipes
       continue;
     }
     
-    const array = mappingsByPredicate[m.recipe_predicate_id] || (mappingsByPredicate[m.recipe_predicate_id] = []);
+    const predicateIdStr = m.recipe_predicate_id.toString();
+    const array = mappingsByPredicate[predicateIdStr] || (mappingsByPredicate[predicateIdStr] = []);
     
     // Determine binding type and create appropriate mapping
     // Priority: if entry_role_label exists, it's a role binding
@@ -375,16 +422,17 @@ async function getRecipesForEntryInternal(entryId: string): Promise<EntryRecipes
   }
 
   for (const p of predicates) {
-    const recipe = byRecipeId[p.recipe_id];
+    const recipe = byRecipeId[p.recipe_id.toString()];
     if (!recipe) continue;
     const node: RecipePredicateNode = {
-      id: p.id,
+      id: p.id.toString(),
       alias: p.alias,
       position: p.position ?? undefined,
       optional: Boolean(p.optional),
       negated: Boolean(p.negated),
+      example: p.example,
       lexical: {
-        id: p.lex_id,
+        id: p.lex_code, // Use code as the id
         legacy_id: p.lex_legacy_id,
         lemmas: p.lex_lemmas,
         src_lemmas: p.lex_src_lemmas,
@@ -397,7 +445,7 @@ async function getRecipesForEntryInternal(entryId: string): Promise<EntryRecipes
         flaggedReason: p.lex_flagged_reason ?? undefined,
         forbidden: p.lex_forbidden ?? undefined,
         forbiddenReason: p.lex_forbidden_reason ?? undefined,
-        frame_id: p.lex_frame_id ?? null,
+        frame_id: p.lex_frame_id ? p.lex_frame_id.toString() : null,
         vendler_class: (p.lex_vendler_class as 'state' | 'activity' | 'accomplishment' | 'achievement' | null) ?? null,
         parents: [],
         children: [],
@@ -405,18 +453,38 @@ async function getRecipesForEntryInternal(entryId: string): Promise<EntryRecipes
         causes: [],
         alsoSee: [],
       },
-      roleMappings: mappingsByPredicate[p.id] || [],
+      roleMappings: mappingsByPredicate[p.id.toString()] || [],
     };
     recipe.predicates.push(node);
   }
 
   for (const e of edges) {
-    const recipe = byRecipeId[e.recipe_id];
+    const recipe = byRecipeId[e.recipe_id.toString()];
     if (!recipe) continue;
     recipe.relations.push({
-      sourcePredicateId: e.source_recipe_predicate_id,
-      targetPredicateId: e.target_recipe_predicate_id,
+      sourcePredicateId: e.source_recipe_predicate_id.toString(),
+      targetPredicateId: e.target_recipe_predicate_id.toString(),
       relation_type: e.relation_type as 'also_see' | 'causes' | 'entails',
+    });
+  }
+
+  // Build predicate_ids for each group
+  const predicateIdsByGroup: Record<string, string[]> = {};
+  for (const m of predicateGroupMembers) {
+    const groupIdStr = m.predicate_group_id.toString();
+    const array = predicateIdsByGroup[groupIdStr] || (predicateIdsByGroup[groupIdStr] = []);
+    array.push(m.recipe_predicate_id.toString());
+  }
+
+  // Add predicate groups to recipes
+  for (const pg of predicateGroups) {
+    const recipe = byRecipeId[pg.recipe_id.toString()];
+    if (!recipe) continue;
+    recipe.predicate_groups.push({
+      id: pg.id.toString(),
+      description: pg.description,
+      require_at_least_one: pg.require_at_least_one,
+      predicate_ids: predicateIdsByGroup[pg.id.toString()] || [],
     });
   }
 
@@ -429,7 +497,7 @@ export const getRecipesForEntry = unstable_cache(
   { revalidate: 60, tags: ['entry-recipes'] }
 );
 
-export async function updateEntry(id: string, updates: Partial<Pick<LexicalEntry, 'gloss' | 'lemmas' | 'examples' | 'flagged' | 'flaggedReason' | 'forbidden' | 'forbiddenReason'> & { roles?: unknown[] }>): Promise<EntryWithRelations | null> {
+export async function updateEntry(id: string, updates: Partial<Pick<Verb, 'gloss' | 'lemmas' | 'examples' | 'flagged' | 'flaggedReason' | 'forbidden' | 'forbiddenReason'> & { roles?: unknown[] }>): Promise<VerbWithRelations | null> {
   // Handle roles updates separately
   if (updates.roles) {
     await updateEntryRoles(id, updates.roles);
@@ -440,8 +508,8 @@ export async function updateEntry(id: string, updates: Partial<Pick<LexicalEntry
   const { roles: _roles, ...otherUpdates } = updates;
 
   const updatedEntry = await withRetry(
-    () => prisma.lexicalEntry.update({
-    where: { id },
+    () => prisma.verbs.update({
+    where: { code: id } as unknown as Prisma.verbsWhereUniqueInput, // Query by code (human-readable ID)
     data: otherUpdates,
     include: {
       sourceRelations: {
@@ -474,8 +542,8 @@ export async function updateEntry(id: string, updates: Partial<Pick<LexicalEntry
     forbidden: updatedEntry.forbidden ?? undefined,
     forbiddenReason: (updatedEntry as PrismaEntryWithOptionalFields).forbiddenReason || undefined,
     sourceRelations: updatedEntry.sourceRelations.map(rel => ({
-      sourceId: rel.sourceId,
-      targetId: rel.targetId,
+      sourceId: rel.sourceId.toString(),
+      targetId: rel.targetId.toString(),
       type: rel.type as RelationType,
       target: rel.target ? {
         ...rel.target,
@@ -484,11 +552,11 @@ export async function updateEntry(id: string, updates: Partial<Pick<LexicalEntry
         flaggedReason: (rel.target as PrismaEntryWithOptionalFields).flaggedReason || undefined,
         forbidden: rel.target.forbidden ?? undefined,
         forbiddenReason: (rel.target as PrismaEntryWithOptionalFields).forbiddenReason || undefined
-      } as unknown as LexicalEntry : undefined,
-    })),
+      } as unknown as Verb : undefined,
+      } as VerbRelation)),
     targetRelations: updatedEntry.targetRelations.map(rel => ({
-      sourceId: rel.sourceId,
-      targetId: rel.targetId,
+      sourceId: rel.sourceId.toString(),
+      targetId: rel.targetId.toString(),
       type: rel.type as RelationType,
       source: rel.source ? {
         ...rel.source,
@@ -497,16 +565,27 @@ export async function updateEntry(id: string, updates: Partial<Pick<LexicalEntry
         flaggedReason: (rel.source as PrismaEntryWithOptionalFields).flaggedReason || undefined,
         forbidden: rel.source.forbidden ?? undefined,
         forbiddenReason: (rel.source as PrismaEntryWithOptionalFields).forbiddenReason || undefined
-      } as unknown as LexicalEntry : undefined,
-    })),
+      } as unknown as Verb : undefined,
+      } as VerbRelation)),
   };
 }
 
 async function updateEntryRoles(entryId: string, roles?: unknown[]) {
   if (roles) {
+    // First get the numeric ID from the code
+    const entry = await prisma.verbs.findUnique({
+      where: { code: entryId } as unknown as Prisma.verbsWhereUniqueInput,
+      select: { id: true }
+    });
+    
+    if (!entry) {
+      console.warn(`Entry with code "${entryId}" not found. Skipping role update.`);
+      return;
+    }
+
     // Delete existing roles for this entry
     await prisma.$executeRaw`
-      DELETE FROM roles WHERE lexical_entry_id = ${entryId}
+      DELETE FROM roles WHERE verb_id = ${entry.id}
     `;
 
     // Insert new roles
@@ -523,12 +602,11 @@ async function updateEntryRoles(entryId: string, roles?: unknown[]) {
           continue;
         }
 
-        const newId = `${roleData.main ? 'main' : 'alt'}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         await prisma.$executeRaw`
           INSERT INTO roles (
-            id, lexical_entry_id, role_type_id, main, description, example_sentence, instantiation_type_ids, created_at, updated_at
+            verb_id, role_type_id, main, description, example_sentence, instantiation_type_ids, created_at, updated_at
           ) VALUES (
-            ${newId}, ${entryId}, ${roleType.id}, ${roleData.main}, ${roleData.description}, ${roleData.exampleSentence || null}, ARRAY[]::varchar[], now(), now()
+            ${entry.id}, ${roleType.id}, ${roleData.main}, ${roleData.description}, ${roleData.exampleSentence || null}, ARRAY[]::bigint[], now(), now()
           )
         `;
       }
@@ -540,18 +618,19 @@ async function updateEntryRoles(entryId: string, roles?: unknown[]) {
 async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> {
   // Use a more efficient query that only fetches what we need
   const entry = await withRetry(
-    () => prisma.lexicalEntry.findUnique({
-      where: { id: entryId },
+    () => prisma.verbs.findUnique({
+      where: { code: entryId } as unknown as Prisma.verbsWhereUniqueInput, // Query by code (human-readable ID)
       include: {
-        frame: {
+        frames: {
           select: {
             id: true,
+            code: true, // Add code field for human-readable IDs
             framebank_id: true,
             frame_name: true,
             definition: true,
             short_definition: true,
             is_supporting_frame: true,
-          }
+          } as Prisma.framesSelect
         },
         sourceRelations: {
           where: {
@@ -563,6 +642,7 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
             target: {
               select: {
                 id: true,
+                code: true, // Add code field for human-readable IDs
                 legacy_id: true,
                 lemmas: true,
                 src_lemmas: true,
@@ -576,7 +656,7 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
                 forbiddenReason: true,
                 flagged: true,
                 flaggedReason: true,
-              }
+              } as Prisma.verbsSelect
             }
           }
         },
@@ -588,6 +668,7 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
             source: {
               select: {
                 id: true,
+                code: true, // Add code field for human-readable IDs
                 legacy_id: true,
                 lemmas: true,
                 src_lemmas: true,
@@ -601,7 +682,7 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
                 forbiddenReason: true,
                 flagged: true,
                 flaggedReason: true,
-              }
+              } as Prisma.verbsSelect
             }
           }
         }
@@ -613,11 +694,15 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
 
   if (!entry) return null;
 
+  // First get the numeric ID from the entry
+  const numericId = entry ? (entry as unknown as { id?: bigint }).id : null;
+  if (!numericId) return null;
+
   // Fetch roles separately to avoid type issues
   const rolesData = await withRetry(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     () => (prisma as any).roles.findMany({
-      where: { lexical_entry_id: entryId },
+      where: { verb_id: numericId },
       include: {
         role_types: {
           select: {
@@ -632,183 +717,262 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
     undefined,
     `getRoles(${entryId})`
   ) as Array<{
-    id: string;
+    id: bigint;
     description: string | null;
     example_sentence: string | null;
-    instantiation_type_ids: string[];
+    instantiation_type_ids: bigint[]; // Changed to bigint[]
     main: boolean;
     role_types: {
-      id: string;
+      id: bigint;
       label: string;
       generic_description: string;
       explanation: string | null;
     };
   }>;
 
+  // Fetch role_groups with their members
+  const roleGroupsData = await withRetry(
+    () => prisma.$queryRaw<Array<{
+      id: bigint;
+      description: string | null;
+      require_at_least_one: boolean;
+      role_id: bigint;
+    }>>`
+      SELECT 
+        rg.id,
+        rg.description,
+        rg.require_at_least_one,
+        rgm.role_id
+      FROM role_groups rg
+      LEFT JOIN role_group_members rgm ON rg.id = rgm.role_group_id
+      WHERE rg.verb_id = ${numericId}
+      ORDER BY rg.id, rgm.role_id
+    `,
+    undefined,
+    `getRoleGroups(${entryId})`
+  );
+
   // Get parents (hypernyms) - these are broader concepts
   const parents: GraphNode[] = entry.sourceRelations
     .filter(rel => rel.type === 'hypernym' && rel.target)
-    .map(rel => ({
-      id: rel.target!.id,
+    .map(rel => {
+      const target = rel.target as { id: bigint | string; code?: string };
+      return {
+      id: target.code || (typeof target.id === 'bigint' ? target.id.toString() : target.id), // Use code or convert BigInt
       legacy_id: rel.target!.legacy_id,
       lemmas: rel.target!.lemmas,
       src_lemmas: rel.target!.src_lemmas,
       gloss: rel.target!.gloss,
       legal_constraints: [],
-      pos: rel.target!.pos,
+      pos: 'v',
       lexfile: rel.target!.lexfile,
       examples: rel.target!.examples,
       flagged: (rel.target as { flagged?: boolean | null }).flagged ?? undefined,
       flaggedReason: (rel.target as { flaggedReason?: string | null }).flaggedReason || undefined,
       forbidden: (rel.target as { forbidden?: boolean | null }).forbidden ?? undefined,
       forbiddenReason: (rel.target as { forbiddenReason?: string | null }).forbiddenReason || undefined,
-      frame_id: (rel.target as { frame_id?: string | null }).frame_id ?? null,
+      frame_id: (rel.target as { frame_id?: bigint | null }).frame_id?.toString() ?? null,
       vendler_class: (rel.target as { vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null }).vendler_class ?? null,
       parents: [],
       children: [],
       entails: [],
       causes: [],
       alsoSee: [],
-    }));
+    }});
 
   // Get children (hyponyms) - these are more specific concepts
   const children: GraphNode[] = entry.targetRelations
     .filter(rel => rel.type === 'hypernym' && rel.source)
-    .map(rel => ({
-        id: rel.source!.id,
+    .map(rel => {
+      const source = rel.source as { id: bigint | string; code?: string };
+      return {
+        id: source.code || (typeof source.id === 'bigint' ? source.id.toString() : source.id), // Use code or convert BigInt
         legacy_id: rel.source!.legacy_id,
         lemmas: rel.source!.lemmas,
         src_lemmas: rel.source!.src_lemmas,
         gloss: rel.source!.gloss,
         legal_constraints: [],
-        pos: rel.source!.pos,
+        pos: 'v',
         lexfile: rel.source!.lexfile,
         examples: rel.source!.examples,
         flagged: (rel.source as { flagged?: boolean | null }).flagged ?? undefined,
         flaggedReason: (rel.source as { flaggedReason?: string | null }).flaggedReason || undefined,
         forbidden: (rel.source as { forbidden?: boolean | null }).forbidden ?? undefined,
         forbiddenReason: (rel.source as { forbiddenReason?: string | null }).forbiddenReason || undefined,
-        frame_id: (rel.source as { frame_id?: string | null }).frame_id ?? null,
+        frame_id: (rel.source as { frame_id?: bigint | null }).frame_id?.toString() ?? null,
         vendler_class: (rel.source as { vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null }).vendler_class ?? null,
         parents: [],
         children: [],
         entails: [],
         causes: [],
         alsoSee: [],
-    }));
+    }});
 
   // Get entails relationships
   const entails: GraphNode[] = entry.sourceRelations
     .filter(rel => rel.type === 'entails' && rel.target)
-    .map(rel => ({
-      id: rel.target!.id,
+    .map(rel => {
+      const target = rel.target as { id: bigint | string; code?: string };
+      return {
+      id: target.code || (typeof target.id === 'bigint' ? target.id.toString() : target.id), // Use code or convert BigInt
       legacy_id: rel.target!.legacy_id,
       lemmas: rel.target!.lemmas,
       src_lemmas: rel.target!.src_lemmas,
       gloss: rel.target!.gloss,
       legal_constraints: [],
-      pos: rel.target!.pos,
+      pos: 'v',
       lexfile: rel.target!.lexfile,
       examples: rel.target!.examples,
       flagged: (rel.target as { flagged?: boolean | null }).flagged ?? undefined,
       flaggedReason: (rel.target as { flaggedReason?: string | null }).flaggedReason || undefined,
       forbidden: (rel.target as { forbidden?: boolean | null }).forbidden ?? undefined,
       forbiddenReason: (rel.target as { forbiddenReason?: string | null }).forbiddenReason || undefined,
-      frame_id: (rel.target as { frame_id?: string | null }).frame_id ?? null,
+      frame_id: (rel.target as { frame_id?: bigint | null }).frame_id?.toString() ?? null,
       vendler_class: (rel.target as { vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null }).vendler_class ?? null,
       parents: [],
       children: [],
       entails: [],
       causes: [],
       alsoSee: [],
-    }));
+    }});
 
   // Get causes relationships
   const causes: GraphNode[] = entry.sourceRelations
     .filter(rel => rel.type === 'causes' && rel.target)
-    .map(rel => ({
-      id: rel.target!.id,
+    .map(rel => {
+      const target = rel.target as { id: bigint | string; code?: string };
+      return {
+      id: target.code || (typeof target.id === 'bigint' ? target.id.toString() : target.id), // Use code or convert BigInt
       legacy_id: rel.target!.legacy_id,
       lemmas: rel.target!.lemmas,
       src_lemmas: rel.target!.src_lemmas,
       gloss: rel.target!.gloss,
       legal_constraints: [],
-      pos: rel.target!.pos,
+      pos: 'v',
       lexfile: rel.target!.lexfile,
       examples: rel.target!.examples,
       flagged: (rel.target as { flagged?: boolean | null }).flagged ?? undefined,
       flaggedReason: (rel.target as { flaggedReason?: string | null }).flaggedReason || undefined,
       forbidden: (rel.target as { forbidden?: boolean | null }).forbidden ?? undefined,
       forbiddenReason: (rel.target as { forbiddenReason?: string | null }).forbiddenReason || undefined,
-      frame_id: (rel.target as { frame_id?: string | null }).frame_id ?? null,
+      frame_id: (rel.target as { frame_id?: bigint | null }).frame_id?.toString() ?? null,
       vendler_class: (rel.target as { vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null }).vendler_class ?? null,
       parents: [],
       children: [],
       entails: [],
       causes: [],
       alsoSee: [],
-    }));
+    }});
 
   // Get also_see relationships
   const alsoSee: GraphNode[] = entry.sourceRelations
     .filter(rel => rel.type === 'also_see' && rel.target)
-    .map(rel => ({
-      id: rel.target!.id,
+    .map(rel => {
+      const target = rel.target as { id: bigint | string; code?: string };
+      return {
+      id: target.code || (typeof target.id === 'bigint' ? target.id.toString() : target.id), // Use code or convert BigInt
       legacy_id: rel.target!.legacy_id,
       lemmas: rel.target!.lemmas,
       src_lemmas: rel.target!.src_lemmas,
       gloss: rel.target!.gloss,
       legal_constraints: [],
-      pos: rel.target!.pos,
+      pos: 'v',
       lexfile: rel.target!.lexfile,
       examples: rel.target!.examples,
       flagged: (rel.target as { flagged?: boolean | null }).flagged ?? undefined,
       flaggedReason: (rel.target as { flaggedReason?: string | null }).flaggedReason || undefined,
       forbidden: (rel.target as { forbidden?: boolean | null }).forbidden ?? undefined,
       forbiddenReason: (rel.target as { forbiddenReason?: string | null }).forbiddenReason || undefined,
-      frame_id: (rel.target as { frame_id?: string | null }).frame_id ?? null,
+      frame_id: (rel.target as { frame_id?: bigint | null }).frame_id?.toString() ?? null,
       vendler_class: (rel.target as { vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null }).vendler_class ?? null,
       parents: [],
       children: [],
       entails: [],
       causes: [],
       alsoSee: [],
-    }));
+    }});
 
   // Map roles data to the expected format
   const roles = rolesData.map(role => ({
-    id: role.id,
+    id: role.id.toString(),
     description: role.description ?? undefined,
     example_sentence: role.example_sentence ?? undefined,
-    instantiation_type_ids: role.instantiation_type_ids,
+    instantiation_type_ids: role.instantiation_type_ids.map(id => Number(id)), // Convert BigInt[] to number[]
     main: role.main,
     role_type: {
-      id: role.role_types.id,
+      id: role.role_types.id.toString(),
       label: role.role_types.label,
       generic_description: role.role_types.generic_description,
       explanation: role.role_types.explanation ?? undefined,
     },
   }));
 
+  // Process role_groups data into the expected format
+  const roleGroupsMap = new Map<string, { description: string | null; require_at_least_one: boolean; role_ids: string[] }>();
+  for (const row of roleGroupsData) {
+    const groupId = row.id.toString();
+    if (!roleGroupsMap.has(groupId)) {
+      roleGroupsMap.set(groupId, {
+        description: row.description,
+        require_at_least_one: row.require_at_least_one,
+        role_ids: [],
+      });
+    }
+    if (row.role_id) {
+      roleGroupsMap.get(groupId)!.role_ids.push(row.role_id.toString());
+    }
+  }
+  const role_groups = Array.from(roleGroupsMap.entries()).map(([id, data]) => ({
+    id,
+    description: data.description,
+    require_at_least_one: data.require_at_least_one,
+    role_ids: data.role_ids,
+  }));
+
+  const entryTyped = entry as { id: bigint | string; code?: string; frame_id?: bigint | null };
+  const entryCode = entryTyped.code || (typeof entryTyped.id === 'bigint' ? entryTyped.id.toString() : entryTyped.id);
+  
+  // Debug logging for say.v.04
+  if (entryCode === 'say.v.04') {
+    console.log(`DEBUG say.v.04 role_groups:`, JSON.stringify(role_groups, null, 2));
+    console.log(`DEBUG say.v.04 roles:`, roles.map(r => ({ id: r.id, label: r.role_type.label })));
+  }
+  const frameData = (entry as { frames?: { id: bigint; code?: string; framebank_id: string; frame_name: string; definition: string; short_definition: string; is_supporting_frame: boolean } | null }).frames;
+  
+  // Debug logging for frame mismatch
+  if (entryCode === 'say.v.04') {
+    console.log(`DEBUG getGraphNode say.v.04: frame_id=${entryTyped.frame_id?.toString()}, frame_name=${frameData?.frame_name}, frame_code=${frameData?.code}`);
+  }
+  
   return {
-    id: entry.id,
+    id: entryCode,
     legacy_id: entry.legacy_id,
     lemmas: entry.lemmas,
     src_lemmas: entry.src_lemmas,
     gloss: entry.gloss,
     legal_gloss: (entry as { legal_gloss?: string | null }).legal_gloss ?? null,
     legal_constraints: (entry as { legal_constraints?: string[] }).legal_constraints ?? [],
-    pos: entry.pos,
+    pos: 'v',
     lexfile: entry.lexfile,
     examples: entry.examples,
     flagged: entry.flagged ?? undefined,
     flaggedReason: (entry as PrismaEntryWithOptionalFields).flaggedReason || undefined,
     forbidden: entry.forbidden ?? undefined,
     forbiddenReason: (entry as PrismaEntryWithOptionalFields).forbiddenReason || undefined,
-    frame_id: (entry as { frame_id?: string | null }).frame_id ?? null,
+    frame_id: entryTyped.frame_id?.toString() ?? null,
     vendler_class: (entry as { vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null }).vendler_class ?? null,
-    frame: (entry as { frame?: { id: string; framebank_id: string; frame_name: string; definition: string; short_definition: string; is_supporting_frame: boolean } | null }).frame ?? null,
+    frame: frameData 
+      ? {
+          id: (frameData.code || frameData.id.toString()),
+          framebank_id: frameData.framebank_id,
+          frame_name: frameData.frame_name,
+          definition: frameData.definition,
+          short_definition: frameData.short_definition,
+          is_supporting_frame: frameData.is_supporting_frame,
+        }
+      : null,
     roles,
+    role_groups,
     parents,
     children,
     entails,
@@ -838,6 +1002,7 @@ async function getAncestorPathInternal(entryId: string): Promise<GraphNode[]> {
   const results = await withRetry(
     () => prisma.$queryRaw<Array<{
       id: string;
+      code: string;
       legacy_id: string;
       gloss: string;
       pos: string;
@@ -851,16 +1016,17 @@ async function getAncestorPathInternal(entryId: string): Promise<GraphNode[]> {
         -- Base case: start with the given entry
         SELECT 
           e.id,
+          e.code,
           e.legacy_id,
           e.gloss,
-          e.pos,
+          'v' as pos,
           e.lexfile,
           e.lemmas,
           e.src_lemmas,
           e.examples,
           0 as depth
-        FROM lexical_entries e
-        WHERE e.id = ${entryId}
+        FROM verbs e
+        WHERE e.code = ${entryId}
         
         UNION ALL
         
@@ -870,7 +1036,7 @@ async function getAncestorPathInternal(entryId: string): Promise<GraphNode[]> {
           e.id,
           e.legacy_id,
           e.gloss,
-          e.pos,
+          'v' as pos,
           e.lexfile,
           e.lemmas,
           e.src_lemmas,
@@ -879,10 +1045,10 @@ async function getAncestorPathInternal(entryId: string): Promise<GraphNode[]> {
         FROM ancestor_path ap
         INNER JOIN LATERAL (
           SELECT e.*
-          FROM entry_relations r
-          INNER JOIN lexical_entries e ON r.target_id = e.id
+          FROM verb_relations r
+          INNER JOIN verbs e ON r.target_id = e.id
           WHERE r.source_id = ap.id AND r.type = 'hypernym'
-          ORDER BY e.id
+          ORDER BY e.code
           LIMIT 1
         ) e ON true
       )
@@ -895,13 +1061,13 @@ async function getAncestorPathInternal(entryId: string): Promise<GraphNode[]> {
 
   // Convert to GraphNode format (without nested relations for efficiency)
   return results.map(result => ({
-    id: result.id,
+    id: result.code, // Use code as the id for display
     legacy_id: result.legacy_id,
     lemmas: result.lemmas,
     src_lemmas: result.src_lemmas,
     gloss: result.gloss,
     legal_constraints: [],
-    pos: result.pos,
+    pos: 'v',
     lexfile: result.lexfile,
     examples: result.examples,
     parents: [],
@@ -931,12 +1097,12 @@ export async function updateModerationStatus(
     forbiddenReason?: string; 
   }
 ): Promise<number> {
-  const result = await prisma.lexicalEntry.updateMany({
+  const result = await prisma.verbs.updateMany({
     where: {
-      id: {
-        in: ids
+      code: {
+        in: ids // ids are now codes (human-readable IDs)
       }
-    },
+    } as Prisma.verbsWhereInput,
     data: updates
   });
 
@@ -1034,13 +1200,36 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
   }
 
   if (frame_id) {
-    const frameIds = frame_id.split(',').map(id => id.trim()).filter(Boolean);
-    if (frameIds.length > 0) {
-      andConditions.push({
-        frame_id: {
-          in: frameIds
-        }
+    const frameCodes = frame_id.split(',').map(id => id.trim()).filter(Boolean);
+    if (frameCodes.length > 0) {
+      // Convert frame codes to frame IDs
+      // Use OR conditions to match by code case-insensitively or by frame_name
+      const frames = await prisma.frames.findMany({
+        where: {
+          OR: frameCodes.map(code => ({
+            code: {
+              equals: code,
+              mode: 'insensitive'
+            }
+          })) as Prisma.framesWhereInput[]
+        },
+        select: {
+          id: true,
+          code: true
+        } as Prisma.framesSelect
       });
+      
+      console.log(`Frame filter: input codes=${frameCodes.join(',')}, found frames:`, frames.map(f => ({ id: f.id.toString(), code: (f as { code?: string }).code })));
+      
+      const frameIdBigInts = frames.map(f => f.id);
+      
+      if (frameIdBigInts.length > 0) {
+        andConditions.push({
+          frame_id: {
+            in: frameIdBigInts
+          }
+        });
+      }
     }
   }
 
@@ -1153,7 +1342,7 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
 
   // Get total count
   const total = await withRetry(
-    () => prisma.lexicalEntry.count({
+    () => prisma.verbs.count({
       where: whereClause
     }),
     undefined,
@@ -1181,7 +1370,7 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
 
   // Fetch entries with relation counts
   const entries = await withRetry(
-    () => prisma.lexicalEntry.findMany({
+    () => prisma.verbs.findMany({
     where: whereClause,
     skip,
     take: limit,
@@ -1197,6 +1386,13 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
           }
         }
       },
+      frames: {
+        select: {
+          id: true,
+          code: true,
+          frame_name: true,
+        } as Prisma.framesSelect
+      },
       // roles omitted for performance and Prisma include typing stability
     }
   }),
@@ -1204,33 +1400,181 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
     'getPaginatedEntries:findMany'
   ) as unknown as PrismaEntryWithCounts[];
 
+  // Get all entry IDs for bulk fetching roles and role_groups
+  const entryIds = entries.map(e => {
+    const entry = e as unknown as { id?: bigint };
+    return entry.id;
+  }).filter(Boolean) as bigint[];
+
+  // Fetch all roles for these entries in bulk
+  const rolesData = entryIds.length > 0 ? await withRetry(
+    () => prisma.$queryRaw<Array<{
+      verb_id: bigint;
+      id: bigint;
+      description: string | null;
+      example_sentence: string | null;
+      instantiation_type_ids: bigint[];
+      main: boolean;
+      role_type_id: bigint;
+      role_type_label: string;
+      role_type_generic_description: string;
+      role_type_explanation: string | null;
+    }>>`
+      SELECT 
+        r.verb_id,
+        r.id,
+        r.description,
+        r.example_sentence,
+        r.instantiation_type_ids,
+        r.main,
+        rt.id as role_type_id,
+        rt.label as role_type_label,
+        rt.generic_description as role_type_generic_description,
+        rt.explanation as role_type_explanation
+      FROM roles r
+      JOIN role_types rt ON r.role_type_id = rt.id
+      WHERE r.verb_id = ANY(${entryIds}::bigint[])
+      ORDER BY r.verb_id, r.main DESC, r.id
+    `,
+    undefined,
+    'getPaginatedEntries:roles'
+  ) : [];
+
+  // Fetch all role_groups for these entries in bulk
+  const roleGroupsData = entryIds.length > 0 ? await withRetry(
+    () => prisma.$queryRaw<Array<{
+      verb_id: bigint;
+      id: bigint;
+      description: string | null;
+      require_at_least_one: boolean;
+      role_id: bigint | null;
+    }>>`
+      SELECT 
+        rg.verb_id,
+        rg.id,
+        rg.description,
+        rg.require_at_least_one,
+        rgm.role_id
+      FROM role_groups rg
+      LEFT JOIN role_group_members rgm ON rg.id = rgm.role_group_id
+      WHERE rg.verb_id = ANY(${entryIds}::bigint[])
+      ORDER BY rg.verb_id, rg.id, rgm.role_id
+    `,
+    undefined,
+    'getPaginatedEntries:roleGroups'
+  ) : [];
+
+  // Group roles by entry ID
+  const rolesByEntryId = new Map<string, Array<{
+    id: string;
+    description?: string;
+    example_sentence?: string;
+    instantiation_type_ids: number[];
+    main: boolean;
+    role_type: {
+      id: string;
+      label: string;
+      generic_description: string;
+      explanation?: string;
+    };
+  }>>();
+  
+  for (const role of rolesData) {
+    const entryId = role.verb_id.toString();
+    if (!rolesByEntryId.has(entryId)) {
+      rolesByEntryId.set(entryId, []);
+    }
+    rolesByEntryId.get(entryId)!.push({
+      id: role.id.toString(),
+      description: role.description ?? undefined,
+      example_sentence: role.example_sentence ?? undefined,
+      instantiation_type_ids: role.instantiation_type_ids.map(id => Number(id)),
+      main: role.main,
+      role_type: {
+        id: role.role_type_id.toString(),
+        label: role.role_type_label,
+        generic_description: role.role_type_generic_description,
+        explanation: role.role_type_explanation ?? undefined,
+      },
+    });
+  }
+
+  // Group role_groups by entry ID
+  const roleGroupsByEntryId = new Map<string, Array<{
+    id: string;
+    description: string | null;
+    require_at_least_one: boolean;
+    role_ids: string[];
+  }>>();
+  
+  for (const row of roleGroupsData) {
+    const entryId = row.verb_id.toString();
+    const groupId = row.id.toString();
+    
+    if (!roleGroupsByEntryId.has(entryId)) {
+      roleGroupsByEntryId.set(entryId, []);
+    }
+    
+    const groups = roleGroupsByEntryId.get(entryId)!;
+    let group = groups.find(g => g.id === groupId);
+    
+    if (!group) {
+      group = {
+        id: groupId,
+        description: row.description,
+        require_at_least_one: row.require_at_least_one,
+        role_ids: [],
+      };
+      groups.push(group);
+    }
+    
+    if (row.role_id) {
+      group.role_ids.push(row.role_id.toString());
+    }
+  }
+
   // Transform to TableEntry format
-  let data: TableEntry[] = entries.map(entry => ({
-    id: entry.id,
-    legacy_id: entry.legacy_id,
-    lemmas: entry.lemmas,
-    src_lemmas: entry.src_lemmas,
-    gloss: entry.gloss,
-    pos: entry.pos,
-    lexfile: entry.lexfile,
-    isMwe: entry.isMwe,
-    transitive: entry.transitive || undefined,
-    particles: entry.particles,
-    frames: entry.frames,
-    examples: entry.examples,
-    flagged: (entry as PrismaEntryWithOptionalFields).flagged ?? undefined,
-    flaggedReason: (entry as PrismaEntryWithOptionalFields).flaggedReason || undefined,
-    forbidden: (entry as PrismaEntryWithOptionalFields).forbidden ?? undefined,
-    forbiddenReason: (entry as PrismaEntryWithOptionalFields).forbiddenReason || undefined,
-    frame_id: entry.frame_id ?? null,
-    vendler_class: entry.vendler_class ?? null,
-    legal_constraints: entry.legal_constraints || [],
-    roles: [],
-    parentsCount: entry._count.sourceRelations,
-    childrenCount: entry._count.targetRelations,
-    createdAt: entry.createdAt,
-    updatedAt: entry.updatedAt
-  }));
+  let data: TableEntry[] = entries.map(entry => {
+    const entryCode = (entry as { code?: string }).code || entry.id;
+    const frameData = (entry as { frames?: { frame_name: string; code: string } | null; frame_id?: bigint | null }).frames;
+    const frameId = (entry as { frame_id?: bigint | null }).frame_id;
+    
+  // Debug logging for frame mismatch
+  if (entryCode === 'say.v.04') {
+    const framesArray = (entry as { frames?: string[] }).frames;
+    console.log(`DEBUG say.v.04: frame_id=${frameId?.toString()}, frame_name=${frameData?.frame_name}, frame_code=${frameData?.code}, frames_array=${JSON.stringify(framesArray)}`);
+  }
+    
+    const numericId = (entry as unknown as { id?: bigint }).id?.toString() || '';
+    
+    return {
+      id: entryCode,
+      legacy_id: entry.legacy_id,
+      lemmas: entry.lemmas,
+      src_lemmas: entry.src_lemmas,
+      gloss: entry.gloss,
+      pos: 'v',
+      lexfile: entry.lexfile,
+      isMwe: entry.isMwe,
+      transitive: entry.transitive || undefined,
+      particles: entry.particles,
+      examples: entry.examples,
+      flagged: (entry as PrismaEntryWithOptionalFields).flagged ?? undefined,
+      flaggedReason: (entry as PrismaEntryWithOptionalFields).flaggedReason || undefined,
+      forbidden: (entry as PrismaEntryWithOptionalFields).forbidden ?? undefined,
+      forbiddenReason: (entry as PrismaEntryWithOptionalFields).forbiddenReason || undefined,
+      frame_id: frameId ? frameId.toString() : null,
+      frame: (entry as { frames?: { frame_name: string } } | undefined)?.frames?.frame_name || null,
+      vendler_class: entry.vendler_class ?? null,
+      legal_constraints: entry.legal_constraints || [],
+      roles: rolesByEntryId.get(numericId) || [],
+      role_groups: roleGroupsByEntryId.get(numericId) || [],
+      parentsCount: entry._count.sourceRelations,
+      childrenCount: entry._count.targetRelations,
+      createdAt: entry.createdAt,
+      updatedAt: entry.updatedAt
+    };
+  });
 
   // Apply numeric filters on computed fields
   if (parentsCountMin !== undefined) {

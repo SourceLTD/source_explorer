@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
-import { TableEntry, PaginatedResult, PaginationParams, POS_LABELS, EntryRelation } from '@/lib/types';
+import { TableEntry, PaginatedResult, PaginationParams, POS_LABELS, VerbRelation } from '@/lib/types';
 import FilterPanel, { FilterState } from './FilterPanel';
 import ColumnVisibilityPanel, { ColumnConfig, ColumnVisibilityState } from './ColumnVisibilityPanel';
 
@@ -49,7 +49,7 @@ interface ContextMenuState {
 const DEFAULT_COLUMNS: ColumnConfig[] = [
   { key: 'id', label: 'ID', visible: true, sortable: true },
   { key: 'legacy_id', label: 'Legacy ID', visible: false, sortable: true },
-  { key: 'frame_id', label: 'Frame ID', visible: false, sortable: true },
+  { key: 'frame', label: 'Frame', visible: true, sortable: true },
   { key: 'lemmas', label: 'Lemmas', visible: true, sortable: true },
   { key: 'gloss', label: 'Definition', visible: true, sortable: true },
   { key: 'pos', label: 'Part of Speech', visible: false, sortable: true },
@@ -75,6 +75,7 @@ const DEFAULT_COLUMNS: ColumnConfig[] = [
 const DEFAULT_COLUMN_WIDTHS: ColumnWidthState = {
   id: 120,
   legacy_id: 150,
+  frame: 150,
   lemmas: 150,
   gloss: 300,
   pos: 120,
@@ -87,7 +88,6 @@ const DEFAULT_COLUMN_WIDTHS: ColumnWidthState = {
   forbiddenReason: 250,
   particles: 120,
   examples: 250,
-  frame_id: 200,
   vendler_class: 150,
   legal_constraints: 200,
   roles: 250,
@@ -459,14 +459,14 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
       
       // Extract parent IDs (hypernyms - more general concepts this entry points to)
       const parents = data.sourceRelations
-        .filter((rel: EntryRelation) => rel.type === 'hypernym')
-        .map((rel: EntryRelation) => rel.target?.id)
+        .filter((rel: VerbRelation) => rel.type === 'hypernym')
+        .map((rel: VerbRelation) => rel.target?.id)
         .filter(Boolean);
       
       // Extract children IDs (hyponyms - more specific concepts that point to this entry)
       const children = data.targetRelations
-        .filter((rel: EntryRelation) => rel.type === 'hypernym')
-        .map((rel: EntryRelation) => rel.source?.id)
+        .filter((rel: VerbRelation) => rel.type === 'hypernym')
+        .map((rel: VerbRelation) => rel.source?.id)
         .filter(Boolean);
       
       const result = { parents, children };
@@ -843,6 +843,15 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
         );
       case 'lexfile':
         return <span className="text-xs text-gray-500">{entry.lexfile.replace(/^verb\./, '')}</span>;
+      case 'frame':
+        if (!entry.frame) {
+          return <span className="text-gray-400 text-sm">—</span>;
+        }
+        return (
+          <span className="inline-block px-2 py-1 text-xs bg-indigo-100 text-indigo-800 rounded font-medium uppercase">
+            {entry.frame}
+          </span>
+        );
       case 'isMwe':
         return (
           <span className={`inline-block px-2 py-1 text-xs rounded font-medium ${
@@ -1042,10 +1051,22 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
         if (!entry.roles || entry.roles.length === 0) {
           return <span className="text-gray-400 text-sm">None</span>;
         }
+        
+        // Create a map of role IDs to check which roles are in groups
+        const rolesInGroups = new Set<string>();
+        const roleGroups = entry.role_groups || [];
+        roleGroups.forEach(group => {
+          group.role_ids.forEach(roleId => rolesInGroups.add(roleId));
+        });
+        
+        // Separate roles that are not in groups
+        const ungroupedRoles = entry.roles.filter(role => !rolesInGroups.has(role.id));
+        
         return (
           <div className="space-y-1 text-xs">
-            {entry.roles.map((role, idx) => (
-              <div key={idx} className="flex items-start gap-1">
+            {/* Render ungrouped roles */}
+            {ungroupedRoles.map((role, idx) => (
+              <div key={`role-${idx}`} className="flex items-start gap-1">
                 <span className={`inline-block px-2 py-1 rounded font-medium ${
                   role.main 
                     ? 'bg-indigo-100 text-indigo-800' 
@@ -1060,6 +1081,35 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
                 )}
               </div>
             ))}
+            
+            {/* Render role groups with OR indicators */}
+            {roleGroups.map((group, groupIdx) => {
+              const groupRoles = entry.roles!.filter(role => group.role_ids.includes(role.id));
+              if (groupRoles.length === 0) return null;
+              
+              return (
+                <div 
+                  key={`group-${groupIdx}`} 
+                  className="border border-black rounded px-2 py-1 bg-gray-50"
+                  title={group.description || 'OR group: one of these roles is required'}
+                >
+                  {groupRoles.map((role, roleIdx) => (
+                    <React.Fragment key={`group-${groupIdx}-role-${roleIdx}`}>
+                      {roleIdx > 0 && (
+                        <span className="mx-1 text-xs font-bold text-gray-700">OR</span>
+                      )}
+                      <span className={`inline-block px-2 py-1 rounded font-medium ${
+                        role.main 
+                          ? 'bg-indigo-100 text-indigo-800' 
+                          : 'bg-gray-100 text-gray-700'
+                      }`}>
+                        {role.role_type.label}
+                      </span>
+                    </React.Fragment>
+                  ))}
+                </div>
+              );
+            })}
           </div>
         );
       case 'id':

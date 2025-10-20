@@ -744,37 +744,167 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                     
                     // Add roles (only if expanded and exist) - sorted by precedence
                     if (rolesExpanded && posNode.node.roles && posNode.node.roles.length > 0) {
-                      sortRolesByPrecedence(posNode.node.roles).forEach((role, idx) => {
-                        const roleText = `${role.role_type.label}: ${role.description || 'No description'}`;
-                        const estimatedLines = Math.ceil(roleText.length / 60); // Approximate chars per line
-                        const roleHeight = estimatedLines <= 2 ? 45 : 60;
+                      // Custom ordering for speech-related roles
+                      const speechRoleOrder: Record<string, number> = {
+                        'SPEECH_TOPIC': 1,
+                        'REPORTED_SPEECH': 2,
+                        'DIRECT_SPEECH': 3,
+                      };
+                      
+                      // Create a map from role ID to group ID and organize groups
+                      const roleToGroup = new Map<string, string>();
+                      const roleGroups = posNode.node.role_groups || [];
+                      const groupedRoleIds = new Set<string>();
+                      
+                      roleGroups.forEach(group => {
+                        group.role_ids.forEach(roleId => {
+                          roleToGroup.set(roleId, group.id);
+                          groupedRoleIds.add(roleId);
+                        });
+                      });
+                      
+                      const sortedRoles = sortRolesByPrecedence(posNode.node.roles);
+                      
+                      // Organize roles by group with custom ordering
+                      const rolesByGroup = new Map<string, typeof sortedRoles>();
+                      roleGroups.forEach(group => {
+                        const rolesInGroup = posNode.node.roles!.filter(role => group.role_ids.includes(role.id));
+                        // Sort roles within group by custom order if applicable
+                        rolesInGroup.sort((a, b) => {
+                          const orderA = speechRoleOrder[a.role_type.label] || 999;
+                          const orderB = speechRoleOrder[b.role_type.label] || 999;
+                          if (orderA !== orderB) return orderA - orderB;
+                          return 0;
+                        });
+                        rolesByGroup.set(group.id, rolesInGroup);
+                      });
+                      
+                      // Track which groups we've already rendered
+                      const renderedGroups = new Set<string>();
+                      
+                      // Iterate through sorted roles and render them
+                      sortedRoles.forEach((role, idx) => {
+                        const roleGroupId = roleToGroup.get(role.id);
                         
-                        roleElements.push(
-                          <foreignObject
-                            key={`role-${idx}`}
-                            x={centerX + 12}
-                            y={currentRoleY}
-                            width={nodeWidth - 24}
-                            height={roleHeight}
-                          >
-                            <div style={{
-                              fontSize: '13px',
-                              fontFamily: 'Arial',
-                              color: 'white',
-                              lineHeight: '1.3',
-                              wordWrap: 'break-word',
-                              padding: '4px 6px',
-                              backgroundColor: role.main ? 'rgba(79, 70, 229, 0.4)' : 'rgba(79, 70, 229, 0.2)',
-                              borderRadius: '3px',
-                              height: '100%',
-                              overflow: 'hidden',
-                            }}>
-                              <span style={{ fontWeight: 'bold' }}>{role.role_type.label}:</span>{' '}
-                              {role.description || 'No description'}
-                            </div>
-                          </foreignObject>
-                        );
-                        currentRoleY += roleHeight;
+                        // If this role is in a group and we haven't rendered the group yet
+                        if (roleGroupId && !renderedGroups.has(roleGroupId)) {
+                          renderedGroups.add(roleGroupId);
+                          const rolesInGroup = rolesByGroup.get(roleGroupId) || [];
+                          
+                          const groupStartY = currentRoleY;
+                          
+                          // Calculate heights for all roles in group
+                          const roleHeights = rolesInGroup.map(r => {
+                            const roleText = `${r.role_type.label}: ${r.description || 'No description'}`;
+                            const estimatedLines = Math.ceil(roleText.length / 60);
+                            return estimatedLines <= 2 ? 45 : 60;
+                          });
+                          
+                          const groupHeight = roleHeights.reduce((sum, h) => sum + h, 0);
+                          
+                          // Draw border around entire group with background fill
+                          roleElements.push(
+                            <rect
+                              key={`group-border-${roleGroupId}`}
+                              x={centerX + 12}
+                              y={groupStartY}
+                              width={nodeWidth - 24}
+                              height={groupHeight}
+                              fill="#456aef"
+                              stroke="rgba(0, 0, 0, 0.7)"
+                              strokeWidth={2}
+                              rx={5}
+                            />
+                          );
+                          
+                          // Add "oneOf" label that interrupts the border at the top
+                          roleElements.push(
+                            <g key={`group-label-${roleGroupId}`}>
+                              <rect
+                                x={centerX + 20}
+                                y={groupStartY - 6}
+                                width={32}
+                                height={12}
+                                fill="#456aef"
+                              />
+                              <text
+                                x={centerX + 36}
+                                y={groupStartY + 3}
+                                fontSize="10"
+                                fill="rgba(0, 0, 0, 0.7)"
+                                fontWeight="bold"
+                                textAnchor="middle"
+                              >
+                                oneOf
+                              </text>
+                            </g>
+                          );
+                          
+                          // Render roles within the group
+                          rolesInGroup.forEach((groupRole, roleIdx) => {
+                            const roleHeight = roleHeights[roleIdx];
+                            
+                            roleElements.push(
+                              <foreignObject
+                                key={`group-${roleGroupId}-role-${roleIdx}`}
+                                x={centerX + 12}
+                                y={currentRoleY}
+                                width={nodeWidth - 24}
+                                height={roleHeight}
+                              >
+                                <div style={{
+                                  fontSize: '13px',
+                                  fontFamily: 'Arial',
+                                  color: 'white',
+                                  lineHeight: '1.3',
+                                  wordWrap: 'break-word',
+                                  padding: '4px 6px',
+                                  height: '100%',
+                                  overflow: 'hidden',
+                                }}>
+                                  <span style={{ fontWeight: 'bold' }}>{groupRole.role_type.label}:</span>{' '}
+                                  {groupRole.description || 'No description'}
+                                </div>
+                              </foreignObject>
+                            );
+                            currentRoleY += roleHeight;
+                          });
+                          
+                        } 
+                        // If this role is not in a group, render it normally
+                        else if (!roleGroupId) {
+                          const roleText = `${role.role_type.label}: ${role.description || 'No description'}`;
+                          const estimatedLines = Math.ceil(roleText.length / 60);
+                          const roleHeight = estimatedLines <= 2 ? 45 : 60;
+                          
+                          roleElements.push(
+                            <foreignObject
+                              key={`role-${idx}`}
+                              x={centerX + 12}
+                              y={currentRoleY}
+                              width={nodeWidth - 24}
+                              height={roleHeight}
+                            >
+                              <div style={{
+                                fontSize: '13px',
+                                fontFamily: 'Arial',
+                                color: 'white',
+                                lineHeight: '1.3',
+                                wordWrap: 'break-word',
+                                padding: '4px 6px',
+                                backgroundColor: role.main ? '#456aef' : '#4075f2',
+                                borderRadius: '3px',
+                                height: '100%',
+                                overflow: 'hidden',
+                              }}>
+                                <span style={{ fontWeight: 'bold' }}>{role.role_type.label}:</span>{' '}
+                                {role.description || 'No description'}
+                              </div>
+                            </foreignObject>
+                          );
+                          currentRoleY += roleHeight;
+                        }
+                        // Skip roles that are in a group we've already rendered
                       });
                     }
                     

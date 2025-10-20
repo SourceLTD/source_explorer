@@ -5,7 +5,7 @@ import { prisma } from '@/lib/prisma'
 export async function GET() {
   try {
     const [entriesCount, relationsCount] = await Promise.all([
-      prisma.lexicalEntry.count(),
+      prisma.verbs.count(),
       prisma.entryRelation.count()
     ])
     

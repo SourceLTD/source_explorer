@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useSearchEntries } from '@/lib/hooks'
 import { POS_LABELS } from '@/lib/types'
-import type { LexicalEntry } from '@/lib/types'
+import type { Verb } from '@/lib/types'
 
 export default function SearchExample() {
   const [query, setQuery] = useState('')
@@ -70,7 +70,7 @@ export default function SearchExample() {
           </div>
           
           <div className="space-y-4">
-            {results.entries.map((entry: LexicalEntry) => (
+            {results.entries.map((entry: Verb) => (
               <EntryCard key={entry.id} entry={entry} />
             ))}
           </div>
@@ -87,7 +87,7 @@ export default function SearchExample() {
   )
 }
 
-function EntryCard({ entry }: { entry: LexicalEntry }) {
+function EntryCard({ entry }: { entry: Verb }) {
   return (
     <div className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
       <div className="flex items-start justify-between mb-2">

@@ -1,5 +1,6 @@
-export interface LexicalEntry {
+export interface Verb {
   id: string;
+  code?: string; // Human-readable code (e.g., "aphorize.v.01")
   legacy_id: string;
   gloss: string;
   pos: string;
@@ -9,7 +10,6 @@ export interface LexicalEntry {
   lemmas: string[];
   src_lemmas: string[];
   particles: string[];
-  frames: string[];
   examples: string[];
   flagged?: boolean;
   flaggedReason?: string;
@@ -22,12 +22,12 @@ export interface LexicalEntry {
   updatedAt: Date;
 }
 
-export interface EntryRelation {
+export interface VerbRelation {
   sourceId: string;
   targetId: string;
   type: RelationType;
-  source?: LexicalEntry;
-  target?: LexicalEntry;
+  source?: Verb;
+  target?: Verb;
 }
 
 export enum RelationType {
@@ -38,13 +38,14 @@ export enum RelationType {
   HYPONYM = 'hyponym',
 }
 
-export interface EntryWithRelations extends LexicalEntry {
-  sourceRelations: EntryRelation[];
-  targetRelations: EntryRelation[];
+export interface VerbWithRelations extends Verb {
+  sourceRelations: VerbRelation[];
+  targetRelations: VerbRelation[];
 }
 
 export interface Frame {
   id: string;
+  code?: string; // Human-readable code (e.g., "extend.vf")
   framebank_id: string;
   frame_name: string;
   definition: string;
@@ -54,6 +55,7 @@ export interface Frame {
 
 export interface RoleType {
   id: string;
+  code?: string; // Human-readable code (e.g., "agent.rl")
   label: string;
   generic_description: string;
   explanation?: string | null;
@@ -63,9 +65,16 @@ export interface Role {
   id: string;
   description?: string;
   example_sentence?: string;
-  instantiation_type_ids: string[];
+  instantiation_type_ids: number[]; // Changed from string[] to number[]
   main: boolean;
   role_type: RoleType;
+}
+
+export interface RoleGroup {
+  id: string;
+  description?: string | null;
+  require_at_least_one: boolean;
+  role_ids: string[]; // IDs of roles in this group
 }
 
 export interface GraphNode {
@@ -87,6 +96,7 @@ export interface GraphNode {
   vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null;
   frame?: Frame | null;
   roles?: Role[];
+  role_groups?: RoleGroup[];
   parents: GraphNode[];
   children: GraphNode[];
   entails: GraphNode[];
@@ -111,19 +121,19 @@ export interface SearchOptions {
 }
 
 export interface PaginatedSearchResult {
-  entries: LexicalEntry[];
+  entries: Verb[];
   total: number;
   hasMore: boolean;
 }
 
-export interface LexicalEntryWithRelations extends LexicalEntry {
-  sourceRelations: EntryRelationWithEntries[];
-  targetRelations: EntryRelationWithEntries[];
+export interface VerbWithRelations extends Verb {
+  sourceRelations: VerbRelationWithEntries[];
+  targetRelations: VerbRelationWithEntries[];
 }
 
-export interface EntryRelationWithEntries extends EntryRelation {
-  source?: LexicalEntry;
-  target?: LexicalEntry;
+export interface VerbRelationWithEntries extends VerbRelation {
+  source?: Verb;
+  target?: Verb;
 }
 
 export interface DatabaseStats {
@@ -199,16 +209,17 @@ export interface TableEntry {
   isMwe: boolean;
   transitive?: boolean;
   particles: string[];
-  frames: string[];
   examples: string[];
   flagged?: boolean;
   flaggedReason?: string;
   forbidden?: boolean;
   forbiddenReason?: string;
   frame_id?: string | null;
+  frame?: string | null; // Frame name (e.g., "SPEAK")
   vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null;
   legal_constraints?: string[];
   roles?: Role[];
+  role_groups?: RoleGroup[];
   parentsCount: number;
   childrenCount: number;
   createdAt: Date;
@@ -261,6 +272,7 @@ export interface RecipePredicateNode {
   position?: number | null;
   optional?: boolean;
   negated?: boolean;
+  example?: string | null;
   lexical: GraphNode;
   roleMappings: RecipePredicateRoleMapping[];
 }
@@ -271,12 +283,20 @@ export interface RecipePredicateEdge {
   relation_type: RecipeRelationType;
 }
 
+export interface PredicateGroup {
+  id: string;
+  description?: string | null;
+  require_at_least_one: boolean;
+  predicate_ids: string[]; // IDs of predicates in this group
+}
+
 export interface Recipe {
   id: string;
   label?: string | null;
   description?: string | null;
   is_default: boolean;
   predicates: RecipePredicateNode[];
+  predicate_groups: PredicateGroup[];
   relations: RecipePredicateEdge[];
 }
 

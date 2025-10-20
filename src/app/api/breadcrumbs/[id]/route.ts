@@ -12,12 +12,13 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const ancestorPath = await getAncestorPath(id);
     
     const breadcrumbs = ancestorPath.map(node => {
-      // Extract lemma from synset ID format (e.g. 'attack' from 'attack.v.03')
+      // Extract lemma from code format (e.g. 'attack' from 'attack.v.03')
+      // The id is now the code, so we can extract directly
       const match = node.id.match(/^([^.]+)/);
       let lemma = match ? match[1] : node.id;
       
-      // Fallback to database lemmas if synset ID parsing fails
-      if (lemma === node.id) {
+      // Fallback to database lemmas if code parsing fails
+      if (!match || lemma === node.id) {
         const allLemmas = node.lemmas || [];
         const srcLemmas = node.src_lemmas || [];
         const regularLemmas = allLemmas.filter(l => !srcLemmas.includes(l));
@@ -25,7 +26,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       }
       
       return {
-        id: node.id,
+        id: node.id, // This is now the code
         legacy_id: node.legacy_id,
         lemma,
         gloss: node.gloss,
