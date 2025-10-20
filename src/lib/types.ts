@@ -22,12 +22,45 @@ export interface Verb {
   updatedAt: Date;
 }
 
+export interface Noun {
+  id: string;
+  code?: string; // Human-readable code (e.g., "dog.n.01")
+  legacy_id: string;
+  gloss: string;
+  pos: string;
+  lexfile: string;
+  isMwe: boolean;
+  countable?: boolean | null;
+  proper?: boolean;
+  collective?: boolean;
+  concrete?: boolean;
+  predicate?: boolean;
+  lemmas: string[];
+  src_lemmas: string[];
+  examples: string[];
+  flagged?: boolean;
+  flaggedReason?: string;
+  forbidden?: boolean;
+  forbiddenReason?: string;
+  legal_constraints?: string[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface VerbRelation {
   sourceId: string;
   targetId: string;
   type: RelationType;
   source?: Verb;
   target?: Verb;
+}
+
+export interface NounRelation {
+  sourceId: string;
+  targetId: string;
+  type: NounRelationType;
+  source?: Noun;
+  target?: Noun;
 }
 
 export enum RelationType {
@@ -38,9 +71,38 @@ export enum RelationType {
   HYPONYM = 'hyponym',
 }
 
+export enum NounRelationType {
+  HYPERNYM = 'hypernym',
+  HYPONYM = 'hyponym',
+  INSTANCE_HYPERNYM = 'instance_hypernym',
+  INSTANCE_HYPONYM = 'instance_hyponym',
+  MERONYM_PART = 'meronym_part',
+  HOLONYM_PART = 'holonym_part',
+  MERONYM_MEMBER = 'meronym_member',
+  HOLONYM_MEMBER = 'holonym_member',
+  MERONYM_SUBSTANCE = 'meronym_substance',
+  HOLONYM_SUBSTANCE = 'holonym_substance',
+  SIMILAR_TO = 'similar_to',
+  ALSO_SEE = 'also_see',
+  ATTRIBUTE = 'attribute',
+  DERIVATIONALLY_RELATED = 'derivationally_related',
+  PERTAINYM = 'pertainym',
+  DOMAIN_TOPIC = 'domain_topic',
+  DOMAIN_REGION = 'domain_region',
+  DOMAIN_USAGE = 'domain_usage',
+  MEMBER_OF_DOMAIN_TOPIC = 'member_of_domain_topic',
+  MEMBER_OF_DOMAIN_REGION = 'member_of_domain_region',
+  MEMBER_OF_DOMAIN_USAGE = 'member_of_domain_usage',
+}
+
 export interface VerbWithRelations extends Verb {
   sourceRelations: VerbRelation[];
   targetRelations: VerbRelation[];
+}
+
+export interface NounWithRelations extends Noun {
+  sourceRelations: NounRelation[];
+  targetRelations: NounRelation[];
 }
 
 export interface Frame {
@@ -92,11 +154,19 @@ export interface GraphNode {
   flaggedReason?: string;
   forbidden?: boolean;
   forbiddenReason?: string;
+  // Verb-specific fields
   frame_id?: string | null;
   vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null;
   frame?: Frame | null;
   roles?: Role[];
   role_groups?: RoleGroup[];
+  // Noun-specific fields
+  countable?: boolean | null;
+  proper?: boolean;
+  collective?: boolean;
+  concrete?: boolean;
+  predicate?: boolean;
+  // Common relation fields
   parents: GraphNode[];
   children: GraphNode[];
   entails: GraphNode[];
@@ -207,19 +277,27 @@ export interface TableEntry {
   pos: string;
   lexfile: string;
   isMwe: boolean;
+  // Verb-specific fields
   transitive?: boolean;
   particles: string[];
+  frame_id?: string | null;
+  frame?: string | null; // Frame name (e.g., "SPEAK")
+  vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null;
+  roles?: Role[];
+  role_groups?: RoleGroup[];
+  // Noun-specific fields
+  countable?: boolean | null;
+  proper?: boolean;
+  collective?: boolean;
+  concrete?: boolean;
+  predicate?: boolean;
+  // Common fields
   examples: string[];
   flagged?: boolean;
   flaggedReason?: string;
   forbidden?: boolean;
   forbiddenReason?: string;
-  frame_id?: string | null;
-  frame?: string | null; // Frame name (e.g., "SPEAK")
-  vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null;
   legal_constraints?: string[];
-  roles?: Role[];
-  role_groups?: RoleGroup[];
   parentsCount: number;
   childrenCount: number;
   createdAt: Date;

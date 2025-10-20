@@ -20,6 +20,7 @@ const backgroundColor = '#ffffff';
 interface LexicalGraphProps {
   currentNode: GraphNode;
   onNodeClick: (nodeId: string) => void;
+  mode?: 'verbs' | 'nouns';
 }
 
 
@@ -36,7 +37,7 @@ interface LayoutResult {
   height: number;
 }
 
-export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphProps) {
+export default function LexicalGraph({ currentNode, onNodeClick, mode = 'verbs' }: LexicalGraphProps) {
 
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [rolesExpanded, setRolesExpanded] = useState<boolean>(false);
@@ -474,8 +475,8 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                     <tspan fontWeight="bold">{posNode.node.id.split('.v.')[0] || posNode.node.id}</tspan>
                     <tspan fontWeight="normal" fontSize={14}> ({posNode.node.id})</tspan>
                   </text>
-                  {/* Vendler Class Badge */}
-                  {posNode.node.vendler_class && (
+                  {/* Vendler Class Badge (verbs only) */}
+                  {mode === 'verbs' && posNode.node.vendler_class && (
                     <g>
                       <rect
                         x={centerX + 12}
@@ -527,8 +528,8 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                       </span>
                     </div>
                   </foreignObject>
-                  {/* Frame Badge */}
-                  {posNode.node.frame && (
+                  {/* Frame Badge (verbs only) */}
+                  {mode === 'verbs' && posNode.node.frame && (
                     <foreignObject
                       x={centerX + 12}
                       y={centerY + (posNode.node.vendler_class ? 90 : 70)}
@@ -736,8 +737,8 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                     </>
                   )}
                   
-                  {/* Combined Roles - after examples */}
-                  {(() => {
+                  {/* Combined Roles - after examples (verbs only) */}
+                  {mode === 'verbs' && (() => {
                     const rolesStartY = centerY + 55 + (posNode.node.vendler_class ? 20 : 0) + 22 + (posNode.node.frame ? 22 : 0) + glossHeight + lemmasHeight + examplesHeight;
                     let currentRoleY = rolesStartY + 20;
                     const roleElements: JSX.Element[] = [];
@@ -1276,8 +1277,8 @@ export default function LexicalGraph({ currentNode, onNodeClick }: LexicalGraphP
                   >
                     {posNode.node.id}
                   </text>
-                  {/* Small vendler class badge for closed nodes */}
-                  {posNode.node.vendler_class && (
+                  {/* Small vendler class badge for closed nodes (verbs only) */}
+                  {mode === 'verbs' && posNode.node.vendler_class && (
                     <circle
                       cx={centerX + nodeWidth - 8}
                       cy={centerY + 8}

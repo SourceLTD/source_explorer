@@ -10,6 +10,7 @@ interface DataTableProps {
   onRowClick?: (entry: TableEntry) => void;
   searchQuery?: string;
   className?: string;
+  mode?: 'verbs' | 'nouns';
 }
 
 interface SortState {
@@ -109,7 +110,7 @@ const getDefaultColumnWidths = (): ColumnWidthState => {
   return { ...DEFAULT_COLUMN_WIDTHS };
 };
 
-export default function DataTable({ onRowClick, searchQuery, className }: DataTableProps) {
+export default function DataTable({ onRowClick, searchQuery, className, mode = 'verbs' }: DataTableProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -338,7 +339,8 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
         }
       });
 
-      const response = await fetch(`/api/entries/paginated?${queryParams}`);
+      const apiPrefix = mode === 'nouns' ? '/api/nouns' : '/api/entries';
+      const response = await fetch(`${apiPrefix}/paginated?${queryParams}`);
       if (!response.ok) {
         throw new Error('Failed to fetch data');
       }
@@ -451,7 +453,8 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
     }
 
     try {
-      const response = await fetch(`/api/entries/${entryId}/relations`);
+      const apiPrefix = mode === 'nouns' ? '/api/nouns' : '/api/entries';
+      const response = await fetch(`${apiPrefix}/${entryId}/relations`);
       if (!response.ok) {
         throw new Error('Failed to fetch relations');
       }
@@ -551,7 +554,8 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
     if (selection.selectedIds.size === 0) return;
 
     try {
-      const response = await fetch('/api/entries/moderation', {
+      const apiPrefix = mode === 'nouns' ? '/api/nouns' : '/api/entries';
+      const response = await fetch(`${apiPrefix}/moderation`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -660,7 +664,8 @@ export default function DataTable({ onRowClick, searchQuery, className }: DataTa
     if (!editing.entryId || !editing.field) return;
 
     try {
-      const response = await fetch(`/api/entries/${editing.entryId}`, {
+      const apiPrefix = mode === 'nouns' ? '/api/nouns' : '/api/entries';
+      const response = await fetch(`${apiPrefix}/${editing.entryId}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',

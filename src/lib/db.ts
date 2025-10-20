@@ -1,8 +1,8 @@
 import { unstable_cache, revalidateTag } from 'next/cache';
 import { prisma } from './prisma';
 import { withRetry } from './db-utils'; 
-import { RelationType, type Verb, type VerbWithRelations, type VerbRelation, type GraphNode, type SearchResult, type PaginationParams, type PaginatedResult, type TableEntry, type EntryRecipes, type Recipe, type RecipePredicateNode, type RecipePredicateRoleMapping } from './types';
-import type { verbs as PrismaVerb, EntryRelation as PrismaVerbRelation, Prisma } from '@prisma/client';
+import { RelationType, NounRelationType, type Verb, type Noun, type VerbWithRelations, type NounWithRelations, type VerbRelation, type NounRelation, type GraphNode, type SearchResult, type PaginationParams, type PaginatedResult, type TableEntry, type EntryRecipes, type Recipe, type RecipePredicateNode, type RecipePredicateRoleMapping } from './types';
+import type { verbs as PrismaVerb, nouns as PrismaNoun, EntryRelation as PrismaVerbRelation, noun_relations as PrismaNounRelation, Prisma } from '@prisma/client';
 
 // Type for Prisma entry that might have optional fields
 type PrismaEntryWithOptionalFields = {
@@ -1573,6 +1573,834 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
       childrenCount: entry._count.targetRelations,
       createdAt: entry.createdAt,
       updatedAt: entry.updatedAt
+    };
+  });
+
+  // Apply numeric filters on computed fields
+  if (parentsCountMin !== undefined) {
+    data = data.filter(entry => entry.parentsCount >= parentsCountMin);
+  }
+  if (parentsCountMax !== undefined) {
+    data = data.filter(entry => entry.parentsCount <= parentsCountMax);
+  }
+  if (childrenCountMin !== undefined) {
+    data = data.filter(entry => entry.childrenCount >= childrenCountMin);
+  }
+  if (childrenCountMax !== undefined) {
+    data = data.filter(entry => entry.childrenCount <= childrenCountMax);
+  }
+
+  // Sort by computed fields if needed
+  if (sortBy === 'parentsCount') {
+    data.sort((a, b) => sortOrder === 'asc' 
+      ? a.parentsCount - b.parentsCount 
+      : b.parentsCount - a.parentsCount
+    );
+  } else if (sortBy === 'childrenCount') {
+    data.sort((a, b) => sortOrder === 'asc' 
+      ? a.childrenCount - b.childrenCount 
+      : b.childrenCount - a.childrenCount
+    );
+  }
+
+  const totalPages = Math.ceil(total / limit);
+
+  return {
+    data,
+    total,
+    page,
+    limit,
+    totalPages,
+    hasNext: page < totalPages,
+    hasPrev: page > 1
+  };
+}
+
+// ============================================================================
+// NOUN-SPECIFIC FUNCTIONS
+// ============================================================================
+
+export async function searchNouns(query: string, limit = 20): Promise<SearchResult[]> {
+  // If query contains a dot, only search IDs
+  const containsDot = query.includes('.');
+  
+  if (containsDot) {
+    // Only search ID fields when dot is present
+    const results = await withRetry(
+      () => prisma.$queryRaw<SearchResult[]>`
+      SELECT 
+        code as id,
+        legacy_id,
+        lemmas,
+        src_lemmas,
+        gloss,
+        'n' as pos,
+        CASE 
+          WHEN code ILIKE ${query} THEN 1000
+          WHEN code ILIKE ${query + '%'} THEN 500
+          WHEN legacy_id ILIKE ${query + '%'} THEN 400
+          ELSE 0
+        END as rank
+      FROM nouns
+      WHERE 
+        code ILIKE ${query + '%'} OR
+        legacy_id ILIKE ${query + '%'}
+      ORDER BY rank DESC, code
+      LIMIT ${limit}
+    `,
+      undefined,
+      `searchNouns(${query})`
+    );
+    return results;
+  }
+  
+  // Use PostgreSQL full-text search for regular queries
+  const results = await withRetry(
+    () => prisma.$queryRaw<SearchResult[]>`
+    SELECT 
+      code as id,
+      legacy_id,
+      lemmas,
+      src_lemmas,
+      gloss,
+      'n' as pos,
+      ts_rank(gloss_tsv, plainto_tsquery('english', ${query})) +
+      ts_rank(examples_tsv, plainto_tsquery('english', ${query})) as rank
+    FROM nouns
+    WHERE 
+      gloss_tsv @@ plainto_tsquery('english', ${query}) OR
+      examples_tsv @@ plainto_tsquery('english', ${query}) OR
+      ${query} = ANY(lemmas) OR
+      ${query} = ANY(src_lemmas)
+    ORDER BY rank DESC, code
+    LIMIT ${limit}
+  `,
+    undefined,
+    `searchNouns(${query})`
+  );
+
+  return results;
+}
+
+export async function getNounById(id: string): Promise<NounWithRelations | null> {
+  const entry = await withRetry(
+    () => prisma.nouns.findUnique({
+      where: { code: id } as unknown as Prisma.nounsWhereUniqueInput,
+      include: {
+        noun_relations_noun_relations_source_idTonouns: {
+          include: {
+            nouns_noun_relations_target_idTonouns: true,
+          },
+        },
+        noun_relations_noun_relations_target_idTonouns: {
+          include: {
+            nouns_noun_relations_source_idTonouns: true,
+          },
+        },
+      },
+    }),
+    undefined,
+    `getNounById(${id})`
+  ) as unknown as {
+    id: bigint;
+    code: string;
+    legacy_id: string;
+    gloss: string;
+    lexfile: string;
+    is_mwe: boolean;
+    countable: boolean | null;
+    proper: boolean;
+    collective: boolean;
+    concrete: boolean;
+    predicate: boolean;
+    lemmas: string[];
+    src_lemmas: string[];
+    examples: string[];
+    flagged: boolean | null;
+    flagged_reason: string | null;
+    forbidden: boolean | null;
+    forbidden_reason: string | null;
+    legal_constraints: string[];
+    created_at: Date;
+    updated_at: Date;
+    noun_relations_noun_relations_source_idTonouns: Array<{
+      type: string;
+      source_id: bigint;
+      target_id: bigint;
+      nouns_noun_relations_target_idTonouns: {
+        id: bigint;
+        code: string;
+        legacy_id: string;
+        gloss: string;
+        lemmas: string[];
+        src_lemmas: string[];
+        flagged: boolean | null;
+        flagged_reason: string | null;
+        forbidden: boolean | null;
+        forbidden_reason: string | null;
+      };
+    }>;
+    noun_relations_noun_relations_target_idTonouns: Array<{
+      type: string;
+      source_id: bigint;
+      target_id: bigint;
+      nouns_noun_relations_source_idTonouns: {
+        id: bigint;
+        code: string;
+        legacy_id: string;
+        gloss: string;
+        lemmas: string[];
+        src_lemmas: string[];
+        flagged: boolean | null;
+        flagged_reason: string | null;
+        forbidden: boolean | null;
+        forbidden_reason: string | null;
+      };
+    }>;
+  } | null;
+
+  if (!entry) return null;
+
+  return {
+    id: entry.code,
+    code: entry.code,
+    legacy_id: entry.legacy_id,
+    gloss: entry.gloss,
+    pos: 'n',
+    lexfile: entry.lexfile,
+    isMwe: entry.is_mwe,
+    countable: entry.countable,
+    proper: entry.proper,
+    collective: entry.collective,
+    concrete: entry.concrete,
+    predicate: entry.predicate,
+    lemmas: entry.lemmas,
+    src_lemmas: entry.src_lemmas,
+    examples: entry.examples,
+    flagged: entry.flagged ?? undefined,
+    flaggedReason: entry.flagged_reason ?? undefined,
+    forbidden: entry.forbidden ?? undefined,
+    forbiddenReason: entry.forbidden_reason ?? undefined,
+    legal_constraints: entry.legal_constraints,
+    createdAt: entry.created_at,
+    updatedAt: entry.updated_at,
+    sourceRelations: entry.noun_relations_noun_relations_source_idTonouns.map(rel => ({
+      sourceId: rel.source_id.toString(),
+      targetId: rel.target_id.toString(),
+      type: rel.type as NounRelationType,
+      target: {
+        id: rel.nouns_noun_relations_target_idTonouns.code,
+        code: rel.nouns_noun_relations_target_idTonouns.code,
+        legacy_id: rel.nouns_noun_relations_target_idTonouns.legacy_id,
+        gloss: rel.nouns_noun_relations_target_idTonouns.gloss,
+        pos: 'n',
+        lexfile: entry.lexfile,
+        isMwe: false,
+        lemmas: rel.nouns_noun_relations_target_idTonouns.lemmas,
+        src_lemmas: rel.nouns_noun_relations_target_idTonouns.src_lemmas,
+        examples: [],
+        flagged: rel.nouns_noun_relations_target_idTonouns.flagged ?? undefined,
+        flaggedReason: rel.nouns_noun_relations_target_idTonouns.flagged_reason ?? undefined,
+        forbidden: rel.nouns_noun_relations_target_idTonouns.forbidden ?? undefined,
+        forbiddenReason: rel.nouns_noun_relations_target_idTonouns.forbidden_reason ?? undefined,
+        createdAt: entry.created_at,
+        updatedAt: entry.updated_at,
+      } as Noun,
+    })),
+    targetRelations: entry.noun_relations_noun_relations_target_idTonouns.map(rel => ({
+      sourceId: rel.source_id.toString(),
+      targetId: rel.target_id.toString(),
+      type: rel.type as NounRelationType,
+      source: {
+        id: rel.nouns_noun_relations_source_idTonouns.code,
+        code: rel.nouns_noun_relations_source_idTonouns.code,
+        legacy_id: rel.nouns_noun_relations_source_idTonouns.legacy_id,
+        gloss: rel.nouns_noun_relations_source_idTonouns.gloss,
+        pos: 'n',
+        lexfile: entry.lexfile,
+        isMwe: false,
+        lemmas: rel.nouns_noun_relations_source_idTonouns.lemmas,
+        src_lemmas: rel.nouns_noun_relations_source_idTonouns.src_lemmas,
+        examples: [],
+        flagged: rel.nouns_noun_relations_source_idTonouns.flagged ?? undefined,
+        flaggedReason: rel.nouns_noun_relations_source_idTonouns.flagged_reason ?? undefined,
+        forbidden: rel.nouns_noun_relations_source_idTonouns.forbidden ?? undefined,
+        forbiddenReason: rel.nouns_noun_relations_source_idTonouns.forbidden_reason ?? undefined,
+        createdAt: entry.created_at,
+        updatedAt: entry.updated_at,
+      } as Noun,
+    })),
+  };
+}
+
+// Internal implementation for getting noun graph node
+async function getNounGraphNodeInternal(entryId: string): Promise<GraphNode | null> {
+  const entry = await withRetry(
+    () => prisma.nouns.findUnique({
+      where: { code: entryId } as unknown as Prisma.nounsWhereUniqueInput,
+      include: {
+        noun_relations_noun_relations_source_idTonouns: {
+          where: {
+            type: {
+              in: ['hypernym', 'also_see']
+            }
+          },
+          include: {
+            nouns_noun_relations_target_idTonouns: {
+              select: {
+                id: true,
+                code: true,
+                legacy_id: true,
+                lemmas: true,
+                src_lemmas: true,
+                gloss: true,
+                lexfile: true,
+                examples: true,
+                forbidden: true,
+                forbidden_reason: true,
+                flagged: true,
+                flagged_reason: true,
+              }
+            }
+          }
+        },
+        noun_relations_noun_relations_target_idTonouns: {
+          where: {
+            type: 'hypernym'
+          },
+          include: {
+            nouns_noun_relations_source_idTonouns: {
+              select: {
+                id: true,
+                code: true,
+                legacy_id: true,
+                lemmas: true,
+                src_lemmas: true,
+                gloss: true,
+                lexfile: true,
+                examples: true,
+                forbidden: true,
+                forbidden_reason: true,
+                flagged: true,
+                flagged_reason: true,
+              }
+            }
+          }
+        }
+      }
+    }),
+    undefined,
+    `getNounGraphNodeInternal(${entryId})`
+  ) as unknown as {
+    id: bigint;
+    code: string;
+    legacy_id: string;
+    gloss: string;
+    legal_gloss: string | null;
+    lexfile: string;
+    is_mwe: boolean;
+    countable: boolean | null;
+    proper: boolean;
+    collective: boolean;
+    concrete: boolean;
+    predicate: boolean;
+    lemmas: string[];
+    src_lemmas: string[];
+    examples: string[];
+    flagged: boolean | null;
+    flagged_reason: string | null;
+    forbidden: boolean | null;
+    forbidden_reason: string | null;
+    legal_constraints: string[];
+    noun_relations_noun_relations_source_idTonouns: Array<{
+      type: string;
+      nouns_noun_relations_target_idTonouns: {
+        id: bigint;
+        code: string;
+        legacy_id: string;
+        lemmas: string[];
+        src_lemmas: string[];
+        gloss: string;
+        lexfile: string;
+        examples: string[];
+        forbidden: boolean | null;
+        forbidden_reason: string | null;
+        flagged: boolean | null;
+        flagged_reason: string | null;
+      };
+    }>;
+    noun_relations_noun_relations_target_idTonouns: Array<{
+      type: string;
+      nouns_noun_relations_source_idTonouns: {
+        id: bigint;
+        code: string;
+        legacy_id: string;
+        lemmas: string[];
+        src_lemmas: string[];
+        gloss: string;
+        lexfile: string;
+        examples: string[];
+        forbidden: boolean | null;
+        forbidden_reason: string | null;
+        flagged: boolean | null;
+        flagged_reason: string | null;
+      };
+    }>;
+  } | null;
+
+  if (!entry) return null;
+
+  // Get parents (hypernyms) - more general concepts
+  const parents: GraphNode[] = entry.noun_relations_noun_relations_source_idTonouns
+    .filter(rel => rel.type === 'hypernym' && rel.nouns_noun_relations_target_idTonouns)
+    .map(rel => {
+      const target = rel.nouns_noun_relations_target_idTonouns;
+      return {
+        id: target.code,
+        legacy_id: target.legacy_id,
+        lemmas: target.lemmas,
+        src_lemmas: target.src_lemmas,
+        gloss: target.gloss,
+        legal_constraints: [],
+        pos: 'n',
+        lexfile: target.lexfile,
+        examples: target.examples,
+        flagged: target.flagged ?? undefined,
+        flaggedReason: target.flagged_reason ?? undefined,
+        forbidden: target.forbidden ?? undefined,
+        forbiddenReason: target.forbidden_reason ?? undefined,
+        parents: [],
+        children: [],
+        entails: [],
+        causes: [],
+        alsoSee: [],
+      };
+    });
+
+  // Get children (hyponyms) - more specific concepts
+  const children: GraphNode[] = entry.noun_relations_noun_relations_target_idTonouns
+    .filter(rel => rel.type === 'hypernym' && rel.nouns_noun_relations_source_idTonouns)
+    .map(rel => {
+      const source = rel.nouns_noun_relations_source_idTonouns;
+      return {
+        id: source.code,
+        legacy_id: source.legacy_id,
+        lemmas: source.lemmas,
+        src_lemmas: source.src_lemmas,
+        gloss: source.gloss,
+        legal_constraints: [],
+        pos: 'n',
+        lexfile: source.lexfile,
+        examples: source.examples,
+        flagged: source.flagged ?? undefined,
+        flaggedReason: source.flagged_reason ?? undefined,
+        forbidden: source.forbidden ?? undefined,
+        forbiddenReason: source.forbidden_reason ?? undefined,
+        parents: [],
+        children: [],
+        entails: [],
+        causes: [],
+        alsoSee: [],
+      };
+    });
+
+  // Get also_see relationships
+  const alsoSee: GraphNode[] = entry.noun_relations_noun_relations_source_idTonouns
+    .filter(rel => rel.type === 'also_see' && rel.nouns_noun_relations_target_idTonouns)
+    .map(rel => {
+      const target = rel.nouns_noun_relations_target_idTonouns;
+      return {
+        id: target.code,
+        legacy_id: target.legacy_id,
+        lemmas: target.lemmas,
+        src_lemmas: target.src_lemmas,
+        gloss: target.gloss,
+        legal_constraints: [],
+        pos: 'n',
+        lexfile: target.lexfile,
+        examples: target.examples,
+        flagged: target.flagged ?? undefined,
+        flaggedReason: target.flagged_reason ?? undefined,
+        forbidden: target.forbidden ?? undefined,
+        forbiddenReason: target.forbidden_reason ?? undefined,
+        parents: [],
+        children: [],
+        entails: [],
+        causes: [],
+        alsoSee: [],
+      };
+    });
+
+  return {
+    id: entry.code,
+    legacy_id: entry.legacy_id,
+    lemmas: entry.lemmas,
+    src_lemmas: entry.src_lemmas,
+    gloss: entry.gloss,
+    legal_gloss: entry.legal_gloss ?? null,
+    legal_constraints: entry.legal_constraints ?? [],
+    pos: 'n',
+    lexfile: entry.lexfile,
+    examples: entry.examples,
+    flagged: entry.flagged ?? undefined,
+    flaggedReason: entry.flagged_reason ?? undefined,
+    forbidden: entry.forbidden ?? undefined,
+    forbiddenReason: entry.forbidden_reason ?? undefined,
+    countable: entry.countable,
+    proper: entry.proper,
+    collective: entry.collective,
+    concrete: entry.concrete,
+    predicate: entry.predicate,
+    parents,
+    children,
+    entails: [], // Nouns don't have entails
+    causes: [], // Nouns don't have causes
+    alsoSee,
+  };
+}
+
+// Cached wrapper for getNounGraphNode
+export const getNounGraphNode = unstable_cache(
+  async (entryId: string) => getNounGraphNodeInternal(entryId),
+  ['noun-graph-node'],
+  {
+    revalidate: 60,
+    tags: ['noun-graph-node'],
+  }
+);
+
+export async function updateNoun(id: string, updates: Partial<Pick<Noun, 'gloss' | 'lemmas' | 'examples' | 'flagged' | 'flaggedReason' | 'forbidden' | 'forbiddenReason'>>): Promise<NounWithRelations | null> {
+  const updatedEntry = await withRetry(
+    () => prisma.nouns.update({
+      where: { code: id } as unknown as Prisma.nounsWhereUniqueInput,
+      data: updates,
+      include: {
+        noun_relations_noun_relations_source_idTonouns: {
+          include: {
+            nouns_noun_relations_target_idTonouns: true
+          }
+        },
+        noun_relations_noun_relations_target_idTonouns: {
+          include: {
+            nouns_noun_relations_source_idTonouns: true
+          }
+        }
+      }
+    }),
+    undefined,
+    `updateNoun(${id})`
+  );
+
+  if (!updatedEntry) return null;
+
+  // Invalidate cache
+  revalidateTag('noun-graph-node');
+
+  // Convert to NounWithRelations - reuse getNounById logic
+  return getNounById(id);
+}
+
+export async function updateNounModerationStatus(
+  ids: string[], 
+  updates: { 
+    flagged?: boolean; 
+    flaggedReason?: string; 
+    forbidden?: boolean; 
+    forbiddenReason?: string; 
+  }
+): Promise<number> {
+  const result = await prisma.nouns.updateMany({
+    where: {
+      code: {
+        in: ids
+      }
+    } as Prisma.nounsWhereInput,
+    data: updates
+  });
+
+  // Invalidate cache
+  revalidateTag('noun-graph-node');
+
+  return result.count;
+}
+
+export async function getPaginatedNouns(params: PaginationParams = {}): Promise<PaginatedResult<TableEntry>> {
+  const {
+    page = 1,
+    limit = 20,
+    sortBy = 'id',
+    sortOrder = 'asc',
+    search,
+    pos,
+    lexfile,
+    gloss,
+    lemmas,
+    examples,
+    isMwe,
+    flagged,
+    forbidden,
+    parentsCountMin,
+    parentsCountMax,
+    childrenCountMin,
+    childrenCountMax,
+    createdAfter,
+    createdBefore,
+    updatedAfter,
+    updatedBefore
+  } = params;
+
+  const skip = (page - 1) * limit;
+
+  // Build where clause
+  const whereClause: Record<string, unknown> = {};
+  const andConditions: Record<string, unknown>[] = [];
+  
+  // Global search
+  if (search) {
+    andConditions.push({
+      OR: [
+        {
+          gloss: {
+            contains: search,
+            mode: 'insensitive'
+          }
+        },
+        {
+          lemmas: {
+            hasSome: [search]
+          }
+        },
+        {
+          src_lemmas: {
+            hasSome: [search]
+          }
+        },
+        {
+          examples: {
+            hasSome: search.split(' ')
+          }
+        }
+      ]
+    });
+  }
+
+  // Basic filters
+  if (pos) {
+    const posValues = pos.split(',').map(p => p.trim()).filter(Boolean);
+    if (posValues.length > 0) {
+      andConditions.push({
+        pos: {
+          in: posValues
+        }
+      });
+    }
+  }
+
+  if (lexfile) {
+    const lexfiles = lexfile.split(',').map(lf => lf.trim()).filter(Boolean);
+    if (lexfiles.length > 0) {
+      andConditions.push({
+        lexfile: {
+          in: lexfiles
+        }
+      });
+    }
+  }
+
+  // Advanced text filters
+  if (gloss) {
+    andConditions.push({
+      gloss: {
+        contains: gloss,
+        mode: 'insensitive'
+      }
+    });
+  }
+
+  if (lemmas) {
+    const lemmaTerms = lemmas.split(/[\s,]+/).filter(Boolean);
+    andConditions.push({
+      OR: [
+        {
+          lemmas: {
+            hasSome: lemmaTerms
+          }
+        },
+        {
+          src_lemmas: {
+            hasSome: lemmaTerms
+          }
+        }
+      ]
+    });
+  }
+
+  if (examples) {
+    andConditions.push({
+      examples: {
+        hasSome: examples.split(/[\s,]+/).filter(Boolean)
+      }
+    });
+  }
+
+  // Boolean filters
+  if (isMwe !== undefined) {
+    andConditions.push({ is_mwe: isMwe });
+  }
+
+  if (flagged !== undefined) {
+    andConditions.push({ flagged });
+  }
+
+  if (forbidden !== undefined) {
+    andConditions.push({ forbidden });
+  }
+
+  // Date filters
+  if (createdAfter) {
+    andConditions.push({
+      created_at: {
+        gte: new Date(createdAfter)
+      }
+    });
+  }
+
+  if (createdBefore) {
+    andConditions.push({
+      created_at: {
+        lte: new Date(createdBefore + 'T23:59:59.999Z')
+      }
+    });
+  }
+
+  if (updatedAfter) {
+    andConditions.push({
+      updated_at: {
+        gte: new Date(updatedAfter)
+      }
+    });
+  }
+
+  if (updatedBefore) {
+    andConditions.push({
+      updated_at: {
+        lte: new Date(updatedBefore + 'T23:59:59.999Z')
+      }
+    });
+  }
+
+  // Combine all conditions
+  if (andConditions.length > 0) {
+    whereClause.AND = andConditions;
+  }
+
+  // Get total count
+  const total = await withRetry(
+    () => prisma.nouns.count({
+      where: whereClause
+    }),
+    undefined,
+    'getPaginatedNouns:count'
+  );
+
+  // Build order clause
+  const orderBy: Record<string, unknown> = {};
+  
+  // Map old field names to new ones for backward compatibility
+  let actualSortBy = sortBy;
+  if (sortBy === 'src_id') {
+    actualSortBy = 'legacy_id';
+  }
+  
+  if (actualSortBy === 'lemmas' || actualSortBy === 'src_lemmas') {
+    // For array fields, we need to use raw SQL for proper sorting
+    orderBy[actualSortBy] = sortOrder;
+  } else if (actualSortBy === 'parentsCount' || actualSortBy === 'childrenCount') {
+    // These will be computed after fetching
+    orderBy.id = sortOrder; // Default fallback
+  } else {
+    orderBy[actualSortBy] = sortOrder;
+  }
+
+  // Fetch entries with relation counts
+  const entries = await withRetry(
+    () => prisma.nouns.findMany({
+    where: whereClause,
+    skip,
+    take: limit,
+    orderBy,
+    include: {
+      _count: {
+        select: {
+          noun_relations_noun_relations_source_idTonouns: {
+            where: { type: 'hypernym' }
+          },
+          noun_relations_noun_relations_target_idTonouns: {
+            where: { type: 'hypernym' }
+          }
+        }
+      }
+    }
+  }),
+    undefined,
+    'getPaginatedNouns:findMany'
+  ) as unknown as Array<{
+    id: bigint;
+    code: string;
+    legacy_id: string;
+    gloss: string;
+    lexfile: string;
+    is_mwe: boolean;
+    countable: boolean | null;
+    proper: boolean;
+    collective: boolean;
+    concrete: boolean;
+    predicate: boolean;
+    lemmas: string[];
+    src_lemmas: string[];
+    examples: string[];
+    flagged: boolean | null;
+    flagged_reason: string | null;
+    forbidden: boolean | null;
+    forbidden_reason: string | null;
+    legal_constraints: string[];
+    created_at: Date;
+    updated_at: Date;
+    _count: {
+      noun_relations_noun_relations_source_idTonouns: number;
+      noun_relations_noun_relations_target_idTonouns: number;
+    };
+  }>;
+
+  // Transform to TableEntry format
+  let data: TableEntry[] = entries.map(entry => {
+    const entryCode = entry.code || entry.id.toString();
+    
+    return {
+      id: entryCode,
+      legacy_id: entry.legacy_id,
+      lemmas: entry.lemmas,
+      src_lemmas: entry.src_lemmas,
+      gloss: entry.gloss,
+      pos: 'n',
+      lexfile: entry.lexfile,
+      isMwe: entry.is_mwe,
+      particles: [], // Nouns don't have particles
+      countable: entry.countable,
+      proper: entry.proper,
+      collective: entry.collective,
+      concrete: entry.concrete,
+      predicate: entry.predicate,
+      examples: entry.examples,
+      flagged: entry.flagged ?? undefined,
+      flaggedReason: entry.flagged_reason ?? undefined,
+      forbidden: entry.forbidden ?? undefined,
+      forbiddenReason: entry.forbidden_reason ?? undefined,
+      legal_constraints: entry.legal_constraints || [],
+      parentsCount: entry._count.noun_relations_noun_relations_source_idTonouns,
+      childrenCount: entry._count.noun_relations_noun_relations_target_idTonouns,
+      createdAt: entry.created_at,
+      updatedAt: entry.updated_at
     };
   });
 

@@ -7,9 +7,10 @@ interface SearchBoxProps {
   onSelectResult: (result: SearchResult) => void;
   onSearchChange?: (query: string) => void;
   placeholder?: string;
+  mode?: 'verbs' | 'nouns';
 }
 
-export default function SearchBox({ onSelectResult, onSearchChange, placeholder = "Search lexical entries..." }: SearchBoxProps) {
+export default function SearchBox({ onSelectResult, onSearchChange, placeholder = "Search lexical entries...", mode = 'verbs' }: SearchBoxProps) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isOpen, setIsOpen] = useState(false);
@@ -27,7 +28,8 @@ export default function SearchBox({ onSelectResult, onSearchChange, placeholder 
 
     setIsLoading(true);
     try {
-      const response = await fetch(`/api/search?q=${encodeURIComponent(searchQuery)}&limit=100`);
+      const apiEndpoint = mode === 'nouns' ? '/api/nouns/search' : '/api/search';
+      const response = await fetch(`${apiEndpoint}?q=${encodeURIComponent(searchQuery)}&limit=100`);
       if (response.ok) {
         const searchResults = await response.json();
         setResults(searchResults);

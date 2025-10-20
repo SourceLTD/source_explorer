@@ -13,9 +13,10 @@ import RootNodesView from './RootNodesView';
 
 interface WordNetExplorerProps {
   initialEntryId?: string;
+  mode?: 'verbs' | 'nouns';
 }
 
-export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps) {
+export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: WordNetExplorerProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [currentNode, setCurrentNode] = useState<GraphNode | null>(null);
@@ -59,7 +60,8 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
   const updateUrlParam = (entryId: string) => {
     const params = new URLSearchParams(searchParams);
     params.set('entry', entryId);
-    router.push(`/graph?${params.toString()}`, { scroll: false });
+    const basePath = mode === 'nouns' ? '/graph/nouns' : '/graph';
+    router.push(`${basePath}?${params.toString()}`, { scroll: false });
   };
 
   // Helper to update view in URL
@@ -67,7 +69,8 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
     const params = new URLSearchParams(searchParams);
     params.set('view', view);
     const qs = params.toString();
-    router.push(qs ? `/graph?${qs}` : '/graph', { scroll: false });
+    const basePath = mode === 'nouns' ? '/graph/nouns' : '/graph';
+    router.push(qs ? `${basePath}?${qs}` : basePath, { scroll: false });
   };
 
   const loadGraphNode = async (entryId: string, invalidateCache: boolean = false) => {
@@ -81,15 +84,23 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
     setError(null);
     
     try {
+      const apiPrefix = mode === 'nouns' ? '/api/nouns' : '/api/entries';
       const graphUrl = invalidateCache 
-        ? `/api/entries/${entryId}/graph?invalidate=true`
-        : `/api/entries/${entryId}/graph`;
+        ? `${apiPrefix}/${entryId}/graph?invalidate=true`
+        : `${apiPrefix}/${entryId}/graph`;
         
-      const [graphResponse, breadcrumbResponse, recipesResponse] = await Promise.all([
+      // Only fetch recipes for verbs
+      const fetchPromises = [
         fetch(graphUrl),
-        fetch(`/api/breadcrumbs/${entryId}`),
-        fetch(`/api/entries/${entryId}/recipes`)
-      ]);
+        fetch(`/api/breadcrumbs/${entryId}`)
+      ];
+      
+      if (mode === 'verbs') {
+        fetchPromises.push(fetch(`${apiPrefix}/${entryId}/recipes`));
+      }
+      
+      const responses = await Promise.all(fetchPromises);
+      const [graphResponse, breadcrumbResponse, recipesResponse] = responses;
 
       if (!graphResponse.ok) {
         throw new Error('Failed to load entry');
@@ -98,12 +109,19 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
       const graphNode: GraphNode = await graphResponse.json();
       setCurrentNode(graphNode);
 
-      if (recipesResponse.ok) {
-        const recipesData: EntryRecipes = await recipesResponse.json();
-        setEntryRecipes(recipesData);
-        // default selection
-        setSelectedRecipeId(recipesData.recipes.find(r => r.is_default)?.id || recipesData.recipes[0]?.id);
+      // Handle recipes (only for verbs)
+      if (mode === 'verbs' && recipesResponse) {
+        if (recipesResponse.ok) {
+          const recipesData: EntryRecipes = await recipesResponse.json();
+          setEntryRecipes(recipesData);
+          // default selection
+          setSelectedRecipeId(recipesData.recipes.find(r => r.is_default)?.id || recipesData.recipes[0]?.id);
+        } else {
+          setEntryRecipes({ entryId, recipes: [] });
+          setSelectedRecipeId(undefined);
+        }
       } else {
+        // Nouns don't have recipes
         setEntryRecipes({ entryId, recipes: [] });
         setSelectedRecipeId(undefined);
       }
@@ -216,11 +234,15 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
           updateData.examples = editListItems.filter(s => s.trim());
           break;
         case 'roles':
-          updateData.roles = editRoles.filter(role => role.description.trim());
+          // Only verbs have roles
+          if (mode === 'verbs') {
+            updateData.roles = editRoles.filter(role => role.description.trim());
+          }
           break;
       }
 
-      const response = await fetch(`/api/entries/${currentNode.id}`, {
+      const apiPrefix = mode === 'nouns' ? '/api/nouns' : '/api/entries';
+      const response = await fetch(`${apiPrefix}/${currentNode.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updateData)
@@ -347,7 +369,8 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
     if (!currentNode) return;
 
     try {
-      const response = await fetch('/api/entries/moderation', {
+      const apiPrefix = mode === 'nouns' ? '/api/nouns' : '/api/entries';
+      const response = await fetch(`${apiPrefix}/moderation`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -418,7 +441,7 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
             </button>
             <div className="h-6 w-px bg-gray-300"></div>
             <h1 className="text-xl font-bold text-gray-900">
-              Verbs
+              {mode === 'nouns' ? 'Nouns' : 'Verbs'}
             </h1>
             <p className="text-sm text-gray-600">
               Explore lexical relationships
@@ -431,18 +454,21 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
                 onSelectResult={handleSearchResult}
                 onSearchChange={handleSearchQueryChange}
                 placeholder="Search graph..."
+                mode={mode}
               />
             </div>
             <ViewToggle 
               currentView={currentView}
               onViewChange={(view: ViewMode) => {
                 if (view === 'table') {
-                  router.push('/table');
+                  const tablePath = mode === 'nouns' ? '/table/nouns' : '/table';
+                  router.push(tablePath);
                 } else {
                   setCurrentView(view);
                   updateViewParam(view);
                 }
               }}
+              hideRecipes={mode === 'nouns'}
             />
             <SignOutButton />
           </div>
@@ -1208,7 +1234,8 @@ export default function WordNetExplorer({ initialEntryId }: WordNetExplorerProps
                 {currentView === 'graph' ? (
                   <LexicalGraph 
                     currentNode={currentNode} 
-                    onNodeClick={handleNodeClick} 
+                    onNodeClick={handleNodeClick}
+                    mode={mode}
                   />
                 ) : (
                   <RecipesGraph

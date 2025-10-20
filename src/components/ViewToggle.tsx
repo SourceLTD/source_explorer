@@ -9,20 +9,34 @@ interface ViewToggleProps {
   currentView: ViewMode;
   onViewChange: (view: ViewMode) => void;
   className?: string;
+  hideRecipes?: boolean;
 }
 
-export default function ViewToggle({ currentView, onViewChange, className }: ViewToggleProps) {
+export default function ViewToggle({ currentView, onViewChange, className, hideRecipes = false }: ViewToggleProps) {
   // Calculate the transform position for the sliding background
   const getTransformClass = () => {
-    switch (currentView) {
-      case 'table':
-        return 'translate-x-0';
-      case 'graph':
-        return 'translate-x-12';
-      case 'recipes':
-        return 'translate-x-24';
-      default:
-        return 'translate-x-0';
+    if (hideRecipes) {
+      // Only 2 buttons, adjust positions
+      switch (currentView) {
+        case 'table':
+          return 'translate-x-0';
+        case 'graph':
+          return 'translate-x-12';
+        default:
+          return 'translate-x-0';
+      }
+    } else {
+      // 3 buttons
+      switch (currentView) {
+        case 'table':
+          return 'translate-x-0';
+        case 'graph':
+          return 'translate-x-12';
+        case 'recipes':
+          return 'translate-x-24';
+        default:
+          return 'translate-x-0';
+      }
     }
   };
 
@@ -64,17 +78,19 @@ export default function ViewToggle({ currentView, onViewChange, className }: Vie
       </button>
       
       {/* Recipes button */}
-      <button
-        onClick={() => onViewChange('recipes')}
-        className={`relative z-10 flex items-center justify-center w-12 h-10 rounded-lg transition-colors duration-200 ease-out cursor-pointer ${
-          currentView === 'recipes'
-            ? 'text-white'
-            : 'text-gray-500 hover:text-gray-700'
-        }`}
-        title="Recipes View"
-      >
-        <NewspaperIcon className="w-5 h-5" />
-      </button>
+      {!hideRecipes && (
+        <button
+          onClick={() => onViewChange('recipes')}
+          className={`relative z-10 flex items-center justify-center w-12 h-10 rounded-lg transition-colors duration-200 ease-out cursor-pointer ${
+            currentView === 'recipes'
+              ? 'text-white'
+              : 'text-gray-500 hover:text-gray-700'
+          }`}
+          title="Recipes View"
+        >
+          <NewspaperIcon className="w-5 h-5" />
+        </button>
+      )}
     </div>
   );
 }
