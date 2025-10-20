@@ -20,7 +20,7 @@ const backgroundColor = '#ffffff';
 interface LexicalGraphProps {
   currentNode: GraphNode;
   onNodeClick: (nodeId: string) => void;
-  mode?: 'verbs' | 'nouns';
+  mode?: 'verbs' | 'nouns' | 'adjectives';
 }
 
 

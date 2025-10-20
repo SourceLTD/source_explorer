@@ -47,6 +47,32 @@ export interface Noun {
   updatedAt: Date;
 }
 
+export interface Adjective {
+  id: string;
+  code?: string; // Human-readable code (e.g., "good.a.01")
+  legacy_id: string;
+  gloss: string;
+  pos: string;
+  lexfile: string;
+  isMwe: boolean;
+  isSatellite?: boolean;
+  gradable?: boolean | null;
+  predicative?: boolean;
+  attributive?: boolean;
+  subjective?: boolean;
+  relational?: boolean;
+  lemmas: string[];
+  src_lemmas: string[];
+  examples: string[];
+  flagged?: boolean;
+  flaggedReason?: string;
+  forbidden?: boolean;
+  forbiddenReason?: string;
+  legal_constraints?: string[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface VerbRelation {
   sourceId: string;
   targetId: string;
@@ -61,6 +87,14 @@ export interface NounRelation {
   type: NounRelationType;
   source?: Noun;
   target?: Noun;
+}
+
+export interface AdjectiveRelation {
+  sourceId: string;
+  targetId: string;
+  type: AdjectiveRelationType;
+  source?: Adjective;
+  target?: Adjective;
 }
 
 export enum RelationType {
@@ -95,6 +129,25 @@ export enum NounRelationType {
   MEMBER_OF_DOMAIN_USAGE = 'member_of_domain_usage',
 }
 
+export enum AdjectiveRelationType {
+  SIMILAR = 'similar',
+  ALSO_SEE = 'also_see',
+  ATTRIBUTE = 'attribute',
+  ANTONYM = 'antonym',
+  DOMAIN_TOPIC = 'domain_topic',
+  DOMAIN_REGION = 'domain_region',
+  DOMAIN_USAGE = 'domain_usage',
+  MEMBER_OF_DOMAIN_TOPIC = 'member_of_domain_topic',
+  MEMBER_OF_DOMAIN_REGION = 'member_of_domain_region',
+  MEMBER_OF_DOMAIN_USAGE = 'member_of_domain_usage',
+  EXEMPLIFIES = 'exemplifies',
+  DERIVATIONALLY_RELATED = 'derivationally_related',
+  PERTAINYM = 'pertainym',
+  PARTICIPLE_OF = 'participle_of',
+  RELATED_TO = 'related_to',
+  CAUSES = 'causes',
+}
+
 export interface VerbWithRelations extends Verb {
   sourceRelations: VerbRelation[];
   targetRelations: VerbRelation[];
@@ -103,6 +156,11 @@ export interface VerbWithRelations extends Verb {
 export interface NounWithRelations extends Noun {
   sourceRelations: NounRelation[];
   targetRelations: NounRelation[];
+}
+
+export interface AdjectiveWithRelations extends Adjective {
+  sourceRelations: AdjectiveRelation[];
+  targetRelations: AdjectiveRelation[];
 }
 
 export interface Frame {
@@ -166,6 +224,13 @@ export interface GraphNode {
   collective?: boolean;
   concrete?: boolean;
   predicate?: boolean;
+  // Adjective-specific fields
+  isSatellite?: boolean;
+  gradable?: boolean | null;
+  predicative?: boolean;
+  attributive?: boolean;
+  subjective?: boolean;
+  relational?: boolean;
   // Common relation fields
   parents: GraphNode[];
   children: GraphNode[];
@@ -291,6 +356,13 @@ export interface TableEntry {
   collective?: boolean;
   concrete?: boolean;
   predicate?: boolean;
+  // Adjective-specific fields
+  isSatellite?: boolean;
+  gradable?: boolean | null;
+  predicative?: boolean;
+  attributive?: boolean;
+  subjective?: boolean;
+  relational?: boolean;
   // Common fields
   examples: string[];
   flagged?: boolean;
@@ -368,14 +440,31 @@ export interface PredicateGroup {
   predicate_ids: string[]; // IDs of predicates in this group
 }
 
+// Logic AST types
+export type LogicNodeKind = 'and' | 'or' | 'not' | 'leaf';
+
+export interface LogicNode {
+  id: string;
+  recipe_id: string;
+  kind: LogicNodeKind;
+  description?: string | null;
+  // For leaf nodes only
+  target_predicate_id?: string | null;
+  target_predicate?: RecipePredicateNode | null;
+  // Child nodes (from edges)
+  children: LogicNode[];
+}
+
 export interface Recipe {
   id: string;
   label?: string | null;
   description?: string | null;
   is_default: boolean;
   predicates: RecipePredicateNode[];
-  predicate_groups: PredicateGroup[];
+  predicate_groups: PredicateGroup[]; // Kept for backwards compatibility during transition
   relations: RecipePredicateEdge[];
+  // New: logic tree root
+  logic_root?: LogicNode | null;
 }
 
 export interface EntryRecipes {
@@ -385,33 +474,36 @@ export interface EntryRecipes {
 
 // Role precedence order - higher number = higher precedence
 export const ROLE_PRECEDENCE: Record<string, number> = {
-  'AGENT': 24,
+  'AGENT': 28,
+  'SPEECH_TOPIC': 27,
+  'REPORTED_SPEECH': 26,
+  'DIRECT_SPEECH': 25,
+  'RECIPIENT': 24,
   'CO_AGENT': 23,
   'TOPIC': 22,
   'THEME': 21,
   'CO_THEME': 20,
   'PATIENT': 19,
   'EXPERIENCER': 18,
-  'RECIPIENT': 17,
-  'INSTRUMENT': 16,
-  'SOURCE': 15,
-  'DESTINATION': 14,
-  'BENEFICIARY': 13,
-  'EXTENT': 12,
-  'GOAL': 11,
-  'TIME': 10,
-  'LOCATION': 9,
-  'STIMULUS': 8,
-  'CO_PATIENT': 7,
-  'PURPOSE': 6,
-  'CAUSE': 5,
-  'RESULT': 4,
-  'PRODUCT': 3,
-  'MATERIAL': 2,
-  'ATTRIBUTE': 1,
-  'VALUE': 0,
-  'ASSET': -1,
-  'IDIOM': -2
+  'INSTRUMENT': 17,
+  'SOURCE': 16,
+  'DESTINATION': 15,
+  'BENEFICIARY': 14,
+  'EXTENT': 13,
+  'GOAL': 12,
+  'TIME': 11,
+  'LOCATION': 10,
+  'STIMULUS': 9,
+  'CO_PATIENT': 8,
+  'PURPOSE': 7,
+  'CAUSE': 6,
+  'RESULT': 5,
+  'PRODUCT': 4,
+  'MATERIAL': 3,
+  'ATTRIBUTE': 2,
+  'VALUE': 1,
+  'ASSET': 0,
+  'IDIOM': -1
 };
 
 // Helper function to sort roles by precedence

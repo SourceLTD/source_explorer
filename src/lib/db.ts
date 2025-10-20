@@ -1,8 +1,8 @@
 import { unstable_cache, revalidateTag } from 'next/cache';
 import { prisma } from './prisma';
 import { withRetry } from './db-utils'; 
-import { RelationType, NounRelationType, type Verb, type Noun, type VerbWithRelations, type NounWithRelations, type VerbRelation, type NounRelation, type GraphNode, type SearchResult, type PaginationParams, type PaginatedResult, type TableEntry, type EntryRecipes, type Recipe, type RecipePredicateNode, type RecipePredicateRoleMapping } from './types';
-import type { verbs as PrismaVerb, nouns as PrismaNoun, EntryRelation as PrismaVerbRelation, noun_relations as PrismaNounRelation, Prisma } from '@prisma/client';
+import { RelationType, type Verb, type VerbWithRelations, type VerbRelation, type GraphNode, type SearchResult, type PaginationParams, type PaginatedResult, type TableEntry, type EntryRecipes, type Recipe, type RecipePredicateNode, type RecipePredicateRoleMapping, type LogicNode, type LogicNodeKind } from './types';
+import type { verbs as PrismaVerb, verb_relations as PrismaVerbRelation, Prisma } from '@prisma/client';
 
 // Type for Prisma entry that might have optional fields
 type PrismaEntryWithOptionalFields = {
@@ -34,11 +34,11 @@ type PrismaEntryWithRelations = {
   flaggedReason: string | null;
   forbidden: boolean | null;
   forbiddenReason: string | null;
-  sourceRelations: (PrismaVerbRelation & {
-    target: PrismaVerb | null;
+  verb_relations_verb_relations_source_idToverbs: (PrismaVerbRelation & {
+    verbs_verb_relations_target_idToverbs: PrismaVerb | null;
   })[];
-  targetRelations: (PrismaVerbRelation & {
-    source: PrismaVerb | null;
+  verb_relations_verb_relations_target_idToverbs: (PrismaVerbRelation & {
+    verbs_verb_relations_source_idToverbs: PrismaVerb | null;
   })[];
 };
 
@@ -80,8 +80,8 @@ type PrismaEntryWithCounts = {
     };
   }>;
   _count: {
-    sourceRelations: number;
-    targetRelations: number;
+    verb_relations_verb_relations_source_idToverbs: number;
+    verb_relations_verb_relations_target_idToverbs: number;
   };
 };
 
@@ -90,14 +90,14 @@ export async function getEntryById(id: string): Promise<VerbWithRelations | null
     () => prisma.verbs.findUnique({
       where: { code: id } as unknown as Prisma.verbsWhereUniqueInput, // Query by code (human-readable ID)
       include: {
-        sourceRelations: {
+        verb_relations_verb_relations_source_idToverbs: {
           include: {
-            target: true,
+            verbs_verb_relations_target_idToverbs: true,
           },
         },
-        targetRelations: {
+        verb_relations_verb_relations_target_idToverbs: {
           include: {
-            source: true,
+            verbs_verb_relations_source_idToverbs: true,
           },
         },
       },
@@ -109,40 +109,63 @@ export async function getEntryById(id: string): Promise<VerbWithRelations | null
   if (!entry) return null;
 
   // Convert Prisma types to our types
+  const entryWithRelations = entry as unknown as {
+    id: bigint;
+    frame_id: bigint | null;
+    verb_relations_verb_relations_source_idToverbs: Array<{
+      source_id: bigint;
+      target_id: bigint;
+      type: string;
+      verbs_verb_relations_target_idToverbs: PrismaVerb;
+    }>;
+    verb_relations_verb_relations_target_idToverbs: Array<{
+      source_id: bigint;
+      target_id: bigint;
+      type: string;
+      verbs_verb_relations_source_idToverbs: PrismaVerb;
+    }>;
+  };
+  
+  // Destructure to exclude BigInt and relation fields from spread
+  const { id: _id, frame_id: _frame_id, verb_relations_verb_relations_source_idToverbs: _sourceRels, verb_relations_verb_relations_target_idToverbs: _targetRels, ...rest } = entryWithRelations;
+  
   return {
-    ...entry,
-    id: (entry as { code?: string }).code || entry.id, // Use code as id
+    ...rest,
+    id: (entry as { code?: string }).code || entryWithRelations.id.toString(), // Use code as id
+    frame_id: entryWithRelations.frame_id?.toString() ?? null,
     transitive: entry.transitive || undefined,
     flagged: entry.flagged ?? undefined,
     flaggedReason: (entry as PrismaEntryWithOptionalFields).flaggedReason || undefined,
     forbidden: entry.forbidden ?? undefined,
     forbiddenReason: (entry as PrismaEntryWithOptionalFields).forbiddenReason || undefined,
-    sourceRelations: entry.sourceRelations.map(rel => ({
-      sourceId: rel.sourceId.toString(),
-      targetId: rel.targetId.toString(),
+    sourceRelations: entryWithRelations.verb_relations_verb_relations_source_idToverbs.map(rel => ({
+      sourceId: rel.source_id.toString(),
+      targetId: rel.target_id.toString(),
       type: rel.type as RelationType,
-      target: rel.target ? {
-        ...rel.target,
-        id: (rel.target as { code?: string }).code || rel.target.id,
-        transitive: rel.target.transitive || undefined,
-        flagged: rel.target.flagged ?? undefined,
-        flaggedReason: (rel.target as PrismaEntryWithOptionalFields).flaggedReason || undefined,
-        forbidden: rel.target.forbidden ?? undefined,
-        forbiddenReason: (rel.target as PrismaEntryWithOptionalFields).forbiddenReason || undefined
+      target: rel.verbs_verb_relations_target_idToverbs ? {
+        ...rel.verbs_verb_relations_target_idToverbs,
+        id: (rel.verbs_verb_relations_target_idToverbs as { code?: string }).code || rel.verbs_verb_relations_target_idToverbs.id.toString(),
+        frame_id: (rel.verbs_verb_relations_target_idToverbs as { frame_id?: bigint | null }).frame_id?.toString() ?? null,
+        transitive: rel.verbs_verb_relations_target_idToverbs.transitive || undefined,
+        flagged: rel.verbs_verb_relations_target_idToverbs.flagged ?? undefined,
+        flaggedReason: (rel.verbs_verb_relations_target_idToverbs as PrismaEntryWithOptionalFields).flaggedReason || undefined,
+        forbidden: rel.verbs_verb_relations_target_idToverbs.forbidden ?? undefined,
+        forbiddenReason: (rel.verbs_verb_relations_target_idToverbs as PrismaEntryWithOptionalFields).forbiddenReason || undefined
       } as unknown as Verb : undefined,
     })),
-    targetRelations: entry.targetRelations.map(rel => ({
-      sourceId: rel.sourceId.toString(),
-      targetId: rel.targetId.toString(),
+    targetRelations: entryWithRelations.verb_relations_verb_relations_target_idToverbs.map(rel => ({
+      sourceId: rel.source_id.toString(),
+      targetId: rel.target_id.toString(),
       type: rel.type as RelationType,
-      source: rel.source ? {
-        ...rel.source,
-        id: (rel.source as { code?: string }).code || rel.source.id,
-        transitive: rel.source.transitive || undefined,
-        flagged: rel.source.flagged ?? undefined,
-        flaggedReason: (rel.source as PrismaEntryWithOptionalFields).flaggedReason || undefined,
-        forbidden: rel.source.forbidden ?? undefined,
-        forbiddenReason: (rel.source as PrismaEntryWithOptionalFields).forbiddenReason || undefined
+      source: rel.verbs_verb_relations_source_idToverbs ? {
+        ...rel.verbs_verb_relations_source_idToverbs,
+        id: (rel.verbs_verb_relations_source_idToverbs as { code?: string }).code || rel.verbs_verb_relations_source_idToverbs.id.toString(),
+        frame_id: (rel.verbs_verb_relations_source_idToverbs as { frame_id?: bigint | null }).frame_id?.toString() ?? null,
+        transitive: rel.verbs_verb_relations_source_idToverbs.transitive || undefined,
+        flagged: rel.verbs_verb_relations_source_idToverbs.flagged ?? undefined,
+        flaggedReason: (rel.verbs_verb_relations_source_idToverbs as PrismaEntryWithOptionalFields).flaggedReason || undefined,
+        forbidden: rel.verbs_verb_relations_source_idToverbs.forbidden ?? undefined,
+        forbiddenReason: (rel.verbs_verb_relations_source_idToverbs as PrismaEntryWithOptionalFields).forbiddenReason || undefined
       } as unknown as Verb : undefined,
     })),
   };
@@ -162,7 +185,7 @@ export async function searchEntries(query: string, limit = 20): Promise<SearchRe
         lemmas,
         src_lemmas,
         gloss,
-        pos,
+        'v' as pos,
         CASE 
           WHEN code ILIKE ${query} THEN 1000
           WHEN code ILIKE ${query + '%'} THEN 500
@@ -191,7 +214,7 @@ export async function searchEntries(query: string, limit = 20): Promise<SearchRe
       lemmas,
       src_lemmas,
       gloss,
-      pos,
+      'v' as pos,
       ts_rank(gloss_tsv, plainto_tsquery('english', ${query})) +
       ts_rank(examples_tsv, plainto_tsquery('english', ${query})) as rank
     FROM verbs
@@ -211,7 +234,7 @@ export async function searchEntries(query: string, limit = 20): Promise<SearchRe
 }
 
 // Recipes for an entry (predicates and their relations)
-async function getRecipesForEntryInternal(entryId: string): Promise<EntryRecipes> {
+export async function getRecipesForEntryInternal(entryId: string): Promise<EntryRecipes> {
   // First get the numeric ID from the code
   const entry = await withRetry(
     () => prisma.verbs.findUnique({
@@ -245,14 +268,13 @@ async function getRecipesForEntryInternal(entryId: string): Promise<EntryRecipes
   const recipeIds = recipes.map(r => r.id.toString());
 
   // Fetch predicates with their lexical entries
+  // Note: optional, negated, min_count, max_count columns removed by migration
   const predicates = await withRetry(
     () => prisma.$queryRaw<Array<{
       id: bigint;
       recipe_id: bigint;
       alias: string | null;
       position: number | null;
-      optional: boolean | null;
-      negated: boolean | null;
       example: string | null;
       predicate_verb_id: bigint;
       lex_id: bigint;
@@ -276,8 +298,6 @@ async function getRecipesForEntryInternal(entryId: string): Promise<EntryRecipes
         rp.recipe_id,
         rp.alias,
         rp.position,
-        rp.optional,
-        rp.negated,
         rp.example,
         rp.predicate_verb_id,
         le.id as lex_id,
@@ -347,28 +367,56 @@ async function getRecipesForEntryInternal(entryId: string): Promise<EntryRecipes
     `getRecipesForEntry:edges(${entryId})`
   );
 
-  // Fetch predicate groups
-  const predicateGroups = await withRetry(
-    () => prisma.$queryRaw<Array<{ id: bigint; recipe_id: bigint; description: string | null; require_at_least_one: boolean }>>`
-      SELECT id, recipe_id, description, require_at_least_one
-      FROM predicate_groups
+  // Fetch logic AST nodes for all recipes
+  const logicNodes = await withRetry(
+    () => prisma.$queryRaw<Array<{ 
+      id: bigint; 
+      recipe_id: bigint; 
+      kind: string; 
+      description: string | null;
+      natural_key: string | null;
+    }>>`
+      SELECT id, recipe_id, kind::text, description, natural_key
+      FROM logic_nodes
       WHERE recipe_id = ANY(${recipeIds}::bigint[])
+      ORDER BY id
     `,
     undefined,
-    `getRecipesForEntry:predicateGroups(${entryId})`
+    `getRecipesForEntry:logicNodes(${entryId})`
+  );
+  
+  // Fetch logic edges
+  const logicEdges = await withRetry(
+    () => prisma.$queryRaw<Array<{ 
+      parent_node_id: bigint; 
+      child_node_id: bigint; 
+      position: number | null;
+    }>>`
+      SELECT parent_node_id, child_node_id, position
+      FROM logic_edges
+      WHERE parent_node_id IN (
+        SELECT id FROM logic_nodes WHERE recipe_id = ANY(${recipeIds}::bigint[])
+      )
+      ORDER BY parent_node_id, position NULLS LAST, child_node_id
+    `,
+    undefined,
+    `getRecipesForEntry:logicEdges(${entryId})`
   );
 
-  // Fetch predicate group members
-  const predicateGroupMembers = await withRetry(
-    () => prisma.$queryRaw<Array<{ predicate_group_id: bigint; recipe_predicate_id: bigint }>>`
-      SELECT predicate_group_id, recipe_predicate_id
-      FROM predicate_group_members
-      WHERE predicate_group_id IN (
-        SELECT id FROM predicate_groups WHERE recipe_id = ANY(${recipeIds}::bigint[])
+  // Fetch logic targets (what leaf nodes point to)
+  const logicTargets = await withRetry(
+    () => prisma.$queryRaw<Array<{ 
+      node_id: bigint; 
+      recipe_predicate_id: bigint | null;
+    }>>`
+      SELECT node_id, recipe_predicate_id
+      FROM logic_targets
+      WHERE node_id IN (
+        SELECT id FROM logic_nodes WHERE recipe_id = ANY(${recipeIds}::bigint[])
       )
     `,
     undefined,
-    `getRecipesForEntry:predicateGroupMembers(${entryId})`
+    `getRecipesForEntry:logicTargets(${entryId})`
   );
 
   // Group data into recipe structures
@@ -380,8 +428,9 @@ async function getRecipesForEntryInternal(entryId: string): Promise<EntryRecipes
       description: r.description,
       is_default: r.is_default,
       predicates: [],
-      predicate_groups: [],
+      predicate_groups: [], // Deprecated but kept for backwards compatibility
       relations: [],
+      logic_root: null,
     };
   }
 
@@ -428,8 +477,8 @@ async function getRecipesForEntryInternal(entryId: string): Promise<EntryRecipes
       id: p.id.toString(),
       alias: p.alias,
       position: p.position ?? undefined,
-      optional: Boolean(p.optional),
-      negated: Boolean(p.negated),
+      optional: false, // Removed from schema - now encoded in logic tree
+      negated: false, // Removed from schema - now encoded as NOT nodes in tree
       example: p.example,
       lexical: {
         id: p.lex_code, // Use code as the id
@@ -468,58 +517,122 @@ async function getRecipesForEntryInternal(entryId: string): Promise<EntryRecipes
     });
   }
 
-  // Build predicate_ids for each group
-  const predicateIdsByGroup: Record<string, string[]> = {};
-  for (const m of predicateGroupMembers) {
-    const groupIdStr = m.predicate_group_id.toString();
-    const array = predicateIdsByGroup[groupIdStr] || (predicateIdsByGroup[groupIdStr] = []);
-    array.push(m.recipe_predicate_id.toString());
+  // Build logic tree for each recipe
+  // 1. Create a map of node_id -> LogicNode
+  const nodeMap: Record<string, LogicNode> = {};
+  for (const ln of logicNodes) {
+    nodeMap[ln.id.toString()] = {
+      id: ln.id.toString(),
+      recipe_id: ln.recipe_id.toString(),
+      kind: ln.kind as LogicNodeKind,
+      description: ln.description,
+      target_predicate_id: null,
+      target_predicate: null,
+      children: [],
+    };
   }
 
-  // Add predicate groups to recipes
-  for (const pg of predicateGroups) {
-    const recipe = byRecipeId[pg.recipe_id.toString()];
+  // 2. Map targets to leaf nodes
+  const targetsByNodeId: Record<string, string> = {};
+  for (const lt of logicTargets) {
+    if (lt.recipe_predicate_id) {
+      targetsByNodeId[lt.node_id.toString()] = lt.recipe_predicate_id.toString();
+    }
+  }
+
+  // 3. Build parent-child relationships via edges
+  const childrenByParentId: Record<string, string[]> = {};
+  for (const e of logicEdges) {
+    const parentId = e.parent_node_id.toString();
+    if (!childrenByParentId[parentId]) {
+      childrenByParentId[parentId] = [];
+    }
+    childrenByParentId[parentId].push(e.child_node_id.toString());
+  }
+
+  // 4. Recursively populate children and attach target predicates to leaf nodes
+  function populateNode(nodeId: string, predicateMap: Record<string, RecipePredicateNode>): LogicNode {
+    const node = nodeMap[nodeId];
+    if (!node) {
+      throw new Error(`Logic node ${nodeId} not found`);
+    }
+
+    // If this is a leaf, attach the target predicate
+    if (node.kind === 'leaf') {
+      const predicateId = targetsByNodeId[nodeId];
+      if (predicateId) {
+        node.target_predicate_id = predicateId;
+        node.target_predicate = predicateMap[predicateId] || null;
+      }
+    }
+
+    // Populate children recursively
+    const childIds = childrenByParentId[nodeId] || [];
+    node.children = childIds.map(childId => populateNode(childId, predicateMap));
+
+    return node;
+  }
+
+  // 5. Attach logic tree to each recipe
+  for (const r of recipes) {
+    const recipe = byRecipeId[r.id.toString()];
     if (!recipe) continue;
-    recipe.predicate_groups.push({
-      id: pg.id.toString(),
-      description: pg.description,
-      require_at_least_one: pg.require_at_least_one,
-      predicate_ids: predicateIdsByGroup[pg.id.toString()] || [],
-    });
+
+    // Create a map of predicate_id -> RecipePredicateNode for this recipe
+    const predicateMap: Record<string, RecipePredicateNode> = {};
+    for (const pred of recipe.predicates) {
+      predicateMap[pred.id] = pred;
+    }
+
+    // Find the root node for this recipe (standard pattern: 'root:recipe:{id}')
+    const rootNode = logicNodes.find(
+      ln => ln.recipe_id.toString() === r.id.toString() 
+        && ln.natural_key === `root:recipe:${r.id.toString()}`
+    );
+
+    if (rootNode) {
+      recipe.logic_root = populateNode(rootNode.id.toString(), predicateMap);
+    }
   }
 
   return { entryId, recipes: Object.values(byRecipeId) };
 }
 
-export const getRecipesForEntry = unstable_cache(
-  async (entryId: string) => getRecipesForEntryInternal(entryId),
-  ['entry-recipes'],
-  { revalidate: 60, tags: ['entry-recipes'] }
-);
+export const getRecipesForEntry = process.env.DISABLE_CACHE === 'true'
+  ? getRecipesForEntryInternal
+  : unstable_cache(
+      async (entryId: string) => getRecipesForEntryInternal(entryId),
+      ['entry-recipes'],
+      { revalidate: 60, tags: ['entry-recipes'] }
+    );
 
-export async function updateEntry(id: string, updates: Partial<Pick<Verb, 'gloss' | 'lemmas' | 'examples' | 'flagged' | 'flaggedReason' | 'forbidden' | 'forbiddenReason'> & { roles?: unknown[] }>): Promise<VerbWithRelations | null> {
-  // Handle roles updates separately
+export async function updateEntry(id: string, updates: Partial<Pick<Verb, 'gloss' | 'lemmas' | 'examples' | 'flagged' | 'flaggedReason' | 'forbidden' | 'forbiddenReason'> & { roles?: unknown[]; role_groups?: unknown[] }>): Promise<VerbWithRelations | null> {
+  // Handle roles and role_groups updates separately
   if (updates.roles) {
     await updateEntryRoles(id, updates.roles);
   }
+  
+  if (updates.role_groups !== undefined) {
+    await updateEntryRoleGroups(id, updates.role_groups);
+  }
 
-  // Extract non-roles fields for the main update
+  // Extract non-roles/role_groups fields for the main update
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { roles: _roles, ...otherUpdates } = updates;
+  const { roles: _roles, role_groups: _role_groups, ...otherUpdates } = updates;
 
   const updatedEntry = await withRetry(
     () => prisma.verbs.update({
     where: { code: id } as unknown as Prisma.verbsWhereUniqueInput, // Query by code (human-readable ID)
     data: otherUpdates,
     include: {
-      sourceRelations: {
+      verb_relations_verb_relations_source_idToverbs: {
         include: {
-          target: true
+          verbs_verb_relations_target_idToverbs: true
         }
       },
-      targetRelations: {
+      verb_relations_verb_relations_target_idToverbs: {
         include: {
-          source: true
+          verbs_verb_relations_source_idToverbs: true
         }
       }
     }
@@ -530,41 +643,69 @@ export async function updateEntry(id: string, updates: Partial<Pick<Verb, 'gloss
 
   if (!updatedEntry) return null;
 
-  // Invalidate cache for graph nodes since moderation status affects display
+  // Invalidate cache for graph nodes since the entry has been updated
   revalidateTag('graph-node');
+  // Also revalidate the specific entry's cache
+  revalidateGraphNodeCache();
 
   // Convert Prisma types to our types
+  const entryWithRelations = updatedEntry as unknown as {
+    id: bigint;
+    frame_id: bigint | null;
+    verb_relations_verb_relations_source_idToverbs: Array<{
+      source_id: bigint;
+      target_id: bigint;
+      type: string;
+      verbs_verb_relations_target_idToverbs: PrismaVerb;
+    }>;
+    verb_relations_verb_relations_target_idToverbs: Array<{
+      source_id: bigint;
+      target_id: bigint;
+      type: string;
+      verbs_verb_relations_source_idToverbs: PrismaVerb;
+    }>;
+  };
+  
+  // Destructure to exclude BigInt and relation fields from spread
+  const { id: _id, frame_id: _frame_id, verb_relations_verb_relations_source_idToverbs: _sourceRels, verb_relations_verb_relations_target_idToverbs: _targetRels, ...rest } = entryWithRelations;
+  
   return {
-    ...updatedEntry,
+    ...rest,
+    id: (updatedEntry as { code?: string }).code || entryWithRelations.id.toString(),
+    frame_id: entryWithRelations.frame_id?.toString() ?? null,
     transitive: updatedEntry.transitive || undefined,
     flagged: updatedEntry.flagged ?? undefined,
     flaggedReason: (updatedEntry as PrismaEntryWithOptionalFields).flaggedReason || undefined,
     forbidden: updatedEntry.forbidden ?? undefined,
     forbiddenReason: (updatedEntry as PrismaEntryWithOptionalFields).forbiddenReason || undefined,
-    sourceRelations: updatedEntry.sourceRelations.map(rel => ({
-      sourceId: rel.sourceId.toString(),
-      targetId: rel.targetId.toString(),
+    sourceRelations: entryWithRelations.verb_relations_verb_relations_source_idToverbs.map(rel => ({
+      sourceId: rel.source_id.toString(),
+      targetId: rel.target_id.toString(),
       type: rel.type as RelationType,
-      target: rel.target ? {
-        ...rel.target,
-        transitive: rel.target.transitive || undefined,
-        flagged: rel.target.flagged ?? undefined,
-        flaggedReason: (rel.target as PrismaEntryWithOptionalFields).flaggedReason || undefined,
-        forbidden: rel.target.forbidden ?? undefined,
-        forbiddenReason: (rel.target as PrismaEntryWithOptionalFields).forbiddenReason || undefined
+      target: rel.verbs_verb_relations_target_idToverbs ? {
+        ...rel.verbs_verb_relations_target_idToverbs,
+        id: (rel.verbs_verb_relations_target_idToverbs as { code?: string }).code || rel.verbs_verb_relations_target_idToverbs.id.toString(),
+        frame_id: (rel.verbs_verb_relations_target_idToverbs as { frame_id?: bigint | null }).frame_id?.toString() ?? null,
+        transitive: rel.verbs_verb_relations_target_idToverbs.transitive || undefined,
+        flagged: rel.verbs_verb_relations_target_idToverbs.flagged ?? undefined,
+        flaggedReason: (rel.verbs_verb_relations_target_idToverbs as PrismaEntryWithOptionalFields).flaggedReason || undefined,
+        forbidden: rel.verbs_verb_relations_target_idToverbs.forbidden ?? undefined,
+        forbiddenReason: (rel.verbs_verb_relations_target_idToverbs as PrismaEntryWithOptionalFields).forbiddenReason || undefined
       } as unknown as Verb : undefined,
       } as VerbRelation)),
-    targetRelations: updatedEntry.targetRelations.map(rel => ({
-      sourceId: rel.sourceId.toString(),
-      targetId: rel.targetId.toString(),
+    targetRelations: entryWithRelations.verb_relations_verb_relations_target_idToverbs.map(rel => ({
+      sourceId: rel.source_id.toString(),
+      targetId: rel.target_id.toString(),
       type: rel.type as RelationType,
-      source: rel.source ? {
-        ...rel.source,
-        transitive: rel.source.transitive || undefined,
-        flagged: rel.source.flagged ?? undefined,
-        flaggedReason: (rel.source as PrismaEntryWithOptionalFields).flaggedReason || undefined,
-        forbidden: rel.source.forbidden ?? undefined,
-        forbiddenReason: (rel.source as PrismaEntryWithOptionalFields).forbiddenReason || undefined
+      source: rel.verbs_verb_relations_source_idToverbs ? {
+        ...rel.verbs_verb_relations_source_idToverbs,
+        id: (rel.verbs_verb_relations_source_idToverbs as { code?: string }).code || rel.verbs_verb_relations_source_idToverbs.id.toString(),
+        frame_id: (rel.verbs_verb_relations_source_idToverbs as { frame_id?: bigint | null }).frame_id?.toString() ?? null,
+        transitive: rel.verbs_verb_relations_source_idToverbs.transitive || undefined,
+        flagged: rel.verbs_verb_relations_source_idToverbs.flagged ?? undefined,
+        flaggedReason: (rel.verbs_verb_relations_source_idToverbs as PrismaEntryWithOptionalFields).flaggedReason || undefined,
+        forbidden: rel.verbs_verb_relations_source_idToverbs.forbidden ?? undefined,
+        forbiddenReason: (rel.verbs_verb_relations_source_idToverbs as PrismaEntryWithOptionalFields).forbiddenReason || undefined
       } as unknown as Verb : undefined,
       } as VerbRelation)),
   };
@@ -588,8 +729,10 @@ async function updateEntryRoles(entryId: string, roles?: unknown[]) {
       DELETE FROM roles WHERE verb_id = ${entry.id}
     `;
 
-    // Insert new roles
-    for (const role of roles) {
+    // Insert new roles and store mapping from temp IDs to real IDs
+    const roleIdMapping = new Map<string, bigint>();
+    for (let i = 0; i < roles.length; i++) {
+      const role = roles[i];
       const roleData = role as { id: string; description: string; roleType: string; exampleSentence?: string; main: boolean };
       if (roleData.description.trim()) {
         // Find existing role type
@@ -602,16 +745,106 @@ async function updateEntryRoles(entryId: string, roles?: unknown[]) {
           continue;
         }
 
-        await prisma.$executeRaw`
+        const result = await prisma.$queryRaw<Array<{ id: bigint }>>`
           INSERT INTO roles (
             verb_id, role_type_id, main, description, example_sentence, instantiation_type_ids, created_at, updated_at
           ) VALUES (
             ${entry.id}, ${roleType.id}, ${roleData.main}, ${roleData.description}, ${roleData.exampleSentence || null}, ARRAY[]::bigint[], now(), now()
           )
+          RETURNING id
         `;
+        
+        if (result.length > 0) {
+          // Map temp ID (or old ID) to new real ID
+          const tempId = roleData.id || `temp-${i}`;
+          roleIdMapping.set(tempId, result[0].id);
+        }
+      }
+    }
+    
+    // Store the mapping for role groups to use
+    (updateEntryRoles as { lastRoleIdMapping?: Map<string, bigint> }).lastRoleIdMapping = roleIdMapping;
+  }
+}
+
+async function updateEntryRoleGroups(entryId: string, roleGroups?: unknown[]) {
+  // First get the numeric ID from the code
+  const entry = await prisma.verbs.findUnique({
+    where: { code: entryId } as unknown as Prisma.verbsWhereUniqueInput,
+    select: { id: true }
+  });
+  
+  if (!entry) {
+    console.warn(`Entry with code "${entryId}" not found. Skipping role group update.`);
+    return;
+  }
+
+  // Delete existing role groups for this entry
+  await prisma.$executeRaw`
+    DELETE FROM role_groups WHERE verb_id = ${entry.id}
+  `;
+
+  if (!roleGroups || roleGroups.length === 0) {
+    return;
+  }
+
+  // Get the role ID mapping from updateEntryRoles
+  const roleIdMapping = (updateEntryRoles as { lastRoleIdMapping?: Map<string, bigint> }).lastRoleIdMapping || new Map();
+
+  // Insert new role groups
+  for (const group of roleGroups) {
+    const groupData = group as { id: string; description: string; role_ids: string[] };
+    
+    // Skip groups with less than 2 roles
+    if (groupData.role_ids.length < 2) {
+      continue;
+    }
+
+    // Create the role group
+    const result = await prisma.$queryRaw<Array<{ id: bigint }>>`
+      INSERT INTO role_groups (
+        verb_id, description, require_at_least_one, created_at, updated_at
+      ) VALUES (
+        ${entry.id}, ${groupData.description || null}, true, now(), now()
+      )
+      RETURNING id
+    `;
+
+    if (result.length > 0) {
+      const roleGroupId = result[0].id;
+
+      // Get the real role IDs for this entry
+      const existingRoles = await prisma.$queryRaw<Array<{ id: bigint }>>`
+        SELECT id FROM roles WHERE verb_id = ${entry.id}
+      `;
+      const existingRoleIds = existingRoles.map(r => r.id);
+
+      // Insert role group members, mapping temp IDs to real IDs
+      for (const tempRoleId of groupData.role_ids) {
+        // Try to find the real role ID from the mapping
+        let realRoleId = roleIdMapping.get(tempRoleId);
+        
+        // If not found in mapping and it's already a bigint-like string, use it directly
+        if (!realRoleId && tempRoleId.match(/^\d+$/)) {
+          realRoleId = BigInt(tempRoleId);
+        }
+        
+        // Only add if the role exists
+        if (realRoleId && existingRoleIds.some(id => id === realRoleId)) {
+          await prisma.$executeRaw`
+            INSERT INTO role_group_members (
+              role_group_id, role_id, created_at
+            ) VALUES (
+              ${roleGroupId}, ${realRoleId}, now()
+            )
+          `;
+        }
       }
     }
   }
+  
+  // Clear the mapping after use
+  delete (updateEntryRoles as { lastRoleIdMapping?: Map<string, bigint> }).lastRoleIdMapping;
 }
 
 // Internal implementation without caching
@@ -632,14 +865,14 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
             is_supporting_frame: true,
           } as Prisma.framesSelect
         },
-        sourceRelations: {
+        verb_relations_verb_relations_source_idToverbs: {
           where: {
             type: {
               in: ['hypernym', 'entails', 'causes', 'also_see']
             }
           },
           include: {
-            target: {
+            verbs_verb_relations_target_idToverbs: {
               select: {
                 id: true,
                 code: true, // Add code field for human-readable IDs
@@ -647,25 +880,24 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
                 lemmas: true,
                 src_lemmas: true,
                 gloss: true,
-                pos: true,
                 lexfile: true,
                 examples: true,
                 frame_id: true,
                 vendler_class: true,
                 forbidden: true,
-                forbiddenReason: true,
+                forbidden_reason: true,
                 flagged: true,
-                flaggedReason: true,
+                flagged_reason: true,
               } as Prisma.verbsSelect
             }
           }
         },
-        targetRelations: {
+        verb_relations_verb_relations_target_idToverbs: {
           where: {
             type: 'hypernym' // Only need hypernyms for children
           },
           include: {
-            source: {
+            verbs_verb_relations_source_idToverbs: {
               select: {
                 id: true,
                 code: true, // Add code field for human-readable IDs
@@ -673,15 +905,14 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
                 lemmas: true,
                 src_lemmas: true,
                 gloss: true,
-                pos: true,
                 lexfile: true,
                 examples: true,
                 frame_id: true,
                 vendler_class: true,
                 forbidden: true,
-                forbiddenReason: true,
+                forbidden_reason: true,
                 flagged: true,
-                flaggedReason: true,
+                flagged_reason: true,
               } as Prisma.verbsSelect
             }
           }
@@ -753,26 +984,26 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
   );
 
   // Get parents (hypernyms) - these are broader concepts
-  const parents: GraphNode[] = entry.sourceRelations
-    .filter(rel => rel.type === 'hypernym' && rel.target)
+  const parents: GraphNode[] = entry.verb_relations_verb_relations_source_idToverbs
+    .filter(rel => rel.type === 'hypernym' && rel.verbs_verb_relations_target_idToverbs)
     .map(rel => {
-      const target = rel.target as { id: bigint | string; code?: string };
+      const target = rel.verbs_verb_relations_target_idToverbs as { id: bigint | string; code?: string };
       return {
       id: target.code || (typeof target.id === 'bigint' ? target.id.toString() : target.id), // Use code or convert BigInt
-      legacy_id: rel.target!.legacy_id,
-      lemmas: rel.target!.lemmas,
-      src_lemmas: rel.target!.src_lemmas,
-      gloss: rel.target!.gloss,
+      legacy_id: rel.verbs_verb_relations_target_idToverbs!.legacy_id,
+      lemmas: rel.verbs_verb_relations_target_idToverbs!.lemmas,
+      src_lemmas: rel.verbs_verb_relations_target_idToverbs!.src_lemmas,
+      gloss: rel.verbs_verb_relations_target_idToverbs!.gloss,
       legal_constraints: [],
       pos: 'v',
-      lexfile: rel.target!.lexfile,
-      examples: rel.target!.examples,
-      flagged: (rel.target as { flagged?: boolean | null }).flagged ?? undefined,
-      flaggedReason: (rel.target as { flaggedReason?: string | null }).flaggedReason || undefined,
-      forbidden: (rel.target as { forbidden?: boolean | null }).forbidden ?? undefined,
-      forbiddenReason: (rel.target as { forbiddenReason?: string | null }).forbiddenReason || undefined,
-      frame_id: (rel.target as { frame_id?: bigint | null }).frame_id?.toString() ?? null,
-      vendler_class: (rel.target as { vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null }).vendler_class ?? null,
+      lexfile: rel.verbs_verb_relations_target_idToverbs!.lexfile,
+      examples: rel.verbs_verb_relations_target_idToverbs!.examples,
+      flagged: (rel.verbs_verb_relations_target_idToverbs as { flagged?: boolean | null }).flagged ?? undefined,
+      flaggedReason: (rel.verbs_verb_relations_target_idToverbs as { flagged_reason?: string | null }).flagged_reason || undefined,
+      forbidden: (rel.verbs_verb_relations_target_idToverbs as { forbidden?: boolean | null }).forbidden ?? undefined,
+      forbiddenReason: (rel.verbs_verb_relations_target_idToverbs as { forbidden_reason?: string | null }).forbidden_reason || undefined,
+      frame_id: (rel.verbs_verb_relations_target_idToverbs as { frame_id?: bigint | null }).frame_id?.toString() ?? null,
+      vendler_class: (rel.verbs_verb_relations_target_idToverbs as { vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null }).vendler_class ?? null,
       parents: [],
       children: [],
       entails: [],
@@ -781,26 +1012,26 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
     }});
 
   // Get children (hyponyms) - these are more specific concepts
-  const children: GraphNode[] = entry.targetRelations
-    .filter(rel => rel.type === 'hypernym' && rel.source)
+  const children: GraphNode[] = entry.verb_relations_verb_relations_target_idToverbs
+    .filter(rel => rel.type === 'hypernym' && rel.verbs_verb_relations_source_idToverbs)
     .map(rel => {
-      const source = rel.source as { id: bigint | string; code?: string };
+      const source = rel.verbs_verb_relations_source_idToverbs as { id: bigint | string; code?: string };
       return {
         id: source.code || (typeof source.id === 'bigint' ? source.id.toString() : source.id), // Use code or convert BigInt
-        legacy_id: rel.source!.legacy_id,
-        lemmas: rel.source!.lemmas,
-        src_lemmas: rel.source!.src_lemmas,
-        gloss: rel.source!.gloss,
+        legacy_id: rel.verbs_verb_relations_source_idToverbs!.legacy_id,
+        lemmas: rel.verbs_verb_relations_source_idToverbs!.lemmas,
+        src_lemmas: rel.verbs_verb_relations_source_idToverbs!.src_lemmas,
+        gloss: rel.verbs_verb_relations_source_idToverbs!.gloss,
         legal_constraints: [],
         pos: 'v',
-        lexfile: rel.source!.lexfile,
-        examples: rel.source!.examples,
-        flagged: (rel.source as { flagged?: boolean | null }).flagged ?? undefined,
-        flaggedReason: (rel.source as { flaggedReason?: string | null }).flaggedReason || undefined,
-        forbidden: (rel.source as { forbidden?: boolean | null }).forbidden ?? undefined,
-        forbiddenReason: (rel.source as { forbiddenReason?: string | null }).forbiddenReason || undefined,
-        frame_id: (rel.source as { frame_id?: bigint | null }).frame_id?.toString() ?? null,
-        vendler_class: (rel.source as { vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null }).vendler_class ?? null,
+        lexfile: rel.verbs_verb_relations_source_idToverbs!.lexfile,
+        examples: rel.verbs_verb_relations_source_idToverbs!.examples,
+        flagged: (rel.verbs_verb_relations_source_idToverbs as { flagged?: boolean | null }).flagged ?? undefined,
+        flaggedReason: (rel.verbs_verb_relations_source_idToverbs as { flagged_reason?: string | null }).flagged_reason || undefined,
+        forbidden: (rel.verbs_verb_relations_source_idToverbs as { forbidden?: boolean | null }).forbidden ?? undefined,
+        forbiddenReason: (rel.verbs_verb_relations_source_idToverbs as { forbidden_reason?: string | null }).forbidden_reason || undefined,
+        frame_id: (rel.verbs_verb_relations_source_idToverbs as { frame_id?: bigint | null }).frame_id?.toString() ?? null,
+        vendler_class: (rel.verbs_verb_relations_source_idToverbs as { vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null }).vendler_class ?? null,
         parents: [],
         children: [],
         entails: [],
@@ -809,26 +1040,26 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
     }});
 
   // Get entails relationships
-  const entails: GraphNode[] = entry.sourceRelations
-    .filter(rel => rel.type === 'entails' && rel.target)
+  const entails: GraphNode[] = entry.verb_relations_verb_relations_source_idToverbs
+    .filter(rel => rel.type === 'entails' && rel.verbs_verb_relations_target_idToverbs)
     .map(rel => {
-      const target = rel.target as { id: bigint | string; code?: string };
+      const target = rel.verbs_verb_relations_target_idToverbs as { id: bigint | string; code?: string };
       return {
       id: target.code || (typeof target.id === 'bigint' ? target.id.toString() : target.id), // Use code or convert BigInt
-      legacy_id: rel.target!.legacy_id,
-      lemmas: rel.target!.lemmas,
-      src_lemmas: rel.target!.src_lemmas,
-      gloss: rel.target!.gloss,
+      legacy_id: rel.verbs_verb_relations_target_idToverbs!.legacy_id,
+      lemmas: rel.verbs_verb_relations_target_idToverbs!.lemmas,
+      src_lemmas: rel.verbs_verb_relations_target_idToverbs!.src_lemmas,
+      gloss: rel.verbs_verb_relations_target_idToverbs!.gloss,
       legal_constraints: [],
       pos: 'v',
-      lexfile: rel.target!.lexfile,
-      examples: rel.target!.examples,
-      flagged: (rel.target as { flagged?: boolean | null }).flagged ?? undefined,
-      flaggedReason: (rel.target as { flaggedReason?: string | null }).flaggedReason || undefined,
-      forbidden: (rel.target as { forbidden?: boolean | null }).forbidden ?? undefined,
-      forbiddenReason: (rel.target as { forbiddenReason?: string | null }).forbiddenReason || undefined,
-      frame_id: (rel.target as { frame_id?: bigint | null }).frame_id?.toString() ?? null,
-      vendler_class: (rel.target as { vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null }).vendler_class ?? null,
+      lexfile: rel.verbs_verb_relations_target_idToverbs!.lexfile,
+      examples: rel.verbs_verb_relations_target_idToverbs!.examples,
+      flagged: (rel.verbs_verb_relations_target_idToverbs as { flagged?: boolean | null }).flagged ?? undefined,
+      flaggedReason: (rel.verbs_verb_relations_target_idToverbs as { flagged_reason?: string | null }).flagged_reason || undefined,
+      forbidden: (rel.verbs_verb_relations_target_idToverbs as { forbidden?: boolean | null }).forbidden ?? undefined,
+      forbiddenReason: (rel.verbs_verb_relations_target_idToverbs as { forbidden_reason?: string | null }).forbidden_reason || undefined,
+      frame_id: (rel.verbs_verb_relations_target_idToverbs as { frame_id?: bigint | null }).frame_id?.toString() ?? null,
+      vendler_class: (rel.verbs_verb_relations_target_idToverbs as { vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null }).vendler_class ?? null,
       parents: [],
       children: [],
       entails: [],
@@ -837,26 +1068,26 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
     }});
 
   // Get causes relationships
-  const causes: GraphNode[] = entry.sourceRelations
-    .filter(rel => rel.type === 'causes' && rel.target)
+  const causes: GraphNode[] = entry.verb_relations_verb_relations_source_idToverbs
+    .filter(rel => rel.type === 'causes' && rel.verbs_verb_relations_target_idToverbs)
     .map(rel => {
-      const target = rel.target as { id: bigint | string; code?: string };
+      const target = rel.verbs_verb_relations_target_idToverbs as { id: bigint | string; code?: string };
       return {
       id: target.code || (typeof target.id === 'bigint' ? target.id.toString() : target.id), // Use code or convert BigInt
-      legacy_id: rel.target!.legacy_id,
-      lemmas: rel.target!.lemmas,
-      src_lemmas: rel.target!.src_lemmas,
-      gloss: rel.target!.gloss,
+      legacy_id: rel.verbs_verb_relations_target_idToverbs!.legacy_id,
+      lemmas: rel.verbs_verb_relations_target_idToverbs!.lemmas,
+      src_lemmas: rel.verbs_verb_relations_target_idToverbs!.src_lemmas,
+      gloss: rel.verbs_verb_relations_target_idToverbs!.gloss,
       legal_constraints: [],
       pos: 'v',
-      lexfile: rel.target!.lexfile,
-      examples: rel.target!.examples,
-      flagged: (rel.target as { flagged?: boolean | null }).flagged ?? undefined,
-      flaggedReason: (rel.target as { flaggedReason?: string | null }).flaggedReason || undefined,
-      forbidden: (rel.target as { forbidden?: boolean | null }).forbidden ?? undefined,
-      forbiddenReason: (rel.target as { forbiddenReason?: string | null }).forbiddenReason || undefined,
-      frame_id: (rel.target as { frame_id?: bigint | null }).frame_id?.toString() ?? null,
-      vendler_class: (rel.target as { vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null }).vendler_class ?? null,
+      lexfile: rel.verbs_verb_relations_target_idToverbs!.lexfile,
+      examples: rel.verbs_verb_relations_target_idToverbs!.examples,
+      flagged: (rel.verbs_verb_relations_target_idToverbs as { flagged?: boolean | null }).flagged ?? undefined,
+      flaggedReason: (rel.verbs_verb_relations_target_idToverbs as { flagged_reason?: string | null }).flagged_reason || undefined,
+      forbidden: (rel.verbs_verb_relations_target_idToverbs as { forbidden?: boolean | null }).forbidden ?? undefined,
+      forbiddenReason: (rel.verbs_verb_relations_target_idToverbs as { forbidden_reason?: string | null }).forbidden_reason || undefined,
+      frame_id: (rel.verbs_verb_relations_target_idToverbs as { frame_id?: bigint | null }).frame_id?.toString() ?? null,
+      vendler_class: (rel.verbs_verb_relations_target_idToverbs as { vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null }).vendler_class ?? null,
       parents: [],
       children: [],
       entails: [],
@@ -865,26 +1096,26 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
     }});
 
   // Get also_see relationships
-  const alsoSee: GraphNode[] = entry.sourceRelations
-    .filter(rel => rel.type === 'also_see' && rel.target)
+  const alsoSee: GraphNode[] = entry.verb_relations_verb_relations_source_idToverbs
+    .filter(rel => rel.type === 'also_see' && rel.verbs_verb_relations_target_idToverbs)
     .map(rel => {
-      const target = rel.target as { id: bigint | string; code?: string };
+      const target = rel.verbs_verb_relations_target_idToverbs as { id: bigint | string; code?: string };
       return {
       id: target.code || (typeof target.id === 'bigint' ? target.id.toString() : target.id), // Use code or convert BigInt
-      legacy_id: rel.target!.legacy_id,
-      lemmas: rel.target!.lemmas,
-      src_lemmas: rel.target!.src_lemmas,
-      gloss: rel.target!.gloss,
+      legacy_id: rel.verbs_verb_relations_target_idToverbs!.legacy_id,
+      lemmas: rel.verbs_verb_relations_target_idToverbs!.lemmas,
+      src_lemmas: rel.verbs_verb_relations_target_idToverbs!.src_lemmas,
+      gloss: rel.verbs_verb_relations_target_idToverbs!.gloss,
       legal_constraints: [],
       pos: 'v',
-      lexfile: rel.target!.lexfile,
-      examples: rel.target!.examples,
-      flagged: (rel.target as { flagged?: boolean | null }).flagged ?? undefined,
-      flaggedReason: (rel.target as { flaggedReason?: string | null }).flaggedReason || undefined,
-      forbidden: (rel.target as { forbidden?: boolean | null }).forbidden ?? undefined,
-      forbiddenReason: (rel.target as { forbiddenReason?: string | null }).forbiddenReason || undefined,
-      frame_id: (rel.target as { frame_id?: bigint | null }).frame_id?.toString() ?? null,
-      vendler_class: (rel.target as { vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null }).vendler_class ?? null,
+      lexfile: rel.verbs_verb_relations_target_idToverbs!.lexfile,
+      examples: rel.verbs_verb_relations_target_idToverbs!.examples,
+      flagged: (rel.verbs_verb_relations_target_idToverbs as { flagged?: boolean | null }).flagged ?? undefined,
+      flaggedReason: (rel.verbs_verb_relations_target_idToverbs as { flagged_reason?: string | null }).flagged_reason || undefined,
+      forbidden: (rel.verbs_verb_relations_target_idToverbs as { forbidden?: boolean | null }).forbidden ?? undefined,
+      forbiddenReason: (rel.verbs_verb_relations_target_idToverbs as { forbidden_reason?: string | null }).forbidden_reason || undefined,
+      frame_id: (rel.verbs_verb_relations_target_idToverbs as { frame_id?: bigint | null }).frame_id?.toString() ?? null,
+      vendler_class: (rel.verbs_verb_relations_target_idToverbs as { vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null }).vendler_class ?? null,
       parents: [],
       children: [],
       entails: [],
@@ -982,14 +1213,19 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
 }
 
 // Cached wrapper for getGraphNode
-export const getGraphNode = unstable_cache(
-  async (entryId: string) => getGraphNodeInternal(entryId),
-  ['graph-node'],
-  {
-    revalidate: 60, // Cache for 1 minute instead of 1 hour
-    tags: ['graph-node'],
-  }
-);
+export const getGraphNode = process.env.DISABLE_CACHE === 'true'
+  ? getGraphNodeInternal
+  : unstable_cache(
+      async (entryId: string) => getGraphNodeInternal(entryId),
+      ['graph-node'],
+      {
+        revalidate: 60, // Cache for 1 minute instead of 1 hour
+        tags: ['graph-node'],
+      }
+    );
+
+// Export uncached version for when we need fresh data
+export const getGraphNodeUncached = getGraphNodeInternal;
 
 // Helper function to revalidate graph node cache
 export function revalidateGraphNodeCache() {
@@ -1034,6 +1270,7 @@ async function getAncestorPathInternal(entryId: string): Promise<GraphNode[]> {
         -- If there are multiple parents, pick the first one alphabetically
         SELECT 
           e.id,
+          e.code,
           e.legacy_id,
           e.gloss,
           'v' as pos,
@@ -1079,14 +1316,16 @@ async function getAncestorPathInternal(entryId: string): Promise<GraphNode[]> {
 }
 
 // Cached wrapper for getAncestorPath
-export const getAncestorPath = unstable_cache(
-  async (entryId: string) => getAncestorPathInternal(entryId),
-  ['ancestor-path'],
-  {
-    revalidate: 3600, // Cache for 1 hour
-    tags: ['ancestor-path'],
-  }
-);
+export const getAncestorPath = process.env.DISABLE_CACHE === 'true'
+  ? getAncestorPathInternal
+  : unstable_cache(
+      async (entryId: string) => getAncestorPathInternal(entryId),
+      ['ancestor-path'],
+      {
+        revalidate: 3600, // Cache for 1 hour
+        tags: ['ancestor-path'],
+      }
+    );
 
 export async function updateModerationStatus(
   ids: string[], 
@@ -1378,10 +1617,10 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
     include: {
       _count: {
         select: {
-          sourceRelations: {
+          verb_relations_verb_relations_source_idToverbs: {
             where: { type: 'hypernym' }
           },
-          targetRelations: {
+          verb_relations_verb_relations_target_idToverbs: {
             where: { type: 'hypernym' }
           }
         }
@@ -1569,838 +1808,10 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
       legal_constraints: entry.legal_constraints || [],
       roles: rolesByEntryId.get(numericId) || [],
       role_groups: roleGroupsByEntryId.get(numericId) || [],
-      parentsCount: entry._count.sourceRelations,
-      childrenCount: entry._count.targetRelations,
+      parentsCount: entry._count.verb_relations_verb_relations_source_idToverbs,
+      childrenCount: entry._count.verb_relations_verb_relations_target_idToverbs,
       createdAt: entry.createdAt,
       updatedAt: entry.updatedAt
-    };
-  });
-
-  // Apply numeric filters on computed fields
-  if (parentsCountMin !== undefined) {
-    data = data.filter(entry => entry.parentsCount >= parentsCountMin);
-  }
-  if (parentsCountMax !== undefined) {
-    data = data.filter(entry => entry.parentsCount <= parentsCountMax);
-  }
-  if (childrenCountMin !== undefined) {
-    data = data.filter(entry => entry.childrenCount >= childrenCountMin);
-  }
-  if (childrenCountMax !== undefined) {
-    data = data.filter(entry => entry.childrenCount <= childrenCountMax);
-  }
-
-  // Sort by computed fields if needed
-  if (sortBy === 'parentsCount') {
-    data.sort((a, b) => sortOrder === 'asc' 
-      ? a.parentsCount - b.parentsCount 
-      : b.parentsCount - a.parentsCount
-    );
-  } else if (sortBy === 'childrenCount') {
-    data.sort((a, b) => sortOrder === 'asc' 
-      ? a.childrenCount - b.childrenCount 
-      : b.childrenCount - a.childrenCount
-    );
-  }
-
-  const totalPages = Math.ceil(total / limit);
-
-  return {
-    data,
-    total,
-    page,
-    limit,
-    totalPages,
-    hasNext: page < totalPages,
-    hasPrev: page > 1
-  };
-}
-
-// ============================================================================
-// NOUN-SPECIFIC FUNCTIONS
-// ============================================================================
-
-export async function searchNouns(query: string, limit = 20): Promise<SearchResult[]> {
-  // If query contains a dot, only search IDs
-  const containsDot = query.includes('.');
-  
-  if (containsDot) {
-    // Only search ID fields when dot is present
-    const results = await withRetry(
-      () => prisma.$queryRaw<SearchResult[]>`
-      SELECT 
-        code as id,
-        legacy_id,
-        lemmas,
-        src_lemmas,
-        gloss,
-        'n' as pos,
-        CASE 
-          WHEN code ILIKE ${query} THEN 1000
-          WHEN code ILIKE ${query + '%'} THEN 500
-          WHEN legacy_id ILIKE ${query + '%'} THEN 400
-          ELSE 0
-        END as rank
-      FROM nouns
-      WHERE 
-        code ILIKE ${query + '%'} OR
-        legacy_id ILIKE ${query + '%'}
-      ORDER BY rank DESC, code
-      LIMIT ${limit}
-    `,
-      undefined,
-      `searchNouns(${query})`
-    );
-    return results;
-  }
-  
-  // Use PostgreSQL full-text search for regular queries
-  const results = await withRetry(
-    () => prisma.$queryRaw<SearchResult[]>`
-    SELECT 
-      code as id,
-      legacy_id,
-      lemmas,
-      src_lemmas,
-      gloss,
-      'n' as pos,
-      ts_rank(gloss_tsv, plainto_tsquery('english', ${query})) +
-      ts_rank(examples_tsv, plainto_tsquery('english', ${query})) as rank
-    FROM nouns
-    WHERE 
-      gloss_tsv @@ plainto_tsquery('english', ${query}) OR
-      examples_tsv @@ plainto_tsquery('english', ${query}) OR
-      ${query} = ANY(lemmas) OR
-      ${query} = ANY(src_lemmas)
-    ORDER BY rank DESC, code
-    LIMIT ${limit}
-  `,
-    undefined,
-    `searchNouns(${query})`
-  );
-
-  return results;
-}
-
-export async function getNounById(id: string): Promise<NounWithRelations | null> {
-  const entry = await withRetry(
-    () => prisma.nouns.findUnique({
-      where: { code: id } as unknown as Prisma.nounsWhereUniqueInput,
-      include: {
-        noun_relations_noun_relations_source_idTonouns: {
-          include: {
-            nouns_noun_relations_target_idTonouns: true,
-          },
-        },
-        noun_relations_noun_relations_target_idTonouns: {
-          include: {
-            nouns_noun_relations_source_idTonouns: true,
-          },
-        },
-      },
-    }),
-    undefined,
-    `getNounById(${id})`
-  ) as unknown as {
-    id: bigint;
-    code: string;
-    legacy_id: string;
-    gloss: string;
-    lexfile: string;
-    is_mwe: boolean;
-    countable: boolean | null;
-    proper: boolean;
-    collective: boolean;
-    concrete: boolean;
-    predicate: boolean;
-    lemmas: string[];
-    src_lemmas: string[];
-    examples: string[];
-    flagged: boolean | null;
-    flagged_reason: string | null;
-    forbidden: boolean | null;
-    forbidden_reason: string | null;
-    legal_constraints: string[];
-    created_at: Date;
-    updated_at: Date;
-    noun_relations_noun_relations_source_idTonouns: Array<{
-      type: string;
-      source_id: bigint;
-      target_id: bigint;
-      nouns_noun_relations_target_idTonouns: {
-        id: bigint;
-        code: string;
-        legacy_id: string;
-        gloss: string;
-        lemmas: string[];
-        src_lemmas: string[];
-        flagged: boolean | null;
-        flagged_reason: string | null;
-        forbidden: boolean | null;
-        forbidden_reason: string | null;
-      };
-    }>;
-    noun_relations_noun_relations_target_idTonouns: Array<{
-      type: string;
-      source_id: bigint;
-      target_id: bigint;
-      nouns_noun_relations_source_idTonouns: {
-        id: bigint;
-        code: string;
-        legacy_id: string;
-        gloss: string;
-        lemmas: string[];
-        src_lemmas: string[];
-        flagged: boolean | null;
-        flagged_reason: string | null;
-        forbidden: boolean | null;
-        forbidden_reason: string | null;
-      };
-    }>;
-  } | null;
-
-  if (!entry) return null;
-
-  return {
-    id: entry.code,
-    code: entry.code,
-    legacy_id: entry.legacy_id,
-    gloss: entry.gloss,
-    pos: 'n',
-    lexfile: entry.lexfile,
-    isMwe: entry.is_mwe,
-    countable: entry.countable,
-    proper: entry.proper,
-    collective: entry.collective,
-    concrete: entry.concrete,
-    predicate: entry.predicate,
-    lemmas: entry.lemmas,
-    src_lemmas: entry.src_lemmas,
-    examples: entry.examples,
-    flagged: entry.flagged ?? undefined,
-    flaggedReason: entry.flagged_reason ?? undefined,
-    forbidden: entry.forbidden ?? undefined,
-    forbiddenReason: entry.forbidden_reason ?? undefined,
-    legal_constraints: entry.legal_constraints,
-    createdAt: entry.created_at,
-    updatedAt: entry.updated_at,
-    sourceRelations: entry.noun_relations_noun_relations_source_idTonouns.map(rel => ({
-      sourceId: rel.source_id.toString(),
-      targetId: rel.target_id.toString(),
-      type: rel.type as NounRelationType,
-      target: {
-        id: rel.nouns_noun_relations_target_idTonouns.code,
-        code: rel.nouns_noun_relations_target_idTonouns.code,
-        legacy_id: rel.nouns_noun_relations_target_idTonouns.legacy_id,
-        gloss: rel.nouns_noun_relations_target_idTonouns.gloss,
-        pos: 'n',
-        lexfile: entry.lexfile,
-        isMwe: false,
-        lemmas: rel.nouns_noun_relations_target_idTonouns.lemmas,
-        src_lemmas: rel.nouns_noun_relations_target_idTonouns.src_lemmas,
-        examples: [],
-        flagged: rel.nouns_noun_relations_target_idTonouns.flagged ?? undefined,
-        flaggedReason: rel.nouns_noun_relations_target_idTonouns.flagged_reason ?? undefined,
-        forbidden: rel.nouns_noun_relations_target_idTonouns.forbidden ?? undefined,
-        forbiddenReason: rel.nouns_noun_relations_target_idTonouns.forbidden_reason ?? undefined,
-        createdAt: entry.created_at,
-        updatedAt: entry.updated_at,
-      } as Noun,
-    })),
-    targetRelations: entry.noun_relations_noun_relations_target_idTonouns.map(rel => ({
-      sourceId: rel.source_id.toString(),
-      targetId: rel.target_id.toString(),
-      type: rel.type as NounRelationType,
-      source: {
-        id: rel.nouns_noun_relations_source_idTonouns.code,
-        code: rel.nouns_noun_relations_source_idTonouns.code,
-        legacy_id: rel.nouns_noun_relations_source_idTonouns.legacy_id,
-        gloss: rel.nouns_noun_relations_source_idTonouns.gloss,
-        pos: 'n',
-        lexfile: entry.lexfile,
-        isMwe: false,
-        lemmas: rel.nouns_noun_relations_source_idTonouns.lemmas,
-        src_lemmas: rel.nouns_noun_relations_source_idTonouns.src_lemmas,
-        examples: [],
-        flagged: rel.nouns_noun_relations_source_idTonouns.flagged ?? undefined,
-        flaggedReason: rel.nouns_noun_relations_source_idTonouns.flagged_reason ?? undefined,
-        forbidden: rel.nouns_noun_relations_source_idTonouns.forbidden ?? undefined,
-        forbiddenReason: rel.nouns_noun_relations_source_idTonouns.forbidden_reason ?? undefined,
-        createdAt: entry.created_at,
-        updatedAt: entry.updated_at,
-      } as Noun,
-    })),
-  };
-}
-
-// Internal implementation for getting noun graph node
-async function getNounGraphNodeInternal(entryId: string): Promise<GraphNode | null> {
-  const entry = await withRetry(
-    () => prisma.nouns.findUnique({
-      where: { code: entryId } as unknown as Prisma.nounsWhereUniqueInput,
-      include: {
-        noun_relations_noun_relations_source_idTonouns: {
-          where: {
-            type: {
-              in: ['hypernym', 'also_see']
-            }
-          },
-          include: {
-            nouns_noun_relations_target_idTonouns: {
-              select: {
-                id: true,
-                code: true,
-                legacy_id: true,
-                lemmas: true,
-                src_lemmas: true,
-                gloss: true,
-                lexfile: true,
-                examples: true,
-                forbidden: true,
-                forbidden_reason: true,
-                flagged: true,
-                flagged_reason: true,
-              }
-            }
-          }
-        },
-        noun_relations_noun_relations_target_idTonouns: {
-          where: {
-            type: 'hypernym'
-          },
-          include: {
-            nouns_noun_relations_source_idTonouns: {
-              select: {
-                id: true,
-                code: true,
-                legacy_id: true,
-                lemmas: true,
-                src_lemmas: true,
-                gloss: true,
-                lexfile: true,
-                examples: true,
-                forbidden: true,
-                forbidden_reason: true,
-                flagged: true,
-                flagged_reason: true,
-              }
-            }
-          }
-        }
-      }
-    }),
-    undefined,
-    `getNounGraphNodeInternal(${entryId})`
-  ) as unknown as {
-    id: bigint;
-    code: string;
-    legacy_id: string;
-    gloss: string;
-    legal_gloss: string | null;
-    lexfile: string;
-    is_mwe: boolean;
-    countable: boolean | null;
-    proper: boolean;
-    collective: boolean;
-    concrete: boolean;
-    predicate: boolean;
-    lemmas: string[];
-    src_lemmas: string[];
-    examples: string[];
-    flagged: boolean | null;
-    flagged_reason: string | null;
-    forbidden: boolean | null;
-    forbidden_reason: string | null;
-    legal_constraints: string[];
-    noun_relations_noun_relations_source_idTonouns: Array<{
-      type: string;
-      nouns_noun_relations_target_idTonouns: {
-        id: bigint;
-        code: string;
-        legacy_id: string;
-        lemmas: string[];
-        src_lemmas: string[];
-        gloss: string;
-        lexfile: string;
-        examples: string[];
-        forbidden: boolean | null;
-        forbidden_reason: string | null;
-        flagged: boolean | null;
-        flagged_reason: string | null;
-      };
-    }>;
-    noun_relations_noun_relations_target_idTonouns: Array<{
-      type: string;
-      nouns_noun_relations_source_idTonouns: {
-        id: bigint;
-        code: string;
-        legacy_id: string;
-        lemmas: string[];
-        src_lemmas: string[];
-        gloss: string;
-        lexfile: string;
-        examples: string[];
-        forbidden: boolean | null;
-        forbidden_reason: string | null;
-        flagged: boolean | null;
-        flagged_reason: string | null;
-      };
-    }>;
-  } | null;
-
-  if (!entry) return null;
-
-  // Get parents (hypernyms) - more general concepts
-  const parents: GraphNode[] = entry.noun_relations_noun_relations_source_idTonouns
-    .filter(rel => rel.type === 'hypernym' && rel.nouns_noun_relations_target_idTonouns)
-    .map(rel => {
-      const target = rel.nouns_noun_relations_target_idTonouns;
-      return {
-        id: target.code,
-        legacy_id: target.legacy_id,
-        lemmas: target.lemmas,
-        src_lemmas: target.src_lemmas,
-        gloss: target.gloss,
-        legal_constraints: [],
-        pos: 'n',
-        lexfile: target.lexfile,
-        examples: target.examples,
-        flagged: target.flagged ?? undefined,
-        flaggedReason: target.flagged_reason ?? undefined,
-        forbidden: target.forbidden ?? undefined,
-        forbiddenReason: target.forbidden_reason ?? undefined,
-        parents: [],
-        children: [],
-        entails: [],
-        causes: [],
-        alsoSee: [],
-      };
-    });
-
-  // Get children (hyponyms) - more specific concepts
-  const children: GraphNode[] = entry.noun_relations_noun_relations_target_idTonouns
-    .filter(rel => rel.type === 'hypernym' && rel.nouns_noun_relations_source_idTonouns)
-    .map(rel => {
-      const source = rel.nouns_noun_relations_source_idTonouns;
-      return {
-        id: source.code,
-        legacy_id: source.legacy_id,
-        lemmas: source.lemmas,
-        src_lemmas: source.src_lemmas,
-        gloss: source.gloss,
-        legal_constraints: [],
-        pos: 'n',
-        lexfile: source.lexfile,
-        examples: source.examples,
-        flagged: source.flagged ?? undefined,
-        flaggedReason: source.flagged_reason ?? undefined,
-        forbidden: source.forbidden ?? undefined,
-        forbiddenReason: source.forbidden_reason ?? undefined,
-        parents: [],
-        children: [],
-        entails: [],
-        causes: [],
-        alsoSee: [],
-      };
-    });
-
-  // Get also_see relationships
-  const alsoSee: GraphNode[] = entry.noun_relations_noun_relations_source_idTonouns
-    .filter(rel => rel.type === 'also_see' && rel.nouns_noun_relations_target_idTonouns)
-    .map(rel => {
-      const target = rel.nouns_noun_relations_target_idTonouns;
-      return {
-        id: target.code,
-        legacy_id: target.legacy_id,
-        lemmas: target.lemmas,
-        src_lemmas: target.src_lemmas,
-        gloss: target.gloss,
-        legal_constraints: [],
-        pos: 'n',
-        lexfile: target.lexfile,
-        examples: target.examples,
-        flagged: target.flagged ?? undefined,
-        flaggedReason: target.flagged_reason ?? undefined,
-        forbidden: target.forbidden ?? undefined,
-        forbiddenReason: target.forbidden_reason ?? undefined,
-        parents: [],
-        children: [],
-        entails: [],
-        causes: [],
-        alsoSee: [],
-      };
-    });
-
-  return {
-    id: entry.code,
-    legacy_id: entry.legacy_id,
-    lemmas: entry.lemmas,
-    src_lemmas: entry.src_lemmas,
-    gloss: entry.gloss,
-    legal_gloss: entry.legal_gloss ?? null,
-    legal_constraints: entry.legal_constraints ?? [],
-    pos: 'n',
-    lexfile: entry.lexfile,
-    examples: entry.examples,
-    flagged: entry.flagged ?? undefined,
-    flaggedReason: entry.flagged_reason ?? undefined,
-    forbidden: entry.forbidden ?? undefined,
-    forbiddenReason: entry.forbidden_reason ?? undefined,
-    countable: entry.countable,
-    proper: entry.proper,
-    collective: entry.collective,
-    concrete: entry.concrete,
-    predicate: entry.predicate,
-    parents,
-    children,
-    entails: [], // Nouns don't have entails
-    causes: [], // Nouns don't have causes
-    alsoSee,
-  };
-}
-
-// Cached wrapper for getNounGraphNode
-export const getNounGraphNode = unstable_cache(
-  async (entryId: string) => getNounGraphNodeInternal(entryId),
-  ['noun-graph-node'],
-  {
-    revalidate: 60,
-    tags: ['noun-graph-node'],
-  }
-);
-
-export async function updateNoun(id: string, updates: Partial<Pick<Noun, 'gloss' | 'lemmas' | 'examples' | 'flagged' | 'flaggedReason' | 'forbidden' | 'forbiddenReason'>>): Promise<NounWithRelations | null> {
-  const updatedEntry = await withRetry(
-    () => prisma.nouns.update({
-      where: { code: id } as unknown as Prisma.nounsWhereUniqueInput,
-      data: updates,
-      include: {
-        noun_relations_noun_relations_source_idTonouns: {
-          include: {
-            nouns_noun_relations_target_idTonouns: true
-          }
-        },
-        noun_relations_noun_relations_target_idTonouns: {
-          include: {
-            nouns_noun_relations_source_idTonouns: true
-          }
-        }
-      }
-    }),
-    undefined,
-    `updateNoun(${id})`
-  );
-
-  if (!updatedEntry) return null;
-
-  // Invalidate cache
-  revalidateTag('noun-graph-node');
-
-  // Convert to NounWithRelations - reuse getNounById logic
-  return getNounById(id);
-}
-
-export async function updateNounModerationStatus(
-  ids: string[], 
-  updates: { 
-    flagged?: boolean; 
-    flaggedReason?: string; 
-    forbidden?: boolean; 
-    forbiddenReason?: string; 
-  }
-): Promise<number> {
-  const result = await prisma.nouns.updateMany({
-    where: {
-      code: {
-        in: ids
-      }
-    } as Prisma.nounsWhereInput,
-    data: updates
-  });
-
-  // Invalidate cache
-  revalidateTag('noun-graph-node');
-
-  return result.count;
-}
-
-export async function getPaginatedNouns(params: PaginationParams = {}): Promise<PaginatedResult<TableEntry>> {
-  const {
-    page = 1,
-    limit = 20,
-    sortBy = 'id',
-    sortOrder = 'asc',
-    search,
-    pos,
-    lexfile,
-    gloss,
-    lemmas,
-    examples,
-    isMwe,
-    flagged,
-    forbidden,
-    parentsCountMin,
-    parentsCountMax,
-    childrenCountMin,
-    childrenCountMax,
-    createdAfter,
-    createdBefore,
-    updatedAfter,
-    updatedBefore
-  } = params;
-
-  const skip = (page - 1) * limit;
-
-  // Build where clause
-  const whereClause: Record<string, unknown> = {};
-  const andConditions: Record<string, unknown>[] = [];
-  
-  // Global search
-  if (search) {
-    andConditions.push({
-      OR: [
-        {
-          gloss: {
-            contains: search,
-            mode: 'insensitive'
-          }
-        },
-        {
-          lemmas: {
-            hasSome: [search]
-          }
-        },
-        {
-          src_lemmas: {
-            hasSome: [search]
-          }
-        },
-        {
-          examples: {
-            hasSome: search.split(' ')
-          }
-        }
-      ]
-    });
-  }
-
-  // Basic filters
-  if (pos) {
-    const posValues = pos.split(',').map(p => p.trim()).filter(Boolean);
-    if (posValues.length > 0) {
-      andConditions.push({
-        pos: {
-          in: posValues
-        }
-      });
-    }
-  }
-
-  if (lexfile) {
-    const lexfiles = lexfile.split(',').map(lf => lf.trim()).filter(Boolean);
-    if (lexfiles.length > 0) {
-      andConditions.push({
-        lexfile: {
-          in: lexfiles
-        }
-      });
-    }
-  }
-
-  // Advanced text filters
-  if (gloss) {
-    andConditions.push({
-      gloss: {
-        contains: gloss,
-        mode: 'insensitive'
-      }
-    });
-  }
-
-  if (lemmas) {
-    const lemmaTerms = lemmas.split(/[\s,]+/).filter(Boolean);
-    andConditions.push({
-      OR: [
-        {
-          lemmas: {
-            hasSome: lemmaTerms
-          }
-        },
-        {
-          src_lemmas: {
-            hasSome: lemmaTerms
-          }
-        }
-      ]
-    });
-  }
-
-  if (examples) {
-    andConditions.push({
-      examples: {
-        hasSome: examples.split(/[\s,]+/).filter(Boolean)
-      }
-    });
-  }
-
-  // Boolean filters
-  if (isMwe !== undefined) {
-    andConditions.push({ is_mwe: isMwe });
-  }
-
-  if (flagged !== undefined) {
-    andConditions.push({ flagged });
-  }
-
-  if (forbidden !== undefined) {
-    andConditions.push({ forbidden });
-  }
-
-  // Date filters
-  if (createdAfter) {
-    andConditions.push({
-      created_at: {
-        gte: new Date(createdAfter)
-      }
-    });
-  }
-
-  if (createdBefore) {
-    andConditions.push({
-      created_at: {
-        lte: new Date(createdBefore + 'T23:59:59.999Z')
-      }
-    });
-  }
-
-  if (updatedAfter) {
-    andConditions.push({
-      updated_at: {
-        gte: new Date(updatedAfter)
-      }
-    });
-  }
-
-  if (updatedBefore) {
-    andConditions.push({
-      updated_at: {
-        lte: new Date(updatedBefore + 'T23:59:59.999Z')
-      }
-    });
-  }
-
-  // Combine all conditions
-  if (andConditions.length > 0) {
-    whereClause.AND = andConditions;
-  }
-
-  // Get total count
-  const total = await withRetry(
-    () => prisma.nouns.count({
-      where: whereClause
-    }),
-    undefined,
-    'getPaginatedNouns:count'
-  );
-
-  // Build order clause
-  const orderBy: Record<string, unknown> = {};
-  
-  // Map old field names to new ones for backward compatibility
-  let actualSortBy = sortBy;
-  if (sortBy === 'src_id') {
-    actualSortBy = 'legacy_id';
-  }
-  
-  if (actualSortBy === 'lemmas' || actualSortBy === 'src_lemmas') {
-    // For array fields, we need to use raw SQL for proper sorting
-    orderBy[actualSortBy] = sortOrder;
-  } else if (actualSortBy === 'parentsCount' || actualSortBy === 'childrenCount') {
-    // These will be computed after fetching
-    orderBy.id = sortOrder; // Default fallback
-  } else {
-    orderBy[actualSortBy] = sortOrder;
-  }
-
-  // Fetch entries with relation counts
-  const entries = await withRetry(
-    () => prisma.nouns.findMany({
-    where: whereClause,
-    skip,
-    take: limit,
-    orderBy,
-    include: {
-      _count: {
-        select: {
-          noun_relations_noun_relations_source_idTonouns: {
-            where: { type: 'hypernym' }
-          },
-          noun_relations_noun_relations_target_idTonouns: {
-            where: { type: 'hypernym' }
-          }
-        }
-      }
-    }
-  }),
-    undefined,
-    'getPaginatedNouns:findMany'
-  ) as unknown as Array<{
-    id: bigint;
-    code: string;
-    legacy_id: string;
-    gloss: string;
-    lexfile: string;
-    is_mwe: boolean;
-    countable: boolean | null;
-    proper: boolean;
-    collective: boolean;
-    concrete: boolean;
-    predicate: boolean;
-    lemmas: string[];
-    src_lemmas: string[];
-    examples: string[];
-    flagged: boolean | null;
-    flagged_reason: string | null;
-    forbidden: boolean | null;
-    forbidden_reason: string | null;
-    legal_constraints: string[];
-    created_at: Date;
-    updated_at: Date;
-    _count: {
-      noun_relations_noun_relations_source_idTonouns: number;
-      noun_relations_noun_relations_target_idTonouns: number;
-    };
-  }>;
-
-  // Transform to TableEntry format
-  let data: TableEntry[] = entries.map(entry => {
-    const entryCode = entry.code || entry.id.toString();
-    
-    return {
-      id: entryCode,
-      legacy_id: entry.legacy_id,
-      lemmas: entry.lemmas,
-      src_lemmas: entry.src_lemmas,
-      gloss: entry.gloss,
-      pos: 'n',
-      lexfile: entry.lexfile,
-      isMwe: entry.is_mwe,
-      particles: [], // Nouns don't have particles
-      countable: entry.countable,
-      proper: entry.proper,
-      collective: entry.collective,
-      concrete: entry.concrete,
-      predicate: entry.predicate,
-      examples: entry.examples,
-      flagged: entry.flagged ?? undefined,
-      flaggedReason: entry.flagged_reason ?? undefined,
-      forbidden: entry.forbidden ?? undefined,
-      forbiddenReason: entry.forbidden_reason ?? undefined,
-      legal_constraints: entry.legal_constraints || [],
-      parentsCount: entry._count.noun_relations_noun_relations_source_idTonouns,
-      childrenCount: entry._count.noun_relations_noun_relations_target_idTonouns,
-      createdAt: entry.created_at,
-      updatedAt: entry.updated_at
     };
   });
 

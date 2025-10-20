@@ -40,7 +40,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     const updates = await request.json();
     
     // Validate that only allowed fields are being updated
-    const allowedFields = ['gloss', 'lemmas', 'examples', 'roles'];
+    const allowedFields = ['gloss', 'lemmas', 'examples', 'roles', 'role_groups'];
     const updateData: Record<string, unknown> = {};
     
     for (const [key, value] of Object.entries(updates)) {
@@ -59,7 +59,13 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Entry not found' }, { status: 404 });
     }
 
-    return NextResponse.json(updatedEntry);
+    // Return with no-cache headers to ensure fresh data
+    return NextResponse.json(updatedEntry, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+        'Pragma': 'no-cache',
+      },
+    });
   } catch (error) {
     const { message, status, shouldRetry } = handleDatabaseError(error, 'PATCH /api/entries/[id]');
     return NextResponse.json(

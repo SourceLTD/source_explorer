@@ -13,7 +13,7 @@ import RootNodesView from './RootNodesView';
 
 interface WordNetExplorerProps {
   initialEntryId?: string;
-  mode?: 'verbs' | 'nouns';
+  mode?: 'verbs' | 'nouns' | 'adjectives';
 }
 
 export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: WordNetExplorerProps) {
@@ -53,6 +53,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
   const [editValue, setEditValue] = useState<string>('');
   const [editListItems, setEditListItems] = useState<string[]>([]);
   const [editRoles, setEditRoles] = useState<{id: string, description: string, roleType: string, exampleSentence: string, main: boolean}[]>([]);
+  const [editRoleGroups, setEditRoleGroups] = useState<{id: string, description: string, role_ids: string[]}[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [roleTypes, setRoleTypes] = useState<RoleType[]>([]);
 
@@ -60,7 +61,9 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
   const updateUrlParam = (entryId: string) => {
     const params = new URLSearchParams(searchParams);
     params.set('entry', entryId);
-    const basePath = mode === 'nouns' ? '/graph/nouns' : '/graph';
+    let basePath = '/graph';
+    if (mode === 'nouns') basePath = '/graph/nouns';
+    else if (mode === 'adjectives') basePath = '/graph/adjectives';
     router.push(`${basePath}?${params.toString()}`, { scroll: false });
   };
 
@@ -69,7 +72,9 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
     const params = new URLSearchParams(searchParams);
     params.set('view', view);
     const qs = params.toString();
-    const basePath = mode === 'nouns' ? '/graph/nouns' : '/graph';
+    let basePath = '/graph';
+    if (mode === 'nouns') basePath = '/graph/nouns';
+    else if (mode === 'adjectives') basePath = '/graph/adjectives';
     router.push(qs ? `${basePath}?${qs}` : basePath, { scroll: false });
   };
 
@@ -84,7 +89,10 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
     setError(null);
     
     try {
-      const apiPrefix = mode === 'nouns' ? '/api/nouns' : '/api/entries';
+      let apiPrefix = '/api/entries';
+      if (mode === 'nouns') apiPrefix = '/api/nouns';
+      else if (mode === 'adjectives') apiPrefix = '/api/adjectives';
+      
       const graphUrl = invalidateCache 
         ? `${apiPrefix}/${entryId}/graph?invalidate=true`
         : `${apiPrefix}/${entryId}/graph`;
@@ -121,7 +129,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
           setSelectedRecipeId(undefined);
         }
       } else {
-        // Nouns don't have recipes
+        // Nouns and adjectives don't have recipes
         setEntryRecipes({ entryId, recipes: [] });
         setSelectedRecipeId(undefined);
       }
@@ -206,6 +214,13 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
           main: role.main
         }))
       );
+      setEditRoleGroups(
+        (currentNode.role_groups || []).map(group => ({
+          id: group.id,
+          description: group.description || '',
+          role_ids: group.role_ids
+        }))
+      );
     }
   };
 
@@ -214,6 +229,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
     setEditValue('');
     setEditListItems([]);
     setEditRoles([]);
+    setEditRoleGroups([]);
   };
 
   const saveEdit = async () => {
@@ -237,11 +253,15 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
           // Only verbs have roles
           if (mode === 'verbs') {
             updateData.roles = editRoles.filter(role => role.description.trim());
+            updateData.role_groups = editRoleGroups.filter(group => group.role_ids.length >= 2);
           }
           break;
       }
 
-      const apiPrefix = mode === 'nouns' ? '/api/nouns' : '/api/entries';
+      let apiPrefix = '/api/entries';
+      if (mode === 'nouns') apiPrefix = '/api/nouns';
+      else if (mode === 'adjectives') apiPrefix = '/api/adjectives';
+      
       const response = await fetch(`${apiPrefix}/${currentNode.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -252,13 +272,14 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
         throw new Error('Failed to update entry');
       }
 
-      // Reload the graph node to get updated data
-      await loadGraphNode(currentNode.id);
+      // Reload the graph node to get updated data with cache invalidation
+      await loadGraphNode(currentNode.id, true);
       
       setEditingField(null);
       setEditValue('');
       setEditListItems([]);
       setEditRoles([]);
+      setEditRoleGroups([]);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save changes');
     } finally {
@@ -361,7 +382,42 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
   };
 
   const removeRole = (index: number) => {
+    const roleId = editRoles[index].id;
+    // Remove the role
     setEditRoles(prev => prev.filter((_, i) => i !== index));
+    // Remove the role from any groups
+    setEditRoleGroups(prev => prev.map(group => ({
+      ...group,
+      role_ids: group.role_ids.filter(id => id !== roleId)
+    })).filter(group => group.role_ids.length >= 2));
+  };
+
+  // Role group editing helpers
+  const addRoleGroup = () => {
+    setEditRoleGroups(prev => [...prev, { id: '', description: '', role_ids: [] }]);
+  };
+
+  const removeRoleGroup = (index: number) => {
+    setEditRoleGroups(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const updateRoleGroup = (index: number, field: 'description' | 'role_ids', value: string | string[]) => {
+    setEditRoleGroups(prev => prev.map((group, i) => 
+      i === index ? { ...group, [field]: value } : group
+    ));
+  };
+
+  const toggleRoleInGroup = (groupIndex: number, roleId: string) => {
+    setEditRoleGroups(prev => prev.map((group, i) => {
+      if (i !== groupIndex) return group;
+      const isInGroup = group.role_ids.includes(roleId);
+      return {
+        ...group,
+        role_ids: isInGroup 
+          ? group.role_ids.filter(id => id !== roleId)
+          : [...group.role_ids, roleId]
+      };
+    }));
   };
 
   // Moderation functions
@@ -369,7 +425,10 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
     if (!currentNode) return;
 
     try {
-      const apiPrefix = mode === 'nouns' ? '/api/nouns' : '/api/entries';
+      let apiPrefix = '/api/entries';
+      if (mode === 'nouns') apiPrefix = '/api/nouns';
+      else if (mode === 'adjectives') apiPrefix = '/api/adjectives';
+      
       const response = await fetch(`${apiPrefix}/moderation`, {
         method: 'PATCH',
         headers: {
@@ -441,7 +500,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
             </button>
             <div className="h-6 w-px bg-gray-300"></div>
             <h1 className="text-xl font-bold text-gray-900">
-              {mode === 'nouns' ? 'Nouns' : 'Verbs'}
+              {mode === 'nouns' ? 'Nouns' : mode === 'adjectives' ? 'Adjectives' : 'Verbs'}
             </h1>
             <p className="text-sm text-gray-600">
               Explore lexical relationships
@@ -461,14 +520,16 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
               currentView={currentView}
               onViewChange={(view: ViewMode) => {
                 if (view === 'table') {
-                  const tablePath = mode === 'nouns' ? '/table/nouns' : '/table';
+                  let tablePath = '/table';
+                  if (mode === 'nouns') tablePath = '/table/nouns';
+                  else if (mode === 'adjectives') tablePath = '/table/adjectives';
                   router.push(tablePath);
                 } else {
                   setCurrentView(view);
                   updateViewParam(view);
                 }
               }}
-              hideRecipes={mode === 'nouns'}
+              hideRecipes={mode === 'nouns' || mode === 'adjectives'}
             />
             <SignOutButton />
           </div>
@@ -895,6 +956,77 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
                           <span>Add Alt Role</span>
                         </button>
                       </div>
+
+                      {/* Role Groups Section */}
+                      {editRoles.length > 1 && (
+                        <div className="pt-4 border-t border-gray-200">
+                          <h4 className="text-sm font-medium text-gray-700 mb-2">Role Groups (OR constraints)</h4>
+                          <p className="text-xs text-gray-600 mb-3">Group roles that are alternatives to each other (one of these roles is required)</p>
+                          
+                          {editRoleGroups.length > 0 && (
+                            <div className="space-y-3 mb-3">
+                              {editRoleGroups.map((group, groupIndex) => (
+                                <div key={groupIndex} className="p-3 border-2 border-gray-300 rounded-lg bg-gray-50">
+                                  <div className="flex items-start justify-between mb-2">
+                                    <input
+                                      type="text"
+                                      value={group.description}
+                                      onChange={(e) => updateRoleGroup(groupIndex, 'description', e.target.value)}
+                                      className="flex-1 px-2 py-1 border border-gray-300 rounded text-xs bg-white text-gray-900"
+                                      placeholder="Group description (optional)"
+                                    />
+                                    <button
+                                      onClick={() => removeRoleGroup(groupIndex)}
+                                      className="ml-2 p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded"
+                                      title="Remove group"
+                                    >
+                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                      </svg>
+                                    </button>
+                                  </div>
+                                  <div className="space-y-1">
+                                    {editRoles.map((role, roleIndex) => {
+                                      // Generate a temporary ID for new roles
+                                      const roleId = role.id || `temp-${roleIndex}`;
+                                      const isInGroup = group.role_ids.includes(roleId);
+                                      return (
+                                        <label key={roleIndex} className="flex items-center space-x-2 text-xs cursor-pointer hover:bg-white p-1 rounded">
+                                          <input
+                                            type="checkbox"
+                                            checked={isInGroup}
+                                            onChange={() => toggleRoleInGroup(groupIndex, roleId)}
+                                            className="rounded"
+                                          />
+                                          <span className={role.main ? 'text-blue-700 font-medium' : 'text-purple-700'}>
+                                            {role.roleType || '(no type)'}
+                                          </span>
+                                          <span className="text-gray-600 truncate">
+                                            {role.description ? `- ${role.description.substring(0, 30)}${role.description.length > 30 ? '...' : ''}` : ''}
+                                          </span>
+                                        </label>
+                                      );
+                                    })}
+                                  </div>
+                                  {group.role_ids.length < 2 && (
+                                    <p className="text-xs text-red-600 mt-2">⚠️ Group needs at least 2 roles</p>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          
+                          <button
+                            onClick={addRoleGroup}
+                            className="w-full px-3 py-2 border-2 border-dashed border-gray-300 rounded-md text-gray-600 hover:border-gray-400 hover:text-gray-700 text-sm flex items-center justify-center space-x-2"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                            </svg>
+                            <span>Add Role Group</span>
+                          </button>
+                        </div>
+                      )}
                       
                       <div className="flex space-x-2">
                         <button

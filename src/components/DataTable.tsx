@@ -10,7 +10,7 @@ interface DataTableProps {
   onRowClick?: (entry: TableEntry) => void;
   searchQuery?: string;
   className?: string;
-  mode?: 'verbs' | 'nouns';
+  mode?: 'verbs' | 'nouns' | 'adjectives';
 }
 
 interface SortState {
@@ -339,7 +339,10 @@ export default function DataTable({ onRowClick, searchQuery, className, mode = '
         }
       });
 
-      const apiPrefix = mode === 'nouns' ? '/api/nouns' : '/api/entries';
+      let apiPrefix = '/api/entries';
+      if (mode === 'nouns') apiPrefix = '/api/nouns';
+      else if (mode === 'adjectives') apiPrefix = '/api/adjectives';
+      
       const response = await fetch(`${apiPrefix}/paginated?${queryParams}`);
       if (!response.ok) {
         throw new Error('Failed to fetch data');
@@ -453,7 +456,10 @@ export default function DataTable({ onRowClick, searchQuery, className, mode = '
     }
 
     try {
-      const apiPrefix = mode === 'nouns' ? '/api/nouns' : '/api/entries';
+      let apiPrefix = '/api/entries';
+      if (mode === 'nouns') apiPrefix = '/api/nouns';
+      else if (mode === 'adjectives') apiPrefix = '/api/adjectives';
+      
       const response = await fetch(`${apiPrefix}/${entryId}/relations`);
       if (!response.ok) {
         throw new Error('Failed to fetch relations');
@@ -554,7 +560,10 @@ export default function DataTable({ onRowClick, searchQuery, className, mode = '
     if (selection.selectedIds.size === 0) return;
 
     try {
-      const apiPrefix = mode === 'nouns' ? '/api/nouns' : '/api/entries';
+      let apiPrefix = '/api/entries';
+      if (mode === 'nouns') apiPrefix = '/api/nouns';
+      else if (mode === 'adjectives') apiPrefix = '/api/adjectives';
+      
       const response = await fetch(`${apiPrefix}/moderation`, {
         method: 'PATCH',
         headers: {
@@ -664,7 +673,10 @@ export default function DataTable({ onRowClick, searchQuery, className, mode = '
     if (!editing.entryId || !editing.field) return;
 
     try {
-      const apiPrefix = mode === 'nouns' ? '/api/nouns' : '/api/entries';
+      let apiPrefix = '/api/entries';
+      if (mode === 'nouns') apiPrefix = '/api/nouns';
+      else if (mode === 'adjectives') apiPrefix = '/api/adjectives';
+      
       const response = await fetch(`${apiPrefix}/${editing.entryId}`, {
         method: 'PATCH',
         headers: {
