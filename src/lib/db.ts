@@ -1380,13 +1380,20 @@ export async function updateModerationStatus(
     forbiddenReason?: string; 
   }
 ): Promise<number> {
+  // Transform camelCase to snake_case for Prisma
+  const prismaUpdates: Record<string, unknown> = {};
+  if (updates.flagged !== undefined) prismaUpdates.flagged = updates.flagged;
+  if (updates.flaggedReason !== undefined) prismaUpdates.flagged_reason = updates.flaggedReason;
+  if (updates.forbidden !== undefined) prismaUpdates.forbidden = updates.forbidden;
+  if (updates.forbiddenReason !== undefined) prismaUpdates.forbidden_reason = updates.forbiddenReason;
+
   const result = await prisma.verbs.updateMany({
     where: {
       code: {
         in: ids // ids are now codes (human-readable IDs)
       }
     } as Prisma.verbsWhereInput,
-    data: updates
+    data: prismaUpdates
   });
 
   // Invalidate cache for graph nodes since moderation status affects display
