@@ -661,10 +661,22 @@ export async function updateEntry(id: string, updates: Partial<Pick<Verb, 'gloss
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { roles: _roles, role_groups: _role_groups, ...otherUpdates } = updates;
 
+  // Transform camelCase to snake_case for Prisma
+  const prismaUpdates: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(otherUpdates)) {
+    if (key === 'flaggedReason') {
+      prismaUpdates.flagged_reason = value;
+    } else if (key === 'forbiddenReason') {
+      prismaUpdates.forbidden_reason = value;
+    } else {
+      prismaUpdates[key] = value;
+    }
+  }
+
   const updatedEntry = await withRetry(
     () => prisma.verbs.update({
     where: { code: id } as unknown as Prisma.verbsWhereUniqueInput, // Query by code (human-readable ID)
-    data: otherUpdates,
+    data: prismaUpdates,
     include: {
       verb_relations_verb_relations_source_idToverbs: {
         include: {
