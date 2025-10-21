@@ -455,6 +455,16 @@ export interface LogicNode {
   children: LogicNode[];
 }
 
+export interface RecipePrecondition {
+  id: string;
+  condition_type: string;
+  target_role_id?: string | null;
+  target_recipe_predicate_id?: string | null;
+  condition_params?: unknown;
+  description?: string | null;
+  error_message?: string | null;
+}
+
 export interface Recipe {
   id: string;
   label?: string | null;
@@ -463,6 +473,7 @@ export interface Recipe {
   predicates: RecipePredicateNode[];
   predicate_groups: PredicateGroup[]; // Kept for backwards compatibility during transition
   relations: RecipePredicateEdge[];
+  preconditions: RecipePrecondition[];
   // New: logic tree root
   logic_root?: LogicNode | null;
 }

@@ -3,7 +3,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { Group } from '@visx/group';
 import { LinearGradient } from '@visx/gradient';
-import { GraphNode, Recipe, RecipePredicateNode, RoleType, LogicNode } from '@/lib/types';
+import { GraphNode, Recipe, RecipePredicateNode, RoleType, LogicNode, RecipePrecondition } from '@/lib/types';
 import GraphMainNode, { calculateMainNodeHeight } from './GraphMainNode';
 
 interface RecipesGraphProps {
@@ -25,11 +25,11 @@ const colors = {
 };
 
 export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, onSelectRecipe, onNodeClick }: RecipesGraphProps) {
-  const [, setHoveredId] = useState<string | null>(null);
+  const [hoveredPredicateId, setHoveredPredicateId] = useState<string | null>(null);
   const [roleTypes, setRoleTypes] = useState<RoleType[]>([]);
   
   // Track expansion states for main node to calculate correct layout
-  const [rolesExpanded, setRolesExpanded] = useState<boolean>(false);
+  const [rolesExpanded, setRolesExpanded] = useState<boolean>(true); // Auto-expand roles in recipe mode
   const [lemmasExpanded, setLemmasExpanded] = useState<boolean>(true);
   const [examplesExpanded, setExamplesExpanded] = useState<boolean>(true);
   const [legalConstraintsExpanded, setLegalConstraintsExpanded] = useState<boolean>(false);
@@ -58,6 +58,32 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
     if (selectedRecipeId) return recipes.find(r => r.id === selectedRecipeId) || recipes[0];
     return recipes[0];
   }, [recipes, selectedRecipeId]);
+
+  // Calculate which roles should be greyed out based on preconditions
+  const greyedOutRoleIds = useMemo(() => {
+    if (!activeRecipe || !activeRecipe.preconditions) return new Set<string>();
+    
+    const greyedIds = new Set<string>();
+    for (const precondition of activeRecipe.preconditions) {
+      // Check for "role_is_null" condition which means the role must be NULL (greyed out)
+      if (precondition.condition_type === 'role_is_null' && precondition.target_role_id) {
+        greyedIds.add(precondition.target_role_id);
+      }
+    }
+    return greyedIds;
+  }, [activeRecipe]);
+
+  // Build a map of role labels that are greyed out (for marking in predicate bindings)
+  const greyedOutRoleLabels = useMemo(() => {
+    if (!currentNode.roles) return new Set<string>();
+    const labels = new Set<string>();
+    currentNode.roles.forEach(role => {
+      if (greyedOutRoleIds.has(role.id)) {
+        labels.add(role.role_type.label);
+      }
+    });
+    return labels;
+  }, [currentNode.roles, greyedOutRoleIds]);
 
   const activeRecipeIndex = useMemo(() => {
     if (!activeRecipe || !recipes || recipes.length === 0) return -1;
@@ -102,14 +128,16 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
 
     const nodes: Array<{ type: 'current' | 'predicate'; x: number; y: number; width: number; height: number; node: GraphNode | RecipePredicateNode; logicKind?: string; isNegated?: boolean }> = [];
     const edges: Array<{ from: { x: number; y: number; fromEdge: 'bottom' | 'right' | 'left' }; to: { x: number; y: number; toEdge: 'top' | 'right' | 'left' }; label: string } > = [];
-    const groups: Array<{ predicateNodeIds: string[]; description: string }> = [];
+    const groups: Array<{ predicateNodeIds: string[]; description: string; kind: 'and' | 'or' }> = [];
+    let needsOuterBorder = false;
+    let outerBorderKind: 'and' | 'or' = 'or';
 
     nodes.push({ type: 'current', x: centerX, y: centerY, width: currentNodeWidth, height: currentNodeHeight, node: currentNode });
 
     // Handle both new logic tree and legacy predicate_groups for backwards compatibility
     if (activeRecipe && activeRecipe.logic_root) {
-      // NEW: Walk the logic tree and extract OR groups with their predicates
-      const orGroups: Array<{ node: LogicNode; predicates: Array<{ predicate: RecipePredicateNode; isNegated: boolean }> }> = [];
+      // NEW: Walk the logic tree and extract groups with their predicates
+      const orGroups: Array<{ node: LogicNode; predicates: Array<{ predicate: RecipePredicateNode; isNegated: boolean }>; innerKind: 'and' | 'or' }> = [];
       
       // Helper to extract predicates from a node
       function extractPredicates(node: LogicNode, isNegated = false): Array<{ predicate: RecipePredicateNode; isNegated: boolean }> {
@@ -126,34 +154,42 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
       }
       
       // Extract groups based on tree structure
-      // Common pattern: AND root with OR children (each OR is a group)
-      // Alternate pattern: OR root with AND children (each AND is a group)
-      // Generic: treat any node with multiple children as a potential group
+      // Pattern 1: AND root with OR children → each OR is a oneOf group, no outer border
+      // Pattern 2: OR root with AND children → each AND is an all group, outer OR border wraps everything
+      // Pattern 3: OR root with OR children → nested oneOf groups
       
       if (activeRecipe.logic_root.kind === 'and') {
-        // Standard: AND root with OR children
+        // Standard: AND root with OR children (each OR = oneOf group)
         for (const child of activeRecipe.logic_root.children) {
           if (child.kind === 'or') {
             const predicates = extractPredicates(child);
             if (predicates.length > 0) {
-              orGroups.push({ node: child, predicates });
+              orGroups.push({ node: child, predicates, innerKind: 'or' });
             }
           }
         }
+        needsOuterBorder = false;
       } else if (activeRecipe.logic_root.kind === 'or') {
-        // Alternate: OR root with AND/LEAF children (each child is a "group" to choose from)
+        // Alternate: OR root with children → wrap all in oneOf border
         for (const child of activeRecipe.logic_root.children) {
           const predicates = extractPredicates(child);
           if (predicates.length > 0) {
-            orGroups.push({ node: child, predicates });
+            orGroups.push({ 
+              node: child, 
+              predicates,
+              innerKind: child.kind === 'and' ? 'and' : 'or'
+            });
           }
         }
+        needsOuterBorder = activeRecipe.logic_root.children.length > 1;
+        outerBorderKind = 'or';
       } else {
         // Single leaf or NOT at root (edge case)
         const predicates = extractPredicates(activeRecipe.logic_root);
         if (predicates.length > 0) {
-          orGroups.push({ node: activeRecipe.logic_root, predicates });
+          orGroups.push({ node: activeRecipe.logic_root, predicates, innerKind: 'or' });
         }
+        needsOuterBorder = false;
       }
       
       // Arrange predicates in grid below, centered
@@ -178,7 +214,7 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
         const groupWidths = item.group.predicates.map(p => {
           const title = p.predicate.lexical.id;
           const textLen = Math.min(24, title.length);
-          return Math.max(220, Math.min(360, textLen * 10 + 100));
+          return Math.max(280, Math.min(420, textLen * 10 + 120)); // Increased width
         });
         const itemWidth = Math.max(...groupWidths) + 20; // padding for group border
         
@@ -204,13 +240,13 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
         let currentX = rowStartX;
         
         for (const item of row.items) {
-          let groupY = rowY;
+            let groupY = rowY;
           const verticalGapInGroup = 20;
           
           const groupWidths = item.group.predicates.map(p => {
             const title = p.predicate.lexical.id;
             const textLen = Math.min(24, title.length);
-            return Math.max(220, Math.min(360, textLen * 10 + 100));
+            return Math.max(280, Math.min(420, textLen * 10 + 120)); // Increased width
           });
           const maxGroupWidth = Math.max(...groupWidths);
           
@@ -235,11 +271,12 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
             groupY += predicateHeight + verticalGapInGroup;
           }
           
-          // Store group info for rendering borders
+          // Store inner group info for rendering borders
           if (item.group.predicates.length > 1) {
             groups.push({
               predicateNodeIds: groupPredicateIds,
-              description: item.group.node.description || 'oneOf'
+              description: item.group.node.description || (item.group.innerKind === 'and' ? 'all' : 'oneOf'),
+              kind: item.group.innerKind
             });
           }
           
@@ -353,12 +390,12 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
           const verticalGapInGroup = 20;
           
           const groupWidths = item.groupData.predicates.map(p => {
-            const title = p.lexical.id;
-            const textLen = Math.min(24, title.length);
-            return Math.max(220, Math.min(360, textLen * 10 + 100));
-          });
-          const maxGroupWidth = Math.max(...groupWidths);
-          
+              const title = p.lexical.id;
+              const textLen = Math.min(24, title.length);
+              return Math.max(220, Math.min(360, textLen * 10 + 100));
+            });
+            const maxGroupWidth = Math.max(...groupWidths);
+            
           const groupPredicateIds: string[] = [];
           
           for (const pred of item.groupData.predicates) {
@@ -387,7 +424,8 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
           if (hasGroups && item.groupData.predicates.length > 1) {
             groups.push({
               predicateNodeIds: groupPredicateIds,
-              description: item.groupData.group.description || 'oneOf'
+              description: item.groupData.group.description || 'oneOf',
+              kind: 'or' // Legacy groups are all OR (require_at_least_one)
             });
           }
           
@@ -396,9 +434,9 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
         
         let maxRowHeight = predicateHeight;
         for (const item of row.items) {
-          const verticalGapInGroup = 20;
+            const verticalGapInGroup = 20;
           const groupHeight = item.groupData.predicates.length * predicateHeight + (item.groupData.predicates.length - 1) * verticalGapInGroup + 20;
-          maxRowHeight = Math.max(maxRowHeight, groupHeight);
+            maxRowHeight = Math.max(maxRowHeight, groupHeight);
         }
         rowY += maxRowHeight + verticalGap;
       }
@@ -427,8 +465,24 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
       }
     }
 
+    // Calculate outer border if needed (for OR/AND at root with multiple children)
+    let outerBorder: { predicateNodeIds: string[]; description: string; kind: 'and' | 'or' } | null = null;
+    
+    if (activeRecipe && activeRecipe.logic_root && needsOuterBorder) {
+      // Collect all predicate IDs from all groups
+      const allPredicateIds = groups.flatMap(g => g.predicateNodeIds);
+      console.log(`[RecipesGraph] Creating outer ${outerBorderKind} border with ${allPredicateIds.length} predicates, ${groups.length} inner groups`);
+      outerBorder = {
+        predicateNodeIds: allPredicateIds,
+        description: activeRecipe.logic_root.description || (outerBorderKind === 'or' ? 'oneOf' : 'all'),
+        kind: outerBorderKind
+      };
+    } else if (activeRecipe && activeRecipe.logic_root) {
+      console.log(`[RecipesGraph] No outer border needed: needsOuterBorder=${needsOuterBorder}, root.kind=${activeRecipe.logic_root.kind}, children=${activeRecipe.logic_root.children.length}`);
+    }
+
     const height = nodes.reduce((h, n) => Math.max(h, n.y + n.height / 2 + margin), centerY + currentNodeHeight / 2 + margin);
-    return { width, height, nodes, edges, groups };
+    return { width, height, nodes, edges, groups, outerBorder };
   }, [currentNode, activeRecipe, lemmasExpanded, examplesExpanded, rolesExpanded, legalConstraintsExpanded, causesExpanded, entailsExpanded, alsoSeeExpanded]);
 
   return (
@@ -439,6 +493,17 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
           <marker id="arrow" markerWidth="12" markerHeight="12" refX="11" refY="6" orient="auto" markerUnits="userSpaceOnUse">
             <path d="M 0 0 L 12 6 L 0 12 z" fill={colors.arrow} />
           </marker>
+          <filter id="drop-shadow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur in="SourceAlpha" stdDeviation="3"/>
+            <feOffset dx="0" dy="2" result="offsetblur"/>
+            <feComponentTransfer>
+              <feFuncA type="linear" slope="0.3"/>
+            </feComponentTransfer>
+            <feMerge>
+              <feMergeNode/>
+              <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+          </filter>
         </defs>
         <rect width={layout.width} height={layout.height} rx={14} fill={colors.background} stroke="none" />
 
@@ -505,16 +570,14 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
           </g>
         ))}
 
-        {/* Predicate Group Borders */}
+        {/* Inner Group Borders */}
         {layout.groups.map((group, idx) => {
-          // Find all predicates in this group and calculate bounding box
           const groupPredicateNodes = layout.nodes.filter(n => 
             n.type === 'predicate' && group.predicateNodeIds.includes((n.node as RecipePredicateNode).id)
           );
           
           if (groupPredicateNodes.length === 0) return null;
           
-          // Calculate bounding box
           const padding = 10;
           const minX = Math.min(...groupPredicateNodes.map(n => n.x - n.width / 2)) - padding;
           const maxX = Math.max(...groupPredicateNodes.map(n => n.x + n.width / 2)) + padding;
@@ -524,9 +587,12 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
           const boxWidth = maxX - minX;
           const boxHeight = maxY - minY;
           
+          const isAndGroup = group.kind === 'and';
+          const labelText = isAndGroup ? 'all' : 'oneOf';
+          const labelWidth = isAndGroup ? 22 : 38; // Increased for gaps on both sides
+          
           return (
             <g key={`group-${idx}`}>
-              {/* Border around group */}
               <rect
                 x={minX}
                 y={minY}
@@ -537,27 +603,80 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
                 strokeWidth={2}
                 rx={5}
               />
-              {/* "oneOf" label that interrupts the border */}
               <rect
                 x={minX + 8}
                 y={minY - 6}
-                width={32}
+                width={labelWidth}
                 height={12}
                 fill={colors.background}
               />
               <text
-                x={minX + 24}
+                x={minX + 8 + labelWidth / 2}
                 y={minY + 3}
                 fontSize="10"
                 fill="rgba(0, 0, 0, 0.7)"
                 fontWeight="bold"
                 textAnchor="middle"
               >
-                oneOf
+                {labelText}
               </text>
             </g>
           );
         })}
+
+        {/* Outer Group Border (for OR/AND at root level) */}
+        {layout.outerBorder && (() => {
+          const outerPredicateNodes = layout.nodes.filter(n => 
+            n.type === 'predicate' && layout.outerBorder!.predicateNodeIds.includes((n.node as RecipePredicateNode).id)
+          );
+          
+          if (outerPredicateNodes.length === 0) return null;
+          
+          const padding = 25; // Larger padding for outer border
+          const minX = Math.min(...outerPredicateNodes.map(n => n.x - n.width / 2)) - padding;
+          const maxX = Math.max(...outerPredicateNodes.map(n => n.x + n.width / 2)) + padding;
+          const minY = Math.min(...outerPredicateNodes.map(n => n.y - n.height / 2)) - padding;
+          const maxY = Math.max(...outerPredicateNodes.map(n => n.y + n.height / 2)) + padding;
+          
+          const boxWidth = maxX - minX;
+          const boxHeight = maxY - minY;
+          
+          const isAndGroup = layout.outerBorder.kind === 'and';
+          const labelText = isAndGroup ? 'all' : 'oneOf';
+          const labelWidth = isAndGroup ? 26 : 44; // Increased for gaps on both sides
+          
+          return (
+            <g key="outer-border">
+              <rect
+                x={minX}
+                y={minY}
+                width={boxWidth}
+                height={boxHeight}
+                fill="none"
+                stroke="rgba(0, 0, 0, 0.6)"
+                strokeWidth={3}
+                rx={8}
+              />
+              <rect
+                x={minX + 12}
+                y={minY - 8}
+                width={labelWidth}
+                height={16}
+                fill={colors.background}
+              />
+              <text
+                x={minX + 12 + labelWidth / 2}
+                y={minY + 3}
+                fontSize="12"
+                fill="rgba(0, 0, 0, 0.7)"
+                fontWeight="bold"
+                textAnchor="middle"
+              >
+                {labelText}
+              </text>
+            </g>
+          );
+        })()}
 
         <Group>
           {layout.nodes.map((n, idx) => {
@@ -584,6 +703,7 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
                   onCausesExpandedChange={setCausesExpanded}
                   onEntailsExpandedChange={setEntailsExpanded}
                   onAlsoSeeExpandedChange={setAlsoSeeExpanded}
+                  greyedOutRoleIds={greyedOutRoleIds}
                 />
               );
             }
@@ -592,8 +712,9 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
             const centerX = -n.width / 2;
             const centerY = -n.height / 2;
             const isNegated = n.isNegated || false;
+            const isHovered = hoveredPredicateId === pred.id;
             return (
-              <Group key={`node-${idx}`} top={n.y} left={n.x} onMouseEnter={() => setHoveredId(pred.id)} onMouseLeave={() => setHoveredId(null)} style={{ cursor: 'pointer' }}>
+              <Group key={`node-${idx}`} top={n.y} left={n.x} onMouseEnter={() => setHoveredPredicateId(pred.id)} onMouseLeave={() => setHoveredPredicateId(null)} style={{ cursor: 'pointer' }}>
                 <rect
                   width={n.width}
                   height={n.height}
@@ -606,6 +727,8 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
                   rx={6}
                   ry={6}
                   onClick={() => onNodeClick(pred.lexical.id)}
+                  filter={isHovered ? 'url(#drop-shadow)' : undefined}
+                  style={{ transition: 'filter 0.2s ease-in-out' }}
                 />
                 {isNegated && (
                   <text x={centerX + n.width - 25} y={centerY + 18} fontSize={14} fontFamily="Arial" textAnchor="start" fill="#ef4444" fontWeight="bold">
@@ -633,10 +756,14 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
                         let targetDisplay = '';
                         let targetDescription = '';
                         
+                        let isTargetGreyedOut = false;
+                        
                         if (m.bindKind === 'role' && m.entryRoleLabel) {
                           const entryRoleInfo = getRoleInfo(m.entryRoleLabel);
                           targetDisplay = m.entryRoleLabel;
                           targetDescription = entryRoleInfo?.generic_description || 'No description';
+                          // Check if this target role is greyed out
+                          isTargetGreyedOut = greyedOutRoleLabels.has(m.entryRoleLabel);
                         } else if (m.bindKind === 'variable' && m.variableTypeLabel) {
                           targetDisplay = `[${m.variableTypeLabel}]`;
                           targetDescription = 'Variable binding';
@@ -645,16 +772,23 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
                           targetDescription = 'Constant binding';
                         }
                         
-                        const tooltip = `${m.predicateRoleLabel}: ${predicateRoleInfo?.generic_description || 'No description'} \n= ${targetDisplay}: ${targetDescription}`;
+                        const tooltip = `${m.predicateRoleLabel}: ${predicateRoleInfo?.generic_description || 'No description'} \n= ${targetDisplay}: ${targetDescription}${isTargetGreyedOut ? ' (must be NULL)' : ''}`;
                         
                         return (
                           <text key={i} x={centerX + 10} y={y} fontSize={11} fontFamily="Arial" textAnchor="start" fill="white">
                             <title>{tooltip}</title>
                             <tspan fontWeight="bold">{m.predicateRoleLabel}</tspan>
                             <tspan> = </tspan>
-                            <tspan fontWeight="500" fontStyle={m.bindKind !== 'role' ? 'italic' : 'normal'}>
+                            {isTargetGreyedOut && <tspan fontSize={10}>🕵🏼 </tspan>}
+                            {isTargetGreyedOut && <tspan>(</tspan>}
+                            <tspan 
+                              fontWeight="500" 
+                              fontStyle={m.bindKind !== 'role' || isTargetGreyedOut ? 'italic' : 'normal'}
+                              opacity={isTargetGreyedOut ? 0.6 : 1}
+                            >
                               {targetDisplay}
                             </tspan>
+                            {isTargetGreyedOut && <tspan>)</tspan>}
                           </text>
                         );
                       })}

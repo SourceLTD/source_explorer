@@ -24,6 +24,7 @@ interface GraphMainNodeProps {
   onCausesExpandedChange?: (expanded: boolean) => void;
   onEntailsExpandedChange?: (expanded: boolean) => void;
   onAlsoSeeExpandedChange?: (expanded: boolean) => void;
+  greyedOutRoleIds?: Set<string>;
 }
 
 export default function GraphMainNode({ 
@@ -45,6 +46,7 @@ export default function GraphMainNode({
   onCausesExpandedChange,
   onEntailsExpandedChange,
   onAlsoSeeExpandedChange,
+  greyedOutRoleIds = new Set(),
 }: GraphMainNodeProps) {
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [internalRolesExpanded, setInternalRolesExpanded] = useState<boolean>(false);
@@ -688,6 +690,7 @@ export default function GraphMainNode({
               // Render roles within the group
               rolesInGroup.forEach((groupRole, roleIdx) => {
                 const roleHeight = roleHeights[roleIdx];
+                const isGreyedOut = greyedOutRoleIds.has(groupRole.id);
                 
                 roleElements.push(
                   <foreignObject
@@ -700,12 +703,13 @@ export default function GraphMainNode({
                     <div style={{
                       fontSize: '13px',
                       fontFamily: 'Arial',
-                      color: 'white',
+                      color: isGreyedOut ? 'rgba(255, 255, 255, 0.5)' : 'white',
                       lineHeight: '1.3',
                       wordWrap: 'break-word',
                       padding: '4px 6px',
                       height: '100%',
                       overflow: 'hidden',
+                      textDecoration: isGreyedOut ? 'line-through' : 'none',
                     }}>
                       <span style={{ fontWeight: 'bold' }}>{groupRole.role_type.label}:</span>{' '}
                       {groupRole.description || 'No description'}
@@ -721,6 +725,7 @@ export default function GraphMainNode({
               const roleText = `${role.role_type.label}: ${role.description || 'No description'}`;
               const estimatedLines = Math.ceil(roleText.length / 60);
               const roleHeight = estimatedLines <= 2 ? 45 : 60;
+              const isGreyedOut = greyedOutRoleIds.has(role.id);
               
               roleElements.push(
                 <foreignObject
@@ -733,7 +738,7 @@ export default function GraphMainNode({
                   <div style={{
                     fontSize: '13px',
                     fontFamily: 'Arial',
-                    color: 'white',
+                    color: isGreyedOut ? 'rgba(255, 255, 255, 0.5)' : 'white',
                     lineHeight: '1.3',
                     wordWrap: 'break-word',
                     padding: '4px 6px',
@@ -741,6 +746,7 @@ export default function GraphMainNode({
                     borderRadius: '3px',
                     height: '100%',
                     overflow: 'hidden',
+                    textDecoration: isGreyedOut ? 'line-through' : 'none',
                   }}>
                     <span style={{ fontWeight: 'bold' }}>{role.role_type.label}:</span>{' '}
                     {role.description || 'No description'}

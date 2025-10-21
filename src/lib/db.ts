@@ -419,6 +419,27 @@ export async function getRecipesForEntryInternal(entryId: string): Promise<Entry
     `getRecipesForEntry:logicTargets(${entryId})`
   );
 
+  // Fetch recipe preconditions
+  const preconditions = await withRetry(
+    () => prisma.$queryRaw<Array<{
+      id: bigint;
+      recipe_id: bigint;
+      condition_type: string;
+      target_role_id: bigint | null;
+      target_recipe_predicate_id: bigint | null;
+      condition_params: unknown;
+      description: string | null;
+      error_message: string | null;
+    }>>`
+      SELECT id, recipe_id, condition_type, target_role_id, target_recipe_predicate_id,
+             condition_params, description, error_message
+      FROM recipe_preconditions
+      WHERE recipe_id = ANY(${recipeIds}::bigint[])
+    `,
+    undefined,
+    `getRecipesForEntry:preconditions(${entryId})`
+  );
+
   // Group data into recipe structures
   const byRecipeId: Record<string, Recipe> = {};
   for (const r of recipes) {
@@ -430,6 +451,7 @@ export async function getRecipesForEntryInternal(entryId: string): Promise<Entry
       predicates: [],
       predicate_groups: [], // Deprecated but kept for backwards compatibility
       relations: [],
+      preconditions: [],
       logic_root: null,
     };
   }
@@ -514,6 +536,21 @@ export async function getRecipesForEntryInternal(entryId: string): Promise<Entry
       sourcePredicateId: e.source_recipe_predicate_id.toString(),
       targetPredicateId: e.target_recipe_predicate_id.toString(),
       relation_type: e.relation_type as 'also_see' | 'causes' | 'entails',
+    });
+  }
+
+  // Add preconditions to recipes
+  for (const pc of preconditions) {
+    const recipe = byRecipeId[pc.recipe_id.toString()];
+    if (!recipe) continue;
+    recipe.preconditions.push({
+      id: pc.id.toString(),
+      condition_type: pc.condition_type,
+      target_role_id: pc.target_role_id?.toString() || null,
+      target_recipe_predicate_id: pc.target_recipe_predicate_id?.toString() || null,
+      condition_params: pc.condition_params,
+      description: pc.description,
+      error_message: pc.error_message,
     });
   }
 
