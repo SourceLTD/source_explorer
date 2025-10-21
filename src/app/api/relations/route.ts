@@ -56,10 +56,10 @@ export async function POST(request: NextRequest) {
       )
     }
     
-    const relation = await prisma.entryRelation.create({
+    const relation = await prisma.verb_relations.create({
       data: {
-        sourceId: sourceEntry.id,
-        targetId: targetEntry.id,
+        source_id: sourceEntry.id,
+        target_id: targetEntry.id,
         type: body.type
       }
     })
@@ -122,11 +122,11 @@ export async function DELETE(request: NextRequest) {
       )
     }
     
-    await prisma.entryRelation.delete({
+    await prisma.verb_relations.delete({
       where: {
-        sourceId_type_targetId: {
-          sourceId: sourceEntry.id,
-          targetId: targetEntry.id,
+        source_id_type_target_id: {
+          source_id: sourceEntry.id,
+          target_id: targetEntry.id,
           type: body.type
         }
       }

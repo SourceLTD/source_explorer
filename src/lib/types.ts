@@ -414,6 +414,8 @@ export interface RecipePredicateRoleMapping {
   variableTypeLabel?: string;
   // For role-to-constant bindings
   constant?: unknown;
+  // Indicates this is a discovered variable (role must be NULL)
+  discovered?: boolean;
 }
 
 export interface RecipePredicateNode {

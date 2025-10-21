@@ -115,6 +115,7 @@ model recipe_predicate_role_bindings {
   predicate_role_id                                             BigInt
   verb_role_id                                                  BigInt?
   predicate_variable_type_id                                    BigInt?
+  discovered                                                    Boolean?                  @default(false)
   roles_recipe_predicate_role_bindings_predicate_role_idToroles roles                     @relation("recipe_predicate_role_bindings_predicate_role_idToroles", fields: [predicate_role_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   predicate_variable_types                                      predicate_variable_types? @relation(fields: [predicate_variable_type_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   recipe_predicates                                             recipe_predicates         @relation(fields: [recipe_predicate_id], references: [id], onDelete: Cascade)

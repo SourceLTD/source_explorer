@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAdjectiveById, updateAdjective } from '@/lib/db';
+import { getEntryById, updateEntry } from '@/lib/db';
 import { handleDatabaseError } from '@/lib/db-utils';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const entry = await getAdjectiveById(params.id);
+    const { id } = await params;
+    const entry = await getEntryById(id);
     
     if (!entry) {
       return NextResponse.json(
@@ -18,18 +19,20 @@ export async function GET(
     
     return NextResponse.json(entry);
   } catch (error) {
-    const { message, status } = handleDatabaseError(error, `GET /api/adjectives/${params.id}`);
+    const { id } = await params;
+    const { message, status } = handleDatabaseError(error, `GET /api/adjectives/${id}`);
     return NextResponse.json({ error: message }, { status });
   }
 }
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const body = await request.json();
-    const updatedEntry = await updateAdjective(params.id, body);
+    const updatedEntry = await updateEntry(id, body);
     
     if (!updatedEntry) {
       return NextResponse.json(
@@ -40,7 +43,8 @@ export async function PATCH(
     
     return NextResponse.json(updatedEntry);
   } catch (error) {
-    const { message, status } = handleDatabaseError(error, `PATCH /api/adjectives/${params.id}`);
+    const { id } = await params;
+    const { message, status } = handleDatabaseError(error, `PATCH /api/adjectives/${id}`);
     return NextResponse.json({ error: message }, { status });
   }
 }

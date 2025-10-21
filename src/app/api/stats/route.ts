@@ -6,7 +6,7 @@ export async function GET() {
   try {
     const [entriesCount, relationsCount] = await Promise.all([
       prisma.verbs.count(),
-      prisma.entryRelation.count()
+      prisma.verb_relations.count()
     ])
     
     const stats = {

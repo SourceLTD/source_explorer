@@ -15,25 +15,28 @@ type PrismaEntryWithOptionalFields = {
 
 // Type for Prisma entry with relations
 type PrismaEntryWithRelations = {
-  id: string;
+  id: string | bigint;
   legacy_id: string;
+  code: string;
   gloss: string;
   legal_gloss: string | null;
   pos: string;
   lexfile: string;
-  isMwe: boolean;
+  is_mwe: boolean;
   transitive: boolean | null;
   lemmas: string[];
   src_lemmas: string[];
   particles: string[];
-  frames: string[];
   examples: string[];
-  createdAt: Date;
-  updatedAt: Date;
+  created_at: Date;
+  updated_at: Date;
   flagged: boolean | null;
-  flaggedReason: string | null;
+  flagged_reason: string | null;
   forbidden: boolean | null;
-  forbiddenReason: string | null;
+  forbidden_reason: string | null;
+  frame_id: bigint | null;
+  vendler_class: 'state' | 'activity' | 'accomplishment' | 'achievement' | null;
+  legal_constraints: string[];
   verb_relations_verb_relations_source_idToverbs: (PrismaVerbRelation & {
     verbs_verb_relations_target_idToverbs: PrismaVerb | null;
   })[];
@@ -44,7 +47,8 @@ type PrismaEntryWithRelations = {
 
 // Type for Prisma entry with counts
 type PrismaEntryWithCounts = {
-  id: string;
+  id: string | bigint;
+  code: string;
   legacy_id: string;
   gloss: string;
   legal_gloss: string | null;
@@ -55,7 +59,6 @@ type PrismaEntryWithCounts = {
   lemmas: string[];
   src_lemmas: string[];
   particles: string[];
-  frames: string[];
   examples: string[];
   createdAt: Date;
   updatedAt: Date;
@@ -63,7 +66,8 @@ type PrismaEntryWithCounts = {
   flaggedReason: string | null;
   forbidden: boolean | null;
   forbiddenReason: string | null;
-  frame_id: string | null;
+  frame_id: bigint | null;
+  frames: { id: bigint; code: string; frame_name: string } | null;
   vendler_class: 'state' | 'activity' | 'accomplishment' | 'achievement' | null;
   legal_constraints: string[];
   roles?: Array<{
@@ -109,36 +113,31 @@ export async function getEntryById(id: string): Promise<VerbWithRelations | null
   if (!entry) return null;
 
   // Convert Prisma types to our types
-  const entryWithRelations = entry as unknown as {
-    id: bigint;
-    frame_id: bigint | null;
-    verb_relations_verb_relations_source_idToverbs: Array<{
-      source_id: bigint;
-      target_id: bigint;
-      type: string;
-      verbs_verb_relations_target_idToverbs: PrismaVerb;
-    }>;
-    verb_relations_verb_relations_target_idToverbs: Array<{
-      source_id: bigint;
-      target_id: bigint;
-      type: string;
-      verbs_verb_relations_source_idToverbs: PrismaVerb;
-    }>;
-  };
-  
-  // Destructure to exclude BigInt and relation fields from spread
-  const { id: _id, frame_id: _frame_id, verb_relations_verb_relations_source_idToverbs: _sourceRels, verb_relations_verb_relations_target_idToverbs: _targetRels, ...rest } = entryWithRelations;
+  const { id: _id, frame_id: _frame_id, verb_relations_verb_relations_source_idToverbs, verb_relations_verb_relations_target_idToverbs, ...rest } = entry;
   
   return {
     ...rest,
-    id: (entry as { code?: string }).code || entryWithRelations.id.toString(), // Use code as id
-    frame_id: entryWithRelations.frame_id?.toString() ?? null,
+    id: entry.code || entry.id.toString(), // Use code as id
+    legacy_id: entry.legacy_id,
+    gloss: entry.gloss,
+    pos: 'v',
+    lexfile: entry.lexfile,
+    isMwe: entry.is_mwe,
     transitive: entry.transitive || undefined,
+    lemmas: entry.lemmas,
+    src_lemmas: entry.src_lemmas,
+    particles: entry.particles,
+    examples: entry.examples,
+    frame_id: entry.frame_id?.toString() ?? null,
     flagged: entry.flagged ?? undefined,
     flaggedReason: (entry as PrismaEntryWithOptionalFields).flaggedReason || undefined,
     forbidden: entry.forbidden ?? undefined,
     forbiddenReason: (entry as PrismaEntryWithOptionalFields).forbiddenReason || undefined,
-    sourceRelations: entryWithRelations.verb_relations_verb_relations_source_idToverbs.map(rel => ({
+    vendler_class: entry.vendler_class || undefined,
+    legal_constraints: entry.legal_constraints || undefined,
+    createdAt: entry.created_at,
+    updatedAt: entry.updated_at,
+    sourceRelations: verb_relations_verb_relations_source_idToverbs.map(rel => ({
       sourceId: rel.source_id.toString(),
       targetId: rel.target_id.toString(),
       type: rel.type as RelationType,
@@ -153,7 +152,7 @@ export async function getEntryById(id: string): Promise<VerbWithRelations | null
         forbiddenReason: (rel.verbs_verb_relations_target_idToverbs as PrismaEntryWithOptionalFields).forbiddenReason || undefined
       } as unknown as Verb : undefined,
     })),
-    targetRelations: entryWithRelations.verb_relations_verb_relations_target_idToverbs.map(rel => ({
+    targetRelations: verb_relations_verb_relations_target_idToverbs.map(rel => ({
       sourceId: rel.source_id.toString(),
       targetId: rel.target_id.toString(),
       type: rel.type as RelationType,
@@ -333,6 +332,7 @@ export async function getRecipesForEntryInternal(entryId: string): Promise<Entry
       entry_role_label: string | null;
       variable_type_label: string | null;
       constant: unknown;
+      discovered: boolean | null;
     }>>`
       SELECT
         rprb.recipe_predicate_id,
@@ -340,7 +340,8 @@ export async function getRecipesForEntryInternal(entryId: string): Promise<Entry
         prt.label as predicate_role_label,
         lrt.label as entry_role_label,
         pvt.label as variable_type_label,
-        rprb.constant
+        rprb.constant,
+        rprb.discovered
       FROM recipe_predicate_role_bindings rprb
       LEFT JOIN roles pr ON pr.id = rprb.predicate_role_id
       LEFT JOIN role_types prt ON prt.id = pr.role_type_id
@@ -474,6 +475,7 @@ export async function getRecipesForEntryInternal(entryId: string): Promise<Entry
         predicateRoleLabel: m.predicate_role_label,
         bindKind: 'role',
         entryRoleLabel: m.entry_role_label,
+        discovered: m.discovered ?? false,
       });
     } else if (m.variable_type_label) {
       // Role-to-variable binding
@@ -481,6 +483,7 @@ export async function getRecipesForEntryInternal(entryId: string): Promise<Entry
         predicateRoleLabel: m.predicate_role_label,
         bindKind: 'variable',
         variableTypeLabel: m.variable_type_label,
+        discovered: m.discovered ?? false,
       });
     } else if (m.constant !== null && m.constant !== undefined) {
       // Role-to-constant binding
@@ -488,6 +491,7 @@ export async function getRecipesForEntryInternal(entryId: string): Promise<Entry
         predicateRoleLabel: m.predicate_role_label,
         bindKind: 'constant',
         constant: m.constant,
+        discovered: m.discovered ?? false,
       });
     }
   }
@@ -686,36 +690,31 @@ export async function updateEntry(id: string, updates: Partial<Pick<Verb, 'gloss
   revalidateGraphNodeCache();
 
   // Convert Prisma types to our types
-  const entryWithRelations = updatedEntry as unknown as {
-    id: bigint;
-    frame_id: bigint | null;
-    verb_relations_verb_relations_source_idToverbs: Array<{
-      source_id: bigint;
-      target_id: bigint;
-      type: string;
-      verbs_verb_relations_target_idToverbs: PrismaVerb;
-    }>;
-    verb_relations_verb_relations_target_idToverbs: Array<{
-      source_id: bigint;
-      target_id: bigint;
-      type: string;
-      verbs_verb_relations_source_idToverbs: PrismaVerb;
-    }>;
-  };
-  
-  // Destructure to exclude BigInt and relation fields from spread
-  const { id: _id, frame_id: _frame_id, verb_relations_verb_relations_source_idToverbs: _sourceRels, verb_relations_verb_relations_target_idToverbs: _targetRels, ...rest } = entryWithRelations;
+  const { id: _id, frame_id: _frame_id, verb_relations_verb_relations_source_idToverbs, verb_relations_verb_relations_target_idToverbs, ...rest } = updatedEntry;
   
   return {
     ...rest,
-    id: (updatedEntry as { code?: string }).code || entryWithRelations.id.toString(),
-    frame_id: entryWithRelations.frame_id?.toString() ?? null,
+    id: updatedEntry.code || updatedEntry.id.toString(),
+    legacy_id: updatedEntry.legacy_id,
+    gloss: updatedEntry.gloss,
+    pos: 'v',
+    lexfile: updatedEntry.lexfile,
+    isMwe: updatedEntry.is_mwe,
     transitive: updatedEntry.transitive || undefined,
+    lemmas: updatedEntry.lemmas,
+    src_lemmas: updatedEntry.src_lemmas,
+    particles: updatedEntry.particles,
+    examples: updatedEntry.examples,
+    frame_id: updatedEntry.frame_id?.toString() ?? null,
     flagged: updatedEntry.flagged ?? undefined,
     flaggedReason: (updatedEntry as PrismaEntryWithOptionalFields).flaggedReason || undefined,
     forbidden: updatedEntry.forbidden ?? undefined,
     forbiddenReason: (updatedEntry as PrismaEntryWithOptionalFields).forbiddenReason || undefined,
-    sourceRelations: entryWithRelations.verb_relations_verb_relations_source_idToverbs.map(rel => ({
+    vendler_class: updatedEntry.vendler_class || undefined,
+    legal_constraints: updatedEntry.legal_constraints || undefined,
+    createdAt: updatedEntry.created_at,
+    updatedAt: updatedEntry.updated_at,
+    sourceRelations: verb_relations_verb_relations_source_idToverbs.map(rel => ({
       sourceId: rel.source_id.toString(),
       targetId: rel.target_id.toString(),
       type: rel.type as RelationType,
@@ -730,7 +729,7 @@ export async function updateEntry(id: string, updates: Partial<Pick<Verb, 'gloss
         forbiddenReason: (rel.verbs_verb_relations_target_idToverbs as PrismaEntryWithOptionalFields).forbiddenReason || undefined
       } as unknown as Verb : undefined,
       } as VerbRelation)),
-    targetRelations: entryWithRelations.verb_relations_verb_relations_target_idToverbs.map(rel => ({
+    targetRelations: verb_relations_verb_relations_target_idToverbs.map(rel => ({
       sourceId: rel.source_id.toString(),
       targetId: rel.target_id.toString(),
       type: rel.type as RelationType,
@@ -761,7 +760,15 @@ async function updateEntryRoles(entryId: string, roles?: unknown[]) {
       return;
     }
 
-    // Delete existing roles for this entry
+    // First, delete recipe_predicate_role_bindings that reference roles for this entry
+    // This must be done before deleting the roles themselves due to foreign key constraints
+    await prisma.$executeRaw`
+      DELETE FROM recipe_predicate_role_bindings 
+      WHERE predicate_role_id IN (SELECT id FROM roles WHERE verb_id = ${entry.id})
+         OR verb_role_id IN (SELECT id FROM roles WHERE verb_id = ${entry.id})
+    `;
+
+    // Now we can safely delete existing roles for this entry
     await prisma.$executeRaw`
       DELETE FROM roles WHERE verb_id = ${entry.id}
     `;
@@ -1811,14 +1818,13 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
 
   // Transform to TableEntry format
   let data: TableEntry[] = entries.map(entry => {
-    const entryCode = (entry as { code?: string }).code || entry.id;
+    const entryCode = (entry as { code?: string }).code || (typeof entry.id === 'bigint' ? entry.id.toString() : entry.id);
     const frameData = (entry as { frames?: { frame_name: string; code: string } | null; frame_id?: bigint | null }).frames;
     const frameId = (entry as { frame_id?: bigint | null }).frame_id;
     
   // Debug logging for frame mismatch
   if (entryCode === 'say.v.04') {
-    const framesArray = (entry as { frames?: string[] }).frames;
-    console.log(`DEBUG say.v.04: frame_id=${frameId?.toString()}, frame_name=${frameData?.frame_name}, frame_code=${frameData?.code}, frames_array=${JSON.stringify(framesArray)}`);
+    console.log(`DEBUG say.v.04: frame_id=${frameId?.toString()}, frame_name=${frameData?.frame_name}, frame_code=${frameData?.code}`);
   }
     
     const numericId = (entry as unknown as { id?: bigint }).id?.toString() || '';

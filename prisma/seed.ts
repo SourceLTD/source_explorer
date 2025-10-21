@@ -191,7 +191,7 @@ async function main() {
 
   // Insert entries
   for (const entry of entries) {
-    await prisma.lexicalEntry.upsert({
+    await prisma.verbs.upsert({
       where: { code: entry.code }, // Use code for lookup
       update: {},
       create: entry,
@@ -242,12 +242,12 @@ async function main() {
   // Insert relations - convert codes to numeric IDs
   for (const relation of relations) {
     // Get numeric IDs from codes
-    const sourceEntry = await prisma.lexicalEntry.findUnique({
+    const sourceEntry = await prisma.verbs.findUnique({
       where: { code: relation.source },
       select: { id: true }
     });
     
-    const targetEntry = await prisma.lexicalEntry.findUnique({
+    const targetEntry = await prisma.verbs.findUnique({
       where: { code: relation.target },
       select: { id: true }
     });
@@ -257,18 +257,18 @@ async function main() {
       continue;
     }
     
-    await prisma.entryRelation.upsert({
+    await prisma.verb_relations.upsert({
       where: {
-        sourceId_type_targetId: {
-          sourceId: sourceEntry.id,
+        source_id_type_target_id: {
+          source_id: sourceEntry.id,
           type: relation.type,
-          targetId: targetEntry.id,
+          target_id: targetEntry.id,
         },
       },
       update: {},
       create: {
-        sourceId: sourceEntry.id,
-        targetId: targetEntry.id,
+        source_id: sourceEntry.id,
+        target_id: targetEntry.id,
         type: relation.type,
       },
     });

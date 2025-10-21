@@ -11,7 +11,7 @@ interface RecipesGraphProps {
   recipes: Recipe[];
   selectedRecipeId?: string;
   onSelectRecipe: (recipeId: string) => void;
-  onNodeClick: (nodeId: string) => void;
+  onNodeClick: (nodeId: string, recipeId?: string) => void;
 }
 
 const colors = {
@@ -59,7 +59,7 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
     return recipes[0];
   }, [recipes, selectedRecipeId]);
 
-  // Calculate which roles should be greyed out based on preconditions
+  // Calculate which roles should be greyed out based on preconditions (for main node display)
   const greyedOutRoleIds = useMemo(() => {
     if (!activeRecipe || !activeRecipe.preconditions) return new Set<string>();
     
@@ -72,18 +72,6 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
     }
     return greyedIds;
   }, [activeRecipe]);
-
-  // Build a map of role labels that are greyed out (for marking in predicate bindings)
-  const greyedOutRoleLabels = useMemo(() => {
-    if (!currentNode.roles) return new Set<string>();
-    const labels = new Set<string>();
-    currentNode.roles.forEach(role => {
-      if (greyedOutRoleIds.has(role.id)) {
-        labels.add(role.role_type.label);
-      }
-    });
-    return labels;
-  }, [currentNode.roles, greyedOutRoleIds]);
 
   const activeRecipeIndex = useMemo(() => {
     if (!activeRecipe || !recipes || recipes.length === 0) return -1;
@@ -105,6 +93,54 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
   // Helper to get role type info for tooltip
   const getRoleInfo = (roleLabel: string): RoleType | undefined => {
     return roleTypes.find(rt => rt.label === roleLabel);
+  };
+
+  // Handler for clicking predicate nodes with discovered variables
+  const handlePredicateClick = (pred: RecipePredicateNode) => {
+    const verbId = pred.lexical.id;
+    
+    // Check if this predicate has any discovered variable bindings
+    const discoveredBindings = pred.roleMappings.filter(m => m.discovered);
+    
+    if (discoveredBindings.length === 0) {
+      // No discovered variables - just navigate to the verb normally
+      onNodeClick(verbId);
+      return;
+    }
+    
+    // Has discovered variables - navigate immediately, then fetch recipes asynchronously
+    // This prevents the white block delay
+    onNodeClick(verbId);
+    
+    // Asynchronously fetch and find the right recipe
+    (async () => {
+      try {
+        const response = await fetch(`/api/entries/${verbId}/recipes`);
+        if (!response.ok) return;
+        
+        const data = await response.json();
+        const targetRecipes = data.recipes || [];
+        
+        // Find a recipe where at least one of the discovered roles is NOT discovered
+        const discoveredRoleLabels = new Set(discoveredBindings.map(b => b.entryRoleLabel || b.variableTypeLabel).filter(Boolean));
+        
+        const suitableRecipe = targetRecipes.find((recipe: Recipe) => {
+          // Check if any predicates in this recipe have bindings to the discovered roles that are NOT discovered
+          return recipe.predicates.some(p => 
+            p.roleMappings.some(m => 
+              discoveredRoleLabels.has(m.entryRoleLabel || '') && !m.discovered
+            )
+          );
+        });
+        
+        // Update the selected recipe after navigation
+        if (suitableRecipe) {
+          onSelectRecipe(suitableRecipe.id);
+        }
+      } catch (error) {
+        console.error('Error fetching recipes for discovered variable navigation:', error);
+      }
+    })();
   };
 
   const layout = useMemo(() => {
@@ -159,30 +195,62 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
       // Pattern 3: OR root with OR children → nested oneOf groups
       
       if (activeRecipe.logic_root.kind === 'and') {
-        // Standard: AND root with OR children (each OR = oneOf group)
-        for (const child of activeRecipe.logic_root.children) {
-          if (child.kind === 'or') {
-            const predicates = extractPredicates(child);
-            if (predicates.length > 0) {
-              orGroups.push({ node: child, predicates, innerKind: 'or' });
+        // AND root - check if children are OR nodes or direct LEAFs/ANDs
+        const hasOrChildren = activeRecipe.logic_root.children.some(c => c.kind === 'or');
+        
+        if (hasOrChildren) {
+          // Standard pattern: AND root with OR children (each OR = oneOf group)
+          for (const child of activeRecipe.logic_root.children) {
+            if (child.kind === 'or') {
+              const predicates = extractPredicates(child);
+              if (predicates.length > 0) {
+                orGroups.push({ node: child, predicates, innerKind: 'or' });
+              }
             }
           }
-        }
-        needsOuterBorder = false;
-      } else if (activeRecipe.logic_root.kind === 'or') {
-        // Alternate: OR root with children → wrap all in oneOf border
-        for (const child of activeRecipe.logic_root.children) {
-          const predicates = extractPredicates(child);
-          if (predicates.length > 0) {
+          needsOuterBorder = false;
+        } else {
+          // All children are LEAFs or ANDs - group them all together with an 'all' border
+          const allPredicates = activeRecipe.logic_root.children.flatMap(child => extractPredicates(child));
+          if (allPredicates.length > 0) {
             orGroups.push({ 
-              node: child, 
-              predicates,
-              innerKind: child.kind === 'and' ? 'and' : 'or'
+              node: activeRecipe.logic_root, 
+              predicates: allPredicates, 
+              innerKind: 'and'
             });
           }
+          needsOuterBorder = false;
         }
-        needsOuterBorder = activeRecipe.logic_root.children.length > 1;
-        outerBorderKind = 'or';
+      } else if (activeRecipe.logic_root.kind === 'or') {
+        // OR root - check if children are AND nodes or direct LEAFs
+        const hasAndChildren = activeRecipe.logic_root.children.some(c => c.kind === 'and');
+        
+        if (hasAndChildren) {
+          // OR root with AND children (like communicate.v.01) - each AND is a branch in oneOf
+          for (const child of activeRecipe.logic_root.children) {
+            const predicates = extractPredicates(child);
+            if (predicates.length > 0) {
+              orGroups.push({ 
+                node: child, 
+                predicates,
+                innerKind: child.kind === 'and' ? 'and' : 'or'
+              });
+            }
+          }
+          needsOuterBorder = activeRecipe.logic_root.children.length > 1;
+          outerBorderKind = 'or';
+        } else {
+          // All children are LEAFs - group them all together in one 'oneOf' border
+          const allPredicates = activeRecipe.logic_root.children.flatMap(child => extractPredicates(child));
+          if (allPredicates.length > 0) {
+            orGroups.push({ 
+              node: activeRecipe.logic_root, 
+              predicates: allPredicates, 
+              innerKind: 'or'
+            });
+          }
+          needsOuterBorder = false;
+        }
       } else {
         // Single leaf or NOT at root (edge case)
         const predicates = extractPredicates(activeRecipe.logic_root);
@@ -482,12 +550,43 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
     }
 
     const height = nodes.reduce((h, n) => Math.max(h, n.y + n.height / 2 + margin), centerY + currentNodeHeight / 2 + margin);
+    
+    console.log('[RecipesGraph] Layout:', {
+      nodes: nodes.length,
+      predicateNodes: nodes.filter(n => n.type === 'predicate').length,
+      edges: edges.length,
+      groups: groups.length,
+      hasOuterBorder: !!outerBorder,
+      height
+    });
+    
     return { width, height, nodes, edges, groups, outerBorder };
   }, [currentNode, activeRecipe, lemmasExpanded, examplesExpanded, rolesExpanded, legalConstraintsExpanded, causesExpanded, entailsExpanded, alsoSeeExpanded]);
 
+  // Show a loading state if recipes haven't loaded yet
+  if (!recipes || recipes.length === 0) {
+    console.log('[RecipesGraph] Early return: No recipes');
+    return (
+      <div className="w-full h-full flex items-center justify-center">
+        <div className="text-gray-500">No recipes available for this verb</div>
+      </div>
+    );
+  }
+
+  if (!activeRecipe) {
+    console.log('[RecipesGraph] Early return: No active recipe');
+    return (
+      <div className="w-full h-full flex items-center justify-center">
+        <div className="text-gray-500">Loading recipe...</div>
+      </div>
+    );
+  }
+  
+  console.log('[RecipesGraph] Rendering recipe:', { recipeId: activeRecipe.id, label: activeRecipe.label });
+
   return (
     <div className="w-full h-full flex items-start justify-center pt-4">
-      <svg width={layout.width} height={layout.height}>
+      <svg width={layout.width} height={layout.height} style={{ backgroundColor: 'transparent' }}>
         <LinearGradient id="recipes-link-gradient" from={colors.link} to={colors.link} />
         <defs>
           <marker id="arrow" markerWidth="12" markerHeight="12" refX="11" refY="6" orient="auto" markerUnits="userSpaceOnUse">
@@ -505,7 +604,6 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
             </feMerge>
           </filter>
         </defs>
-        <rect width={layout.width} height={layout.height} rx={14} fill={colors.background} stroke="none" />
 
         {/* Recipe toggle under main node */}
         {recipes && recipes.length > 1 && (() => {
@@ -726,7 +824,7 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
                   strokeDasharray={isNegated ? '5,5' : undefined}
                   rx={6}
                   ry={6}
-                  onClick={() => onNodeClick(pred.lexical.id)}
+                  onClick={() => handlePredicateClick(pred)}
                   filter={isHovered ? 'url(#drop-shadow)' : undefined}
                   style={{ transition: 'filter 0.2s ease-in-out' }}
                 />
@@ -755,15 +853,12 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
                         
                         let targetDisplay = '';
                         let targetDescription = '';
-                        
-                        let isTargetGreyedOut = false;
+                        const isDiscovered = m.discovered ?? false;
                         
                         if (m.bindKind === 'role' && m.entryRoleLabel) {
                           const entryRoleInfo = getRoleInfo(m.entryRoleLabel);
                           targetDisplay = m.entryRoleLabel;
                           targetDescription = entryRoleInfo?.generic_description || 'No description';
-                          // Check if this target role is greyed out
-                          isTargetGreyedOut = greyedOutRoleLabels.has(m.entryRoleLabel);
                         } else if (m.bindKind === 'variable' && m.variableTypeLabel) {
                           targetDisplay = `[${m.variableTypeLabel}]`;
                           targetDescription = 'Variable binding';
@@ -772,23 +867,23 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
                           targetDescription = 'Constant binding';
                         }
                         
-                        const tooltip = `${m.predicateRoleLabel}: ${predicateRoleInfo?.generic_description || 'No description'} \n= ${targetDisplay}: ${targetDescription}${isTargetGreyedOut ? ' (must be NULL)' : ''}`;
+                        const tooltip = `${m.predicateRoleLabel}: ${predicateRoleInfo?.generic_description || 'No description'} \n= ${targetDisplay}: ${targetDescription}${isDiscovered ? ' (discovered variable - must be NULL)' : ''}`;
                         
                         return (
                           <text key={i} x={centerX + 10} y={y} fontSize={11} fontFamily="Arial" textAnchor="start" fill="white">
                             <title>{tooltip}</title>
                             <tspan fontWeight="bold">{m.predicateRoleLabel}</tspan>
                             <tspan> = </tspan>
-                            {isTargetGreyedOut && <tspan fontSize={10}>🕵🏼 </tspan>}
-                            {isTargetGreyedOut && <tspan>(</tspan>}
+                            {isDiscovered && <tspan fontSize={10}>🕵🏼 </tspan>}
+                            {isDiscovered && <tspan>(</tspan>}
                             <tspan 
                               fontWeight="500" 
-                              fontStyle={m.bindKind !== 'role' || isTargetGreyedOut ? 'italic' : 'normal'}
-                              opacity={isTargetGreyedOut ? 0.6 : 1}
+                              fontStyle={m.bindKind !== 'role' || isDiscovered ? 'italic' : 'normal'}
+                              opacity={isDiscovered ? 0.6 : 1}
                             >
                               {targetDisplay}
                             </tspan>
-                            {isTargetGreyedOut && <tspan>)</tspan>}
+                            {isDiscovered && <tspan>)</tspan>}
                           </text>
                         );
                       })}

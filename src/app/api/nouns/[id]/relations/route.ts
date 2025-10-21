@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getNounById } from '@/lib/db';
+import { getEntryById } from '@/lib/db';
 import { handleDatabaseError } from '@/lib/db-utils';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const entry = await getNounById(params.id);
+    const { id } = await params;
+    const entry = await getEntryById(id);
     
     if (!entry) {
       return NextResponse.json(
@@ -21,7 +22,8 @@ export async function GET(
       targetRelations: entry.targetRelations
     });
   } catch (error) {
-    const { message, status } = handleDatabaseError(error, `GET /api/nouns/${params.id}/relations`);
+    const { id } = await params;
+    const { message, status } = handleDatabaseError(error, `GET /api/nouns/${id}/relations`);
     return NextResponse.json({ error: message }, { status });
   }
 }

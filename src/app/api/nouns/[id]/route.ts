@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getNounById, updateNoun } from '@/lib/db';
+import { getEntryById, updateEntry } from '@/lib/db';
 import { handleDatabaseError } from '@/lib/db-utils';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const entry = await getNounById(params.id);
+    const { id } = await params;
+    const entry = await getEntryById(id);
     
     if (!entry) {
       return NextResponse.json(
@@ -18,18 +19,20 @@ export async function GET(
     
     return NextResponse.json(entry);
   } catch (error) {
-    const { message, status } = handleDatabaseError(error, `GET /api/nouns/${params.id}`);
+    const { id } = await params;
+    const { message, status } = handleDatabaseError(error, `GET /api/nouns/${id}`);
     return NextResponse.json({ error: message }, { status });
   }
 }
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const body = await request.json();
-    const updatedEntry = await updateNoun(params.id, body);
+    const updatedEntry = await updateEntry(id, body);
     
     if (!updatedEntry) {
       return NextResponse.json(
@@ -40,7 +43,8 @@ export async function PATCH(
     
     return NextResponse.json(updatedEntry);
   } catch (error) {
-    const { message, status } = handleDatabaseError(error, `PATCH /api/nouns/${params.id}`);
+    const { id } = await params;
+    const { message, status } = handleDatabaseError(error, `PATCH /api/nouns/${id}`);
     return NextResponse.json({ error: message }, { status });
   }
 }

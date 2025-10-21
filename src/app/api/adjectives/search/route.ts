@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { searchAdjectives } from '@/lib/db';
+import { searchEntries } from '@/lib/db';
 import { handleDatabaseError } from '@/lib/db-utils';
 
 export async function GET(request: NextRequest) {
@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const results = await searchAdjectives(query, limit);
+    const results = await searchEntries(query, limit);
     return NextResponse.json(results);
   } catch (error) {
     const { message, status, shouldRetry } = handleDatabaseError(error, 'GET /api/adjectives/search');

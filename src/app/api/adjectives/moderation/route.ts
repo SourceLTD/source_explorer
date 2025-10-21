@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { updateAdjectiveModerationStatus } from '@/lib/db';
+import { updateModerationStatus } from '@/lib/db';
 import { handleDatabaseError } from '@/lib/db-utils';
 
 export async function PATCH(request: NextRequest) {
@@ -21,7 +21,7 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    const count = await updateAdjectiveModerationStatus(ids, updates);
+    const count = await updateModerationStatus(ids, updates);
     
     return NextResponse.json({ 
       success: true,

@@ -152,16 +152,6 @@ function EntryCard({ entry }: { entry: Verb }) {
         </div>
       )}
       
-      {entry.frames.length > 0 && (
-        <div className="mb-2">
-          <span className="text-sm font-medium text-gray-600">Frames: </span>
-          <span className="text-sm text-gray-700">
-            {entry.frames.slice(0, 2).join(', ')}
-            {entry.frames.length > 2 && ` +${entry.frames.length - 2} more`}
-          </span>
-        </div>
-      )}
-      
       <div className="text-xs text-gray-500 mt-2">
         ID: {entry.id} | Lexfile: {entry.lexfile}
       </div>

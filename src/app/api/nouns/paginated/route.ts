@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPaginatedNouns } from '@/lib/db';
+import { getPaginatedEntries } from '@/lib/db';
 import { handleDatabaseError } from '@/lib/db-utils';
 import type { PaginationParams } from '@/lib/types';
 
@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
       updatedBefore: searchParams.get('updatedBefore') || undefined,
     };
 
-    const result = await getPaginatedNouns(params);
+    const result = await getPaginatedEntries(params);
     return NextResponse.json(result);
   } catch (error) {
     const { message, status } = handleDatabaseError(error, 'GET /api/nouns/paginated');

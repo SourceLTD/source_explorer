@@ -148,11 +148,12 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
     }
   };
 
-  const handleNodeClick = (nodeId: string) => {
+  const handleNodeClick = (nodeId: string, recipeId?: string) => {
     // Reset the ref to allow loading the new node
     lastLoadedEntryRef.current = null;
     updateUrlParam(nodeId);
-    setSelectedRecipeId(undefined);
+    // If a specific recipe ID is provided (e.g., for discovered variables), select it
+    setSelectedRecipeId(recipeId);
   };
 
   const handleSearchResult = (result: SearchResult) => {

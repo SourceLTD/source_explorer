@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getNounGraphNode } from '@/lib/db';
+import { getGraphNode } from '@/lib/db';
 import { handleDatabaseError } from '@/lib/db-utils';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const node = await getNounGraphNode(params.id);
+    const { id } = await params;
+    const node = await getGraphNode(id);
     
     if (!node) {
       return NextResponse.json(
@@ -18,7 +19,8 @@ export async function GET(
     
     return NextResponse.json(node);
   } catch (error) {
-    const { message, status } = handleDatabaseError(error, `GET /api/nouns/${params.id}/graph`);
+    const { id } = await params;
+    const { message, status } = handleDatabaseError(error, `GET /api/nouns/${id}/graph`);
     return NextResponse.json({ error: message }, { status });
   }
 }
