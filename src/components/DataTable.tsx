@@ -847,7 +847,10 @@ export default function DataTable({ onRowClick, searchQuery, className, mode = '
           <div 
             className="text-sm text-gray-900 cursor-text hover:bg-blue-50 px-2 py-1 rounded transition-colors" 
             title={`Double-click to edit\n\n${entry.gloss}`}
-            onDoubleClick={() => handleStartEdit(entry.id, 'gloss', entry.gloss)}
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              handleStartEdit(entry.id, 'gloss', entry.gloss);
+            }}
           >
             {truncateText(entry.gloss, 150)}
           </div>
@@ -1368,16 +1371,16 @@ export default function DataTable({ onRowClick, searchQuery, className, mode = '
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto relative">
+      <div className="overflow-x-auto relative max-h-[calc(100vh-300px)] overflow-y-auto">
         {loading && (
           <div className="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center z-10">
             <div className="animate-spin h-8 w-8 border-2 border-gray-300 border-t-blue-600 rounded-full"></div>
           </div>
         )}
         <table className="w-full" style={{ tableLayout: 'fixed' }}>
-          <thead className="bg-gray-50 border-b border-gray-200">
+          <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-20">
             <tr>
-              <th className="px-4 py-3 text-left w-12" style={{ width: '48px' }}>
+              <th className="px-4 py-3 text-left w-12 bg-gray-50" style={{ width: '48px' }}>
                 <input
                   type="checkbox"
                   checked={selection.selectAll}
@@ -1388,7 +1391,7 @@ export default function DataTable({ onRowClick, searchQuery, className, mode = '
               {visibleColumns.map((column) => (
                 <th 
                   key={column.key}
-                  className="relative px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-r border-gray-200"
+                  className="relative px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-r border-gray-200 bg-gray-50"
                   style={{ width: getColumnWidth(column.key), minWidth: '50px' }}
               >
                 <div 
@@ -1418,6 +1421,10 @@ export default function DataTable({ onRowClick, searchQuery, className, mode = '
                 className={`${getRowBackgroundColor(entry, isSelected)} ${isSelected ? 'bg-blue-50' : ''}`}
                 style={getRowInlineStyles(entry, isSelected)}
                 onContextMenu={(e) => handleContextMenu(e, entry.id)}
+                onDoubleClick={(e) => {
+                  e.preventDefault();
+                  handleSelectRow(entry.id);
+                }}
               >
                 <td className="px-4 py-4 whitespace-nowrap w-12" style={{ width: '48px' }}>
                   <input
