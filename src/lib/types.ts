@@ -414,11 +414,12 @@ export interface RecipePredicateRoleMapping {
   entryRoleLabel?: string;
   // For role-to-variable bindings
   variableTypeLabel?: string;
+  variableKey?: string; // Key from recipe_variables
   // For role-to-constant bindings
   constant?: unknown;
   // Indicates this is a discovered variable (role must be NULL)
   discovered?: boolean;
-  // Noun code for noun-based bindings
+  // Noun code for noun-based bindings (from recipe_variables.noun_id)
   nounCode?: string;
 }
 
@@ -471,6 +472,16 @@ export interface RecipePrecondition {
   error_message?: string | null;
 }
 
+export interface RecipeVariable {
+  id: string;
+  key: string;
+  predicate_variable_type_label?: string | null;
+  noun_id?: string | null;
+  noun_code?: string | null;
+  noun_gloss?: string | null;
+  default_value?: unknown;
+}
+
 export interface Recipe {
   id: string;
   label?: string | null;
@@ -480,6 +491,7 @@ export interface Recipe {
   predicate_groups: PredicateGroup[]; // Kept for backwards compatibility during transition
   relations: RecipePredicateEdge[];
   preconditions: RecipePrecondition[];
+  variables: RecipeVariable[];
   // New: logic tree root
   logic_root?: LogicNode | null;
 }

@@ -300,8 +300,13 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
         needsOuterBorder = false;
       }
       
+      // Calculate space needed for recipe toggle
+      const recipeToggleHeight = recipes.length > 1 ? 35 : 0;
+      const baseSpacing = 40; // Base spacing below main node
+      
       // Arrange predicates in grid below, centered
-      const predicateTop = centerY + currentNodeHeight / 2 + 80;
+      // Position predicates below: main node + toggle + spacing
+      const predicateTop = centerY + currentNodeHeight / 2 + baseSpacing + recipeToggleHeight + 40;
       const predicateHeight = 160;
       const horizontalGap = 120;
       const verticalGap = 160;
@@ -431,8 +436,13 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
       // FALLBACK: Render predicates even without logic_root or predicate_groups
       // This handles recipes created before migration or with incomplete logic trees
       
+      // Calculate space needed for recipe toggle
+      const recipeToggleHeight = recipes.length > 1 ? 35 : 0;
+      const baseSpacing = 40; // Base spacing below main node
+      
       // Arrange predicates in grid below, centered
-      const predicateTop = centerY + currentNodeHeight / 2 + 80;
+      // Position predicates below: main node + toggle + spacing
+      const predicateTop = centerY + currentNodeHeight / 2 + baseSpacing + recipeToggleHeight + 40;
       const predicateHeight = 160;
       const horizontalGap = 120;
       const verticalGap = 160;
@@ -592,6 +602,7 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
       console.log(`[RecipesGraph] No outer border needed: needsOuterBorder=${needsOuterBorder}, root.kind=${activeRecipe.logic_root.kind}, children=${activeRecipe.logic_root.children.length}`);
     }
 
+    // Calculate height
     const height = nodes.reduce((h, n) => Math.max(h, n.y + n.height / 2 + margin), centerY + currentNodeHeight / 2 + margin);
     
     console.log('[RecipesGraph] Layout:', {
@@ -604,7 +615,7 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
     });
     
     return { width, height, nodes, edges, groups, outerBorder };
-  }, [currentNode, activeRecipe, lemmasExpanded, examplesExpanded, rolesExpanded, legalConstraintsExpanded, causesExpanded, entailsExpanded, alsoSeeExpanded]);
+  }, [currentNode, activeRecipe, lemmasExpanded, examplesExpanded, rolesExpanded, legalConstraintsExpanded, causesExpanded, entailsExpanded, alsoSeeExpanded, recipes]);
 
   // Show a loading state if recipes haven't loaded yet
   if (!recipes || recipes.length === 0) {
@@ -894,50 +905,10 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
                   const baseY = centerY + 70;
                   const lineHeight = 14;
                   
-                  // Expand mappings to include noun bindings as separate lines
-                  const expandedMappings: Array<{ type: 'binding' | 'noun'; mapping: typeof pred.roleMappings[0] }> = [];
-                  for (const m of pred.roleMappings) {
-                    expandedMappings.push({ type: 'binding', mapping: m });
-                    // If this binding has a noun, add it as a separate line
-                    if (m.nounCode) {
-                      expandedMappings.push({ type: 'noun', mapping: m });
-                    }
-                  }
-                  
                   return (
                     <>
-                      {expandedMappings.map((item, i) => {
+                      {pred.roleMappings.map((m, i) => {
                         const y = baseY + i * lineHeight;
-                        const m = item.mapping;
-                        
-                        if (item.type === 'noun') {
-                          // Display noun code as a blue, clickable link
-                          return (
-                            <g key={`${i}-noun`}>
-                              <text x={centerX + 10} y={y} fontSize={11} fontFamily="Arial" textAnchor="start" fill="white">
-                                <tspan fontWeight="bold">{m.predicateRoleLabel}</tspan>
-                                <tspan> = </tspan>
-                              </text>
-                              <text 
-                                x={centerX + 10 + (m.predicateRoleLabel.length + 3) * 6.5} 
-                                y={y} 
-                                fontSize={11} 
-                                fontFamily="Arial" 
-                                textAnchor="start" 
-                                fill="#60a5fa"
-                                fontWeight="500"
-                                style={{ cursor: 'pointer', textDecoration: 'underline' }}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  window.location.href = `/graph/nouns?entry=${m.nounCode}`;
-                                }}
-                              >
-                                <title>Click to view noun: {m.nounCode}</title>
-                                <tspan>{m.nounCode}</tspan>
-                              </text>
-                            </g>
-                          );
-                        }
                         
                         // Regular binding display
                         const predicateRoleInfo = getRoleInfo(m.predicateRoleLabel);
@@ -945,14 +916,24 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
                         let targetDisplay = '';
                         let targetDescription = '';
                         const isDiscovered = m.discovered ?? false;
+                        const isVariable = m.bindKind === 'variable' && m.variableKey; // Show special styling for variables with keys
                         
                         if (m.bindKind === 'role' && m.entryRoleLabel) {
                           const entryRoleInfo = getRoleInfo(m.entryRoleLabel);
                           targetDisplay = m.entryRoleLabel;
                           targetDescription = entryRoleInfo?.generic_description || 'No description';
-                        } else if (m.bindKind === 'variable' && m.variableTypeLabel) {
-                          targetDisplay = `[${m.variableTypeLabel}]`;
-                          targetDescription = 'Variable binding';
+                        } else if (m.bindKind === 'variable') {
+                          // Show variable key if available, otherwise show variable type label
+                          if (m.variableKey) {
+                            targetDisplay = `$${m.variableKey}`;
+                            targetDescription = m.variableTypeLabel ? `Variable: ${m.variableTypeLabel}` : 'Variable binding';
+                          } else if (m.variableTypeLabel) {
+                            targetDisplay = `[${m.variableTypeLabel}]`;
+                            targetDescription = 'Variable binding';
+                          } else {
+                            targetDisplay = '[variable]';
+                            targetDescription = 'Variable binding';
+                          }
                         } else if (m.bindKind === 'constant') {
                           targetDisplay = '[constant]';
                           targetDescription = 'Constant binding';
@@ -965,16 +946,16 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
                             <title>{tooltip}</title>
                             <tspan fontWeight="bold">{m.predicateRoleLabel}</tspan>
                             <tspan> = </tspan>
-                            {isDiscovered && <tspan fontSize={10}>🕵🏼 </tspan>}
-                            {isDiscovered && <tspan>(</tspan>}
+                            {isVariable && <tspan fontSize={10}>🕵🏼 </tspan>}
+                            {isVariable && <tspan>(</tspan>}
                             <tspan 
                               fontWeight="500" 
-                              fontStyle={m.bindKind !== 'role' || isDiscovered ? 'italic' : 'normal'}
-                              opacity={isDiscovered ? 0.6 : 1}
+                              fontStyle={isVariable ? 'italic' : (m.bindKind !== 'role' ? 'italic' : 'normal')}
+                              opacity={isVariable ? 0.6 : 1}
                             >
                               {targetDisplay}
                             </tspan>
-                            {isDiscovered && <tspan>)</tspan>}
+                            {isVariable && <tspan>)</tspan>}
                           </text>
                         );
                       })}

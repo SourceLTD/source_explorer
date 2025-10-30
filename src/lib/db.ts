@@ -333,6 +333,7 @@ export async function getRecipesForEntryInternal(entryId: string): Promise<Entry
       predicate_role_label: string | null;
       entry_role_label: string | null;
       variable_type_label: string | null;
+      variable_key: string | null;
       constant: unknown;
       discovered: boolean | null;
       noun_code: string | null;
@@ -343,6 +344,7 @@ export async function getRecipesForEntryInternal(entryId: string): Promise<Entry
         prt.label as predicate_role_label,
         lrt.label as entry_role_label,
         pvt.label as variable_type_label,
+        rv.key as variable_key,
         rprb.constant,
         rprb.discovered,
         n.code as noun_code
@@ -352,7 +354,8 @@ export async function getRecipesForEntryInternal(entryId: string): Promise<Entry
       LEFT JOIN roles lr ON lr.id = rprb.verb_role_id
       LEFT JOIN role_types lrt ON lrt.id = lr.role_type_id
       LEFT JOIN predicate_variable_types pvt ON pvt.id = rprb.predicate_variable_type_id
-      LEFT JOIN nouns n ON n.id = rprb.noun_id
+      LEFT JOIN recipe_variables rv ON rv.id = rprb.variable_id
+      LEFT JOIN nouns n ON n.id = rv.noun_id
       WHERE rprb.recipe_predicate_id IN (
         SELECT id FROM recipe_predicates WHERE recipe_id = ANY(${recipeIds}::bigint[])
       )
@@ -446,6 +449,37 @@ export async function getRecipesForEntryInternal(entryId: string): Promise<Entry
     `getRecipesForEntry:preconditions(${entryId})`
   );
 
+  // Fetch recipe variables
+  const recipeVariables = await withRetry(
+    () => prisma.$queryRaw<Array<{
+      id: bigint;
+      recipe_id: bigint;
+      key: string;
+      predicate_variable_type_label: string | null;
+      noun_id: bigint | null;
+      noun_code: string | null;
+      noun_gloss: string | null;
+      default_value: unknown;
+    }>>`
+      SELECT
+        rv.id,
+        rv.recipe_id,
+        rv.key,
+        pvt.label as predicate_variable_type_label,
+        rv.noun_id,
+        n.code as noun_code,
+        n.gloss as noun_gloss,
+        rv.default_value
+      FROM recipe_variables rv
+      LEFT JOIN predicate_variable_types pvt ON pvt.id = rv.predicate_variable_type_id
+      LEFT JOIN nouns n ON n.id = rv.noun_id
+      WHERE rv.recipe_id = ANY(${recipeIds}::bigint[])
+      ORDER BY rv.key ASC
+    `,
+    undefined,
+    `getRecipesForEntry:variables(${entryId})`
+  );
+
   // Group data into recipe structures
   const byRecipeId: Record<string, Recipe> = {};
   for (const r of recipes) {
@@ -458,6 +492,7 @@ export async function getRecipesForEntryInternal(entryId: string): Promise<Entry
       predicate_groups: [], // Deprecated but kept for backwards compatibility
       relations: [],
       preconditions: [],
+      variables: [],
       logic_root: null,
     };
   }
@@ -486,13 +521,17 @@ export async function getRecipesForEntryInternal(entryId: string): Promise<Entry
       if (m.noun_code) {
         mapping.nounCode = m.noun_code;
       }
+      if (m.variable_key) {
+        mapping.variableKey = m.variable_key;
+      }
       array.push(mapping);
-    } else if (m.variable_type_label) {
+    } else if (m.variable_type_label || m.variable_key) {
       // Role-to-variable binding
       const mapping: RecipePredicateRoleMapping = {
         predicateRoleLabel: m.predicate_role_label,
         bindKind: 'variable',
-        variableTypeLabel: m.variable_type_label,
+        variableTypeLabel: m.variable_type_label || undefined,
+        variableKey: m.variable_key || undefined,
         discovered: m.discovered ?? false,
       };
       if (m.noun_code) {
@@ -513,6 +552,9 @@ export async function getRecipesForEntryInternal(entryId: string): Promise<Entry
       // Add noun code if present (noun constants)
       if (m.noun_code) {
         mapping.nounCode = m.noun_code;
+      }
+      if (m.variable_key) {
+        mapping.variableKey = m.variable_key;
       }
       array.push(mapping);
     }
@@ -578,6 +620,21 @@ export async function getRecipesForEntryInternal(entryId: string): Promise<Entry
       condition_params: pc.condition_params,
       description: pc.description,
       error_message: pc.error_message,
+    });
+  }
+
+  // Add variables to recipes
+  for (const rv of recipeVariables) {
+    const recipe = byRecipeId[rv.recipe_id.toString()];
+    if (!recipe) continue;
+    recipe.variables.push({
+      id: rv.id.toString(),
+      key: rv.key,
+      predicate_variable_type_label: rv.predicate_variable_type_label,
+      noun_id: rv.noun_id?.toString() || null,
+      noun_code: rv.noun_code,
+      noun_gloss: rv.noun_gloss,
+      default_value: rv.default_value,
     });
   }
 
