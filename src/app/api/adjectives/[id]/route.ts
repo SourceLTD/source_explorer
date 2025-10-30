@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getEntryById, updateEntry } from '@/lib/db';
+import { getEntryById, updateEntry, deleteEntry } from '@/lib/db';
 import { handleDatabaseError } from '@/lib/db-utils';
 
 export async function GET(
@@ -45,6 +45,38 @@ export async function PATCH(
   } catch (error) {
     const { id } = await params;
     const { message, status } = handleDatabaseError(error, `PATCH /api/adjectives/${id}`);
+    return NextResponse.json({ error: message }, { status });
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const deletedEntry = await deleteEntry(id);
+    
+    if (!deletedEntry) {
+      return NextResponse.json(
+        { error: 'Adjective not found' },
+        { status: 404 }
+      );
+    }
+    
+    return NextResponse.json({ 
+      success: true, 
+      message: `Adjective ${id} deleted successfully`,
+      deletedEntry 
+    }, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+        'Pragma': 'no-cache',
+      },
+    });
+  } catch (error) {
+    const { id } = await params;
+    const { message, status } = handleDatabaseError(error, `DELETE /api/adjectives/${id}`);
     return NextResponse.json({ error: message }, { status });
   }
 }

@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { updateModerationStatus } from '@/lib/db';
 
+// Force dynamic rendering - no static optimization
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json();
@@ -30,6 +34,11 @@ export async function PATCH(request: NextRequest) {
       success: true, 
       updatedCount,
       message: `Updated ${updatedCount} entries` 
+    }, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+        'Pragma': 'no-cache',
+      },
     });
   } catch (error) {
     console.error('Error updating moderation status:', error);

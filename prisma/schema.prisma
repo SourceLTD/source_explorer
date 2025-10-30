@@ -14,6 +14,7 @@ model frame_roles {
   id           BigInt     @id @default(autoincrement())
   frame_id     BigInt
   role_type_id BigInt
+  description  String?
   frames       frames     @relation(fields: [frame_id], references: [id], onDelete: Cascade)
   role_types   role_types @relation(fields: [role_type_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
@@ -22,20 +23,21 @@ model frame_roles {
 }
 
 model frames {
-  framebank_id                   String        @unique
-  frame_name                     String
-  definition                     String
-  prototypical_synset            String
-  prototypical_synset_definition String
-  short_definition               String
-  is_supporting_frame            Boolean       @default(false)
-  created_at                     DateTime      @default(now())
-  updated_at                     DateTime      @default(now())
-  communication                  Boolean?
-  id                             BigInt        @id @default(autoincrement())
-  code                           String        @unique(map: "frames_code_unique") @db.VarChar
-  frame_roles                    frame_roles[]
-  verbs                          verbs[]
+  framebank_id                           String        @unique
+  frame_name                             String
+  definition                             String
+  prototypical_synset                    String
+  prototypical_synset_definition         String
+  short_definition                       String
+  is_supporting_frame                    Boolean       @default(false)
+  created_at                             DateTime      @default(now())
+  updated_at                             DateTime      @default(now())
+  communication                          Boolean?
+  id                                     BigInt        @id @default(autoincrement())
+  code                                   String        @unique(map: "frames_code_unique") @db.VarChar
+  frame_roles                            frame_roles[]
+  verbs                                  verbs[]
+  verbs_verbs_secondary_frame_idToframes verbs[]       @relation("verbs_secondary_frame_idToframes")
 
   @@index([framebank_id], map: "idx_framebank_id")
   @@index([frame_name], map: "idx_frames_frame_name")
@@ -116,12 +118,15 @@ model recipe_predicate_role_bindings {
   verb_role_id                                                  BigInt?
   predicate_variable_type_id                                    BigInt?
   discovered                                                    Boolean?                  @default(false)
+  noun_id                                                       BigInt?
+  nouns                                                         nouns?                    @relation(fields: [noun_id], references: [id], map: "fk_recipe_predicate_role_bindings_noun")
   roles_recipe_predicate_role_bindings_predicate_role_idToroles roles                     @relation("recipe_predicate_role_bindings_predicate_role_idToroles", fields: [predicate_role_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   predicate_variable_types                                      predicate_variable_types? @relation(fields: [predicate_variable_type_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   recipe_predicates                                             recipe_predicates         @relation(fields: [recipe_predicate_id], references: [id], onDelete: Cascade)
   roles_recipe_predicate_role_bindings_verb_role_idToroles      roles?                    @relation("recipe_predicate_role_bindings_verb_role_idToroles", fields: [verb_role_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@unique([recipe_predicate_id, predicate_role_id], map: "uq_recipe_predicate_role_binding")
+  @@index([noun_id], map: "idx_recipe_predicate_role_bindings_noun_id")
 }
 
 model recipe_predicates {
@@ -302,32 +307,33 @@ model noun_relations {
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model nouns {
-  id                                             BigInt                   @id @default(autoincrement())
-  code                                           String                   @unique @db.VarChar
+  id                                             BigInt                           @id @default(autoincrement())
+  code                                           String                           @unique @db.VarChar
   legacy_id                                      String
-  lemmas                                         String[]                 @default([])
-  src_lemmas                                     String[]                 @default([])
+  lemmas                                         String[]                         @default([])
+  src_lemmas                                     String[]                         @default([])
   gloss                                          String
   lexfile                                        String
-  examples                                       String[]                 @default([])
-  is_mwe                                         Boolean                  @default(false)
+  examples                                       String[]                         @default([])
+  is_mwe                                         Boolean                          @default(false)
   countable                                      Boolean?
-  proper                                         Boolean?                 @default(false)
-  collective                                     Boolean?                 @default(false)
-  concrete                                       Boolean?                 @default(false)
-  predicate                                      Boolean?                 @default(false)
+  proper                                         Boolean?                         @default(false)
+  collective                                     Boolean?                         @default(false)
+  concrete                                       Boolean?                         @default(false)
+  predicate                                      Boolean?                         @default(false)
   gloss_tsv                                      Unsupported("tsvector")?
   examples_tsv                                   Unsupported("tsvector")?
-  flagged                                        Boolean?                 @default(false)
+  flagged                                        Boolean?                         @default(false)
   flagged_reason                                 String?
-  forbidden                                      Boolean?                 @default(false)
+  forbidden                                      Boolean?                         @default(false)
   forbidden_reason                               String?
   legal_gloss                                    String?
   legal_constraints                              String[]
-  created_at                                     DateTime                 @default(now()) @db.Timestamp(6)
-  updated_at                                     DateTime                 @default(now()) @db.Timestamp(6)
-  noun_relations_noun_relations_source_idTonouns noun_relations[]         @relation("noun_relations_source_idTonouns")
-  noun_relations_noun_relations_target_idTonouns noun_relations[]         @relation("noun_relations_target_idTonouns")
+  created_at                                     DateTime                         @default(now()) @db.Timestamp(6)
+  updated_at                                     DateTime                         @default(now()) @db.Timestamp(6)
+  noun_relations_noun_relations_source_idTonouns noun_relations[]                 @relation("noun_relations_source_idTonouns")
+  noun_relations_noun_relations_target_idTonouns noun_relations[]                 @relation("noun_relations_target_idTonouns")
+  recipe_predicate_role_bindings                 recipe_predicate_role_bindings[]
 
   @@index([collective], map: "idx_nouns_collective")
   @@index([concrete], map: "idx_nouns_concrete")
@@ -369,6 +375,8 @@ model verbs {
   id                                             BigInt                   @id(map: "lexical_entries_pkey") @default(autoincrement())
   code                                           String                   @unique(map: "lexical_entries_code_unique") @db.VarChar
   frame_id                                       BigInt?
+  merged_from                                    String[]
+  secondary_frame_id                             BigInt?
   recipe_predicates                              recipe_predicates[]
   recipes                                        recipes[]
   role_groups                                    role_groups[]
@@ -376,6 +384,7 @@ model verbs {
   verb_relations_verb_relations_source_idToverbs verb_relations[]         @relation("verb_relations_source_idToverbs")
   verb_relations_verb_relations_target_idToverbs verb_relations[]         @relation("verb_relations_target_idToverbs")
   frames                                         frames?                  @relation(fields: [frame_id], references: [id], map: "lexical_entries_frame_id_fkey")
+  frames_verbs_secondary_frame_idToframes        frames?                  @relation("verbs_secondary_frame_idToframes", fields: [secondary_frame_id], references: [id])
 
   @@unique([id, frame_id], map: "uq_lex_entry_id_frame")
   @@index([examples_tsv], map: "idx_lex_examples_tsv", type: Gin)
@@ -453,6 +462,7 @@ enum RelationType {
   precedes
   during
   enables
+  do_again
 
   @@map("relation_type")
 }

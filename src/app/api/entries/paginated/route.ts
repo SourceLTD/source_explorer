@@ -19,6 +19,9 @@ export async function GET(request: NextRequest) {
   if (sortBy === 'src_id') {
     sortBy = 'legacy_id';
   }
+  if (sortBy === 'frame') {
+    sortBy = 'frame_id';
+  }
   
   const params: PaginationParams = {
     page: searchParams.get('page') ? parseInt(searchParams.get('page')!, 10) : 1,

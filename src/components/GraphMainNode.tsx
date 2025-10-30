@@ -9,6 +9,7 @@ interface GraphMainNodeProps {
   x: number;
   y: number;
   onNodeClick: (nodeId: string) => void;
+  onEditClick?: () => void;
   // Optional controlled expansion states
   controlledRolesExpanded?: boolean;
   controlledLemmasExpanded?: boolean;
@@ -32,6 +33,7 @@ export default function GraphMainNode({
   x, 
   y, 
   onNodeClick,
+  onEditClick,
   controlledRolesExpanded,
   controlledLemmasExpanded,
   controlledExamplesExpanded,
@@ -1067,6 +1069,58 @@ export default function GraphMainNode({
             </foreignObject>
           )}
         </>
+      )}
+      
+      {/* Edit Button - Top Right */}
+      {onEditClick && (
+        <g>
+          <rect
+            x={centerX + nodeWidth - 44}
+            y={centerY + 8}
+            width={36}
+            height={36}
+            rx={6}
+            fill="rgba(59, 130, 246, 0.95)"
+            stroke="rgba(255, 255, 255, 0.9)"
+            strokeWidth={2}
+            style={{ cursor: 'pointer' }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onEditClick();
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.setAttribute('fill', 'rgba(29, 78, 216, 1)');
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.setAttribute('fill', 'rgba(59, 130, 246, 0.95)');
+            }}
+          >
+            <title>Edit entry details</title>
+          </rect>
+          <g
+            style={{ pointerEvents: 'none' }}
+            transform={`translate(${centerX + nodeWidth - 26}, ${centerY + 26}) scale(0.75)`}
+          >
+            <g transform="translate(-12, -12)">
+              <path
+                d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"
+                fill="none"
+                stroke="white"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path
+                d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"
+                fill="none"
+                stroke="white"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </g>
+          </g>
+        </g>
       )}
     </Group>
   );

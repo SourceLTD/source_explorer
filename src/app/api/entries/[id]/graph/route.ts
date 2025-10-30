@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getGraphNode, getGraphNodeUncached, revalidateGraphNodeCache } from '@/lib/db';
 
+// Force dynamic rendering - no static optimization
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 interface RouteParams {
   params: Promise<{ id: string }>;
 }

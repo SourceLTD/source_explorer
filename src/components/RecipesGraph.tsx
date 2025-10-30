@@ -12,11 +12,13 @@ interface RecipesGraphProps {
   selectedRecipeId?: string;
   onSelectRecipe: (recipeId: string) => void;
   onNodeClick: (nodeId: string, recipeId?: string) => void;
+  onEditClick?: () => void;
 }
 
 const colors = {
   current: { fill: '#3b82f6', stroke: '#1e40af' },
   predicate: { fill: '#6b7280', stroke: '#374151' },
+  predicateGreen: { fill: '#059669', stroke: '#047857' },
   link: '#4b5563',
   arrow: '#374151',
   background: '#ffffff',
@@ -24,7 +26,7 @@ const colors = {
   forbiddenStroke: '#dc2626',
 };
 
-export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, onSelectRecipe, onNodeClick }: RecipesGraphProps) {
+export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, onSelectRecipe, onNodeClick, onEditClick }: RecipesGraphProps) {
   const [hoveredPredicateId, setHoveredPredicateId] = useState<string | null>(null);
   const [roleTypes, setRoleTypes] = useState<RoleType[]>([]);
   
@@ -165,6 +167,7 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
     const nodes: Array<{ type: 'current' | 'predicate'; x: number; y: number; width: number; height: number; node: GraphNode | RecipePredicateNode; logicKind?: string; isNegated?: boolean }> = [];
     const edges: Array<{ from: { x: number; y: number; fromEdge: 'bottom' | 'right' | 'left' }; to: { x: number; y: number; toEdge: 'top' | 'right' | 'left' }; label: string } > = [];
     const groups: Array<{ predicateNodeIds: string[]; description: string; kind: 'and' | 'or' }> = [];
+    let allPredicateIdsForOuterBorder: string[] = [];
     let needsOuterBorder = false;
     let outerBorderKind: 'and' | 'or' = 'or';
 
@@ -173,7 +176,7 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
     // Handle both new logic tree and legacy predicate_groups for backwards compatibility
     if (activeRecipe && activeRecipe.logic_root) {
       // NEW: Walk the logic tree and extract groups with their predicates
-      const orGroups: Array<{ node: LogicNode; predicates: Array<{ predicate: RecipePredicateNode; isNegated: boolean }>; innerKind: 'and' | 'or' }> = [];
+      const orGroups: Array<{ node: LogicNode; predicates: Array<{ predicate: RecipePredicateNode; isNegated: boolean }>; innerKind: 'and' | 'or'; isStructural: boolean }> = [];
       
       // Helper to extract predicates from a node
       function extractPredicates(node: LogicNode, isNegated = false): Array<{ predicate: RecipePredicateNode; isNegated: boolean }> {
@@ -204,7 +207,7 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
             if (child.kind === 'or') {
               const predicates = extractPredicates(child);
               if (predicates.length > 0) {
-                orGroups.push({ node: child, predicates, innerKind: 'or' });
+                orGroups.push({ node: child, predicates, innerKind: 'or', isStructural: true });
               }
             }
           }
@@ -216,7 +219,8 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
             orGroups.push({ 
               node: activeRecipe.logic_root, 
               predicates: allPredicates, 
-              innerKind: 'and'
+              innerKind: 'and',
+              isStructural: true
             });
           }
           needsOuterBorder = false;
@@ -226,18 +230,51 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
         const hasAndChildren = activeRecipe.logic_root.children.some(c => c.kind === 'and');
         
         if (hasAndChildren) {
-          // OR root with AND children (like communicate.v.01) - each AND is a branch in oneOf
+          // OR root with mixed AND/LEAF children (like communicate.v.01)
+          // Strategy: Group consecutive LEAFs together, but keep ANDs separate
+          let currentLeafGroup: Array<{ predicate: RecipePredicateNode; isNegated: boolean }> = [];
+          
           for (const child of activeRecipe.logic_root.children) {
-            const predicates = extractPredicates(child);
-            if (predicates.length > 0) {
-              orGroups.push({ 
-                node: child, 
-                predicates,
-                innerKind: child.kind === 'and' ? 'and' : 'or'
-              });
+            if (child.kind === 'and' || child.kind === 'or' || child.kind === 'not') {
+              // If we have accumulated leaf predicates, flush them as a group
+              if (currentLeafGroup.length > 0) {
+                orGroups.push({
+                  node: activeRecipe.logic_root,
+                  predicates: currentLeafGroup,
+                  innerKind: 'or',
+                  isStructural: false // Accumulated leaves - no inner border
+                });
+                currentLeafGroup = [];
+              }
+              
+              // Add the complex node as its own group
+              const predicates = extractPredicates(child);
+              if (predicates.length > 0) {
+                orGroups.push({ 
+                  node: child, 
+                  predicates,
+                  innerKind: child.kind === 'and' ? 'and' : 'or',
+                  isStructural: true // Structural node - gets inner border
+                });
+              }
+            } else {
+              // Leaf node - accumulate with other leaves
+              const predicates = extractPredicates(child);
+              currentLeafGroup.push(...predicates);
             }
           }
-          needsOuterBorder = activeRecipe.logic_root.children.length > 1;
+          
+          // Flush any remaining leaf predicates
+          if (currentLeafGroup.length > 0) {
+            orGroups.push({
+              node: activeRecipe.logic_root,
+              predicates: currentLeafGroup,
+              innerKind: 'or',
+              isStructural: false // Accumulated leaves - no inner border
+            });
+          }
+          
+          needsOuterBorder = true; // Always wrap in outer oneOf for OR root
           outerBorderKind = 'or';
         } else {
           // All children are LEAFs - group them all together in one 'oneOf' border
@@ -246,7 +283,10 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
             orGroups.push({ 
               node: activeRecipe.logic_root, 
               predicates: allPredicates, 
-              innerKind: 'or'
+              innerKind: 'or',
+              // If multiple predicates, make it structural so it gets a oneOf border
+              // If single predicate, no border needed
+              isStructural: allPredicates.length > 1
             });
           }
           needsOuterBorder = false;
@@ -255,7 +295,7 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
         // Single leaf or NOT at root (edge case)
         const predicates = extractPredicates(activeRecipe.logic_root);
         if (predicates.length > 0) {
-          orGroups.push({ node: activeRecipe.logic_root, predicates, innerKind: 'or' });
+          orGroups.push({ node: activeRecipe.logic_root, predicates, innerKind: 'or', isStructural: false });
         }
         needsOuterBorder = false;
       }
@@ -339,8 +379,12 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
             groupY += predicateHeight + verticalGapInGroup;
           }
           
+          // Track ALL predicates for outer border (regardless of whether they get inner borders)
+          allPredicateIdsForOuterBorder.push(...groupPredicateIds);
+          
           // Store inner group info for rendering borders
-          if (item.group.predicates.length > 1) {
+          // Only create inner borders for structural groups (AND/OR nodes), not accumulated leaves
+          if (item.group.predicates.length > 1 && item.group.isStructural) {
             groups.push({
               predicateNodeIds: groupPredicateIds,
               description: item.group.node.description || (item.group.innerKind === 'and' ? 'all' : 'oneOf'),
@@ -536,12 +580,11 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
     // Calculate outer border if needed (for OR/AND at root with multiple children)
     let outerBorder: { predicateNodeIds: string[]; description: string; kind: 'and' | 'or' } | null = null;
     
-    if (activeRecipe && activeRecipe.logic_root && needsOuterBorder) {
-      // Collect all predicate IDs from all groups
-      const allPredicateIds = groups.flatMap(g => g.predicateNodeIds);
-      console.log(`[RecipesGraph] Creating outer ${outerBorderKind} border with ${allPredicateIds.length} predicates, ${groups.length} inner groups`);
+    if (activeRecipe && activeRecipe.logic_root && needsOuterBorder && allPredicateIdsForOuterBorder && allPredicateIdsForOuterBorder.length > 0) {
+      // Use ALL predicate IDs (from all groups, not just structural ones)
+      console.log(`[RecipesGraph] Creating outer ${outerBorderKind} border with ${allPredicateIdsForOuterBorder.length} predicates, ${groups.length} inner groups`);
       outerBorder = {
-        predicateNodeIds: allPredicateIds,
+        predicateNodeIds: allPredicateIdsForOuterBorder,
         description: activeRecipe.logic_root.description || (outerBorderKind === 'or' ? 'oneOf' : 'all'),
         kind: outerBorderKind
       };
@@ -614,7 +657,7 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
           const overlayX = currentLayoutNode.x - overlayWidth / 2;
           const overlayY = currentLayoutNode.y + currentLayoutNode.height / 2 + 35; // space below main node, above predicates
           const canToggle = recipes.length > 1;
-          const title = activeRecipe?.label || activeRecipe?.id || 'Recipe';
+          const recipeNumber = `${activeRecipeIndex + 1}/${recipes.length}`;
           return (
             <foreignObject x={overlayX} y={overlayY} width={overlayWidth} height={overlayHeight}>
               <div className="flex items-center justify-center gap-3 select-none" style={{ pointerEvents: 'auto' }}>
@@ -622,7 +665,7 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
                   type="button"
                   onClick={handlePrevRecipe}
                   disabled={!canToggle}
-                  className="h-7 w-7 flex items-center justify-center rounded-full border border-gray-300 bg-white text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                  className="h-7 w-7 flex items-center justify-center rounded-full border border-gray-300 bg-white text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-sm"
                   aria-label="Previous recipe"
                   title="Previous recipe"
                 >
@@ -630,14 +673,14 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
                     <polyline points="15 18 9 12 15 6" />
                   </svg>
                 </button>
-                <div className="px-2 text-sm font-medium text-gray-800 truncate max-w-[70%]" title={title}>
-                  {title}
+                <div className="px-2 text-sm font-medium text-gray-800">
+                  {recipeNumber}
                 </div>
                 <button
                   type="button"
                   onClick={handleNextRecipe}
                   disabled={!canToggle}
-                  className="h-7 w-7 flex items-center justify-center rounded-full border border-gray-300 bg-white text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                  className="h-7 w-7 flex items-center justify-center rounded-full border border-gray-300 bg-white text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-sm"
                   aria-label="Next recipe"
                   title="Next recipe"
                 >
@@ -787,6 +830,7 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
                   x={n.x}
                   y={n.y}
                   onNodeClick={onNodeClick}
+                  onEditClick={onEditClick}
                   controlledRolesExpanded={rolesExpanded}
                   controlledLemmasExpanded={lemmasExpanded}
                   controlledExamplesExpanded={examplesExpanded}
@@ -811,6 +855,10 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
             const centerY = -n.height / 2;
             const isNegated = n.isNegated || false;
             const isHovered = hoveredPredicateId === pred.id;
+            // Only use green if concrete is explicitly false (non-concrete nouns)
+            // Default to grey for verbs, adjectives, concrete nouns, or undefined
+            const isNonConcrete = pred.lexical.concrete === false;
+            const predicateColors = isNonConcrete ? colors.predicateGreen : colors.predicate;
             return (
               <Group key={`node-${idx}`} top={n.y} left={n.x} onMouseEnter={() => setHoveredPredicateId(pred.id)} onMouseLeave={() => setHoveredPredicateId(null)} style={{ cursor: 'pointer' }}>
                 <rect
@@ -818,8 +866,8 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
                   height={n.height}
                   y={centerY}
                   x={centerX}
-                  fill={colors.predicate.fill}
-                  stroke={isNegated ? '#ef4444' : colors.predicate.stroke}
+                  fill={predicateColors.fill}
+                  stroke={isNegated ? '#ef4444' : predicateColors.stroke}
                   strokeWidth={isNegated ? 3 : 2}
                   strokeDasharray={isNegated ? '5,5' : undefined}
                   rx={6}
@@ -845,10 +893,53 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
                 {pred.roleMappings && pred.roleMappings.length > 0 && (() => {
                   const baseY = centerY + 70;
                   const lineHeight = 14;
+                  
+                  // Expand mappings to include noun bindings as separate lines
+                  const expandedMappings: Array<{ type: 'binding' | 'noun'; mapping: typeof pred.roleMappings[0] }> = [];
+                  for (const m of pred.roleMappings) {
+                    expandedMappings.push({ type: 'binding', mapping: m });
+                    // If this binding has a noun, add it as a separate line
+                    if (m.nounCode) {
+                      expandedMappings.push({ type: 'noun', mapping: m });
+                    }
+                  }
+                  
                   return (
                     <>
-                      {pred.roleMappings.map((m, i) => {
+                      {expandedMappings.map((item, i) => {
                         const y = baseY + i * lineHeight;
+                        const m = item.mapping;
+                        
+                        if (item.type === 'noun') {
+                          // Display noun code as a blue, clickable link
+                          return (
+                            <g key={`${i}-noun`}>
+                              <text x={centerX + 10} y={y} fontSize={11} fontFamily="Arial" textAnchor="start" fill="white">
+                                <tspan fontWeight="bold">{m.predicateRoleLabel}</tspan>
+                                <tspan> = </tspan>
+                              </text>
+                              <text 
+                                x={centerX + 10 + (m.predicateRoleLabel.length + 3) * 6.5} 
+                                y={y} 
+                                fontSize={11} 
+                                fontFamily="Arial" 
+                                textAnchor="start" 
+                                fill="#60a5fa"
+                                fontWeight="500"
+                                style={{ cursor: 'pointer', textDecoration: 'underline' }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  window.location.href = `/graph/nouns?entry=${m.nounCode}`;
+                                }}
+                              >
+                                <title>Click to view noun: {m.nounCode}</title>
+                                <tspan>{m.nounCode}</tspan>
+                              </text>
+                            </g>
+                          );
+                        }
+                        
+                        // Regular binding display
                         const predicateRoleInfo = getRoleInfo(m.predicateRoleLabel);
                         
                         let targetDisplay = '';

@@ -15,6 +15,8 @@ export interface Verb {
   flaggedReason?: string;
   forbidden?: boolean;
   forbiddenReason?: string;
+  concrete?: boolean;
+  predicate?: boolean;
   frame_id?: string | null;
   vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null;
   legal_constraints?: string[];
@@ -416,6 +418,8 @@ export interface RecipePredicateRoleMapping {
   constant?: unknown;
   // Indicates this is a discovered variable (role must be NULL)
   discovered?: boolean;
+  // Noun code for noun-based bindings
+  nounCode?: string;
 }
 
 export interface RecipePredicateNode {

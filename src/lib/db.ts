@@ -291,6 +291,7 @@ export async function getRecipesForEntryInternal(entryId: string): Promise<Entry
       lex_flagged_reason: string | null;
       lex_forbidden: boolean | null;
       lex_forbidden_reason: string | null;
+      lex_concrete: boolean | null;
     }>>`
       SELECT
         rp.id,
@@ -313,7 +314,8 @@ export async function getRecipesForEntryInternal(entryId: string): Promise<Entry
         le.flagged as lex_flagged,
         le."flagged_reason" as lex_flagged_reason,
         le.forbidden as lex_forbidden,
-        le."forbidden_reason" as lex_forbidden_reason
+        le."forbidden_reason" as lex_forbidden_reason,
+        le.concrete as lex_concrete
       FROM recipe_predicates rp
       JOIN verbs le ON le.id = rp.predicate_verb_id
       WHERE rp.recipe_id = ANY(${recipeIds}::bigint[])
@@ -333,6 +335,7 @@ export async function getRecipesForEntryInternal(entryId: string): Promise<Entry
       variable_type_label: string | null;
       constant: unknown;
       discovered: boolean | null;
+      noun_code: string | null;
     }>>`
       SELECT
         rprb.recipe_predicate_id,
@@ -341,13 +344,15 @@ export async function getRecipesForEntryInternal(entryId: string): Promise<Entry
         lrt.label as entry_role_label,
         pvt.label as variable_type_label,
         rprb.constant,
-        rprb.discovered
+        rprb.discovered,
+        n.code as noun_code
       FROM recipe_predicate_role_bindings rprb
       LEFT JOIN roles pr ON pr.id = rprb.predicate_role_id
       LEFT JOIN role_types prt ON prt.id = pr.role_type_id
-        LEFT JOIN roles lr ON lr.id = rprb.verb_role_id
+      LEFT JOIN roles lr ON lr.id = rprb.verb_role_id
       LEFT JOIN role_types lrt ON lrt.id = lr.role_type_id
       LEFT JOIN predicate_variable_types pvt ON pvt.id = rprb.predicate_variable_type_id
+      LEFT JOIN nouns n ON n.id = rprb.noun_id
       WHERE rprb.recipe_predicate_id IN (
         SELECT id FROM recipe_predicates WHERE recipe_id = ANY(${recipeIds}::bigint[])
       )
@@ -458,6 +463,7 @@ export async function getRecipesForEntryInternal(entryId: string): Promise<Entry
   }
 
   const mappingsByPredicate: Record<string, RecipePredicateRoleMapping[]> = {};
+  
   for (const m of roleMappings) {
     // Skip mappings where predicate role label is missing
     if (!m.predicate_role_label) {
@@ -471,28 +477,44 @@ export async function getRecipesForEntryInternal(entryId: string): Promise<Entry
     // Priority: if entry_role_label exists, it's a role binding
     if (m.entry_role_label) {
       // Role-to-role binding
-      array.push({
+      const mapping: RecipePredicateRoleMapping = {
         predicateRoleLabel: m.predicate_role_label,
         bindKind: 'role',
         entryRoleLabel: m.entry_role_label,
         discovered: m.discovered ?? false,
-      });
+      };
+      if (m.noun_code) {
+        mapping.nounCode = m.noun_code;
+      }
+      array.push(mapping);
     } else if (m.variable_type_label) {
       // Role-to-variable binding
-      array.push({
+      const mapping: RecipePredicateRoleMapping = {
         predicateRoleLabel: m.predicate_role_label,
         bindKind: 'variable',
         variableTypeLabel: m.variable_type_label,
         discovered: m.discovered ?? false,
-      });
-    } else if (m.constant !== null && m.constant !== undefined) {
-      // Role-to-constant binding
-      array.push({
+      };
+      if (m.noun_code) {
+        mapping.nounCode = m.noun_code;
+      }
+      array.push(mapping);
+    } else if (m.bind_kind === 'constant') {
+      // Role-to-constant binding (includes noun constants where constant field is NULL but noun_id is set)
+      const mapping: RecipePredicateRoleMapping = {
         predicateRoleLabel: m.predicate_role_label,
         bindKind: 'constant',
-        constant: m.constant,
         discovered: m.discovered ?? false,
-      });
+      };
+      // Add constant value if present
+      if (m.constant !== null && m.constant !== undefined) {
+        mapping.constant = m.constant;
+      }
+      // Add noun code if present (noun constants)
+      if (m.noun_code) {
+        mapping.nounCode = m.noun_code;
+      }
+      array.push(mapping);
     }
   }
 
@@ -520,6 +542,7 @@ export async function getRecipesForEntryInternal(entryId: string): Promise<Entry
         flaggedReason: p.lex_flagged_reason ?? undefined,
         forbidden: p.lex_forbidden ?? undefined,
         forbiddenReason: p.lex_forbidden_reason ?? undefined,
+        concrete: p.lex_concrete ?? undefined,
         frame_id: p.lex_frame_id ? p.lex_frame_id.toString() : null,
         vendler_class: (p.lex_vendler_class as 'state' | 'activity' | 'accomplishment' | 'achievement' | null) ?? null,
         parents: [],
@@ -647,7 +670,7 @@ export const getRecipesForEntry = process.env.DISABLE_CACHE === 'true'
       { revalidate: 60, tags: ['entry-recipes'] }
     );
 
-export async function updateEntry(id: string, updates: Partial<Pick<Verb, 'gloss' | 'lemmas' | 'examples' | 'flagged' | 'flaggedReason' | 'forbidden' | 'forbiddenReason'> & { roles?: unknown[]; role_groups?: unknown[] }>): Promise<VerbWithRelations | null> {
+export async function updateEntry(id: string, updates: Partial<Pick<Verb, 'gloss' | 'lemmas' | 'src_lemmas' | 'examples' | 'flagged' | 'flaggedReason' | 'forbidden' | 'forbiddenReason'> & { id?: string; roles?: unknown[]; role_groups?: unknown[]; vendler_class?: string | null; lexfile?: string; frame_id?: string | null; legal_constraints?: string[] }>): Promise<VerbWithRelations | null> {
   // Handle roles and role_groups updates separately
   if (updates.roles) {
     await updateEntryRoles(id, updates.roles);
@@ -664,10 +687,40 @@ export async function updateEntry(id: string, updates: Partial<Pick<Verb, 'gloss
   // Transform camelCase to snake_case for Prisma
   const prismaUpdates: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(otherUpdates)) {
-    if (key === 'flaggedReason') {
+    if (key === 'id') {
+      prismaUpdates.code = value; // ID is stored as 'code' in database
+    } else if (key === 'flaggedReason') {
       prismaUpdates.flagged_reason = value;
     } else if (key === 'forbiddenReason') {
       prismaUpdates.forbidden_reason = value;
+    } else if (key === 'src_lemmas') {
+      prismaUpdates.src_lemmas = value;
+    } else if (key === 'legal_constraints') {
+      prismaUpdates.legal_constraints = value;
+    } else if (key === 'vendler_class') {
+      prismaUpdates.vendler_class = value;
+    } else if (key === 'frame_id') {
+      // Handle frame_id: can be numeric ID or frame code
+      if (value === null || value === undefined || value === '') {
+        prismaUpdates.frame_id = null;
+      } else if (typeof value === 'number') {
+        prismaUpdates.frame_id = BigInt(value);
+      } else if (typeof value === 'string' && /^\d+$/.test(value)) {
+        // Numeric string - use directly
+        prismaUpdates.frame_id = BigInt(value);
+      } else if (typeof value === 'string') {
+        // Non-numeric string - look up frame by code
+        const frame = await prisma.frames.findUnique({
+          where: { code: value },
+          select: { id: true }
+        });
+        if (frame) {
+          prismaUpdates.frame_id = frame.id;
+        } else {
+          console.warn(`Frame not found for code: ${value}, setting to null`);
+          prismaUpdates.frame_id = null;
+        }
+      }
     } else {
       prismaUpdates[key] = value;
     }
@@ -696,10 +749,8 @@ export async function updateEntry(id: string, updates: Partial<Pick<Verb, 'gloss
 
   if (!updatedEntry) return null;
 
-  // Invalidate cache for graph nodes since the entry has been updated
-  revalidateTag('graph-node');
-  // Also revalidate the specific entry's cache
-  revalidateGraphNodeCache();
+  // Invalidate all caches since the entry has been updated
+  revalidateAllEntryCaches();
 
   // Convert Prisma types to our types
   const { id: _id, frame_id: _frame_id, verb_relations_verb_relations_source_idToverbs, verb_relations_verb_relations_target_idToverbs, ...rest } = updatedEntry;
@@ -1288,6 +1339,13 @@ export function revalidateGraphNodeCache() {
   revalidateTag('graph-node');
 }
 
+// Helper function to revalidate all entry-related caches
+export function revalidateAllEntryCaches() {
+  revalidateTag('graph-node');
+  revalidateTag('entry-recipes');
+  revalidateTag('ancestor-path');
+}
+
 // Internal implementation without caching
 async function getAncestorPathInternal(entryId: string): Promise<GraphNode[]> {
   // Use recursive CTE to get entire ancestor path in a single query
@@ -1383,6 +1441,9 @@ export const getAncestorPath = process.env.DISABLE_CACHE === 'true'
       }
     );
 
+// Export uncached version for when we need fresh data
+export const getAncestorPathUncached = getAncestorPathInternal;
+
 export async function updateModerationStatus(
   ids: string[], 
   updates: { 
@@ -1408,8 +1469,8 @@ export async function updateModerationStatus(
     data: prismaUpdates
   });
 
-  // Invalidate cache for graph nodes since moderation status affects display
-  revalidateTag('graph-node');
+  // Invalidate all caches since moderation status affects display
+  revalidateAllEntryCaches();
 
   return result.count;
 }
@@ -1915,4 +1976,123 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
     hasNext: page < totalPages,
     hasPrev: page > 1
   };
+}
+
+/**
+ * Delete an entry and reassign its hyponyms to the deleted entry's hypernym
+ * @param code - The code of the entry to delete
+ * @returns The deleted entry or null if not found
+ */
+export async function deleteEntry(code: string): Promise<VerbWithRelations | null> {
+  return await withRetry(async () => {
+    // Get the entry to delete
+    const entry = await prisma.verbs.findUnique({
+      where: { code: code } as unknown as Prisma.verbsWhereUniqueInput,
+      select: { id: true }
+    });
+
+    if (!entry) {
+      return null;
+    }
+
+    // Find the entry's hypernym (parent)
+    const hypernymRelation = await prisma.verb_relations.findFirst({
+      where: {
+        source_id: entry.id,
+        type: 'hypernym'
+      },
+      select: {
+        target_id: true
+      }
+    });
+
+    // Find all hyponyms (children) of this entry
+    const hyponymRelations = await prisma.verb_relations.findMany({
+      where: {
+        target_id: entry.id,
+        type: 'hypernym'
+      },
+      select: {
+        source_id: true
+      }
+    });
+
+    // If the entry has a hypernym and hyponyms, reassign hyponyms to the hypernym
+    if (hypernymRelation && hyponymRelations.length > 0) {
+      const hypernymId = hypernymRelation.target_id;
+
+      // For each hyponym, update its hypernym relation
+      for (const hyponymRelation of hyponymRelations) {
+        const hyponymId = hyponymRelation.source_id;
+
+        // Delete old relation (hyponym -> deleted entry)
+        await prisma.verb_relations.deleteMany({
+          where: {
+            source_id: hyponymId,
+            target_id: entry.id,
+            type: 'hypernym'
+          }
+        });
+
+        // Create new relation (hyponym -> deleted entry's hypernym)
+        await prisma.verb_relations.upsert({
+          where: {
+            source_id_type_target_id: {
+              source_id: hyponymId,
+              target_id: hypernymId,
+              type: 'hypernym'
+            }
+          },
+          create: {
+            source_id: hyponymId,
+            target_id: hypernymId,
+            type: 'hypernym'
+          },
+          update: {}
+        });
+      }
+    } else if (hyponymRelations.length > 0) {
+      // If entry has no hypernym (it's a root), hyponyms become new roots
+      // Just delete the relations pointing to this entry
+      await prisma.verb_relations.deleteMany({
+        where: {
+          target_id: entry.id,
+          type: 'hypernym'
+        }
+      });
+    }
+
+    // Get the full entry before deleting
+    const entryToDelete = await getEntryById(code);
+
+    // Delete all relations involving this entry
+    await prisma.verb_relations.deleteMany({
+      where: {
+        OR: [
+          { source_id: entry.id },
+          { target_id: entry.id }
+        ]
+      }
+    });
+
+    // Delete any roles associated with this entry
+    await prisma.roles.deleteMany({
+      where: { verb_id: entry.id }
+    });
+
+    // Delete any role groups associated with this entry
+    await prisma.role_groups.deleteMany({
+      where: { verb_id: entry.id }
+    });
+
+    // Delete the entry itself
+    await prisma.verbs.delete({
+      where: { code: code } as unknown as Prisma.verbsWhereUniqueInput
+    });
+
+    // Invalidate all caches
+    revalidateAllEntryCaches();
+
+    return entryToDelete;
+  });
 }

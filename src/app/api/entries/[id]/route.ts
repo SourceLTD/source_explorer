@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getEntryById, updateEntry } from '@/lib/db';
+import { getEntryById, updateEntry, deleteEntry } from '@/lib/db';
 import { handleDatabaseError } from '@/lib/db-utils';
+
+// Force dynamic rendering - no static optimization
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -40,7 +44,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     const updates = await request.json();
     
     // Validate that only allowed fields are being updated
-    const allowedFields = ['gloss', 'lemmas', 'examples', 'roles', 'role_groups'];
+    const allowedFields = ['id', 'gloss', 'lemmas', 'src_lemmas', 'examples', 'roles', 'role_groups', 'vendler_class', 'lexfile', 'frame_id', 'legal_constraints'];
     const updateData: Record<string, unknown> = {};
     
     for (const [key, value] of Object.entries(updates)) {
@@ -68,6 +72,43 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     });
   } catch (error) {
     const { message, status, shouldRetry } = handleDatabaseError(error, 'PATCH /api/entries/[id]');
+    return NextResponse.json(
+      { 
+        error: message,
+        retryable: shouldRetry,
+        timestamp: new Date().toISOString()
+      },
+      { 
+        status,
+        headers: shouldRetry ? { 'Retry-After': '5' } : {}
+      }
+    );
+  }
+}
+
+export async function DELETE(request: NextRequest, { params }: RouteParams) {
+  const { id } = await params;
+
+  try {
+    const deletedEntry = await deleteEntry(id);
+    
+    if (!deletedEntry) {
+      return NextResponse.json({ error: 'Entry not found' }, { status: 404 });
+    }
+
+    // Return with no-cache headers to ensure fresh data
+    return NextResponse.json({ 
+      success: true, 
+      message: `Entry ${id} deleted successfully`,
+      deletedEntry 
+    }, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+        'Pragma': 'no-cache',
+      },
+    });
+  } catch (error) {
+    const { message, status, shouldRetry } = handleDatabaseError(error, 'DELETE /api/entries/[id]');
     return NextResponse.json(
       { 
         error: message,

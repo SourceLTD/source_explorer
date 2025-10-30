@@ -8,6 +8,7 @@ import ColumnVisibilityPanel, { ColumnConfig, ColumnVisibilityState } from './Co
 
 interface DataTableProps {
   onRowClick?: (entry: TableEntry) => void;
+  onEditClick?: (entry: TableEntry) => void;
   searchQuery?: string;
   className?: string;
   mode?: 'verbs' | 'nouns' | 'adjectives';
@@ -70,6 +71,7 @@ const DEFAULT_COLUMNS: ColumnConfig[] = [
   { key: 'childrenCount', label: 'Children', visible: true, sortable: true },
   { key: 'createdAt', label: 'Created', visible: false, sortable: true },
   { key: 'updatedAt', label: 'Updated', visible: false, sortable: true },
+  { key: 'actions', label: 'Actions', visible: true, sortable: false },
 ];
 
 // Default column widths in pixels
@@ -96,6 +98,7 @@ const DEFAULT_COLUMN_WIDTHS: ColumnWidthState = {
   childrenCount: 150,
   createdAt: 100,
   updatedAt: 100,
+  actions: 80,
 };
 
 const getDefaultVisibility = (): ColumnVisibilityState => {
@@ -110,7 +113,7 @@ const getDefaultColumnWidths = (): ColumnWidthState => {
   return { ...DEFAULT_COLUMN_WIDTHS };
 };
 
-export default function DataTable({ onRowClick, searchQuery, className, mode = 'verbs' }: DataTableProps) {
+export default function DataTable({ onRowClick, onEditClick, searchQuery, className, mode = 'verbs' }: DataTableProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -444,7 +447,8 @@ export default function DataTable({ onRowClick, searchQuery, className, mode = '
   // Get current column configurations with visibility state
   const currentColumns = DEFAULT_COLUMNS.map(col => ({
     ...col,
-    visible: columnVisibility[col.key] ?? col.visible
+    // Always show actions column if onEditClick is provided
+    visible: col.key === 'actions' && onEditClick ? true : (columnVisibility[col.key] ?? col.visible)
   }));
 
   const visibleColumns = currentColumns.filter(col => col.visible);
@@ -1140,6 +1144,28 @@ export default function DataTable({ onRowClick, searchQuery, className, mode = '
         return <span className="text-xs text-gray-500">{formatDate(entry.createdAt)}</span>;
       case 'updatedAt':
         return <span className="text-xs text-gray-500">{formatDate(entry.updatedAt)}</span>;
+      case 'actions':
+        return (
+          <div className="flex items-center justify-center">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                console.log('Edit button clicked for entry:', entry.id);
+                if (onEditClick) {
+                  onEditClick(entry);
+                } else {
+                  console.warn('onEditClick is not defined');
+                }
+              }}
+              className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition-colors cursor-pointer"
+              title="Edit entry"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+            </button>
+          </div>
+        );
       default:
         return <span className="text-sm text-gray-900">{String((entry as unknown as Record<string, unknown>)[columnKey] || '')}</span>;
     }
@@ -1273,7 +1299,7 @@ export default function DataTable({ onRowClick, searchQuery, className, mode = '
               <ColumnVisibilityPanel
                 isOpen={isColumnPanelOpen}
                 onToggle={() => setIsColumnPanelOpen(!isColumnPanelOpen)}
-                columns={currentColumns}
+                columns={currentColumns.filter(col => col.key !== 'actions')}
                 onColumnVisibilityChange={handleColumnVisibilityChange}
                 onResetToDefaults={handleResetColumns}
               />
@@ -1438,7 +1464,7 @@ export default function DataTable({ onRowClick, searchQuery, className, mode = '
                   />
                 </td>
                 {visibleColumns.map((column) => {
-                  const isClickable = onRowClick && column.key !== 'isMwe' && column.key !== 'transitive' && column.key !== 'gloss';
+                  const isClickable = onRowClick && column.key !== 'isMwe' && column.key !== 'transitive' && column.key !== 'gloss' && column.key !== 'actions';
                   const allowsWrap = ['gloss', 'examples', 'parentsCount', 'childrenCount', 'legal_constraints', 'roles', 'flaggedReason', 'forbiddenReason'].includes(column.key);
                   const cellClassName = `px-4 py-4 ${allowsWrap ? 'break-words' : 'whitespace-nowrap'} ${isClickable ? 'cursor-pointer' : ''} align-top border-r border-gray-200`;
                   
