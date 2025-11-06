@@ -595,9 +595,9 @@ export default function GraphMainNode({
         if (rolesExpanded && node.roles && node.roles.length > 0) {
           // Custom ordering for speech-related roles
           const speechRoleOrder: Record<string, number> = {
-            'SPEECH_TOPIC': 1,
-            'REPORTED_SPEECH': 2,
-            'DIRECT_SPEECH': 3,
+            'CONTENT.ENTITY': 1,
+            'CONTENT.CLAUSE': 2,
+            'CONTENT.QUOTE': 3,
           };
           
           // Create a map from role ID to group ID and organize groups

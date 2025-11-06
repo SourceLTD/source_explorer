@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const results = await searchEntries(query, limit);
+    const results = await searchEntries(query, limit, 'adjectives');
     return NextResponse.json(results);
   } catch (error) {
     const { message, status, shouldRetry } = handleDatabaseError(error, 'GET /api/adjectives/search');

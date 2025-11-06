@@ -105,6 +105,11 @@ model recipe_predicate_relations {
   recipes                                                                                    recipes           @relation(fields: [recipe_id], references: [id], onDelete: Cascade)
   recipe_predicates_recipe_predicate_relations_source_recipe_predicate_idTorecipe_predicates recipe_predicates @relation("recipe_predicate_relations_source_recipe_predicate_idTorecipe_predicates", fields: [source_recipe_predicate_id], references: [id], onDelete: Cascade)
   recipe_predicates_recipe_predicate_relations_target_recipe_predicate_idTorecipe_predicates recipe_predicates @relation("recipe_predicate_relations_target_recipe_predicate_idTorecipe_predicates", fields: [target_recipe_predicate_id], references: [id], onDelete: Cascade)
+
+  @@unique([recipe_id, source_recipe_predicate_id, relation_type, target_recipe_predicate_id], map: "uq_recipe_pred_rel_recipe_source_type_target")
+  @@index([recipe_id, source_recipe_predicate_id], map: "idx_recipe_pred_rel_recipe_source")
+  @@index([recipe_id, target_recipe_predicate_id], map: "idx_recipe_pred_rel_recipe_target")
+  @@index([relation_type], map: "idx_recipe_pred_rel_type")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -139,6 +144,7 @@ model recipe_predicates {
   recipe_id                                                                                           BigInt
   predicate_verb_id                                                                                   BigInt
   example                                                                                             String?
+  commitment                                                                                          predicate_commitment             @default(asserted)
   logic_targets                                                                                       logic_targets[]
   recipe_preconditions                                                                                recipe_preconditions[]
   recipe_predicate_relations_recipe_predicate_relations_source_recipe_predicate_idTorecipe_predicates recipe_predicate_relations[]     @relation("recipe_predicate_relations_source_recipe_predicate_idTorecipe_predicates")
@@ -146,6 +152,8 @@ model recipe_predicates {
   recipe_predicate_role_bindings                                                                      recipe_predicate_role_bindings[]
   verbs                                                                                               verbs                            @relation(fields: [predicate_verb_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   recipes                                                                                             recipes                          @relation(fields: [recipe_id], references: [id], onDelete: Cascade)
+
+  @@index([commitment], map: "idx_recipe_predicates_commitment")
 }
 
 model recipes {
@@ -485,6 +493,7 @@ enum RelationType {
   during
   enables
   do_again
+  co_temporal
 
   @@map("relation_type")
 }
@@ -544,4 +553,16 @@ enum logic_node_kind {
   or
   not
   leaf
+  enables
+  causes
+  precedes
+  starts
+  ends
+  during
+  co_temporal
+}
+
+enum predicate_commitment {
+  asserted
+  afforded
 }

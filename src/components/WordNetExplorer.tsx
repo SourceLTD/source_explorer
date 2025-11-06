@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { GraphNode, SearchResult, BreadcrumbItem, RoleType, sortRolesByPrecedence, EntryRecipes } from '@/lib/types';
 import LexicalGraph from './LexicalGraph';
@@ -71,7 +71,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
   const [editingField, setEditingField] = useState<'code' | 'hypernym' | 'src_lemmas' | 'gloss' | 'examples' | 'roles' | 'legal_constraints' | 'vendler_class' | 'lexfile' | 'frame' | null>(null);
   const [editValue, setEditValue] = useState<string>('');
   const [editListItems, setEditListItems] = useState<string[]>([]);
-  const [editRoles, setEditRoles] = useState<{id: string, description: string, roleType: string, exampleSentence: string, main: boolean}[]>([]);
+  const [editRoles, setEditRoles] = useState<{id: string; clientId: string; description: string; roleType: string; exampleSentence: string; main: boolean;}[]>([]);
   const [editRoleGroups, setEditRoleGroups] = useState<{id: string, description: string, role_ids: string[]}[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [roleTypes, setRoleTypes] = useState<RoleType[]>([]);
@@ -89,6 +89,99 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
     legalConstraints: false,
     relations: false,
   });
+
+  type RoleEditableField = 'description' | 'exampleSentence';
+  type RoleFieldLocation = 'main' | 'overlay';
+  type RoleSelectionState = {
+    start: number;
+    end: number;
+    direction: 'forward' | 'backward' | 'none';
+  };
+
+  const getRoleFieldKey = (clientId: string, field: RoleEditableField, location: RoleFieldLocation) =>
+    `${clientId}-${field}-${location}`;
+
+  const roleFieldRefs = useRef<Map<string, HTMLTextAreaElement | HTMLInputElement>>(new Map<string, HTMLTextAreaElement | HTMLInputElement>());
+  const activeRoleFieldRef = useRef<{ clientId: string; field: RoleEditableField; location: RoleFieldLocation } | null>(null);
+  const overlayContentRef = useRef<HTMLDivElement | null>(null);
+  const lastOverlayScrollTopRef = useRef(0);
+  const roleSelectionRef = useRef<Map<string, RoleSelectionState>>(new Map<string, RoleSelectionState>());
+
+  const setRoleFieldRef = useCallback((clientId: string, field: RoleEditableField, location: RoleFieldLocation, element: HTMLTextAreaElement | HTMLInputElement | null) => {
+    const key = getRoleFieldKey(clientId, field, location);
+    if (element) {
+      roleFieldRefs.current.set(key, element);
+    } else {
+      roleFieldRefs.current.delete(key);
+    }
+  }, []);
+
+  const storeRoleSelection = useCallback((clientId: string, field: RoleEditableField, location: RoleFieldLocation, target: HTMLTextAreaElement | HTMLInputElement | null) => {
+    if (!target) return;
+    const key = getRoleFieldKey(clientId, field, location);
+    const start = target.selectionStart ?? target.value.length;
+    const end = target.selectionEnd ?? target.value.length;
+    const direction = (target.selectionDirection as RoleSelectionState['direction'] | null) ?? 'none';
+    roleSelectionRef.current.set(key, { start, end, direction });
+  }, []);
+
+  const handleRoleFieldFocus = useCallback((clientId: string, field: RoleEditableField, location: RoleFieldLocation, target?: HTMLTextAreaElement | HTMLInputElement | null) => {
+    activeRoleFieldRef.current = { clientId, field, location };
+    if (target) {
+      storeRoleSelection(clientId, field, location, target);
+    }
+    if (isEditOverlayOpen && overlayContentRef.current) {
+      lastOverlayScrollTopRef.current = overlayContentRef.current.scrollTop;
+    }
+  }, [isEditOverlayOpen, storeRoleSelection]);
+
+  const handleRoleFieldBlur = useCallback((clientId: string, field: RoleEditableField, location: RoleFieldLocation) => {
+    if (activeRoleFieldRef.current &&
+        activeRoleFieldRef.current.clientId === clientId &&
+        activeRoleFieldRef.current.field === field &&
+        activeRoleFieldRef.current.location === location) {
+      activeRoleFieldRef.current = null;
+    }
+    roleSelectionRef.current.delete(getRoleFieldKey(clientId, field, location));
+  }, []);
+
+  useLayoutEffect(() => {
+    const activeField = activeRoleFieldRef.current;
+    if (!activeField) return;
+
+    const key = getRoleFieldKey(activeField.clientId, activeField.field, activeField.location);
+    const element = roleFieldRefs.current.get(key);
+
+    if (!element) return;
+
+    const shouldRefocus = document.activeElement !== element;
+
+    if (shouldRefocus) {
+      element.focus({ preventScroll: true });
+    }
+
+    const selection = roleSelectionRef.current.get(key);
+    if (selection && 'setSelectionRange' in element) {
+      const { start, end, direction } = selection;
+      try {
+        element.setSelectionRange(start, end, direction);
+      } catch (error) {
+        // Ignore selection errors (e.g., unsupported input type)
+      }
+    } else if (shouldRefocus && 'setSelectionRange' in element) {
+      const valueLength = element.value.length;
+      try {
+        element.setSelectionRange(valueLength, valueLength);
+      } catch (error) {
+        // Ignore selection errors
+      }
+    }
+
+    if (isEditOverlayOpen && overlayContentRef.current) {
+      overlayContentRef.current.scrollTop = lastOverlayScrollTopRef.current;
+      lastOverlayScrollTopRef.current = overlayContentRef.current.scrollTop;
+    }
+  }, [editRoles, isEditOverlayOpen]);
 
   // Helper function to update URL parameters without page reload
   const updateUrlParam = (entryId: string) => {
@@ -267,20 +360,31 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
     } else if (field === 'frame') {
       setEditValue(currentNode.frame_id || '');
     } else if (field === 'roles') {
-      setEditRoles(
-        sortRolesByPrecedence(currentNode.roles || []).map(role => ({
+      const preparedRoles = sortRolesByPrecedence(currentNode.roles || []).map((role, index) => {
+        const clientId = role.id && role.id.length > 0 ? role.id : `existing-role-${index}-${role.role_type.label}`;
+        return {
           id: role.id,
+          clientId,
           description: role.description || '',
           roleType: role.role_type.label,
           exampleSentence: role.example_sentence || '',
-          main: role.main
-        }))
-      );
+          main: role.main,
+        };
+      });
+
+      const idToClientId = new Map<string, string>();
+      preparedRoles.forEach(role => {
+        if (role.id) {
+          idToClientId.set(role.id, role.clientId);
+        }
+      });
+
+      setEditRoles(preparedRoles);
       setEditRoleGroups(
         (currentNode.role_groups || []).map(group => ({
           id: group.id,
           description: group.description || '',
-          role_ids: group.role_ids
+          role_ids: group.role_ids.map(roleId => idToClientId.get(roleId) ?? roleId)
         }))
       );
     }
@@ -495,7 +599,26 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
           // Only verbs have roles
           if (mode === 'verbs') {
             updateData.roles = editRoles.filter(role => role.description.trim());
-            updateData.role_groups = editRoleGroups.filter(group => group.role_ids.length >= 2);
+
+            const roleIdLookup = new Map<string, string>();
+            editRoles.forEach(role => {
+              if (role.id) {
+                roleIdLookup.set(role.clientId, role.id);
+                roleIdLookup.set(role.id, role.id);
+              }
+            });
+
+            updateData.role_groups = editRoleGroups
+              .map(group => {
+                const resolvedRoleIds = group.role_ids
+                  .map(roleId => roleIdLookup.get(roleId))
+                  .filter((id): id is string => Boolean(id));
+                return {
+                  ...group,
+                  role_ids: resolvedRoleIds,
+                };
+              })
+              .filter(group => group.role_ids.length >= 2);
           }
           break;
       }
@@ -537,7 +660,11 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
     if (!currentNode) return;
     
     try {
-      const response = await fetch('/api/entries/moderation', {
+      let apiPrefix = '/api/entries';
+      if (mode === 'nouns') apiPrefix = '/api/nouns';
+      else if (mode === 'adjectives') apiPrefix = '/api/adjectives';
+      
+      const response = await fetch(`${apiPrefix}/moderation`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -564,7 +691,11 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
     if (!currentNode) return;
     
     try {
-      const response = await fetch('/api/entries/moderation', {
+      let apiPrefix = '/api/entries';
+      if (mode === 'nouns') apiPrefix = '/api/nouns';
+      else if (mode === 'adjectives') apiPrefix = '/api/adjectives';
+      
+      const response = await fetch(`${apiPrefix}/moderation`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -619,30 +750,56 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
   };
 
   // Roles editing helpers
-  const updateRole = (index: number, field: 'description' | 'roleType' | 'exampleSentence' | 'main', value: string | boolean) => {
-    setEditRoles(prev => prev.map((role, i) => 
-      i === index ? { ...role, [field]: value } : role
+  const updateRole = useCallback((clientId: string, field: 'description' | 'roleType' | 'exampleSentence' | 'main', value: string | boolean) => {
+    setEditRoles(prev => prev.map((role) => 
+      role.clientId === clientId ? { ...role, [field]: value } : role
     ));
-  };
+  }, []);
 
   const addRole = (main: boolean) => {
-    setEditRoles(prev => [...prev, { id: '', description: '', roleType: '', exampleSentence: '', main }]);
+    // Generate a temporary unique ID for new roles
+    const clientId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+    setEditRoles(prev => [...prev, { id: '', clientId, description: '', roleType: '', exampleSentence: '', main }]);
   };
 
-  const removeRole = (index: number) => {
-    const roleId = editRoles[index].id;
-    // Remove the role
-    setEditRoles(prev => prev.filter((_, i) => i !== index));
-    // Remove the role from any groups
-    setEditRoleGroups(prev => prev.map(group => ({
-      ...group,
-      role_ids: group.role_ids.filter(id => id !== roleId)
-    })).filter(group => group.role_ids.length >= 2));
+  const removeRole = (clientId: string) => {
+    if (activeRoleFieldRef.current && activeRoleFieldRef.current.clientId === clientId) {
+      activeRoleFieldRef.current = null;
+    }
+
+    (['main', 'overlay'] as RoleFieldLocation[]).forEach(location => {
+      roleFieldRefs.current.delete(getRoleFieldKey(clientId, 'description', location));
+      roleFieldRefs.current.delete(getRoleFieldKey(clientId, 'exampleSentence', location));
+      roleSelectionRef.current.delete(getRoleFieldKey(clientId, 'description', location));
+      roleSelectionRef.current.delete(getRoleFieldKey(clientId, 'exampleSentence', location));
+    });
+
+    const identifiersToRemove: string[] = [];
+
+    setEditRoles(prev => prev.filter(role => {
+      if (role.clientId === clientId) {
+        identifiersToRemove.push(role.clientId);
+        if (role.id) {
+          identifiersToRemove.push(role.id);
+        }
+        return false;
+      }
+      return true;
+    }));
+
+    if (identifiersToRemove.length > 0) {
+      setEditRoleGroups(prev => prev.map(group => ({
+        ...group,
+        role_ids: group.role_ids.filter(id => !identifiersToRemove.includes(id))
+      })).filter(group => group.role_ids.length >= 2));
+    }
   };
 
   // Role group editing helpers
   const addRoleGroup = () => {
-    setEditRoleGroups(prev => [...prev, { id: '', description: '', role_ids: [] }]);
+    // Generate a temporary unique ID for new role groups
+    const tempId = `temp-group-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+    setEditRoleGroups(prev => [...prev, { id: tempId, description: '', role_ids: [] }]);
   };
 
   const removeRoleGroup = (index: number) => {
@@ -1188,13 +1345,13 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
                   {editingField === 'roles' ? (
                     <div className="space-y-3">
                       <div className="space-y-2">
-                        {editRoles.map((role, index) => (
-                          <div key={index} className={`space-y-2 p-3 border rounded-lg ${role.main ? 'border-blue-200 bg-blue-50' : 'border-purple-200 bg-purple-50'}`}>
+                        {editRoles.map((role) => (
+                          <div key={role.clientId} className={`p-3 border rounded-lg ${role.main ? 'border-blue-300 bg-blue-50' : 'border-purple-300 bg-purple-50'}`}>
                             <div className="flex items-center space-x-2">
                               <select
                                 value={role.roleType}
-                                onChange={(e) => updateRole(index, 'roleType', e.target.value)}
-                                className="flex-1 px-2 py-1 border border-gray-300 rounded text-xs bg-white text-gray-900"
+                                onChange={(e) => updateRole(role.clientId, 'roleType', e.target.value)}
+                                className="flex-1 px-2 py-1 border border-gray-300 rounded text-xs bg-white"
                               >
                                 <option value="">Select role type</option>
                                 {roleTypes.map((roleType) => (
@@ -1207,13 +1364,13 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
                                 <input
                                   type="checkbox"
                                   checked={role.main}
-                                  onChange={(e) => updateRole(index, 'main', e.target.checked)}
+                                  onChange={(e) => updateRole(role.clientId, 'main', e.target.checked)}
                                   className="rounded"
                                 />
                                 <span>Main</span>
                               </label>
                               <button
-                                onClick={() => removeRole(index)}
+                                onClick={() => removeRole(role.clientId)}
                                 className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded"
                                 title="Remove role"
                               >
@@ -1223,15 +1380,37 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
                               </button>
                             </div>
                             <textarea
+                              ref={(el) => setRoleFieldRef(role.clientId, 'description', 'main', el)}
                               value={role.description}
-                              onChange={(e) => updateRole(index, 'description', e.target.value)}
+                              onChange={(e) => {
+                                e.stopPropagation();
+                                storeRoleSelection(role.clientId, 'description', 'main', e.currentTarget);
+                                updateRole(role.clientId, 'description', e.target.value);
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                              onFocus={(e) => {
+                                e.stopPropagation();
+                                handleRoleFieldFocus(role.clientId, 'description', 'main');
+                              }}
+                              onBlur={() => handleRoleFieldBlur(role.clientId, 'description', 'main')}
                               className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-white text-gray-900 resize-vertical"
                               rows={2}
                               placeholder="Role description"
                             />
                             <textarea
+                              ref={(el) => setRoleFieldRef(role.clientId, 'exampleSentence', 'main', el)}
                               value={role.exampleSentence}
-                              onChange={(e) => updateRole(index, 'exampleSentence', e.target.value)}
+                              onChange={(e) => {
+                                e.stopPropagation();
+                                storeRoleSelection(role.clientId, 'exampleSentence', 'main', e.currentTarget);
+                                updateRole(role.clientId, 'exampleSentence', e.target.value);
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                              onFocus={(e) => {
+                                e.stopPropagation();
+                                handleRoleFieldFocus(role.clientId, 'exampleSentence', 'main');
+                              }}
+                              onBlur={() => handleRoleFieldBlur(role.clientId, 'exampleSentence', 'main')}
                               className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-white text-gray-900 resize-vertical"
                               rows={1}
                               placeholder="Example sentence (optional)"
@@ -1270,7 +1449,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
                           {editRoleGroups.length > 0 && (
                             <div className="space-y-3 mb-3">
                               {editRoleGroups.map((group, groupIndex) => (
-                                <div key={groupIndex} className="p-3 border-2 border-gray-300 rounded-lg bg-gray-50">
+                                <div key={group.id || `group-${groupIndex}`} className="p-3 border-2 border-gray-300 rounded-lg bg-gray-50">
                                   <div className="flex items-start justify-between mb-2">
                                     <input
                                       type="text"
@@ -1290,16 +1469,15 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
                                     </button>
                                   </div>
                                   <div className="space-y-1">
-                                    {editRoles.map((role, roleIndex) => {
-                                      // Generate a temporary ID for new roles
-                                      const roleId = role.id || `temp-${roleIndex}`;
-                                      const isInGroup = group.role_ids.includes(roleId);
+                                    {editRoles.map((role) => {
+                                      const roleIdentifier = role.clientId;
+                                      const isInGroup = group.role_ids.includes(roleIdentifier);
                                       return (
-                                        <label key={roleIndex} className="flex items-center space-x-2 text-xs cursor-pointer hover:bg-white p-1 rounded">
+                                        <label key={roleIdentifier} className="flex items-center space-x-2 text-xs cursor-pointer hover:bg-white p-1 rounded">
                                           <input
                                             type="checkbox"
                                             checked={isInGroup}
-                                            onChange={() => toggleRoleInGroup(groupIndex, roleId)}
+                                            onChange={() => toggleRoleInGroup(groupIndex, roleIdentifier)}
                                             className="rounded"
                                           />
                                           <span className={role.main ? 'text-blue-700 font-medium' : 'text-purple-700'}>
@@ -1759,7 +1937,13 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
               </div>
 
               {/* Scrollable Content */}
-              <div className="overflow-y-auto flex-1">
+              <div
+                ref={overlayContentRef}
+                className="overflow-y-auto flex-1"
+                onScroll={(event) => {
+                  lastOverlayScrollTopRef.current = (event.currentTarget as HTMLDivElement).scrollTop;
+                }}
+              >
                 {/* Moderation Section */}
                 <div className="border-b border-gray-200 bg-gray-50">
                   <div className="px-6 py-4">
@@ -2260,12 +2444,12 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
                       </div>
                       {editingField === 'roles' ? (
                         <div className="space-y-3">
-                          {editRoles.map((role, index) => (
-                            <div key={index} className={`p-3 border rounded-lg ${role.main ? 'border-blue-300 bg-blue-50' : 'border-purple-300 bg-purple-50'}`}>
+                          {editRoles.map((role) => (
+                            <div key={role.clientId} className={`p-3 border rounded-lg ${role.main ? 'border-blue-300 bg-blue-50' : 'border-purple-300 bg-purple-50'}`}>
                               <div className="flex items-center justify-between mb-2">
                                 <select
                                   value={role.roleType}
-                                  onChange={(e) => updateRole(index, 'roleType', e.target.value)}
+                                  onChange={(e) => updateRole(role.clientId, 'roleType', e.target.value)}
                                   className="flex-1 px-2 py-1 border border-gray-300 rounded text-xs bg-white"
                                 >
                                   <option value="">Select role type</option>
@@ -2277,13 +2461,13 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
                                   <input
                                     type="checkbox"
                                     checked={role.main}
-                                    onChange={(e) => updateRole(index, 'main', e.target.checked)}
+                                    onChange={(e) => updateRole(role.clientId, 'main', e.target.checked)}
                                     className="rounded"
                                   />
                                   <span>Main</span>
                                 </label>
                                 <button
-                                  onClick={() => removeRole(index)}
+                                  onClick={() => removeRole(role.clientId)}
                                   className="ml-2 p-1 text-red-500 hover:bg-red-100 rounded"
                                 >
                                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2292,17 +2476,39 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
                                 </button>
                               </div>
                               <textarea
+                                ref={(el) => setRoleFieldRef(role.clientId, 'description', 'main', el)}
                                 value={role.description}
-                                onChange={(e) => updateRole(index, 'description', e.target.value)}
-                                className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-white mb-2 resize-vertical"
+                                onChange={(e) => {
+                                  e.stopPropagation();
+                                  storeRoleSelection(role.clientId, 'description', 'main', e.currentTarget);
+                                  updateRole(role.clientId, 'description', e.target.value);
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                                onFocus={(e) => {
+                                  e.stopPropagation();
+                                  handleRoleFieldFocus(role.clientId, 'description', 'main');
+                                }}
+                                onBlur={() => handleRoleFieldBlur(role.clientId, 'description', 'main')}
+                                className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-white text-gray-900 resize-vertical"
                                 rows={2}
                                 placeholder="Role description"
                               />
-                              <input
-                                type="text"
+                              <textarea
+                                ref={(el) => setRoleFieldRef(role.clientId, 'exampleSentence', 'main', el)}
                                 value={role.exampleSentence}
-                                onChange={(e) => updateRole(index, 'exampleSentence', e.target.value)}
-                                className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-white"
+                                onChange={(e) => {
+                                  e.stopPropagation();
+                                  storeRoleSelection(role.clientId, 'exampleSentence', 'main', e.currentTarget);
+                                  updateRole(role.clientId, 'exampleSentence', e.target.value);
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                                onFocus={(e) => {
+                                  e.stopPropagation();
+                                  handleRoleFieldFocus(role.clientId, 'exampleSentence', 'main');
+                                }}
+                                onBlur={() => handleRoleFieldBlur(role.clientId, 'exampleSentence', 'main')}
+                                className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-white text-gray-900 resize-vertical"
+                                rows={1}
                                 placeholder="Example sentence (optional)"
                               />
                             </div>
@@ -2333,7 +2539,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
                                       type="text"
                                       value={group.description}
                                       onChange={(e) => updateRoleGroup(groupIndex, 'description', e.target.value)}
-                                      className="flex-1 px-2 py-1 border border-gray-300 rounded text-xs bg-white"
+                                      className="flex-1 px-2 py-1 border border-gray-300 rounded text-xs bg-white text-gray-900"
                                       placeholder="Group description (optional)"
                                     />
                                     <button
@@ -2346,19 +2552,22 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
                                     </button>
                                   </div>
                                   <div className="space-y-1">
-                                    {editRoles.map((role, roleIndex) => {
-                                      const roleId = role.id || `temp-${roleIndex}`;
-                                      const isInGroup = group.role_ids.includes(roleId);
+                                    {editRoles.map((role) => {
+                                      const roleIdentifier = role.clientId;
+                                      const isInGroup = group.role_ids.includes(roleIdentifier);
                                       return (
-                                        <label key={roleIndex} className="flex items-center space-x-2 text-xs cursor-pointer hover:bg-white p-1 rounded">
+                                        <label key={roleIdentifier} className="flex items-center space-x-2 text-xs cursor-pointer hover:bg-white p-1 rounded">
                                           <input
                                             type="checkbox"
                                             checked={isInGroup}
-                                            onChange={() => toggleRoleInGroup(groupIndex, roleId)}
+                                            onChange={() => toggleRoleInGroup(groupIndex, roleIdentifier)}
                                             className="rounded"
                                           />
                                           <span className={role.main ? 'text-blue-700 font-medium' : 'text-purple-700'}>
                                             {role.roleType || '(no type)'}
+                                          </span>
+                                          <span className="text-gray-600 truncate">
+                                            {role.description ? `- ${role.description.substring(0, 30)}${role.description.length > 30 ? '...' : ''}` : ''}
                                           </span>
                                         </label>
                                       );

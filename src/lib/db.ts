@@ -2,7 +2,8 @@ import { unstable_cache, revalidateTag } from 'next/cache';
 import { prisma } from './prisma';
 import { withRetry } from './db-utils'; 
 import { RelationType, type Verb, type VerbWithRelations, type VerbRelation, type GraphNode, type SearchResult, type PaginationParams, type PaginatedResult, type TableEntry, type EntryRecipes, type Recipe, type RecipePredicateNode, type RecipePredicateRoleMapping, type LogicNode, type LogicNodeKind } from './types';
-import type { verbs as PrismaVerb, verb_relations as PrismaVerbRelation, Prisma } from '@prisma/client';
+import type { verbs as PrismaVerb, verb_relations as PrismaVerbRelation } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 
 // Type for Prisma entry that might have optional fields
 type PrismaEntryWithOptionalFields = {
@@ -170,12 +171,17 @@ export async function getEntryById(id: string): Promise<VerbWithRelations | null
   };
 }
 
-export async function searchEntries(query: string, limit = 20): Promise<SearchResult[]> {
+export async function searchEntries(query: string, limit = 20, table: 'verbs' | 'nouns' | 'adjectives' = 'verbs'): Promise<SearchResult[]> {
+  // Map table to POS character
+  const posMap = { verbs: 'v', nouns: 'n', adjectives: 'a' };
+  const pos = posMap[table];
+  
   // If query contains a dot, only search IDs
   const containsDot = query.includes('.');
   
   if (containsDot) {
     // Only search ID fields when dot is present
+    // Use Prisma.sql for safe table name injection
     const results = await withRetry(
       () => prisma.$queryRaw<SearchResult[]>`
       SELECT 
@@ -184,14 +190,14 @@ export async function searchEntries(query: string, limit = 20): Promise<SearchRe
         lemmas,
         src_lemmas,
         gloss,
-        'v' as pos,
+        ${Prisma.raw(`'${pos}'`)} as pos,
         CASE 
           WHEN code ILIKE ${query} THEN 1000
           WHEN code ILIKE ${query + '%'} THEN 500
           WHEN legacy_id ILIKE ${query + '%'} THEN 400
           ELSE 0
         END as rank
-      FROM verbs
+      FROM ${Prisma.raw(table)}
       WHERE 
         code ILIKE ${query + '%'} OR
         legacy_id ILIKE ${query + '%'}
@@ -199,7 +205,7 @@ export async function searchEntries(query: string, limit = 20): Promise<SearchRe
       LIMIT ${limit}
     `,
       undefined,
-      `searchEntries(${query})`
+      `searchEntries(${query}, ${table})`
     );
     return results;
   }
@@ -213,10 +219,10 @@ export async function searchEntries(query: string, limit = 20): Promise<SearchRe
       lemmas,
       src_lemmas,
       gloss,
-      'v' as pos,
+      ${Prisma.raw(`'${pos}'`)} as pos,
       ts_rank(gloss_tsv, plainto_tsquery('english', ${query})) +
       ts_rank(examples_tsv, plainto_tsquery('english', ${query})) as rank
-    FROM verbs
+    FROM ${Prisma.raw(table)}
     WHERE 
       gloss_tsv @@ plainto_tsquery('english', ${query}) OR
       examples_tsv @@ plainto_tsquery('english', ${query}) OR
@@ -226,7 +232,7 @@ export async function searchEntries(query: string, limit = 20): Promise<SearchRe
     LIMIT ${limit}
   `,
     undefined,
-    `searchEntries(${query})`
+    `searchEntries(${query}, ${table})`
   );
 
   return results;
@@ -250,8 +256,8 @@ export async function getRecipesForEntryInternal(entryId: string): Promise<Entry
 
   // Fetch recipes for the entry
   const recipes = await withRetry(
-    () => prisma.$queryRaw<Array<{ id: bigint; label: string | null; description: string | null; is_default: boolean }>>`
-      SELECT id, label, description, is_default
+    () => prisma.$queryRaw<Array<{ id: bigint; label: string | null; description: string | null; is_default: boolean; example: string | null; logic_root_node_id: bigint | null }>>`
+      SELECT id, label, description, is_default, example, logic_root_node_id
       FROM recipes
       WHERE verb_id = ${entry.id}
       ORDER BY is_default DESC, created_at ASC
@@ -435,15 +441,26 @@ export async function getRecipesForEntryInternal(entryId: string): Promise<Entry
       recipe_id: bigint;
       condition_type: string;
       target_role_id: bigint | null;
+      target_role_label: string | null;
       target_recipe_predicate_id: bigint | null;
       condition_params: unknown;
       description: string | null;
       error_message: string | null;
     }>>`
-      SELECT id, recipe_id, condition_type, target_role_id, target_recipe_predicate_id,
-             condition_params, description, error_message
-      FROM recipe_preconditions
-      WHERE recipe_id = ANY(${recipeIds}::bigint[])
+      SELECT 
+        rp.id, 
+        rp.recipe_id, 
+        rp.condition_type, 
+        rp.target_role_id, 
+        rt.label as target_role_label,
+        rp.target_recipe_predicate_id,
+        rp.condition_params, 
+        rp.description, 
+        rp.error_message
+      FROM recipe_preconditions rp
+      LEFT JOIN roles r ON r.id = rp.target_role_id
+      LEFT JOIN role_types rt ON rt.id = r.role_type_id
+      WHERE rp.recipe_id = ANY(${recipeIds}::bigint[])
     `,
     undefined,
     `getRecipesForEntry:preconditions(${entryId})`
@@ -487,6 +504,7 @@ export async function getRecipesForEntryInternal(entryId: string): Promise<Entry
       id: r.id.toString(),
       label: r.label,
       description: r.description,
+      example: r.example,
       is_default: r.is_default,
       predicates: [],
       predicate_groups: [], // Deprecated but kept for backwards compatibility
@@ -616,6 +634,7 @@ export async function getRecipesForEntryInternal(entryId: string): Promise<Entry
       id: pc.id.toString(),
       condition_type: pc.condition_type,
       target_role_id: pc.target_role_id?.toString() || null,
+      target_role_label: pc.target_role_label || null,
       target_recipe_predicate_id: pc.target_recipe_predicate_id?.toString() || null,
       condition_params: pc.condition_params,
       description: pc.description,
@@ -705,11 +724,21 @@ export async function getRecipesForEntryInternal(entryId: string): Promise<Entry
       predicateMap[pred.id] = pred;
     }
 
-    // Find the root node for this recipe (standard pattern: 'root:recipe:{id}')
-    const rootNode = logicNodes.find(
-      ln => ln.recipe_id.toString() === r.id.toString() 
-        && ln.natural_key === `root:recipe:${r.id.toString()}`
-    );
+    // Find the root node for this recipe
+    // First try using logic_root_node_id if available, otherwise fall back to natural_key pattern
+    let rootNode: { id: bigint; recipe_id: bigint; kind: string; description: string | null; natural_key: string | null } | undefined;
+    
+    if (r.logic_root_node_id) {
+      rootNode = logicNodes.find(ln => ln.id.toString() === r.logic_root_node_id?.toString());
+    }
+    
+    // Fallback to natural_key pattern if logic_root_node_id not found or not set
+    if (!rootNode) {
+      rootNode = logicNodes.find(
+        ln => ln.recipe_id.toString() === r.id.toString() 
+          && ln.natural_key === `root:recipe:${r.id.toString()}`
+      );
+    }
 
     if (rootNode) {
       recipe.logic_root = populateNode(rootNode.id.toString(), predicateMap);

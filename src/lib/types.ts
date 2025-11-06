@@ -448,7 +448,7 @@ export interface PredicateGroup {
 }
 
 // Logic AST types
-export type LogicNodeKind = 'and' | 'or' | 'not' | 'leaf';
+export type LogicNodeKind = 'and' | 'or' | 'not' | 'leaf' | 'enables' | 'causes' | 'precedes' | 'starts' | 'ends' | 'during' | 'co_temporal';
 
 export interface LogicNode {
   id: string;
@@ -466,6 +466,7 @@ export interface RecipePrecondition {
   id: string;
   condition_type: string;
   target_role_id?: string | null;
+  target_role_label?: string | null;
   target_recipe_predicate_id?: string | null;
   condition_params?: unknown;
   description?: string | null;
@@ -486,6 +487,7 @@ export interface Recipe {
   id: string;
   label?: string | null;
   description?: string | null;
+  example?: string | null;
   is_default: boolean;
   predicates: RecipePredicateNode[];
   predicate_groups: PredicateGroup[]; // Kept for backwards compatibility during transition
@@ -503,12 +505,12 @@ export interface EntryRecipes {
 
 // Role precedence order - higher number = higher precedence
 export const ROLE_PRECEDENCE: Record<string, number> = {
-  'AGENT': 28,
-  'SPEECH_TOPIC': 27,
-  'REPORTED_SPEECH': 26,
-  'DIRECT_SPEECH': 25,
+  'PROTO_AGENT': 28,
+  'CONTENT.ENTITY': 27,
+  'CONTENT.CLAUSE': 26,
+  'CONTENT.QUOTE': 25,
   'RECIPIENT': 24,
-  'CO_AGENT': 23,
+  'CO_PROTO_AGENT': 23,
   'TOPIC': 22,
   'THEME': 21,
   'CO_THEME': 20,
