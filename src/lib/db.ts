@@ -1041,7 +1041,7 @@ async function updateEntryRoleGroups(entryId: string, roleGroups?: unknown[]) {
 }
 
 // Internal implementation without caching
-async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> {
+async function getVerbGraphNode(entryId: string): Promise<GraphNode | null> {
   // Use a more efficient query that only fetches what we need
   const entry = await withRetry(
     () => prisma.verbs.findUnique({
@@ -1403,6 +1403,342 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
     causes,
     alsoSee,
   };
+}
+
+type PrismaNounWithRelations = Prisma.nounsGetPayload<{ 
+  include: {
+    noun_relations_noun_relations_source_idTonouns: {
+      include: { nouns_noun_relations_target_idTonouns: true }
+    };
+    noun_relations_noun_relations_target_idTonouns: {
+      include: { nouns_noun_relations_source_idTonouns: true }
+    };
+  };
+}>;
+
+type PrismaAdjectiveWithRelations = Prisma.adjectivesGetPayload<{ 
+  include: {
+    adjective_relations_adjective_relations_source_idToadjectives: {
+      include: { adjectives_adjective_relations_target_idToadjectives: true }
+    };
+    adjective_relations_adjective_relations_target_idToadjectives: {
+      include: { adjectives_adjective_relations_source_idToadjectives: true }
+    };
+  };
+}>;
+
+function detectPosFromEntryId(entryId: string): 'v' | 'n' | 'a' | 's' | null {
+  const match = entryId.match(/\.([a-z])\./i);
+  if (!match) return null;
+  return match[1].toLowerCase() as 'v' | 'n' | 'a' | 's';
+}
+
+function dedupeNodes(nodes: GraphNode[]): GraphNode[] {
+  const seen = new Map<string, GraphNode>();
+  for (const node of nodes) {
+    if (!seen.has(node.id)) {
+      seen.set(node.id, node);
+    }
+  }
+  return Array.from(seen.values());
+}
+
+function mapNounToGraphNode(noun: {
+  id: bigint;
+  code?: string | null;
+  legacy_id: string;
+  lemmas: string[];
+  src_lemmas: string[];
+  gloss: string;
+  legal_gloss?: string | null;
+  legal_constraints?: string[];
+  lexfile: string;
+  examples: string[];
+  flagged?: boolean | null;
+  flagged_reason?: string | null;
+  forbidden?: boolean | null;
+  forbidden_reason?: string | null;
+  countable?: boolean | null;
+  proper?: boolean | null;
+  collective?: boolean | null;
+  concrete?: boolean | null;
+  predicate?: boolean | null;
+}): GraphNode {
+  const nounRecord = noun as {
+    id: bigint;
+    code?: string;
+    legacy_id: string;
+    lemmas: string[];
+    src_lemmas: string[];
+    gloss: string;
+    legal_gloss?: string | null;
+    legal_constraints?: string[];
+    lexfile: string;
+    examples: string[];
+    flagged?: boolean | null;
+    flagged_reason?: string | null;
+    forbidden?: boolean | null;
+    forbidden_reason?: string | null;
+    countable?: boolean | null;
+    proper?: boolean | null;
+    collective?: boolean | null;
+    concrete?: boolean | null;
+    predicate?: boolean | null;
+  };
+
+  return {
+    id: nounRecord.code || nounRecord.id.toString(),
+    legacy_id: nounRecord.legacy_id,
+    lemmas: nounRecord.lemmas,
+    src_lemmas: nounRecord.src_lemmas,
+    gloss: nounRecord.gloss,
+    legal_gloss: nounRecord.legal_gloss ?? null,
+    legal_constraints: nounRecord.legal_constraints ?? [],
+    pos: 'n',
+    lexfile: nounRecord.lexfile,
+    examples: nounRecord.examples,
+    flagged: nounRecord.flagged ?? undefined,
+    flaggedReason: nounRecord.flagged_reason || undefined,
+    forbidden: nounRecord.forbidden ?? undefined,
+    forbiddenReason: nounRecord.forbidden_reason || undefined,
+    countable: nounRecord.countable ?? null,
+    proper: nounRecord.proper ?? undefined,
+    collective: nounRecord.collective ?? undefined,
+    concrete: nounRecord.concrete ?? undefined,
+    predicate: nounRecord.predicate ?? undefined,
+    parents: [],
+    children: [],
+    entails: [],
+    causes: [],
+    alsoSee: [],
+  };
+}
+
+function mapAdjectiveToGraphNode(adjective: {
+  id: bigint;
+  code?: string | null;
+  legacy_id: string;
+  lemmas: string[];
+  src_lemmas: string[];
+  gloss: string;
+  legal_gloss?: string | null;
+  legal_constraints?: string[];
+  lexfile: string;
+  examples: string[];
+  flagged?: boolean | null;
+  flagged_reason?: string | null;
+  forbidden?: boolean | null;
+  forbidden_reason?: string | null;
+  is_satellite?: boolean | null;
+  gradable?: boolean | null;
+  predicative?: boolean | null;
+  attributive?: boolean | null;
+  subjective?: boolean | null;
+  relational?: boolean | null;
+}): GraphNode {
+  const adjRecord = adjective as {
+    id: bigint;
+    code?: string;
+    legacy_id: string;
+    lemmas: string[];
+    src_lemmas: string[];
+    gloss: string;
+    legal_gloss?: string | null;
+    legal_constraints?: string[];
+    lexfile: string;
+    examples: string[];
+    flagged?: boolean | null;
+    flagged_reason?: string | null;
+    forbidden?: boolean | null;
+    forbidden_reason?: string | null;
+    is_satellite?: boolean | null;
+    gradable?: boolean | null;
+    predicative?: boolean | null;
+    attributive?: boolean | null;
+    subjective?: boolean | null;
+    relational?: boolean | null;
+  };
+
+  return {
+    id: adjRecord.code || adjRecord.id.toString(),
+    legacy_id: adjRecord.legacy_id,
+    lemmas: adjRecord.lemmas,
+    src_lemmas: adjRecord.src_lemmas,
+    gloss: adjRecord.gloss,
+    legal_gloss: adjRecord.legal_gloss ?? null,
+    legal_constraints: adjRecord.legal_constraints ?? [],
+    pos: 'a',
+    lexfile: adjRecord.lexfile,
+    examples: adjRecord.examples,
+    flagged: adjRecord.flagged ?? undefined,
+    flaggedReason: adjRecord.flagged_reason || undefined,
+    forbidden: adjRecord.forbidden ?? undefined,
+    forbiddenReason: adjRecord.forbidden_reason || undefined,
+    isSatellite: adjRecord.is_satellite ?? undefined,
+    gradable: adjRecord.gradable ?? null,
+    predicative: adjRecord.predicative ?? undefined,
+    attributive: adjRecord.attributive ?? undefined,
+    subjective: adjRecord.subjective ?? undefined,
+    relational: adjRecord.relational ?? undefined,
+    parents: [],
+    children: [],
+    entails: [],
+    causes: [],
+    alsoSee: [],
+  };
+}
+
+async function getNounGraphNode(entryId: string): Promise<GraphNode | null> {
+  const entry = await withRetry(
+    () => prisma.nouns.findUnique({
+      where: { code: entryId } as Prisma.nounsWhereUniqueInput,
+      include: {
+        noun_relations_noun_relations_source_idTonouns: {
+          include: {
+            nouns_noun_relations_target_idTonouns: true,
+          },
+        },
+        noun_relations_noun_relations_target_idTonouns: {
+          include: {
+            nouns_noun_relations_source_idTonouns: true,
+          },
+        },
+      },
+    }),
+    undefined,
+    `getNounGraphNode(${entryId})`
+  ) as PrismaNounWithRelations | null;
+
+  if (!entry) return null;
+
+  const parents: GraphNode[] = [];
+  const children: GraphNode[] = [];
+  const alsoSee: GraphNode[] = [];
+
+  const relationTypesForParents = new Set(['hypernym', 'instance_hypernym']);
+  const relationTypesForChildren = new Set(['hypernym', 'instance_hypernym']);
+  const relationTypesForAlsoSee = new Set([
+    'also_see',
+    'similar_to',
+    'attribute',
+    'derivationally_related',
+    'pertainym',
+    'domain_topic',
+    'domain_region',
+    'domain_usage',
+    'member_of_domain_topic',
+    'member_of_domain_region',
+    'member_of_domain_usage',
+  ]);
+
+  for (const rel of entry.noun_relations_noun_relations_source_idTonouns) {
+    const target = rel.nouns_noun_relations_target_idTonouns;
+    if (!target) continue;
+    if (relationTypesForParents.has(rel.type)) {
+      parents.push(mapNounToGraphNode(target));
+    } else if (relationTypesForAlsoSee.has(rel.type)) {
+      alsoSee.push(mapNounToGraphNode(target));
+    }
+  }
+
+  for (const rel of entry.noun_relations_noun_relations_target_idTonouns) {
+    const source = rel.nouns_noun_relations_source_idTonouns;
+    if (!source) continue;
+    if (relationTypesForChildren.has(rel.type)) {
+      children.push(mapNounToGraphNode(source));
+    } else if (relationTypesForAlsoSee.has(rel.type)) {
+      alsoSee.push(mapNounToGraphNode(source));
+    }
+  }
+
+  const baseNode = mapNounToGraphNode(entry);
+  baseNode.parents = dedupeNodes(parents);
+  baseNode.children = dedupeNodes(children);
+  baseNode.alsoSee = dedupeNodes(alsoSee);
+
+  return baseNode;
+}
+
+async function getAdjectiveGraphNode(entryId: string): Promise<GraphNode | null> {
+  const entry = await withRetry(
+    () => prisma.adjectives.findUnique({
+      where: { code: entryId } as Prisma.adjectivesWhereUniqueInput,
+      include: {
+        adjective_relations_adjective_relations_source_idToadjectives: {
+          include: {
+            adjectives_adjective_relations_target_idToadjectives: true,
+          },
+        },
+        adjective_relations_adjective_relations_target_idToadjectives: {
+          include: {
+            adjectives_adjective_relations_source_idToadjectives: true,
+          },
+        },
+      },
+    }),
+    undefined,
+    `getAdjectiveGraphNode(${entryId})`
+  ) as PrismaAdjectiveWithRelations | null;
+
+  if (!entry) return null;
+
+  const alsoSee: GraphNode[] = [];
+  const causes: GraphNode[] = [];
+
+  const alsoSeeTypes = new Set([
+    'similar',
+    'also_see',
+    'antonym',
+    'attribute',
+    'related_to',
+    'pertainym',
+    'derivationally_related',
+    'exemplifies',
+    'domain_topic',
+    'domain_region',
+    'domain_usage',
+    'member_of_domain_topic',
+    'member_of_domain_region',
+    'member_of_domain_usage',
+    'participle_of'
+  ]);
+
+  for (const rel of entry.adjective_relations_adjective_relations_source_idToadjectives) {
+    const target = rel.adjectives_adjective_relations_target_idToadjectives;
+    if (!target) continue;
+    if (rel.type === 'causes') {
+      causes.push(mapAdjectiveToGraphNode(target));
+    } else if (alsoSeeTypes.has(rel.type)) {
+      alsoSee.push(mapAdjectiveToGraphNode(target));
+    }
+  }
+
+  for (const rel of entry.adjective_relations_adjective_relations_target_idToadjectives) {
+    const source = rel.adjectives_adjective_relations_source_idToadjectives;
+    if (!source) continue;
+    if (rel.type === 'causes') {
+      causes.push(mapAdjectiveToGraphNode(source));
+    } else if (alsoSeeTypes.has(rel.type)) {
+      alsoSee.push(mapAdjectiveToGraphNode(source));
+    }
+  }
+
+  const baseNode = mapAdjectiveToGraphNode(entry);
+  baseNode.alsoSee = dedupeNodes(alsoSee);
+  baseNode.causes = dedupeNodes(causes);
+
+  return baseNode;
+}
+
+async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> {
+  const pos = detectPosFromEntryId(entryId);
+  if (pos === 'n') {
+    return getNounGraphNode(entryId);
+  }
+  if (pos === 'a' || pos === 's') {
+    return getAdjectiveGraphNode(entryId);
+  }
+  return getVerbGraphNode(entryId);
 }
 
 // Cached wrapper for getGraphNode

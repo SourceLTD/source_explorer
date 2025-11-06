@@ -15,6 +15,8 @@ model frame_roles {
   frame_id     BigInt
   role_type_id BigInt
   description  String?
+  notes        String?
+  main         Boolean?
   frames       frames     @relation(fields: [frame_id], references: [id], onDelete: Cascade)
   role_types   role_types @relation(fields: [role_type_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
@@ -277,6 +279,7 @@ model adjectives {
   updated_at                                                    DateTime                 @default(now()) @db.Timestamp(6)
   adjective_relations_adjective_relations_source_idToadjectives adjective_relations[]    @relation("adjective_relations_source_idToadjectives")
   adjective_relations_adjective_relations_target_idToadjectives adjective_relations[]    @relation("adjective_relations_target_idToadjectives")
+  llm_job_items                                                 llm_job_items[]
 
   @@index([attributive], map: "idx_adjectives_attributive")
   @@index([examples_tsv], map: "idx_adjectives_examples_tsv", type: Gin)
@@ -341,6 +344,7 @@ model nouns {
   legal_constraints                              String[]
   created_at                                     DateTime                 @default(now()) @db.Timestamp(6)
   updated_at                                     DateTime                 @default(now()) @db.Timestamp(6)
+  llm_job_items                                  llm_job_items[]
   noun_relations_noun_relations_source_idTonouns noun_relations[]         @relation("noun_relations_source_idTonouns")
   noun_relations_noun_relations_target_idTonouns noun_relations[]         @relation("noun_relations_target_idTonouns")
   recipe_variables                               recipe_variables[]
@@ -387,6 +391,7 @@ model verbs {
   frame_id                                       BigInt?
   merged_from                                    String[]
   secondary_frame_id                             BigInt?
+  llm_job_items                                  llm_job_items[]
   recipe_predicates                              recipe_predicates[]
   recipes                                        recipes[]
   role_groups                                    role_groups[]
@@ -481,6 +486,68 @@ model recipe_variables {
   @@index([recipe_id], map: "idx_recipe_variables_recipe")
 }
 
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model llm_job_items {
+  id               BigInt              @id @default(autoincrement())
+  job_id           BigInt
+  verb_id          BigInt?
+  noun_id          BigInt?
+  adjective_id     BigInt?
+  status           llm_job_item_status @default(queued)
+  attempt_count    Int                 @default(0)
+  provider_task_id String?
+  llm_request_id   String?
+  request_payload  Json?
+  response_payload Json?
+  flags            Json?
+  flagged          Boolean             @default(false)
+  last_error       String?
+  input_tokens     Int                 @default(0)
+  output_tokens    Int                 @default(0)
+  created_at       DateTime            @default(now()) @db.Timestamptz(6)
+  started_at       DateTime?           @db.Timestamptz(6)
+  completed_at     DateTime?           @db.Timestamptz(6)
+  updated_at       DateTime            @default(now()) @db.Timestamptz(6)
+  adjectives       adjectives?         @relation(fields: [adjective_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  llm_jobs         llm_jobs            @relation(fields: [job_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  nouns            nouns?              @relation(fields: [noun_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  verbs            verbs?              @relation(fields: [verb_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([job_id, status], map: "idx_llm_job_items_job_status")
+}
+
+model llm_jobs {
+  id              BigInt          @id @default(autoincrement())
+  label           String?
+  submitted_by    String?
+  scope_kind      String?
+  scope           Json?
+  config          Json?
+  provider        String?
+  provider_run_id String?
+  llm_vendor      String?
+  llm_request_id  String?
+  status          llm_job_status  @default(queued)
+  total_items     Int             @default(0)
+  processed_items Int             @default(0)
+  succeeded_items Int             @default(0)
+  failed_items    Int             @default(0)
+  flagged_items   Int             @default(0)
+  input_tokens    Int             @default(0)
+  output_tokens   Int             @default(0)
+  cost_microunits BigInt?
+  error           String?
+  created_at      DateTime        @default(now()) @db.Timestamptz(6)
+  started_at      DateTime?       @db.Timestamptz(6)
+  completed_at    DateTime?       @db.Timestamptz(6)
+  updated_at      DateTime        @default(now()) @db.Timestamptz(6)
+  llm_job_items   llm_job_items[]
+
+  @@index([created_at], map: "idx_llm_jobs_created_at")
+  @@index([provider, provider_run_id], map: "idx_llm_jobs_provider_run")
+  @@index([status], map: "idx_llm_jobs_status")
+}
+
 enum RelationType {
   also_see
   causes
@@ -565,4 +632,21 @@ enum logic_node_kind {
 enum predicate_commitment {
   asserted
   afforded
+}
+
+enum llm_job_item_status {
+  queued
+  processing
+  succeeded
+  failed
+  skipped
+}
+
+enum llm_job_status {
+  queued
+  running
+  completed
+  failed
+  cancelled
+  paused
 }

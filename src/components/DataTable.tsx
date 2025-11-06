@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { TableEntry, PaginatedResult, PaginationParams, POS_LABELS, VerbRelation } from '@/lib/types';
 import FilterPanel, { FilterState } from './FilterPanel';
@@ -118,6 +118,16 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [isInitialized, setIsInitialized] = useState(false);
+  const apiPrefix = useMemo(() => {
+    if (mode === 'nouns') return '/api/nouns';
+    if (mode === 'adjectives') return '/api/adjectives';
+    return '/api/entries';
+  }, [mode]);
+  const graphBasePath = useMemo(() => {
+    if (mode === 'nouns') return '/graph/nouns';
+    if (mode === 'adjectives') return '/graph/adjectives';
+    return '/graph';
+  }, [mode]);
 
   // Helper function to parse URL params on mount
   const getInitialStateFromURL = useCallback(() => {
@@ -342,10 +352,6 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
         }
       });
 
-      let apiPrefix = '/api/entries';
-      if (mode === 'nouns') apiPrefix = '/api/nouns';
-      else if (mode === 'adjectives') apiPrefix = '/api/adjectives';
-      
       const response = await fetch(`${apiPrefix}/paginated?${queryParams}`);
       if (!response.ok) {
         throw new Error('Failed to fetch data');
@@ -358,7 +364,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
     } finally {
       setLoading(false);
     }
-  }, [currentPage, pageSize, sortState, searchQuery, filters]);
+  }, [currentPage, pageSize, sortState, searchQuery, filters, apiPrefix]);
 
   useEffect(() => {
     fetchData();
@@ -460,10 +466,6 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
     }
 
     try {
-      let apiPrefix = '/api/entries';
-      if (mode === 'nouns') apiPrefix = '/api/nouns';
-      else if (mode === 'adjectives') apiPrefix = '/api/adjectives';
-      
       const response = await fetch(`${apiPrefix}/${entryId}/relations`);
       if (!response.ok) {
         throw new Error('Failed to fetch relations');
@@ -491,7 +493,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
       setRelationsData(prev => ({ ...prev, [entryId]: result }));
       return result;
     }
-  }, [relationsData]);
+  }, [relationsData, apiPrefix]);
 
   // Preload relations data when parents or children columns become visible
   useEffect(() => {
@@ -564,10 +566,6 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
     if (selection.selectedIds.size === 0) return;
 
     try {
-      let apiPrefix = '/api/entries';
-      if (mode === 'nouns') apiPrefix = '/api/nouns';
-      else if (mode === 'adjectives') apiPrefix = '/api/adjectives';
-      
       const response = await fetch(`${apiPrefix}/moderation`, {
         method: 'PATCH',
         headers: {
@@ -677,10 +675,6 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
     if (!editing.entryId || !editing.field) return;
 
     try {
-      let apiPrefix = '/api/entries';
-      if (mode === 'nouns') apiPrefix = '/api/nouns';
-      else if (mode === 'adjectives') apiPrefix = '/api/adjectives';
-      
       const response = await fetch(`${apiPrefix}/${editing.entryId}`, {
         method: 'PATCH',
         headers: {
@@ -1560,7 +1554,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
               <button
                 onClick={() => {
                   setContextMenu({ isOpen: false, x: 0, y: 0, entryId: null });
-                  router.push(`/graph?entry=${entry.id}`);
+                  router.push(`${graphBasePath}?entry=${entry.id}`);
                 }}
                 className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-800 flex items-center gap-2"
               >

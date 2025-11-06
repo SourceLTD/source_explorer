@@ -318,7 +318,10 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
     const params = new URLSearchParams(searchParams);
     params.delete('entry');
     const qs = params.toString();
-    router.push(qs ? `/graph?${qs}` : '/graph', { scroll: false });
+    let basePath = '/graph';
+    if (mode === 'nouns') basePath = '/graph/nouns';
+    else if (mode === 'adjectives') basePath = '/graph/adjectives';
+    router.push(qs ? `${basePath}?${qs}` : basePath, { scroll: false });
   };
 
   const handleRefreshClick = () => {

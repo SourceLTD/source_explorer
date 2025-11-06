@@ -8,8 +8,7 @@ function GraphContent() {
   const searchParams = useSearchParams();
   const entryId = searchParams.get('entry');
 
-  // Adjectives don't have a single root, so no default entry
-  return <WordNetExplorer initialEntryId={entryId || undefined} mode="adjectives" />;
+  return <WordNetExplorer initialEntryId={entryId || 'cheery.s.01'} mode="adjectives" />;
 }
 
 export default function AdjectiveGraphMode() {
