@@ -114,7 +114,6 @@ function buildComplexRecipes(): { current: GraphNode; recipes: Recipe[] } {
   //   - AND group (start, finish, log) — has relations.
   //   - AND group (monitor, perceive, communicate) — has relations.
   const leaf = (nodeId: string, predicate: RecipePredicateNode): LogicNode => ({ id: `leaf:${nodeId}`, recipe_id: 'rA', kind: 'leaf', description: null, target_predicate_id: predicate.id, target_predicate: predicate, children: [] });
-  const not = (id: string, child: LogicNode): LogicNode => ({ id: `not:${id}`, recipe_id: 'rA', kind: 'not', description: 'NOT', children: [child] });
   const and = (id: string, ...children: LogicNode[]): LogicNode => ({ id: `and:${id}`, recipe_id: 'rA', kind: 'and', description: 'all', children });
   const or = (id: string, ...children: LogicNode[]): LogicNode => ({ id: `or:${id}`, recipe_id: 'rA', kind: 'or', description: 'oneOf', children });
 

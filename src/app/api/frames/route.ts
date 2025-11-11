@@ -23,7 +23,8 @@ export async function GET() {
 
     // Return frames with code as the ID for display
     const framesWithCode = frames.map(f => ({
-      id: (f as { code?: string }).code || f.id.toString(),
+      id: f.id.toString(),
+      code: (f as { code?: string | null }).code ?? null,
       frame_name: f.frame_name,
     }));
 

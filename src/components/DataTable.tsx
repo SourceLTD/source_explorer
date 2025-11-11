@@ -2,9 +2,12 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
-import { TableEntry, PaginatedResult, PaginationParams, POS_LABELS, VerbRelation } from '@/lib/types';
+import { TableEntry, PaginatedResult, PaginationParams, POS_LABELS } from '@/lib/types';
 import FilterPanel, { FilterState } from './FilterPanel';
 import ColumnVisibilityPanel, { ColumnConfig, ColumnVisibilityState } from './ColumnVisibilityPanel';
+import { api } from '@/lib/api-client';
+import AIJobsOverlay from './AIJobsOverlay';
+import { SparklesIcon } from '@heroicons/react/24/outline';
 
 interface DataTableProps {
   onRowClick?: (entry: TableEntry) => void;
@@ -47,6 +50,12 @@ interface ContextMenuState {
   entryId: string | null;
 }
 
+interface FrameOption {
+  id: string;
+  code: string | null;
+  frame_name: string;
+}
+
 // Define all available columns with their configurations
 const DEFAULT_COLUMNS: ColumnConfig[] = [
   { key: 'id', label: 'ID', visible: true, sortable: true },
@@ -67,8 +76,6 @@ const DEFAULT_COLUMNS: ColumnConfig[] = [
   { key: 'vendler_class', label: 'Vendler Class', visible: false, sortable: true },
   { key: 'legal_constraints', label: 'Legal Constraints', visible: false, sortable: false },
   { key: 'roles', label: 'Roles', visible: false, sortable: false },
-  { key: 'parentsCount', label: 'Parents', visible: true, sortable: true },
-  { key: 'childrenCount', label: 'Children', visible: true, sortable: true },
   { key: 'createdAt', label: 'Created', visible: false, sortable: true },
   { key: 'updatedAt', label: 'Updated', visible: false, sortable: true },
   { key: 'actions', label: 'Actions', visible: true, sortable: false },
@@ -94,8 +101,6 @@ const DEFAULT_COLUMN_WIDTHS: ColumnWidthState = {
   vendler_class: 150,
   legal_constraints: 200,
   roles: 250,
-  parentsCount: 150,
-  childrenCount: 150,
   createdAt: 100,
   updatedAt: 100,
   actions: 80,
@@ -111,6 +116,22 @@ const getDefaultVisibility = (): ColumnVisibilityState => {
 
 const getDefaultColumnWidths = (): ColumnWidthState => {
   return { ...DEFAULT_COLUMN_WIDTHS };
+};
+
+const sanitizeColumnVisibility = (visibility?: ColumnVisibilityState | null): ColumnVisibilityState => {
+  const defaultVisibility = getDefaultVisibility();
+  if (!visibility) {
+    return defaultVisibility;
+  }
+
+  const sanitized: ColumnVisibilityState = { ...defaultVisibility };
+  Object.entries(visibility).forEach(([key, value]) => {
+    if (key in defaultVisibility && typeof value === 'boolean') {
+      sanitized[key] = value;
+    }
+  });
+
+  return sanitized;
 };
 
 export default function DataTable({ onRowClick, onEditClick, searchQuery, className, mode = 'verbs' }: DataTableProps) {
@@ -137,18 +158,18 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
     const filters: FilterState = {};
     
     // Parse text filters
-    ['gloss', 'lemmas', 'examples', 'particles', 'frames'].forEach(key => {
+    ['gloss', 'lemmas', 'examples', 'particles', 'frames', 'flaggedReason', 'forbiddenReason'].forEach(key => {
       const value = params.get(key);
       if (value !== null) {
-        filters[key as 'gloss' | 'lemmas' | 'examples' | 'particles' | 'frames'] = value;
+        filters[key as 'gloss' | 'lemmas' | 'examples' | 'particles' | 'frames' | 'flaggedReason' | 'forbiddenReason'] = value;
       }
     });
     
     // Parse categorical filters
-    ['pos', 'lexfile', 'frame_id'].forEach(key => {
+    ['pos', 'lexfile', 'frame_id', 'flaggedByJobId'].forEach(key => {
       const value = params.get(key);
       if (value !== null) {
-        filters[key as 'pos' | 'lexfile' | 'frame_id'] = value;
+        filters[key as 'pos' | 'lexfile' | 'frame_id' | 'flaggedByJobId'] = value;
       }
     });
     
@@ -221,14 +242,14 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
   const [columnVisibility, setColumnVisibility] = useState<ColumnVisibilityState>(() => {
     // First try URL params
     if (initialState.columnVisibility) {
-      return initialState.columnVisibility;
+      return sanitizeColumnVisibility(initialState.columnVisibility);
     }
     // Then try localStorage
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('table-column-visibility');
       if (saved) {
         try {
-          return JSON.parse(saved);
+          return sanitizeColumnVisibility(JSON.parse(saved));
         } catch {
           return getDefaultVisibility();
         }
@@ -253,7 +274,6 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
   });
   const [isResizing, setIsResizing] = useState(false);
   const [, setResizingColumn] = useState<string | null>(null);
-  const [relationsData, setRelationsData] = useState<Record<string, { parents: string[]; children: string[] }>>({});
   const [moderationModal, setModerationModal] = useState<ModerationModalState>({
     isOpen: false,
     action: null,
@@ -270,6 +290,61 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
     y: 0,
     entryId: null
   });
+  const [isAIOverlayOpen, setIsAIOverlayOpen] = useState(false);
+  const [pendingAIJobs, setPendingAIJobs] = useState(0);
+  const [isFrameModalOpen, setIsFrameModalOpen] = useState(false);
+  const [frameOptions, setFrameOptions] = useState<FrameOption[]>([]);
+  const [frameOptionsLoading, setFrameOptionsLoading] = useState(false);
+  const [frameOptionsError, setFrameOptionsError] = useState<string | null>(null);
+  const [selectedFrameValue, setSelectedFrameValue] = useState<string>('');
+  const [frameSearchQuery, setFrameSearchQuery] = useState('');
+  const [isFrameUpdating, setIsFrameUpdating] = useState(false);
+  const selectedEntries = useMemo(() => {
+    if (!data || selection.selectedIds.size === 0) {
+      return [];
+    }
+    return data.data.filter(entry => selection.selectedIds.has(entry.id));
+  }, [data, selection.selectedIds]);
+  const filteredFrameOptions = useMemo(() => {
+    if (!frameSearchQuery.trim()) {
+      return frameOptions;
+    }
+    const query = frameSearchQuery.trim().toLowerCase();
+    return frameOptions.filter(frame => {
+      const nameMatch = frame.frame_name.toLowerCase().includes(query);
+      const code = frame.code ? frame.code.toLowerCase() : '';
+      return nameMatch || code.includes(query);
+    });
+  }, [frameOptions, frameSearchQuery]);
+
+  // Keep filters in sync with external URL updates (e.g., deep links from other components)
+  useEffect(() => {
+    const flaggedByJobIdParam = searchParams?.get('flaggedByJobId') ?? undefined;
+
+    setFilters(prev => {
+      const currentValue = prev.flaggedByJobId ?? undefined;
+
+      if (flaggedByJobIdParam) {
+        const hasOtherActiveFilters = Object.entries(prev).some(
+          ([key, value]) => key !== 'flaggedByJobId' && value !== undefined && value !== ''
+        );
+
+        if (!hasOtherActiveFilters && currentValue === flaggedByJobIdParam) {
+          return prev;
+        }
+
+        return { flaggedByJobId: flaggedByJobIdParam };
+      }
+
+      if (currentValue === undefined) {
+        return prev;
+      }
+
+      const { flaggedByJobId: _unused, ...rest } = prev;
+      void _unused;
+      return rest;
+    });
+  }, [searchParams]);
 
   // Mark as initialized after first render
   useEffect(() => {
@@ -370,6 +445,63 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
     fetchData();
   }, [fetchData]);
 
+  const fetchPendingAIJobs = useCallback(async () => {
+    try {
+      const response = await api.get<{ jobs: Array<{ status: string }> }>('/api/llm-jobs');
+      const pending = response.jobs?.filter(job => job.status === 'queued' || job.status === 'running').length ?? 0;
+      setPendingAIJobs(pending);
+    } catch (error) {
+      console.warn('Failed to load pending AI jobs', error);
+    }
+  }, []);
+
+  const fetchFrameOptions = useCallback(async () => {
+    if (mode !== 'verbs') {
+      return;
+    }
+
+    setFrameOptionsLoading(true);
+    setFrameOptionsError(null);
+
+    try {
+      const response = await fetch('/api/frames', { cache: 'no-store' });
+      if (!response.ok) {
+        throw new Error('Failed to load frames');
+      }
+
+      const frames: FrameOption[] = await response.json();
+      setFrameOptions(frames);
+    } catch (error) {
+      setFrameOptionsError(error instanceof Error ? error.message : 'Failed to load frames');
+    } finally {
+      setFrameOptionsLoading(false);
+    }
+  }, [mode]);
+
+  useEffect(() => {
+    void fetchPendingAIJobs();
+  }, [fetchPendingAIJobs]);
+
+  useEffect(() => {
+    if (isAIOverlayOpen) return;
+    const interval = setInterval(() => {
+      void fetchPendingAIJobs();
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [fetchPendingAIJobs, isAIOverlayOpen]);
+
+  useEffect(() => {
+    if (!isFrameModalOpen || mode !== 'verbs') {
+      return;
+    }
+
+    if (frameOptions.length > 0 || frameOptionsLoading || frameOptionsError) {
+      return;
+    }
+
+    void fetchFrameOptions();
+  }, [fetchFrameOptions, frameOptions.length, frameOptionsError, frameOptionsLoading, isFrameModalOpen, mode]);
+
   // Reset to first page when search query changes
   useEffect(() => {
     setCurrentPage(1);
@@ -394,10 +526,11 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
   };
 
   const handleColumnVisibilityChange = (newVisibility: ColumnVisibilityState) => {
-    setColumnVisibility(newVisibility);
+    const sanitizedVisibility = sanitizeColumnVisibility(newVisibility);
+    setColumnVisibility(sanitizedVisibility);
     // Save to localStorage
     if (typeof window !== 'undefined') {
-      localStorage.setItem('table-column-visibility', JSON.stringify(newVisibility));
+      localStorage.setItem('table-column-visibility', JSON.stringify(sanitizedVisibility));
     }
   };
 
@@ -458,56 +591,6 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
   }));
 
   const visibleColumns = currentColumns.filter(col => col.visible);
-
-  // Fetch relations data for entries when parents or children columns are visible
-  const fetchRelationsForEntry = useCallback(async (entryId: string): Promise<{ parents: string[]; children: string[] }> => {
-    if (relationsData[entryId]) {
-      return relationsData[entryId];
-    }
-
-    try {
-      const response = await fetch(`${apiPrefix}/${entryId}/relations`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch relations');
-      }
-      const data = await response.json();
-      
-      // Extract parent IDs (hypernyms - more general concepts this entry points to)
-      const parents = data.sourceRelations
-        .filter((rel: VerbRelation) => rel.type === 'hypernym')
-        .map((rel: VerbRelation) => rel.target?.id)
-        .filter(Boolean);
-      
-      // Extract children IDs (hyponyms - more specific concepts that point to this entry)
-      const children = data.targetRelations
-        .filter((rel: VerbRelation) => rel.type === 'hypernym')
-        .map((rel: VerbRelation) => rel.source?.id)
-        .filter(Boolean);
-      
-      const result = { parents, children };
-      setRelationsData(prev => ({ ...prev, [entryId]: result }));
-      return result;
-    } catch (error) {
-      console.error('Error fetching relations:', error);
-      const result = { parents: [], children: [] };
-      setRelationsData(prev => ({ ...prev, [entryId]: result }));
-      return result;
-    }
-  }, [relationsData, apiPrefix]);
-
-  // Preload relations data when parents or children columns become visible
-  useEffect(() => {
-    const needsParents = visibleColumns.some(col => col.key === 'parentsCount');
-    const needsChildren = visibleColumns.some(col => col.key === 'childrenCount');
-    
-    if ((needsParents || needsChildren) && data?.data) {
-      data.data.forEach(entry => {
-        if (!relationsData[entry.id]) {
-          fetchRelationsForEntry(entry.id);
-        }
-      });
-    }
-  }, [visibleColumns, data, relationsData, fetchRelationsForEntry]);
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
@@ -606,6 +689,99 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
     } catch (error) {
       console.error('Error updating entries:', error);
       // You could add error notification here
+    }
+  };
+
+  const handleOpenFrameModal = () => {
+    if (mode !== 'verbs') {
+      return;
+    }
+    setFrameOptionsError(null);
+    setSelectedFrameValue('');
+    setFrameSearchQuery('');
+    setIsFrameModalOpen(true);
+  };
+
+  const handleCloseFrameModal = () => {
+    if (isFrameUpdating) {
+      return;
+    }
+    setIsFrameModalOpen(false);
+    setSelectedFrameValue('');
+    setFrameSearchQuery('');
+    setFrameOptionsError(null);
+  };
+
+  const handleConfirmFrameChange = async () => {
+    if (selection.selectedIds.size === 0 || mode !== 'verbs') {
+      return;
+    }
+
+    const normalizedFrameValue =
+      selectedFrameValue === ''
+        ? undefined
+        : selectedFrameValue === '__CLEAR__'
+          ? null
+          : selectedFrameValue;
+
+    if (normalizedFrameValue === undefined) {
+      setFrameOptionsError('Please select a frame before confirming');
+      return;
+    }
+
+    setIsFrameUpdating(true);
+    setFrameOptionsError(null);
+
+    try {
+      const response = await fetch(`${apiPrefix}/frame`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ids: Array.from(selection.selectedIds),
+          frameId: normalizedFrameValue,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.error ?? 'Failed to update frames');
+      }
+
+      const chosenFrame =
+        normalizedFrameValue === null
+          ? null
+          : frameOptions.find(frame => frame.id === normalizedFrameValue) ?? null;
+
+      setData(prevData => {
+        if (!prevData) return prevData;
+        return {
+          ...prevData,
+          data: prevData.data.map(entry => {
+            if (!selection.selectedIds.has(entry.id)) {
+              return entry;
+            }
+            return {
+              ...entry,
+              frame_id: normalizedFrameValue === null ? null : normalizedFrameValue,
+              frame: chosenFrame ? chosenFrame.frame_name : null,
+            };
+          }),
+        };
+      });
+
+      await fetchData();
+
+      setSelection({ selectedIds: new Set(), selectAll: false });
+      setIsFrameModalOpen(false);
+      setSelectedFrameValue('');
+      setFrameSearchQuery('');
+      setFrameOptionsError(null);
+    } catch (error) {
+      setFrameOptionsError(error instanceof Error ? error.message : 'Failed to update frames');
+    } finally {
+      setIsFrameUpdating(false);
     }
   };
 
@@ -740,12 +916,10 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
 
   // Calculate moderation states of selected entries
   const getSelectionModerationState = () => {
-    if (!data || selection.selectedIds.size === 0) {
+    if (selectedEntries.length === 0) {
       return { allFlagged: false, noneFlagged: true, allForbidden: false, noneForbidden: true };
     }
-    
-    const selectedEntries = data.data.filter(entry => selection.selectedIds.has(entry.id));
-    
+
     const allFlagged = selectedEntries.every(entry => entry.flagged);
     const noneFlagged = selectedEntries.every(entry => !entry.flagged);
     const allForbidden = selectedEntries.every(entry => entry.forbidden);
@@ -779,12 +953,14 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
     return text.substring(0, maxLength) + '...';
   };
 
-  const formatDate = (date: Date) => {
-    return new Date(date).toLocaleDateString();
+  const formatDate = (date: Date | string | null | undefined) => {
+    if (!date) return '—';
+    const dateObj = typeof date === 'string' ? new Date(date) : date;
+    if (isNaN(dateObj.getTime())) return '—';
+    return dateObj.toLocaleDateString();
   };
 
   const renderCellContent = (entry: TableEntry, columnKey: string) => {
-    const entryRelations = relationsData[entry.id];
     switch (columnKey) {
       case 'lemmas':
         // Display regular lemmas first, then src_lemmas in bold at the end
@@ -866,7 +1042,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
           return <span className="text-gray-400 text-sm">—</span>;
         }
         return (
-          <span className="inline-block px-2 py-1 text-xs bg-indigo-100 text-indigo-800 rounded font-medium uppercase">
+          <span className="inline-block max-w-full px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded font-medium uppercase break-words whitespace-normal">
             {entry.frame}
           </span>
         );
@@ -996,32 +1172,6 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
             ))}
           </div>
         );
-      case 'parentsCount':
-        if (!entryRelations?.parents || entryRelations.parents.length === 0) {
-          return <span className="text-gray-400 text-sm">None</span>;
-        }
-        return (
-          <div className="space-y-1 text-xs text-gray-700 max-w-sm">
-            {entryRelations.parents.map((parentId, idx) => (
-              <div key={idx} className="font-mono text-blue-600">
-                {parentId}
-              </div>
-            ))}
-          </div>
-        );
-      case 'childrenCount':
-        if (!entryRelations?.children || entryRelations.children.length === 0) {
-          return <span className="text-gray-400 text-sm">None</span>;
-        }
-        return (
-          <div className="space-y-1 text-xs text-gray-700 max-w-sm">
-            {entryRelations.children.map((childId, idx) => (
-              <div key={idx} className="font-mono text-green-600">
-                {childId}
-              </div>
-            ))}
-          </div>
-        );
       case 'frame_id':
         if (!entry.frame_id) {
           return <span className="text-gray-400 text-sm">None</span>;
@@ -1087,7 +1237,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
               <div key={`role-${idx}`} className="flex items-start gap-1">
                 <span className={`inline-block px-2 py-1 rounded font-medium ${
                   role.main 
-                    ? 'bg-indigo-100 text-indigo-800' 
+                    ? 'bg-blue-100 text-blue-800' 
                     : 'bg-gray-100 text-gray-700'
                 }`}>
                   {role.role_type.label}
@@ -1118,7 +1268,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
                       )}
                       <span className={`inline-block px-2 py-1 rounded font-medium ${
                         role.main 
-                          ? 'bg-indigo-100 text-indigo-800' 
+                          ? 'bg-blue-100 text-blue-800' 
                           : 'bg-gray-100 text-gray-700'
                       }`}>
                         {role.role_type.label}
@@ -1308,6 +1458,20 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
               </svg>
               Reset Widths
             </button>
+            <button
+              onClick={() => setIsAIOverlayOpen(true)}
+              className="relative inline-flex items-center justify-center rounded-md bg-gradient-to-r from-blue-500 to-blue-600 px-3 py-2 text-white shadow-sm transition-colors hover:from-blue-600 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+              title="Open AI batch moderation"
+              aria-label="Open AI batch moderation"
+              type="button"
+            >
+              <SparklesIcon className="h-5 w-5" aria-hidden="true" />
+              {pendingAIJobs > 0 && (
+                <span className="absolute -top-1 -right-1 inline-flex min-h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-600 px-1 text-[11px] font-bold text-white">
+                  {pendingAIJobs > 99 ? '99+' : pendingAIJobs}
+                </span>
+              )}
+            </button>
             
             {/* Moderation Actions */}
             {selection.selectedIds.size > 0 && (() => {
@@ -1367,6 +1531,17 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
                       Allow
+                    </button>
+                  )}
+                  {mode === 'verbs' && (
+                    <button
+                      onClick={handleOpenFrameModal}
+                      className="flex items-center gap-1 px-3 py-1 text-sm font-medium text-blue-700 bg-blue-100 border border-blue-200 rounded-md hover:bg-blue-200 transition-colors cursor-pointer"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7h11m-2-3 3 3-3 3M20 17H9m2-3-3 3 3 3" />
+                      </svg>
+                      Change Frame
                     </button>
                   )}
                 </div>
@@ -1459,7 +1634,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
                 </td>
                 {visibleColumns.map((column) => {
                   const isClickable = onRowClick && column.key !== 'isMwe' && column.key !== 'transitive' && column.key !== 'gloss' && column.key !== 'actions';
-                  const allowsWrap = ['gloss', 'examples', 'parentsCount', 'childrenCount', 'legal_constraints', 'roles', 'flaggedReason', 'forbiddenReason'].includes(column.key);
+                  const allowsWrap = ['gloss', 'examples', 'legal_constraints', 'roles', 'flaggedReason', 'forbiddenReason', 'frame'].includes(column.key);
                   const cellClassName = `px-4 py-4 ${allowsWrap ? 'break-words' : 'whitespace-nowrap'} ${isClickable ? 'cursor-pointer' : ''} align-top border-r border-gray-200`;
                   
                   return (
@@ -1728,6 +1903,148 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
           </div>
         );
       })()}
+
+      {isFrameModalOpen && mode === 'verbs' && (() => {
+        const frameSummary = (() => {
+          if (selectedEntries.length === 0) return [];
+          const counts = new Map<string, { label: string; count: number }>();
+          selectedEntries.forEach(entry => {
+            const key = entry.frame ?? '__NONE__';
+            const label = entry.frame ?? 'No frame assigned';
+            const existing = counts.get(key);
+            if (existing) {
+              existing.count += 1;
+            } else {
+              counts.set(key, { label, count: 1 });
+            }
+          });
+          return Array.from(counts.values()).sort((a, b) => b.count - a.count);
+        })();
+
+        return (
+          <div className="fixed inset-0 flex items-center justify-center z-50">
+            <div
+              className="absolute inset-0"
+              style={{ backgroundColor: 'rgba(0, 0, 0, 0.25)' }}
+              onClick={isFrameUpdating ? undefined : handleCloseFrameModal}
+            ></div>
+            <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto relative z-10">
+              <div className="p-6 space-y-5">
+                <div className="space-y-2">
+                  <h3 className="text-lg font-semibold text-gray-900">Change Frame</h3>
+                  <p className="text-sm text-gray-600">
+                    You are about to update the frame for{' '}
+                    <span className="font-medium text-gray-900">{selection.selectedIds.size}</span>{' '}
+                    {selection.selectedIds.size === 1 ? 'entry' : 'entries'}.
+                  </p>
+                </div>
+
+                {frameSummary.length > 0 && (
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
+                    <h4 className="text-xs font-semibold text-blue-900 uppercase tracking-wide mb-2">
+                      Current Frame Breakdown
+                    </h4>
+                    <ul className="space-y-1 text-sm text-blue-900">
+                      {frameSummary.map(({ label, count }) => (
+                        <li key={`${label}-${count}`} className="flex justify-between">
+                          <span>{label}</span>
+                          <span className="font-medium">{count}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                <div className="space-y-3">
+                  <div>
+                    <label htmlFor="frame-search" className="block text-sm font-medium text-gray-700 mb-1">
+                      Search frames
+                    </label>
+                    <input
+                      id="frame-search"
+                      type="text"
+                      value={frameSearchQuery}
+                      onChange={(e) => setFrameSearchQuery(e.target.value)}
+                      placeholder="Filter by frame name or code..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-gray-900"
+                    />
+                  </div>
+
+                  {frameOptionsLoading ? (
+                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                      <div className="h-4 w-4 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin"></div>
+                      Loading frames...
+                    </div>
+                  ) : frameOptionsError ? (
+                    <div className="p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-700 space-y-2">
+                      <p>{frameOptionsError}</p>
+                      <button
+                        type="button"
+                        onClick={() => void fetchFrameOptions()}
+                        className="inline-flex items-center gap-1 px-3 py-1 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded cursor-pointer"
+                      >
+                        Retry
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <label htmlFor="frame-select" className="block text-sm font-medium text-gray-700">
+                        New frame
+                      </label>
+                      <select
+                        id="frame-select"
+                        value={selectedFrameValue}
+                        onChange={(e) => {
+                          setFrameOptionsError(null);
+                          setSelectedFrameValue(e.target.value);
+                        }}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-gray-900"
+                      >
+                        <option value="">Select a new frame…</option>
+                        <option value="__CLEAR__">No frame (clear existing frame)</option>
+                        {filteredFrameOptions.map(frame => (
+                          <option key={frame.id} value={frame.id}>
+                            {frame.frame_name}
+                            {frame.code ? ` (${frame.code})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-xs text-gray-500">
+                        Selecting &quot;No frame&quot; will remove the frame assignment from all selected entries.
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex justify-end gap-3">
+                  <button
+                    onClick={handleCloseFrameModal}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={isFrameUpdating}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleConfirmFrameChange}
+                    className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={isFrameUpdating || frameOptionsLoading || selectedFrameValue === ''}
+                  >
+                    {isFrameUpdating ? 'Applying...' : 'Apply Frame'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      <AIJobsOverlay
+        isOpen={isAIOverlayOpen}
+        onClose={() => setIsAIOverlayOpen(false)}
+        mode={mode}
+        selectedIds={Array.from(selection.selectedIds)}
+        onJobsUpdated={setPendingAIJobs}
+      />
     </div>
   );
 }

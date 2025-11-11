@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   FunnelIcon, 
   XMarkIcon, 
@@ -11,11 +11,13 @@ import {
   CheckIcon,
   XCircleIcon
 } from '@heroicons/react/24/outline';
+import { SparklesIcon } from '@heroicons/react/24/outline';
 import { POS_LABELS } from '@/lib/types';
 
 interface Frame {
   id: string;
   frame_name: string;
+  code?: string | null;
 }
 
 export interface FilterState {
@@ -25,11 +27,15 @@ export interface FilterState {
   examples?: string;
   particles?: string;
   frames?: string;
+  flaggedReason?: string;
+  forbiddenReason?: string;
   
   // Categorical filters
   pos?: string;
   lexfile?: string;
   frame_id?: string; // Comma-separated frame IDs
+  // AI jobs filters
+  flaggedByJobId?: string;
   
   // Boolean filters
   isMwe?: boolean;
@@ -108,8 +114,11 @@ export default function FilterPanel({
   const [frameDropdownOpen, setFrameDropdownOpen] = useState(false);
   const [lexfileDropdownOpen, setLexfileDropdownOpen] = useState(false);
   const [posDropdownOpen, setPosDropdownOpen] = useState(false);
+  const [jobs, setJobs] = useState<Array<{ id: string; label: string | null; status: string; flagged_items: number; created_at: string }>>([]);
+  const [jobsLoading, setJobsLoading] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const frameDropdownContainerRef = useRef<HTMLDivElement>(null);
   
   const toggleSection = (section: string) => {
     setOpenSections(prev => {
@@ -143,6 +152,33 @@ export default function FilterPanel({
     fetchFrames();
   }, []);
 
+  // Fetch recent AI jobs for the 'Flagged by' filter
+  useEffect(() => {
+    const fetchJobs = async () => {
+      setJobsLoading(true);
+      try {
+        const response = await fetch('/api/llm-jobs?includeCompleted=true&refresh=false&limit=50');
+        if (response.ok) {
+          const data = await response.json();
+          const list = Array.isArray(data.jobs) ? data.jobs : [];
+          setJobs(list.map((j: any) => ({
+            id: String(j.id),
+            label: j.label ?? null,
+            status: j.status,
+            flagged_items: Number(j.flagged_items ?? 0),
+            created_at: String(j.created_at),
+          })));
+        }
+      } catch (error) {
+        console.error('Error fetching jobs:', error);
+      } finally {
+        setJobsLoading(false);
+      }
+    };
+
+    fetchJobs();
+  }, []);
+
   // Close panel when clicking outside
   useEffect(() => {
     if (!isOpen) return;
@@ -169,15 +205,23 @@ export default function FilterPanel({
     };
   }, [isOpen, onToggle]);
 
-  const updateFilter = (key: keyof FilterState, value: string | number | boolean | undefined) => {
+  const updateFilter = (key: keyof FilterState, value: unknown) => {
+    let normalizedValue = value;
+
+    if (Array.isArray(normalizedValue)) {
+      normalizedValue = normalizedValue.length > 0 ? normalizedValue : undefined;
+    } else if (normalizedValue === '') {
+      normalizedValue = undefined;
+    }
+
     onFiltersChange({
       ...filters,
-      [key]: value === '' ? undefined : value
+      [key]: normalizedValue as FilterState[keyof FilterState]
     });
   };
 
   const toggleFrameId = (frameId: string) => {
-    const currentIds = filters.frame_id ? filters.frame_id.split(',') : [];
+    const currentIds = selectedFrameIds;
     const newIds = currentIds.includes(frameId)
       ? currentIds.filter(id => id !== frameId)
       : [...currentIds, frameId];
@@ -203,16 +247,100 @@ export default function FilterPanel({
     updateFilter('pos', newPos.length > 0 ? newPos.join(',') : undefined);
   };
 
-  const selectedFrameIds = filters.frame_id ? filters.frame_id.split(',') : [];
+  const selectedFrameIds = useMemo(() => {
+    if (!filters.frame_id) return [] as string[];
+    const rawValues = filters.frame_id
+      .split(',')
+      .map(id => id.trim())
+      .filter(Boolean);
+
+    if (rawValues.length === 0) {
+      return [] as string[];
+    }
+
+    const numericIds = rawValues.filter(id => /^\d+$/.test(id));
+    const nonNumericIds = rawValues.filter(id => !/^\d+$/.test(id));
+
+    if (nonNumericIds.length === 0) {
+      return numericIds;
+    }
+
+    const resolvedIds = new Set<string>(numericIds);
+
+    if (frames.length > 0) {
+      nonNumericIds.forEach(code => {
+        const match = frames.find(frame =>
+          frame.code && frame.code.toLowerCase() === code.toLowerCase()
+        );
+        if (match) {
+          resolvedIds.add(match.id);
+        }
+      });
+    }
+
+    return Array.from(resolvedIds);
+  }, [filters.frame_id, frames]);
   const selectedLexfiles = filters.lexfile ? filters.lexfile.split(',') : [];
   const selectedPos = filters.pos ? filters.pos.split(',') : [];
   
   const filteredFrames = frameSearchQuery
-    ? frames.filter(frame => 
-        frame.frame_name.toLowerCase().includes(frameSearchQuery.toLowerCase()) ||
-        frame.id.toLowerCase().includes(frameSearchQuery.toLowerCase())
-      )
+    ? frames.filter(frame => {
+        const query = frameSearchQuery.toLowerCase();
+        return (
+          frame.frame_name.toLowerCase().includes(query) ||
+          (frame.code ? frame.code.toLowerCase().includes(query) : false) ||
+          frame.id.toLowerCase().includes(query)
+        );
+      })
     : frames;
+
+  useEffect(() => {
+    if (!filters.frame_id || frames.length === 0) return;
+
+    const rawValues = filters.frame_id
+      .split(',')
+      .map(id => id.trim())
+      .filter(Boolean);
+
+    if (rawValues.length === 0) return;
+
+    const hasNonNumeric = rawValues.some(id => !/^\d+$/.test(id));
+    if (!hasNonNumeric) return;
+
+    const resolved = rawValues.map(value => {
+      if (/^\d+$/.test(value)) return value;
+      const match = frames.find(frame =>
+        frame.code && frame.code.toLowerCase() === value.toLowerCase()
+      );
+      return match ? match.id : value;
+    });
+
+    const resolvedAllNumeric = resolved.every(id => /^\d+$/.test(id));
+    const resolvedValue = resolved.join(',');
+
+    if (resolvedAllNumeric && resolvedValue !== filters.frame_id) {
+      onFiltersChange({
+        ...filters,
+        frame_id: resolvedValue,
+      });
+    }
+  }, [filters, frames, onFiltersChange]);
+
+  useEffect(() => {
+    if (!frameDropdownOpen) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        frameDropdownContainerRef.current &&
+        !frameDropdownContainerRef.current.contains(event.target as Node)
+      ) {
+        setFrameDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [frameDropdownOpen]);
 
   const hasActiveFilters = Object.values(filters).some(value => 
     value !== undefined && value !== ''
@@ -363,6 +491,65 @@ export default function FilterPanel({
                   className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
                 />
               </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Flagged Reason</label>
+                <input
+                  type="text"
+                  value={filters.flaggedReason || ''}
+                  onChange={(e) => updateFilter('flaggedReason', e.target.value)}
+                  placeholder="Search in flagged reason..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Forbidden Reason</label>
+                <input
+                  type="text"
+                  value={filters.forbiddenReason || ''}
+                  onChange={(e) => updateFilter('forbiddenReason', e.target.value)}
+                  placeholder="Search in forbidden reason..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+                />
+              </div>
+            </FilterSection>
+
+            {/* AI Jobs Filters */}
+            <FilterSection
+              title="AI Jobs"
+              icon={<SparklesIcon className="w-4 h-4 text-gray-600" />}
+              isOpen={openSections.has('ai-jobs')}
+              onToggle={() => toggleSection('ai-jobs')}
+            >
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Flagged by (Job)</label>
+                {jobsLoading ? (
+                  <div className="text-sm text-gray-500">Loading jobs…</div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={filters.flaggedByJobId || ''}
+                      onChange={(e) => updateFilter('flaggedByJobId', e.target.value || undefined)}
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
+                    >
+                      <option value="">Any job</option>
+                      {jobs.map(job => (
+                        <option key={job.id} value={job.id}>
+                          {(job.label ?? `Job ${job.id}`)}{job.flagged_items ? ` · ${job.flagged_items} flagged` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    {filters.flaggedByJobId && (
+                      <button
+                        onClick={() => updateFilter('flaggedByJobId', undefined)}
+                        className="text-sm text-red-600 hover:text-red-700 font-medium cursor-pointer"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                )}
+                <p className="mt-1 text-xs text-gray-500">Show entries the AI flagged in a specific job.</p>
+              </div>
             </FilterSection>
 
             {/* Category Filters */}
@@ -454,7 +641,7 @@ export default function FilterPanel({
                   </div>
                 )}
               </div>
-              <div className="relative">
+              <div className="relative" ref={frameDropdownContainerRef}>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Frame ID</label>
                 {loadingFrames ? (
                   <div className="text-sm text-gray-500">Loading frames...</div>
@@ -465,7 +652,6 @@ export default function FilterPanel({
                       value={frameSearchQuery}
                       onChange={(e) => setFrameSearchQuery(e.target.value)}
                       onFocus={() => setFrameDropdownOpen(true)}
-                      onBlur={() => setTimeout(() => setFrameDropdownOpen(false), 200)}
                       placeholder="Search frames..."
                       className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 mb-2"
                     />
@@ -487,7 +673,9 @@ export default function FilterPanel({
                               />
                               <div className="flex-1 min-w-0">
                                 <div className="text-sm font-medium text-gray-900 truncate">{frame.frame_name}</div>
-                                <div className="text-xs text-gray-500 font-mono truncate">{frame.id}</div>
+                                <div className="text-xs text-gray-500 font-mono truncate">
+                                  {frame.code ? `${frame.code} · ${frame.id}` : frame.id}
+                                </div>
                               </div>
                             </label>
                           ))

@@ -75,7 +75,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
   const [editRoleGroups, setEditRoleGroups] = useState<{id: string, description: string, role_ids: string[]}[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [roleTypes, setRoleTypes] = useState<RoleType[]>([]);
-  const [availableFrames, setAvailableFrames] = useState<{id: string, frame_name: string}[]>([]);
+  const [availableFrames, setAvailableFrames] = useState<{id: string; frame_name: string; code?: string | null}[]>([]);
   const [codeValidationMessage, setCodeValidationMessage] = useState<string>('');
   const [selectedHyponymsToMove, setSelectedHyponymsToMove] = useState<Set<string>>(new Set());
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -98,8 +98,11 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
     direction: 'forward' | 'backward' | 'none';
   };
 
-  const getRoleFieldKey = (clientId: string, field: RoleEditableField, location: RoleFieldLocation) =>
-    `${clientId}-${field}-${location}`;
+  const getRoleFieldKey = useCallback(
+    (clientId: string, field: RoleEditableField, location: RoleFieldLocation) =>
+      `${clientId}-${field}-${location}`,
+    []
+  );
 
   const roleFieldRefs = useRef<Map<string, HTMLTextAreaElement | HTMLInputElement>>(new Map<string, HTMLTextAreaElement | HTMLInputElement>());
   const activeRoleFieldRef = useRef<{ clientId: string; field: RoleEditableField; location: RoleFieldLocation } | null>(null);
@@ -114,7 +117,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
     } else {
       roleFieldRefs.current.delete(key);
     }
-  }, []);
+  }, [getRoleFieldKey]);
 
   const storeRoleSelection = useCallback((clientId: string, field: RoleEditableField, location: RoleFieldLocation, target: HTMLTextAreaElement | HTMLInputElement | null) => {
     if (!target) return;
@@ -123,7 +126,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
     const end = target.selectionEnd ?? target.value.length;
     const direction = (target.selectionDirection as RoleSelectionState['direction'] | null) ?? 'none';
     roleSelectionRef.current.set(key, { start, end, direction });
-  }, []);
+  }, [getRoleFieldKey]);
 
   const handleRoleFieldFocus = useCallback((clientId: string, field: RoleEditableField, location: RoleFieldLocation, target?: HTMLTextAreaElement | HTMLInputElement | null) => {
     activeRoleFieldRef.current = { clientId, field, location };
@@ -143,7 +146,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
       activeRoleFieldRef.current = null;
     }
     roleSelectionRef.current.delete(getRoleFieldKey(clientId, field, location));
-  }, []);
+  }, [getRoleFieldKey]);
 
   useLayoutEffect(() => {
     const activeField = activeRoleFieldRef.current;
@@ -165,14 +168,14 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
       const { start, end, direction } = selection;
       try {
         element.setSelectionRange(start, end, direction);
-      } catch (error) {
+      } catch {
         // Ignore selection errors (e.g., unsupported input type)
       }
     } else if (shouldRefocus && 'setSelectionRange' in element) {
       const valueLength = element.value.length;
       try {
         element.setSelectionRange(valueLength, valueLength);
-      } catch (error) {
+      } catch {
         // Ignore selection errors
       }
     }
@@ -181,7 +184,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
       overlayContentRef.current.scrollTop = lastOverlayScrollTopRef.current;
       lastOverlayScrollTopRef.current = overlayContentRef.current.scrollTop;
     }
-  }, [editRoles, isEditOverlayOpen]);
+  }, [editRoles, isEditOverlayOpen, getRoleFieldKey]);
 
   // Helper function to update URL parameters without page reload
   const updateUrlParam = (entryId: string) => {
@@ -204,7 +207,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
     router.push(qs ? `${basePath}?${qs}` : basePath, { scroll: false });
   };
 
-  const loadGraphNode = async (entryId: string, invalidateCache: boolean = false) => {
+  const loadGraphNode = useCallback(async (entryId: string, invalidateCache: boolean = false) => {
     // Prevent duplicate calls for the same entry (unless cache invalidation is requested)
     if (lastLoadedEntryRef.current === entryId && !invalidateCache) {
       return;
@@ -280,7 +283,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [mode]);
 
   const handleNodeClick = (nodeId: string, recipeId?: string) => {
     // Reset the ref to allow loading the new node
@@ -893,7 +896,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
     if (currentEntryId) {
       loadGraphNode(currentEntryId);
     }
-  }, [searchParams, initialEntryId]);
+  }, [searchParams, initialEntryId, loadGraphNode]);
 
   // Close edit overlay on Escape key
   useEffect(() => {

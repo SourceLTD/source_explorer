@@ -1,34 +1,66 @@
 'use client';
 
-import { useState, Suspense, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, Suspense, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import DataTable from '@/components/DataTable';
 import SearchBox from '@/components/SearchBox';
 import ViewToggle, { ViewMode } from '@/components/ViewToggle';
 import SignOutButton from '@/components/SignOutButton';
 import { SearchResult, TableEntry, GraphNode, RoleType, sortRolesByPrecedence } from '@/lib/types';
 
-export default function TableMode() {
+type EditableRole = {
+  id: string;
+  clientId: string;
+  description: string;
+  roleType: string;
+  exampleSentence: string;
+  main: boolean;
+};
+
+type EditableRoleGroup = {
+  id: string;
+  description: string;
+  role_ids: string[];
+};
+
+type EditableField =
+  | 'code'
+  | 'hypernym'
+  | 'src_lemmas'
+  | 'gloss'
+  | 'examples'
+  | 'legal_constraints'
+  | 'lexfile'
+  | 'roles'
+  | 'vendler_class'
+  | 'frame';
+
+function TableModeContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [editingEntry, setEditingEntry] = useState<TableEntry | null>(null);
   const [isEditOverlayOpen, setIsEditOverlayOpen] = useState(false);
   const [currentNode, setCurrentNode] = useState<GraphNode | null>(null);
   
   // Editing state
-  const [editingField, setEditingField] = useState<'code' | 'hypernym' | 'src_lemmas' | 'gloss' | 'examples' | 'legal_constraints' | 'lexfile' | null>(null);
+  const [editingField, setEditingField] = useState<EditableField | null>(null);
   const [editValue, setEditValue] = useState<string>('');
   const [editListItems, setEditListItems] = useState<string[]>([]);
+  const [editRoles, setEditRoles] = useState<EditableRole[]>([]);
+  const [editRoleGroups, setEditRoleGroups] = useState<EditableRoleGroup[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [codeValidationMessage, setCodeValidationMessage] = useState<string>('');
   const [selectedHyponymsToMove, setSelectedHyponymsToMove] = useState<Set<string>>(new Set());
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [roleTypes, setRoleTypes] = useState<RoleType[]>([]);
+  const [availableFrames, setAvailableFrames] = useState<{ id: string; frame_name: string; code?: string | null }[]>([]);
   
   // Overlay section expansion state
   const [overlaySections, setOverlaySections] = useState({
     basicInfo: true,
+    verbProperties: false,
+    roles: false,
     legalConstraints: false,
     relations: false,
   });
@@ -42,9 +74,15 @@ export default function TableMode() {
     setSearchQuery(query);
   };
 
+  useEffect(() => {
+    const flaggedByJobIdParam = searchParams?.get('flaggedByJobId');
+    if (!flaggedByJobIdParam) return;
+
+    setSearchQuery(prev => (prev === '' ? prev : ''));
+  }, [searchParams]);
+
   const handleEditClick = async (entry: TableEntry) => {
     console.log('handleEditClick called with entry:', entry);
-    setEditingEntry(entry);
     setIsEditOverlayOpen(true);
     
     // Load full entry data
@@ -59,9 +97,42 @@ export default function TableMode() {
       setCurrentNode(graphNode);
     } catch (err) {
       console.error('Error loading entry details:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load entry');
     }
   };
+
+  useEffect(() => {
+    const fetchRoleTypes = async () => {
+      try {
+        const response = await fetch('/api/role-types');
+        if (response.ok) {
+          const data = await response.json();
+          setRoleTypes(data);
+        }
+      } catch (fetchError) {
+        console.error('Failed to fetch role types:', fetchError);
+      }
+    };
+
+    fetchRoleTypes();
+  }, []);
+
+  useEffect(() => {
+    if (!isEditOverlayOpen) return;
+
+    const fetchFrames = async () => {
+      try {
+        const response = await fetch('/api/frames');
+        if (response.ok) {
+          const data = await response.json();
+          setAvailableFrames(data);
+        }
+      } catch (fetchError) {
+        console.error('Failed to fetch frames:', fetchError);
+      }
+    };
+
+    fetchFrames();
+  }, [isEditOverlayOpen]);
 
   // Close edit overlay on Escape key
   useEffect(() => {
@@ -75,7 +146,7 @@ export default function TableMode() {
     return () => document.removeEventListener('keydown', handleEscape);
   }, [isEditOverlayOpen, editingField]);
 
-  const startEditing = (field: 'code' | 'hypernym' | 'src_lemmas' | 'gloss' | 'examples' | 'legal_constraints' | 'lexfile') => {
+  const startEditing = (field: EditableField) => {
     if (!currentNode) return;
     
     setEditingField(field);
@@ -103,6 +174,38 @@ export default function TableMode() {
       setEditValue(currentNode.gloss);
     } else if (field === 'lexfile') {
       setEditValue(currentNode.lexfile || '');
+    } else if (field === 'vendler_class') {
+      setEditValue(currentNode.vendler_class || '');
+    } else if (field === 'frame') {
+      setEditValue(currentNode.frame_id || '');
+    } else if (field === 'roles') {
+      const preparedRoles = sortRolesByPrecedence(currentNode.roles || []).map((role, index) => {
+        const clientId = role.id && role.id.length > 0 ? role.id : `existing-role-${index}-${role.role_type.label}`;
+        return {
+          id: role.id || '',
+          clientId,
+          description: role.description || '',
+          roleType: role.role_type.label,
+          exampleSentence: role.example_sentence || '',
+          main: role.main,
+        } satisfies EditableRole;
+      });
+
+      const idToClientId = new Map<string, string>();
+      preparedRoles.forEach(role => {
+        if (role.id) {
+          idToClientId.set(role.id, role.clientId);
+        }
+      });
+
+      setEditRoles(preparedRoles);
+      setEditRoleGroups(
+        (currentNode.role_groups || []).map(group => ({
+          id: group.id,
+          description: group.description || '',
+          role_ids: group.role_ids.map(roleId => idToClientId.get(roleId) ?? roleId),
+        }))
+      );
     }
   };
 
@@ -110,6 +213,8 @@ export default function TableMode() {
     setEditingField(null);
     setEditValue('');
     setEditListItems([]);
+     setEditRoles([]);
+     setEditRoleGroups([]);
     setCodeValidationMessage('');
     setSelectedHyponymsToMove(new Set());
   };
@@ -261,6 +366,35 @@ export default function TableMode() {
         case 'lexfile':
           updateData.lexfile = editValue;
           break;
+        case 'vendler_class':
+          updateData.vendler_class = editValue || null;
+          break;
+        case 'frame':
+          updateData.frame_id = editValue || null;
+          break;
+        case 'roles':
+          updateData.roles = editRoles.filter(role => role.description.trim());
+
+          const roleIdLookup = new Map<string, string>();
+          editRoles.forEach(role => {
+            if (role.id) {
+              roleIdLookup.set(role.clientId, role.id);
+              roleIdLookup.set(role.id, role.id);
+            }
+          });
+
+          updateData.role_groups = editRoleGroups
+            .map(group => {
+              const resolvedRoleIds = group.role_ids
+                .map(roleId => roleIdLookup.get(roleId))
+                .filter((id): id is string => Boolean(id));
+              return {
+                ...group,
+                role_ids: resolvedRoleIds,
+              } satisfies EditableRoleGroup;
+            })
+            .filter(group => group.role_ids.length >= 2);
+          break;
       }
       
       const response = await fetch(`/api/entries/${currentNode.id}`, {
@@ -283,13 +417,15 @@ export default function TableMode() {
       setEditingField(null);
       setEditValue('');
       setEditListItems([]);
+      setEditRoles([]);
+      setEditRoleGroups([]);
       setCodeValidationMessage('');
       
       // Show brief success message
       setCodeValidationMessage('✓ Changes saved successfully');
       setTimeout(() => setCodeValidationMessage(''), 2000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save changes');
+      console.error('Error saving changes:', err);
       setCodeValidationMessage('');
     } finally {
       setIsSaving(false);
@@ -322,7 +458,7 @@ export default function TableMode() {
         setCurrentNode(updatedNode);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update flag status');
+      console.error('Error updating flag status:', err);
     }
   };
 
@@ -352,7 +488,7 @@ export default function TableMode() {
         setCurrentNode(updatedNode);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update forbidden status');
+      console.error('Error updating forbidden status:', err);
     }
   };
 
@@ -380,6 +516,69 @@ export default function TableMode() {
     setEditListItems(newItems);
   };
 
+  // Roles editing helpers
+  const updateRole = (clientId: string, field: 'description' | 'roleType' | 'exampleSentence' | 'main', value: string | boolean) => {
+    setEditRoles(prev => prev.map(role => (role.clientId === clientId ? { ...role, [field]: value } : role)));
+  };
+
+  const addRole = (main: boolean) => {
+    const clientId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+    setEditRoles(prev => [...prev, { id: '', clientId, description: '', roleType: '', exampleSentence: '', main }]);
+  };
+
+  const removeRole = (clientId: string) => {
+    const identifiersToRemove: string[] = [];
+    setEditRoles(prev => prev.filter(role => {
+      if (role.clientId === clientId) {
+        identifiersToRemove.push(role.clientId);
+        if (role.id) {
+          identifiersToRemove.push(role.id);
+        }
+        return false;
+      }
+      return true;
+    }));
+
+    if (identifiersToRemove.length > 0) {
+      setEditRoleGroups(prev =>
+        prev
+          .map(group => ({
+            ...group,
+            role_ids: group.role_ids.filter(id => !identifiersToRemove.includes(id)),
+          }))
+          .filter(group => group.role_ids.length >= 2)
+      );
+    }
+  };
+
+  const addRoleGroup = () => {
+    const tempId = `temp-group-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+    setEditRoleGroups(prev => [...prev, { id: tempId, description: '', role_ids: [] }]);
+  };
+
+  const removeRoleGroup = (index: number) => {
+    setEditRoleGroups(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const updateRoleGroup = (index: number, field: 'description' | 'role_ids', value: string | string[]) => {
+    setEditRoleGroups(prev => prev.map((group, i) => (i === index ? { ...group, [field]: value } : group)));
+  };
+
+  const toggleRoleInGroup = (groupIndex: number, roleId: string) => {
+    setEditRoleGroups(prev =>
+      prev.map((group, i) => {
+        if (i !== groupIndex) return group;
+        const isInGroup = group.role_ids.includes(roleId);
+        return {
+          ...group,
+          role_ids: isInGroup
+            ? group.role_ids.filter(id => id !== roleId)
+            : [...group.role_ids, roleId],
+        };
+      })
+    );
+  };
+
   // Delete entry handler
   const handleDeleteEntry = async () => {
     if (!currentNode) return;
@@ -399,13 +598,11 @@ export default function TableMode() {
       setShowDeleteConfirm(false);
       setIsEditOverlayOpen(false);
       setCurrentNode(null);
-      setEditingEntry(null);
 
       // Reset editing state
       cancelEditing();
     } catch (error) {
       console.error('Error deleting entry:', error);
-      setError(error instanceof Error ? error.message : 'Failed to delete entry');
     } finally {
       setIsDeleting(false);
     }
@@ -876,54 +1073,355 @@ export default function TableMode() {
                         </div>
                       )}
                     </div>
-
-                    {/* Category (Lexfile) */}
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <h3 className="text-sm font-medium text-gray-700">Category</h3>
-                        {editingField !== 'lexfile' && (
-                          <button
-                            onClick={() => startEditing('lexfile')}
-                            className="text-xs text-blue-600 hover:text-blue-700 font-medium"
-                          >
-                            Edit
-                          </button>
-                        )}
-                      </div>
-                      {editingField === 'lexfile' ? (
-                        <div className="space-y-2">
-                          <select
-                            value={editValue}
-                            onChange={(e) => setEditValue(e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                          >
-                            {availableLexfiles.map(lf => (
-                              <option key={lf} value={lf}>{lf}</option>
-                            ))}
-                          </select>
-                          <div className="flex space-x-2">
-                            <button
-                              onClick={saveEdit}
-                              disabled={isSaving}
-                              className="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50"
-                            >
-                              {isSaving ? 'Saving...' : 'Save'}
-                            </button>
-                            <button
-                              onClick={cancelEditing}
-                              className="px-4 py-2 bg-gray-200 text-gray-700 text-sm rounded hover:bg-gray-300"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <p className="text-gray-900 text-sm">{currentNode.lexfile}</p>
-                      )}
-                    </div>
                   </div>
                 )}
               </div>
+
+              {/* Verb Properties Section */}
+              {currentNode.pos === 'v' && (
+                <OverlaySection
+                  title="Verb Properties"
+                  icon={
+                    <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                    </svg>
+                  }
+                  isOpen={overlaySections.verbProperties}
+                  onToggle={() => setOverlaySections(prev => ({ ...prev, verbProperties: !prev.verbProperties }))}
+                >
+                  {/* Vendler Class */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="text-sm font-medium text-gray-700">Vendler Class</h3>
+                      {editingField !== 'vendler_class' && (
+                        <button
+                          onClick={() => startEditing('vendler_class')}
+                          className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                        >
+                          Edit
+                        </button>
+                      )}
+                    </div>
+                    {editingField === 'vendler_class' ? (
+                      <div className="space-y-2">
+                        <select
+                          value={editValue}
+                          onChange={(e) => setEditValue(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                        >
+                          <option value="">None</option>
+                          <option value="state">state</option>
+                          <option value="activity">activity</option>
+                          <option value="accomplishment">accomplishment</option>
+                          <option value="achievement">achievement</option>
+                        </select>
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={saveEdit}
+                            disabled={isSaving}
+                            className="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50"
+                          >
+                            {isSaving ? 'Saving...' : 'Save'}
+                          </button>
+                          <button
+                            onClick={cancelEditing}
+                            className="px-4 py-2 bg-gray-200 text-gray-700 text-sm rounded hover:bg-gray-300"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-gray-900 text-sm">
+                        {currentNode.vendler_class || <span className="text-gray-500 italic">None</span>}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Frame */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="text-sm font-medium text-gray-700">Frame</h3>
+                      {editingField !== 'frame' && (
+                        <button
+                          onClick={() => startEditing('frame')}
+                          className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                        >
+                          Edit
+                        </button>
+                      )}
+                    </div>
+                    {editingField === 'frame' ? (
+                      <div className="space-y-2">
+                        <select
+                          value={editValue}
+                          onChange={(e) => setEditValue(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                        >
+                          <option value="">None</option>
+                          {availableFrames.map(frame => (
+                            <option key={frame.id} value={frame.id}>{frame.frame_name}</option>
+                          ))}
+                        </select>
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={saveEdit}
+                            disabled={isSaving}
+                            className="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50"
+                          >
+                            {isSaving ? 'Saving...' : 'Save'}
+                          </button>
+                          <button
+                            onClick={cancelEditing}
+                            className="px-4 py-2 bg-gray-200 text-gray-700 text-sm rounded hover:bg-gray-300"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-gray-900 text-sm">
+                        {currentNode.frame?.frame_name || <span className="text-gray-500 italic">None</span>}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Category (Lexfile) */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="text-sm font-medium text-gray-700">Category</h3>
+                      {editingField !== 'lexfile' && (
+                        <button
+                          onClick={() => startEditing('lexfile')}
+                          className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                        >
+                          Edit
+                        </button>
+                      )}
+                    </div>
+                    {editingField === 'lexfile' ? (
+                      <div className="space-y-2">
+                        <select
+                          value={editValue}
+                          onChange={(e) => setEditValue(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                        >
+                          {availableLexfiles.map(lf => (
+                            <option key={lf} value={lf}>{lf}</option>
+                          ))}
+                        </select>
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={saveEdit}
+                            disabled={isSaving}
+                            className="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50"
+                          >
+                            {isSaving ? 'Saving...' : 'Save'}
+                          </button>
+                          <button
+                            onClick={cancelEditing}
+                            className="px-4 py-2 bg-gray-200 text-gray-700 text-sm rounded hover:bg-gray-300"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-gray-900 text-sm">{currentNode.lexfile}</p>
+                    )}
+                  </div>
+                </OverlaySection>
+              )}
+
+              {/* Roles Section (Verbs only) */}
+              {currentNode.pos === 'v' && (
+                <OverlaySection
+                  title="Roles"
+                  icon={
+                    <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                    </svg>
+                  }
+                  isOpen={overlaySections.roles}
+                  onToggle={() => setOverlaySections(prev => ({ ...prev, roles: !prev.roles }))}
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="text-sm font-medium text-gray-700">Thematic Roles</h3>
+                      {editingField !== 'roles' && (
+                        <button
+                          onClick={() => startEditing('roles')}
+                          className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                        >
+                          Edit
+                        </button>
+                      )}
+                    </div>
+                    {editingField === 'roles' ? (
+                      <div className="space-y-3">
+                        {editRoles.map((role) => (
+                          <div key={role.clientId} className={`p-3 border rounded-lg ${role.main ? 'border-blue-300 bg-blue-50' : 'border-purple-300 bg-purple-50'}`}>
+                            <div className="flex items-center justify-between mb-2">
+                              <select
+                                value={role.roleType}
+                                onChange={(e) => updateRole(role.clientId, 'roleType', e.target.value)}
+                                className="flex-1 px-2 py-1 border border-gray-300 rounded text-xs bg-white"
+                              >
+                                <option value="">Select role type</option>
+                                {roleTypes.map((rt) => (
+                                  <option key={rt.id} value={rt.label}>{rt.label}</option>
+                                ))}
+                              </select>
+                              <label className="ml-2 flex items-center space-x-1 text-xs">
+                                <input
+                                  type="checkbox"
+                                  checked={role.main}
+                                  onChange={(e) => updateRole(role.clientId, 'main', e.target.checked)}
+                                  className="rounded"
+                                />
+                                <span>Main</span>
+                              </label>
+                              <button
+                                onClick={() => removeRole(role.clientId)}
+                                className="ml-2 p-1 text-red-500 hover:bg-red-100 rounded"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              </button>
+                            </div>
+                            <textarea
+                              value={role.description}
+                              onChange={(e) => updateRole(role.clientId, 'description', e.target.value)}
+                              className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-white text-gray-900 resize-vertical"
+                              rows={2}
+                              placeholder="Role description"
+                            />
+                            <textarea
+                              value={role.exampleSentence}
+                              onChange={(e) => updateRole(role.clientId, 'exampleSentence', e.target.value)}
+                              className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-white text-gray-900 resize-vertical mt-2"
+                              rows={1}
+                              placeholder="Example sentence (optional)"
+                            />
+                          </div>
+                        ))}
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={() => addRole(true)}
+                            className="flex-1 px-3 py-2 border border-blue-300 rounded-md text-blue-600 hover:bg-blue-50 text-sm"
+                          >
+                            + Add Main Role
+                          </button>
+                          <button
+                            onClick={() => addRole(false)}
+                            className="flex-1 px-3 py-2 border border-purple-300 rounded-md text-purple-600 hover:bg-purple-50 text-sm"
+                          >
+                            + Add Alt Role
+                          </button>
+                        </div>
+
+                        {/* Role Groups */}
+                        {editRoles.length > 1 && (
+                          <div className="pt-4 border-t">
+                            <h4 className="text-sm font-medium text-gray-700 mb-2">Role Groups (OR constraints)</h4>
+                            {editRoleGroups.map((group, groupIndex) => (
+                              <div key={groupIndex} className="p-3 border border-gray-300 rounded-lg bg-gray-50 mb-2">
+                                <div className="flex items-start justify-between mb-2">
+                                  <input
+                                    type="text"
+                                    value={group.description}
+                                    onChange={(e) => updateRoleGroup(groupIndex, 'description', e.target.value)}
+                                    className="flex-1 px-2 py-1 border border-gray-300 rounded text-xs bg-white text-gray-900"
+                                    placeholder="Group description (optional)"
+                                  />
+                                  <button
+                                    onClick={() => removeRoleGroup(groupIndex)}
+                                    className="ml-2 p-1 text-red-500 hover:bg-red-100 rounded"
+                                  >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                  </button>
+                                </div>
+                                <div className="space-y-1">
+                                  {editRoles.map((role) => {
+                                    const roleIdentifier = role.clientId;
+                                    const isInGroup = group.role_ids.includes(roleIdentifier);
+                                    return (
+                                      <label key={roleIdentifier} className="flex items-center space-x-2 text-xs cursor-pointer hover:bg-white p-1 rounded">
+                                        <input
+                                          type="checkbox"
+                                          checked={isInGroup}
+                                          onChange={() => toggleRoleInGroup(groupIndex, roleIdentifier)}
+                                          className="rounded"
+                                        />
+                                        <span className={role.main ? 'text-blue-700 font-medium' : 'text-purple-700'}>
+                                          {role.roleType || '(no type)'}
+                                        </span>
+                                        <span className="text-gray-600 truncate">
+                                          {role.description ? `- ${role.description.substring(0, 30)}${role.description.length > 30 ? '...' : ''}` : ''}
+                                        </span>
+                                      </label>
+                                    );
+                                  })}
+                                </div>
+                                {group.role_ids.length < 2 && (
+                                  <p className="text-xs text-red-600 mt-2">⚠️ Group needs at least 2 roles</p>
+                                )}
+                              </div>
+                            ))}
+                            <button
+                              onClick={addRoleGroup}
+                              className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                            >
+                              + Add Role Group
+                            </button>
+                          </div>
+                        )}
+
+                        <div className="flex space-x-2 pt-2 border-t">
+                          <button
+                            onClick={saveEdit}
+                            disabled={isSaving}
+                            className="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50"
+                          >
+                            {isSaving ? 'Saving...' : 'Save'}
+                          </button>
+                          <button
+                            onClick={cancelEditing}
+                            className="px-4 py-2 bg-gray-200 text-gray-700 text-sm rounded hover:bg-gray-300"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div>
+                        {currentNode.roles && currentNode.roles.length > 0 ? (
+                          <div className="space-y-2">
+                            {sortRolesByPrecedence(currentNode.roles).map((role, index) => (
+                              <div key={index} className="text-sm">
+                                <span className={`font-medium ${role.main ? 'text-blue-800' : 'text-purple-800'}`}>
+                                  {role.role_type.label}:
+                                </span>{' '}
+                                <span className="text-gray-900">{role.description || 'No description'}</span>
+                                {role.example_sentence && (
+                                  <div className="text-xs text-gray-600 italic mt-1">
+                                    &quot;{role.example_sentence}&quot;
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-gray-500 text-sm italic">No roles</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </OverlaySection>
+              )}
 
               {/* Legal Constraints Section */}
               <OverlaySection
@@ -1232,3 +1730,10 @@ export default function TableMode() {
   );
 }
 
+export default function TableMode() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-gray-500">Loading table view...</div>}>
+      <TableModeContent />
+    </Suspense>
+  );
+}

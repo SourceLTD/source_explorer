@@ -298,6 +298,8 @@ export interface PaginationParams {
   pos?: string;
   lexfile?: string;
   frame_id?: string; // Comma-separated frame IDs
+  // AI jobs filters
+  flaggedByJobId?: string;
   
   // Advanced filters
   gloss?: string;
@@ -305,6 +307,8 @@ export interface PaginationParams {
   examples?: string;
   particles?: string;
   frames?: string;
+  flaggedReason?: string;
+  forbiddenReason?: string;
   
   // Boolean filters
   isMwe?: boolean;

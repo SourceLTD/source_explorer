@@ -18,6 +18,8 @@ export async function GET(request: NextRequest) {
       gloss: searchParams.get('gloss') || undefined,
       lemmas: searchParams.get('lemmas') || undefined,
       examples: searchParams.get('examples') || undefined,
+      flaggedReason: searchParams.get('flaggedReason') || undefined,
+      forbiddenReason: searchParams.get('forbiddenReason') || undefined,
       isMwe: searchParams.get('isMwe') === 'true' ? true : searchParams.get('isMwe') === 'false' ? false : undefined,
       flagged: searchParams.get('flagged') === 'true' ? true : searchParams.get('flagged') === 'false' ? false : undefined,
       forbidden: searchParams.get('forbidden') === 'true' ? true : searchParams.get('forbidden') === 'false' ? false : undefined,

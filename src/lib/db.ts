@@ -114,7 +114,7 @@ export async function getEntryById(id: string): Promise<VerbWithRelations | null
   if (!entry) return null;
 
   // Convert Prisma types to our types
-  const { id: _id, frame_id: _frame_id, verb_relations_verb_relations_source_idToverbs, verb_relations_verb_relations_target_idToverbs, ...rest } = entry;
+  const { verb_relations_verb_relations_source_idToverbs, verb_relations_verb_relations_target_idToverbs, ...rest } = entry;
   
   return {
     ...rest,
@@ -220,14 +220,37 @@ export async function searchEntries(query: string, limit = 20, table: 'verbs' | 
       src_lemmas,
       gloss,
       ${Prisma.raw(`'${pos}'`)} as pos,
-      ts_rank(gloss_tsv, plainto_tsquery('english', ${query})) +
-      ts_rank(examples_tsv, plainto_tsquery('english', ${query})) as rank
+      (
+        COALESCE(ts_rank(gloss_tsv, websearch_to_tsquery('english', ${query})), 0) +
+        COALESCE(ts_rank(examples_tsv, websearch_to_tsquery('english', ${query})), 0) +
+        CASE 
+          WHEN ${query} = ANY(lemmas) OR ${query} = ANY(src_lemmas) THEN 2
+          ELSE 0
+        END +
+        CASE 
+          WHEN EXISTS (SELECT 1 FROM unnest(lemmas) AS l WHERE l ILIKE ${query + '%'}) 
+            OR EXISTS (SELECT 1 FROM unnest(src_lemmas) AS l2 WHERE l2 ILIKE ${query + '%'}) 
+          THEN 1
+          ELSE 0
+        END +
+        CASE 
+          WHEN gloss ILIKE ${'%' + query + '%'} THEN 0.5
+          ELSE 0
+        END
+      ) as rank
     FROM ${Prisma.raw(table)}
     WHERE 
-      gloss_tsv @@ plainto_tsquery('english', ${query}) OR
-      examples_tsv @@ plainto_tsquery('english', ${query}) OR
+      -- Full text search (handles natural language and phrases)
+      gloss_tsv @@ websearch_to_tsquery('english', ${query}) OR
+      examples_tsv @@ websearch_to_tsquery('english', ${query}) OR
+      -- Exact lemma matches
       ${query} = ANY(lemmas) OR
-      ${query} = ANY(src_lemmas)
+      ${query} = ANY(src_lemmas) OR
+      -- Prefix lemma matches
+      EXISTS (SELECT 1 FROM unnest(lemmas) AS l WHERE l ILIKE ${query + '%'}) OR
+      EXISTS (SELECT 1 FROM unnest(src_lemmas) AS l2 WHERE l2 ILIKE ${query + '%'}) OR
+      -- Fallback substring match on gloss for phrases that FTS might miss
+      gloss ILIKE ${'%' + query + '%'}
     ORDER BY rank DESC, code
     LIMIT ${limit}
   `,
@@ -839,7 +862,7 @@ export async function updateEntry(id: string, updates: Partial<Pick<Verb, 'gloss
   revalidateAllEntryCaches();
 
   // Convert Prisma types to our types
-  const { id: _id, frame_id: _frame_id, verb_relations_verb_relations_source_idToverbs, verb_relations_verb_relations_target_idToverbs, ...rest } = updatedEntry;
+  const { verb_relations_verb_relations_source_idToverbs, verb_relations_verb_relations_target_idToverbs, ...rest } = updatedEntry;
   
   return {
     ...rest,
@@ -1124,7 +1147,6 @@ async function getVerbGraphNode(entryId: string): Promise<GraphNode | null> {
 
   // Fetch roles separately to avoid type issues
   const rolesData = await withRetry(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     () => (prisma as any).roles.findMany({
       where: { verb_id: numericId },
       include: {
@@ -1897,6 +1919,56 @@ export async function updateModerationStatus(
   return result.count;
 }
 
+export async function updateFramesForEntries(
+  ids: string[],
+  frameIdentifier: string | null
+): Promise<number> {
+  if (!ids || ids.length === 0) {
+    return 0;
+  }
+
+  let resolvedFrameId: bigint | null = null;
+
+  if (frameIdentifier && frameIdentifier.trim() !== '') {
+    const trimmed = frameIdentifier.trim();
+
+    if (/^\d+$/.test(trimmed)) {
+      resolvedFrameId = BigInt(trimmed);
+    } else {
+      const frame = await prisma.frames.findFirst({
+        where: {
+          code: {
+            equals: trimmed,
+            mode: 'insensitive',
+          },
+        } as Prisma.framesWhereInput,
+        select: { id: true } as Prisma.framesSelect,
+      });
+
+      if (!frame) {
+        throw new Error(`Frame not found for identifier: ${frameIdentifier}`);
+      }
+
+      resolvedFrameId = frame.id;
+    }
+  }
+
+  const result = await prisma.verbs.updateMany({
+    where: {
+      code: {
+        in: ids,
+      },
+    } as Prisma.verbsWhereInput,
+    data: {
+      frame_id: resolvedFrameId,
+    },
+  });
+
+  revalidateAllEntryCaches();
+
+  return result.count;
+}
+
 export async function getPaginatedEntries(params: PaginationParams = {}): Promise<PaginatedResult<TableEntry>> {
   const {
     page = 1,
@@ -1912,6 +1984,8 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
     examples,
     particles,
     frames,
+    flaggedReason,
+    forbiddenReason,
     isMwe,
     transitive,
     flagged,
@@ -1923,7 +1997,8 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
     createdAfter,
     createdBefore,
     updatedAfter,
-    updatedBefore
+    updatedBefore,
+    flaggedByJobId
   } = params;
 
   const skip = (page - 1) * limit;
@@ -1985,33 +2060,53 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
   }
 
   if (frame_id) {
-    const frameCodes = frame_id.split(',').map(id => id.trim()).filter(Boolean);
-    if (frameCodes.length > 0) {
-      // Convert frame codes to frame IDs
-      // Use OR conditions to match by code case-insensitively or by frame_name
-      const frames = await prisma.frames.findMany({
-        where: {
-          OR: frameCodes.map(code => ({
-            code: {
-              equals: code,
-              mode: 'insensitive'
-            }
-          })) as Prisma.framesWhereInput[]
-        },
-        select: {
-          id: true,
-          code: true
-        } as Prisma.framesSelect
+    const rawValues = frame_id
+      .split(',')
+      .map(id => id.trim())
+      .filter(Boolean);
+
+    if (rawValues.length > 0) {
+      const numericIds = new Set<bigint>();
+      const codesToLookup: string[] = [];
+
+      rawValues.forEach(value => {
+        if (/^\d+$/.test(value)) {
+          numericIds.add(BigInt(value));
+        } else {
+          codesToLookup.push(value);
+        }
       });
-      
-      console.log(`Frame filter: input codes=${frameCodes.join(',')}, found frames:`, frames.map(f => ({ id: f.id.toString(), code: (f as { code?: string }).code })));
-      
-      const frameIdBigInts = frames.map(f => f.id);
-      
-      if (frameIdBigInts.length > 0) {
+
+      if (codesToLookup.length > 0) {
+        const frames = await prisma.frames.findMany({
+          where: {
+            OR: codesToLookup.map(code => ({
+              code: {
+                equals: code,
+                mode: 'insensitive'
+              }
+            })) as Prisma.framesWhereInput[]
+          },
+          select: {
+            id: true,
+            code: true
+          } as Prisma.framesSelect
+        });
+
+        console.log(
+          `Frame filter: input=${rawValues.join(',')}, resolved frames=`,
+          frames.map(f => ({ id: f.id.toString(), code: (f as { code?: string | null }).code }))
+        );
+
+        frames.forEach(frame => {
+          numericIds.add(frame.id);
+        });
+      }
+
+      if (numericIds.size > 0) {
         andConditions.push({
           frame_id: {
-            in: frameIdBigInts
+            in: Array.from(numericIds)
           }
         });
       }
@@ -2070,6 +2165,25 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
     });
   }
 
+  // Reason text filters
+  if (flaggedReason) {
+    andConditions.push({
+      flagged_reason: {
+        contains: flaggedReason,
+        mode: 'insensitive'
+      }
+    } as Prisma.verbsWhereInput);
+  }
+
+  if (forbiddenReason) {
+    andConditions.push({
+      forbidden_reason: {
+        contains: forbiddenReason,
+        mode: 'insensitive'
+      }
+    } as Prisma.verbsWhereInput);
+  }
+
   // Boolean filters
   if (isMwe !== undefined) {
     andConditions.push({ isMwe });
@@ -2085,6 +2199,23 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
 
   if (forbidden !== undefined) {
     andConditions.push({ forbidden });
+  }
+
+  // AI jobs: entries flagged by a specific job
+  if (flaggedByJobId) {
+    try {
+      const jobIdBigInt = BigInt(flaggedByJobId);
+      andConditions.push({
+        llm_job_items: {
+          some: {
+            job_id: jobIdBigInt,
+            flagged: true,
+          },
+        },
+      } as Prisma.verbsWhereInput);
+    } catch {
+      // ignore invalid job id values
+    }
   }
 
   // Date filters
@@ -2355,8 +2486,8 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
       role_groups: roleGroupsByEntryId.get(numericId) || [],
       parentsCount: entry._count.verb_relations_verb_relations_source_idToverbs,
       childrenCount: entry._count.verb_relations_verb_relations_target_idToverbs,
-      createdAt: entry.createdAt,
-      updatedAt: entry.updatedAt
+      createdAt: (entry as any).createdAt ?? (entry as any).created_at,
+      updatedAt: (entry as any).updatedAt ?? (entry as any).updated_at
     };
   });
 

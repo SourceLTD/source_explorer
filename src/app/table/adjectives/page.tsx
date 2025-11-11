@@ -1,17 +1,16 @@
 'use client';
 
-import { useState, Suspense, useEffect, useRef } from 'react';
+import { useState, Suspense, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import DataTable from '@/components/DataTable';
 import SearchBox from '@/components/SearchBox';
 import ViewToggle, { ViewMode } from '@/components/ViewToggle';
 import SignOutButton from '@/components/SignOutButton';
-import { SearchResult, TableEntry, GraphNode, RoleType, sortRolesByPrecedence } from '@/lib/types';
+import { SearchResult, TableEntry, GraphNode } from '@/lib/types';
 
 export default function AdjectiveTableMode() {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [editingEntry, setEditingEntry] = useState<TableEntry | null>(null);
   const [isEditOverlayOpen, setIsEditOverlayOpen] = useState(false);
   const [currentNode, setCurrentNode] = useState<GraphNode | null>(null);
   
@@ -24,7 +23,6 @@ export default function AdjectiveTableMode() {
   const [selectedHyponymsToMove, setSelectedHyponymsToMove] = useState<Set<string>>(new Set());
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   
   // Overlay section expansion state
   const [overlaySections, setOverlaySections] = useState({
@@ -44,7 +42,6 @@ export default function AdjectiveTableMode() {
 
   const handleEditClick = async (entry: TableEntry) => {
     console.log('handleEditClick called with entry:', entry);
-    setEditingEntry(entry);
     setIsEditOverlayOpen(true);
     
     // Load full entry data
@@ -59,7 +56,6 @@ export default function AdjectiveTableMode() {
       setCurrentNode(graphNode);
     } catch (err) {
       console.error('Error loading entry details:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load entry');
     }
   };
 
@@ -289,7 +285,7 @@ export default function AdjectiveTableMode() {
       setCodeValidationMessage('✓ Changes saved successfully');
       setTimeout(() => setCodeValidationMessage(''), 2000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save changes');
+      console.error('Error saving changes:', err);
       setCodeValidationMessage('');
     } finally {
       setIsSaving(false);
@@ -322,7 +318,7 @@ export default function AdjectiveTableMode() {
         setCurrentNode(updatedNode);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update flag status');
+      console.error('Error updating flag status:', err);
     }
   };
 
@@ -352,7 +348,7 @@ export default function AdjectiveTableMode() {
         setCurrentNode(updatedNode);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update forbidden status');
+      console.error('Error updating forbidden status:', err);
     }
   };
 
@@ -399,13 +395,11 @@ export default function AdjectiveTableMode() {
       setShowDeleteConfirm(false);
       setIsEditOverlayOpen(false);
       setCurrentNode(null);
-      setEditingEntry(null);
 
       // Reset editing state
       cancelEditing();
     } catch (error) {
       console.error('Error deleting entry:', error);
-      setError(error instanceof Error ? error.message : 'Failed to delete entry');
     } finally {
       setIsDeleting(false);
     }
