@@ -58,7 +58,8 @@ export function useEntryMutations(mode: Mode) {
     });
 
     if (!response.ok) {
-      throw new Error('Failed to update code');
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Failed to update code');
     }
 
     return newId;
@@ -104,7 +105,8 @@ export function useEntryMutations(mode: Mode) {
     });
 
     if (!response.ok) {
-      throw new Error('Failed to update entry');
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Failed to update entry');
     }
   }, [apiPrefix]);
 

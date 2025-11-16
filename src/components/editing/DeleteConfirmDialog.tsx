@@ -48,14 +48,14 @@ export function DeleteConfirmDialog({ node, isOpen, isDeleting, onConfirm, onCan
         <div className="flex justify-end gap-2">
           <button
             onClick={onCancel}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded transition-colors"
+            className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded transition-colors cursor-pointer disabled:cursor-not-allowed"
             disabled={isDeleting}
           >
             Cancel
           </button>
           <button
             onClick={onConfirm}
-            className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded transition-colors disabled:opacity-50"
+            className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded transition-colors disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
             disabled={isDeleting}
           >
             {isDeleting ? 'Deleting...' : 'Delete'}

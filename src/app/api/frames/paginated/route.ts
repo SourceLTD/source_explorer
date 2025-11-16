@@ -47,6 +47,11 @@ export async function GET(request: NextRequest) {
             },
           },
         },
+        frame_roles: {
+          include: {
+            role_types: true,
+          },
+        },
       },
     });
 
@@ -61,18 +66,34 @@ export async function GET(request: NextRequest) {
       prototypical_synset_definition: frame.prototypical_synset_definition,
       is_supporting_frame: frame.is_supporting_frame,
       communication: frame.communication,
-      created_at: frame.created_at.toISOString(),
-      updated_at: frame.updated_at.toISOString(),
+      createdAt: frame.created_at.toISOString(),
+      updatedAt: frame.updated_at.toISOString(),
       roles_count: frame._count.frame_roles,
       verbs_count: frame._count.verbs,
+      frame_roles: frame.frame_roles.map(fr => ({
+        id: fr.id.toString(),
+        description: fr.description,
+        notes: fr.notes,
+        main: fr.main,
+        role_type: {
+          id: fr.role_types.id.toString(),
+          code: fr.role_types.code,
+          label: fr.role_types.label,
+          generic_description: fr.role_types.generic_description,
+        },
+      })),
     }));
 
+    const totalPages = Math.ceil(totalCount / limit);
+
     return NextResponse.json({
-      entries: serializedFrames,
-      totalCount,
+      data: serializedFrames,
+      total: totalCount,
       page,
       limit,
-      totalPages: Math.ceil(totalCount / limit),
+      totalPages,
+      hasNext: page < totalPages,
+      hasPrev: page > 1,
     });
   } catch (error) {
     console.error('[API] Error fetching paginated frames:', error);

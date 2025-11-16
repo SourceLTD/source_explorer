@@ -2371,12 +2371,16 @@ const ItemList = memo(function ItemList({
             {items.map(item => {
               const getItemColors = () => {
                 switch (item.status) {
-                  case 'pending':
+                  case 'queued':
+                  case 'submitting':
+                  case 'processing':
                     return 'border-blue-200 bg-blue-50 text-blue-700';
                   case 'succeeded':
                     return 'border-green-200 bg-green-50 text-green-700';
                   case 'failed':
                     return 'border-red-200 bg-red-50 text-red-700';
+                  case 'skipped':
+                    return 'border-gray-200 bg-gray-50 text-gray-700';
                   default:
                     return 'border-gray-200 bg-gray-50 text-gray-700';
                 }
@@ -2404,7 +2408,7 @@ const ItemList = memo(function ItemList({
           {hasMore && onLoadMore && (
             <button
               onClick={onLoadMore}
-              className="mt-2 w-full rounded border border-gray-300 bg-white px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 transition-colors"
+              className="mt-2 w-full rounded border border-gray-300 bg-white px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer"
             >
               Load More ({remaining} remaining)
             </button>

@@ -303,24 +303,22 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
                 mode={mode}
               />
             </div>
-            {mode !== 'adverbs' && (
-              <ViewToggle 
-                currentView={currentView}
-                onViewChange={(view: ViewMode) => {
-                  if (view === 'table') {
-                    let tablePath = '/table';
-                    if (mode === 'nouns') tablePath = '/table/nouns';
-                    else if (mode === 'adjectives') tablePath = '/table/adjectives';
-                    else if (mode === 'adverbs') tablePath = '/table/adverbs';
-                    router.push(tablePath);
-                  } else {
-                    setCurrentView(view);
-                    updateViewParam(view);
-                  }
-                }}
-                hideRecipes={mode === 'nouns' || mode === 'adjectives' || mode === 'adverbs'}
-              />
-            )}
+            <ViewToggle 
+              currentView={currentView}
+              onViewChange={(view: ViewMode) => {
+                if (view === 'table') {
+                  let tablePath = '/table';
+                  if (mode === 'nouns') tablePath = '/table/nouns';
+                  else if (mode === 'adjectives') tablePath = '/table/adjectives';
+                  else if (mode === 'adverbs') tablePath = '/table/adverbs';
+                  router.push(tablePath);
+                } else {
+                  setCurrentView(view);
+                  updateViewParam(view);
+                }
+              }}
+              hideRecipes={mode === 'nouns' || mode === 'adjectives' || mode === 'adverbs'}
+            />
             <SignOutButton />
           </div>
         </div>

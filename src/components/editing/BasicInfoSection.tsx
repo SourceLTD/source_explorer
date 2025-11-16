@@ -62,7 +62,7 @@ export function BasicInfoSection({
           {editingField !== 'code' && (
             <button
               onClick={() => onStartEdit('code')}
-              className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+              className="text-xs text-blue-600 hover:text-blue-700 font-medium cursor-pointer"
             >
               Edit
             </button>
@@ -92,7 +92,7 @@ export function BasicInfoSection({
           {editingField !== 'src_lemmas' && (
             <button
               onClick={() => onStartEdit('src_lemmas')}
-              className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+              className="text-xs text-blue-600 hover:text-blue-700 font-medium cursor-pointer"
             >
               Edit
             </button>
@@ -135,7 +135,7 @@ export function BasicInfoSection({
           {editingField !== 'gloss' && (
             <button
               onClick={() => onStartEdit('gloss')}
-              className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+              className="text-xs text-blue-600 hover:text-blue-700 font-medium cursor-pointer"
             >
               Edit
             </button>
@@ -163,7 +163,7 @@ export function BasicInfoSection({
           {editingField !== 'examples' && (
             <button
               onClick={() => onStartEdit('examples')}
-              className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+              className="text-xs text-blue-600 hover:text-blue-700 font-medium cursor-pointer"
             >
               Edit
             </button>
@@ -207,7 +207,7 @@ export function BasicInfoSection({
             {editingField !== 'lexfile' && (
               <button
                 onClick={() => onStartEdit('lexfile')}
-                className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                className="text-xs text-blue-600 hover:text-blue-700 font-medium cursor-pointer"
               >
                 Edit
               </button>

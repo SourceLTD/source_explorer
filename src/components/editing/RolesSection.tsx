@@ -62,7 +62,7 @@ export function RolesSection({
           {editingField !== 'roles' && (
             <button
               onClick={() => onStartEdit('roles')}
-              className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+              className="text-xs text-blue-600 hover:text-blue-700 font-medium cursor-pointer"
             >
               Edit
             </button>

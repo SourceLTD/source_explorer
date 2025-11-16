@@ -145,6 +145,8 @@ export function EditOverlay({ node, mode, isOpen, onClose, onUpdate }: EditOverl
 
       // Handle other fields
       let value: unknown;
+      let fieldName: string = editor.editingField;
+      
       switch (editor.editingField) {
         case 'src_lemmas':
           value = editor.editListItems.filter(s => s.trim());
@@ -165,13 +167,15 @@ export function EditOverlay({ node, mode, isOpen, onClose, onUpdate }: EditOverl
           value = editor.editValue;
           break;
         case 'frame':
+          // Map 'frame' to 'frame_id' for API
+          fieldName = 'frame_id';
           value = editor.editValue || null;
           break;
         default:
           return;
       }
       
-      await mutations.updateField(node.id, editor.editingField, value);
+      await mutations.updateField(node.id, fieldName, value);
       
       editor.setCodeValidationMessage('✓ Changes saved successfully');
       editor.cancelEditing();

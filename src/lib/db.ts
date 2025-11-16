@@ -1,7 +1,7 @@
 import { unstable_cache, revalidateTag } from 'next/cache';
 import { prisma } from './prisma';
 import { withRetry } from './db-utils'; 
-import { RelationType, type Verb, type VerbWithRelations, type VerbRelation, type GraphNode, type SearchResult, type PaginationParams, type PaginatedResult, type TableEntry, type EntryRecipes, type Recipe, type RecipePredicateNode, type RecipePredicateRoleMapping, type LogicNode, type LogicNodeKind, type Frame, type FramePaginationParams } from './types';
+import { RelationType, type LexicalType, type Verb, type VerbWithRelations, type VerbRelation, type GraphNode, type SearchResult, type PaginationParams, type PaginatedResult, type TableEntry, type EntryRecipes, type Recipe, type RecipePredicateNode, type RecipePredicateRoleMapping, type LogicNode, type LogicNodeKind, type Frame, type FramePaginationParams } from './types';
 import type { verbs as PrismaVerb, verb_relations as PrismaVerbRelation } from '@prisma/client';
 import { Prisma } from '@prisma/client';
 
@@ -183,6 +183,9 @@ export async function searchEntries(query: string, limit = 20, table: 'verbs' | 
   const posMap = { verbs: 'v', nouns: 'n', adjectives: 'a', adverbs: 'r' };
   const pos = posMap[table];
   
+  // Only verbs table has deleted column
+  const hasDeletedColumn = table === 'verbs';
+  
   // If query contains a dot, only search IDs
   const containsDot = query.includes('.');
   
@@ -208,7 +211,7 @@ export async function searchEntries(query: string, limit = 20, table: 'verbs' | 
       WHERE 
         (code ILIKE ${query + '%'} OR
         legacy_id ILIKE ${query + '%'})
-        AND (deleted = false OR deleted IS NULL)
+        ${hasDeletedColumn ? Prisma.sql`AND (deleted = false OR deleted IS NULL)` : Prisma.empty}
       ORDER BY rank DESC, code
       LIMIT ${limit}
     `,
@@ -261,7 +264,7 @@ export async function searchEntries(query: string, limit = 20, table: 'verbs' | 
       -- Fallback substring match on gloss for phrases that FTS might miss
       gloss ILIKE ${'%' + query + '%'}
       )
-      AND (deleted = false OR deleted IS NULL)
+      ${hasDeletedColumn ? Prisma.sql`AND (deleted = false OR deleted IS NULL)` : Prisma.empty}
     ORDER BY rank DESC, code
     LIMIT ${limit}
   `,
@@ -3868,9 +3871,13 @@ export async function deleteEntry(code: string): Promise<VerbWithRelations | nul
       where: { verb_id: entry.id }
     });
 
-    // Delete the entry itself
-    await prisma.verbs.delete({
-      where: { code: code } as unknown as Prisma.verbsWhereUniqueInput
+    // Soft delete the entry itself (set deleted = true instead of actually deleting)
+    await prisma.verbs.update({
+      where: { code: code } as unknown as Prisma.verbsWhereUniqueInput,
+      data: {
+        deleted: true,
+        deleted_at: new Date()
+      }
     });
 
     // Invalidate all caches

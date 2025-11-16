@@ -51,7 +51,7 @@ export function VerbPropertiesSection({
           {editingField !== 'vendler_class' && (
             <button
               onClick={() => onStartEdit('vendler_class')}
-              className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+              className="text-xs text-blue-600 hover:text-blue-700 font-medium cursor-pointer"
             >
               Edit
             </button>
@@ -79,7 +79,7 @@ export function VerbPropertiesSection({
           {editingField !== 'frame' && (
             <button
               onClick={() => onStartEdit('frame')}
-              className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+              className="text-xs text-blue-600 hover:text-blue-700 font-medium cursor-pointer"
             >
               Edit
             </button>
@@ -108,7 +108,7 @@ export function VerbPropertiesSection({
           {editingField !== 'lexfile' && (
             <button
               onClick={() => onStartEdit('lexfile')}
-              className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+              className="text-xs text-blue-600 hover:text-blue-700 font-medium cursor-pointer"
             >
               Edit
             </button>

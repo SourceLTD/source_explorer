@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getEntryById, updateEntry, deleteEntry } from '@/lib/db';
+import { getEntryById, updateEntry } from '@/lib/db';
 import { handleDatabaseError } from '@/lib/db-utils';
+import { handleDeleteById } from '@/lib/route-handlers';
 
 // Force dynamic rendering - no static optimization
 export const dynamic = 'force-dynamic';
@@ -88,38 +89,6 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   const { id } = await params;
-
-  try {
-    const deletedEntry = await deleteEntry(id);
-    
-    if (!deletedEntry) {
-      return NextResponse.json({ error: 'Verb not found' }, { status: 404 });
-    }
-
-    // Return with no-cache headers to ensure fresh data
-    return NextResponse.json({ 
-      success: true, 
-      message: `Verb ${id} deleted successfully`,
-      deletedEntry 
-    }, {
-      headers: {
-        'Cache-Control': 'no-store, no-cache, must-revalidate',
-        'Pragma': 'no-cache',
-      },
-    });
-  } catch (error) {
-    const { message, status, shouldRetry } = handleDatabaseError(error, 'DELETE /api/verbs/[id]');
-    return NextResponse.json(
-      { 
-        error: message,
-        retryable: shouldRetry,
-        timestamp: new Date().toISOString()
-      },
-      { 
-        status,
-        headers: shouldRetry ? { 'Retry-After': '5' } : {}
-      }
-    );
-  }
+  return handleDeleteById(id, 'verbs', `DELETE /api/verbs/${id}`);
 }
 

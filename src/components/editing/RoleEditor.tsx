@@ -56,7 +56,7 @@ export function RoleEditor({
             </label>
             <button
               onClick={() => onRoleRemove(role.clientId)}
-              className="ml-2 p-1 text-red-500 hover:bg-red-100 rounded"
+              className="ml-2 p-1 text-red-500 hover:bg-red-100 rounded cursor-pointer"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -82,13 +82,13 @@ export function RoleEditor({
       <div className="flex space-x-2">
         <button
           onClick={() => onRoleAdd(true)}
-          className="flex-1 px-3 py-2 border border-blue-300 rounded-md text-blue-600 hover:bg-blue-50 text-sm"
+          className="flex-1 px-3 py-2 border border-blue-300 rounded-md text-blue-600 hover:bg-blue-50 text-sm cursor-pointer"
         >
           + Add Main Role
         </button>
         <button
           onClick={() => onRoleAdd(false)}
-          className="flex-1 px-3 py-2 border border-purple-300 rounded-md text-purple-600 hover:bg-purple-50 text-sm"
+          className="flex-1 px-3 py-2 border border-purple-300 rounded-md text-purple-600 hover:bg-purple-50 text-sm cursor-pointer"
         >
           + Add Alt Role
         </button>
@@ -110,7 +110,7 @@ export function RoleEditor({
                 />
                 <button
                   onClick={() => onRoleGroupRemove(groupIndex)}
-                  className="ml-2 p-1 text-red-500 hover:bg-red-100 rounded"
+                  className="ml-2 p-1 text-red-500 hover:bg-red-100 rounded cursor-pointer"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -146,7 +146,7 @@ export function RoleEditor({
           ))}
           <button
             onClick={onRoleGroupAdd}
-            className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+            className="text-sm text-blue-600 hover:text-blue-700 font-medium cursor-pointer"
           >
             + Add Role Group
           </button>
@@ -157,13 +157,13 @@ export function RoleEditor({
         <button
           onClick={onSave}
           disabled={isSaving}
-          className="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50"
+          className="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
         >
           {isSaving ? 'Saving...' : 'Save'}
         </button>
         <button
           onClick={onCancel}
-          className="px-4 py-2 bg-gray-200 text-gray-700 text-sm rounded hover:bg-gray-300"
+          className="px-4 py-2 bg-gray-200 text-gray-700 text-sm rounded hover:bg-gray-300 cursor-pointer"
         >
           Cancel
         </button>

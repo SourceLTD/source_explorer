@@ -50,7 +50,7 @@ export function LegalConstraintsSection({
           {editingField !== 'legal_constraints' && (
             <button
               onClick={() => onStartEdit('legal_constraints')}
-              className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+              className="text-xs text-blue-600 hover:text-blue-700 font-medium cursor-pointer"
             >
               Edit
             </button>

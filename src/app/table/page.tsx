@@ -115,7 +115,7 @@ function TableModeContent() {
           <div className="flex items-center gap-1 border-b border-gray-200">
             <button
               onClick={() => handleTabChange('verbs')}
-              className={`px-4 py-2 text-sm font-medium transition-colors relative ${
+              className={`px-4 py-2 text-sm font-medium transition-colors relative cursor-pointer ${
                 activeTab === 'verbs'
                   ? 'text-blue-600 border-b-2 border-blue-600'
                   : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
@@ -125,7 +125,7 @@ function TableModeContent() {
             </button>
             <button
               onClick={() => handleTabChange('frames')}
-              className={`px-4 py-2 text-sm font-medium transition-colors relative ${
+              className={`px-4 py-2 text-sm font-medium transition-colors relative cursor-pointer ${
                 activeTab === 'frames'
                   ? 'text-blue-600 border-b-2 border-blue-600'
                   : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'

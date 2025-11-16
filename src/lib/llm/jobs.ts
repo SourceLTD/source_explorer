@@ -13,6 +13,7 @@ import {
   PartOfSpeech,
   RenderedPrompt,
   SerializedJob,
+  SerializedJobItem,
 } from './types';
 import { getOpenAIClient } from './client';
 import { translateFilterASTToPrisma } from '@/lib/filters/translate';
@@ -109,7 +110,7 @@ async function fetchJobRecord(jobId: bigint, options: FetchOptions = {}): Promis
     return null;
   }
 
-    let items = Array.isArray(job.llm_job_items)
+    let items: Array<SerializedJobItem & { entry: LexicalEntrySummary }> = Array.isArray(job.llm_job_items)
     ? job.llm_job_items.map((item: llm_job_items) => ({
         ...item,
         id: item.id.toString(),

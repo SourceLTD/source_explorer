@@ -104,6 +104,7 @@ export interface JobListOptions {
   limit?: number;
   refreshBeforeReturn?: boolean;
   entityType?: PartOfSpeech;
+  includeItems?: boolean;
 }
 
 export interface JobDetailOptions {

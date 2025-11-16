@@ -362,7 +362,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
   const [frameSearchQuery, setFrameSearchQuery] = useState('');
   const [isFrameUpdating, setIsFrameUpdating] = useState(false);
   const selectedEntries = useMemo(() => {
-    if (!data || selection.selectedIds.size === 0) {
+    if (!data || !data.data || selection.selectedIds.size === 0) {
       return [];
     }
     return data.data.filter(entry => selection.selectedIds.has(entry.id));
@@ -551,7 +551,37 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
   useEffect(() => {
     if (!isInitialized) return;
 
-    const params = new URLSearchParams();
+    const params = new URLSearchParams(searchParams?.toString() || '');
+    
+    // Remove DataTable-managed params to rebuild them
+    params.delete('gloss');
+    params.delete('lemmas');
+    params.delete('examples');
+    params.delete('particles');
+    params.delete('frames');
+    params.delete('flaggedReason');
+    params.delete('forbiddenReason');
+    params.delete('pos');
+    params.delete('lexfile');
+    params.delete('frame_id');
+    params.delete('flaggedByJobId');
+    params.delete('isMwe');
+    params.delete('transitive');
+    params.delete('flagged');
+    params.delete('forbidden');
+    params.delete('parentsCountMin');
+    params.delete('parentsCountMax');
+    params.delete('childrenCountMin');
+    params.delete('childrenCountMax');
+    params.delete('createdAfter');
+    params.delete('createdBefore');
+    params.delete('updatedAfter');
+    params.delete('updatedBefore');
+    params.delete('columns');
+    params.delete('sortBy');
+    params.delete('sortOrder');
+    params.delete('page');
+    params.delete('limit');
     
     // Add filters
     Object.entries(filters).forEach(([key, value]) => {
@@ -586,7 +616,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
     // Update URL without causing navigation
     const newUrl = params.toString() ? `${pathname}?${params.toString()}` : pathname;
     router.replace(newUrl, { scroll: false });
-  }, [isInitialized, filters, columnVisibility, sortState, currentPage, pageSize, pathname, router]);
+  }, [isInitialized, filters, columnVisibility, sortState, currentPage, pageSize, pathname, router, searchParams, mode]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -700,6 +730,10 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
   const handleFiltersChange = (newFilters: FilterState) => {
     setFilters(newFilters);
     setCurrentPage(1);
+    // Reset to default page size (10) if currently showing all
+    if (pageSize === -1) {
+      setPageSize(10);
+    }
   };
 
   const handleClearAllFilters = () => {
@@ -791,7 +825,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
   };
 
   const handleSelectAll = () => {
-    if (!data) return;
+    if (!data || !data.data) return;
     
     setSelection(prev => {
       const newSelectAll = !prev.selectAll;
@@ -1695,7 +1729,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
   }
 
   // Don't return early for empty data - we want to keep the toolbar visible
-  const hasData = data && data.data.length > 0;
+  const hasData = data && data.data && data.data.length > 0;
 
   return (
     <div className={`bg-white rounded-lg shadow-sm border border-gray-200 ${className || ''} ${isResizing ? 'select-none' : ''}`}>
@@ -1749,22 +1783,20 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
               </svg>
               Reset Widths
             </button>
-            {mode !== 'frames' && (
-              <button
-                onClick={() => setIsAIOverlayOpen(true)}
-                className="relative inline-flex items-center justify-center rounded-md bg-gradient-to-r from-blue-500 to-blue-600 px-3 py-2 text-white shadow-sm transition-colors hover:from-blue-600 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
-                title="Open AI batch moderation"
-                aria-label="Open AI batch moderation"
-                type="button"
-              >
-                <SparklesIcon className="h-5 w-5" aria-hidden="true" />
-                {pendingAIJobs > 0 && (
-                  <span className="absolute -top-1 -right-1 inline-flex min-h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-600 px-1 text-[11px] font-bold text-white">
-                    {pendingAIJobs > 99 ? '99+' : pendingAIJobs}
-                  </span>
-                )}
-              </button>
-            )}
+            <button
+              onClick={() => setIsAIOverlayOpen(true)}
+              className="relative inline-flex items-center justify-center rounded-md bg-gradient-to-r from-blue-500 to-blue-600 px-3 py-2 text-white shadow-sm transition-colors hover:from-blue-600 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+              title="Open AI batch moderation"
+              aria-label="Open AI batch moderation"
+              type="button"
+            >
+              <SparklesIcon className="h-5 w-5" aria-hidden="true" />
+              {pendingAIJobs > 0 && (
+                <span className="absolute -top-1 -right-1 inline-flex min-h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-600 px-1 text-[11px] font-bold text-white">
+                  {pendingAIJobs > 99 ? '99+' : pendingAIJobs}
+                </span>
+              )}
+            </button>
             
             {/* Moderation Actions */}
             {mode !== 'frames' && selection.selectedIds.size > 0 && (() => {
@@ -1897,7 +1929,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
             </tr>
           </thead>
           <tbody className="bg-gray-50 divide-y divide-gray-200">
-            {hasData ? (
+            {hasData && data && data.data ? (
               data.data.map((entry) => {
                 const isSelected = selection.selectedIds.has(entry.id);
                 return (
@@ -1966,14 +1998,14 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
       {/* Pagination */}
       <div className="px-4 py-3 border-t border-gray-200 bg-gray-50 flex items-center justify-between">
         <div className="text-sm text-gray-700">
-          {hasData ? (
+          {hasData && data ? (
             <>Showing {((data.page - 1) * data.limit) + 1} to {Math.min(data.page * data.limit, data.total)} of {data.total} entries</>
           ) : (
             <>Showing 0 of {data?.total || 0} entries</>
           )}
         </div>
         
-        {hasData && (
+        {hasData && data && (
           <div className="flex items-center gap-2">
             <button
               onClick={() => handlePageChange(data.page - 1)}
