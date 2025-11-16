@@ -54,7 +54,7 @@ export default function AuthHeader() {
   }
 
   // For graph and table modes, don't render here - they handle it in their own headers
-  const isGraphOrTable = pathname === '/graph' || pathname === '/table'
+  const isGraphOrTable = pathname?.startsWith('/graph') || pathname?.startsWith('/table')
   
   if (isGraphOrTable) {
     return null
@@ -64,7 +64,7 @@ export default function AuthHeader() {
     <div className="fixed top-6 right-6 z-50">
       <button
         onClick={handleSignOut}
-        className="inline-flex items-center rounded-md bg-gray-100 text-gray-700 px-4 py-2 text-sm font-medium hover:bg-red-50 hover:text-red-700 hover:cursor-pointer focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors shadow-lg whitespace-nowrap"
+        className="inline-flex items-center rounded-md bg-gray-100 text-gray-700 px-4 py-2 text-sm font-medium border border-gray-300 hover:bg-red-50 hover:text-red-700 hover:border-red-300 hover:cursor-pointer focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors whitespace-nowrap"
       >
         Sign Out
       </button>

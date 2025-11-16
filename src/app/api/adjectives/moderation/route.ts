@@ -1,37 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { updateModerationStatus } from '@/lib/db';
-import { handleDatabaseError } from '@/lib/db-utils';
+import { NextRequest } from 'next/server';
+import { handleModerationRequest } from '@/lib/route-handlers';
 
 export async function PATCH(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const { ids, updates } = body;
-
-    if (!ids || !Array.isArray(ids) || ids.length === 0) {
-      return NextResponse.json(
-        { error: 'ids array is required' },
-        { status: 400 }
-      );
-    }
-
-    if (!updates || typeof updates !== 'object') {
-      return NextResponse.json(
-        { error: 'updates object is required' },
-        { status: 400 }
-      );
-    }
-
-    const count = await updateModerationStatus(ids, updates);
-    
-    return NextResponse.json({ 
-      success: true,
-      count,
-      message: `Updated ${count} adjective(s)` 
-    });
-  } catch (error) {
-    const { message, status } = handleDatabaseError(error, 'PATCH /api/adjectives/moderation');
-    return NextResponse.json({ error: message }, { status });
-  }
+  return handleModerationRequest(request, 'adjectives');
 }
 
 

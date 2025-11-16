@@ -54,6 +54,16 @@ export interface FilterState {
   createdBefore?: string;
   updatedAfter?: string;
   updatedBefore?: string;
+  
+  // Frame-specific text filters
+  frame_name?: string;
+  definition?: string;
+  short_definition?: string;
+  prototypical_synset?: string;
+  
+  // Frame-specific boolean filters
+  is_supporting_frame?: boolean;
+  communication?: boolean;
 }
 
 interface FilterPanelProps {
@@ -63,6 +73,7 @@ interface FilterPanelProps {
   onFiltersChange: (filters: FilterState) => void;
   onClearAll: () => void;
   className?: string;
+  mode?: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames';
 }
 
 interface FilterSectionProps {
@@ -103,7 +114,8 @@ export default function FilterPanel({
   filters, 
   onFiltersChange, 
   onClearAll,
-  className 
+  className,
+  mode = 'verbs'
 }: FilterPanelProps) {
   const [openSections, setOpenSections] = useState<Set<string>>(new Set(['text']));
   const [frames, setFrames] = useState<Frame[]>([]);

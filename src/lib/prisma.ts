@@ -49,7 +49,7 @@ if (isDevelopment || isProduction) {
 // };
 
 export const prisma = globalForPrisma.prisma ?? new PrismaClient({
-  log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn', 'info'] : ['error'],
+  log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
   // Let Prisma use the URLs from schema.prisma (POSTGRES_PRISMA_URL and POSTGRES_URL_NON_POOLING)
   // Optimize for connection reliability
   errorFormat: 'pretty',

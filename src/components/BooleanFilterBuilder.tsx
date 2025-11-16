@@ -5,7 +5,7 @@ import type { BooleanFilterGroup, BooleanFilterNode, BooleanFilterRule } from '@
 import { createEmptyGroup } from '@/lib/filters/types';
 import { getFieldConfigsForPos } from '@/lib/filters/config';
 
-type Pos = 'verbs' | 'nouns' | 'adjectives';
+type Pos = 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames';
 
 interface BooleanFilterBuilderProps {
   pos: Pos;

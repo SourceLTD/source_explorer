@@ -1,84 +1,29 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getEntryById, updateEntry, deleteEntry } from '@/lib/db';
-import { handleDatabaseError } from '@/lib/db-utils';
+import { NextRequest } from 'next/server';
+import { handleGetById, handleUpdateById, handleDeleteById } from '@/lib/route-handlers';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
-    const { id } = await params;
-    const entry = await getEntryById(id);
-    
-    if (!entry) {
-      return NextResponse.json(
-        { error: 'Adjective not found' },
-        { status: 404 }
-      );
-    }
-    
-    return NextResponse.json(entry);
-  } catch (error) {
-    const { id } = await params;
-    const { message, status } = handleDatabaseError(error, `GET /api/adjectives/${id}`);
-    return NextResponse.json({ error: message }, { status });
-  }
+  const { id } = await params;
+  return handleGetById(id, 'adjectives', `GET /api/adjectives/${id}`);
 }
 
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
-    const { id } = await params;
-    const body = await request.json();
-    const updatedEntry = await updateEntry(id, body);
-    
-    if (!updatedEntry) {
-      return NextResponse.json(
-        { error: 'Adjective not found' },
-        { status: 404 }
-      );
-    }
-    
-    return NextResponse.json(updatedEntry);
-  } catch (error) {
-    const { id } = await params;
-    const { message, status } = handleDatabaseError(error, `PATCH /api/adjectives/${id}`);
-    return NextResponse.json({ error: message }, { status });
-  }
+  const { id } = await params;
+  const body = await request.json();
+  return handleUpdateById(id, body, 'adjectives', `PATCH /api/adjectives/${id}`);
 }
 
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
-    const { id } = await params;
-    const deletedEntry = await deleteEntry(id);
-    
-    if (!deletedEntry) {
-      return NextResponse.json(
-        { error: 'Adjective not found' },
-        { status: 404 }
-      );
-    }
-    
-    return NextResponse.json({ 
-      success: true, 
-      message: `Adjective ${id} deleted successfully`,
-      deletedEntry 
-    }, {
-      headers: {
-        'Cache-Control': 'no-store, no-cache, must-revalidate',
-        'Pragma': 'no-cache',
-      },
-    });
-  } catch (error) {
-    const { id } = await params;
-    const { message, status } = handleDatabaseError(error, `DELETE /api/adjectives/${id}`);
-    return NextResponse.json({ error: message }, { status });
-  }
+  const { id } = await params;
+  return handleDeleteById(id, 'adjectives', `DELETE /api/adjectives/${id}`);
 }
 
 

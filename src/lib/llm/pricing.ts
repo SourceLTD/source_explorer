@@ -3,19 +3,21 @@ export interface ModelPricing {
   outputPerMillion: number; // USD per 1M output tokens
 }
 
-// Pricing values sourced from OpenAI pricing page; adjust as needed.
-// Using conservative defaults and easy to override if needed.
+// Pricing values sourced from OpenAI pricing page (Standard tier)
+// Updated: Based on official OpenAI pricing as of 2025
 export const PRICING_BY_MODEL: Record<string, ModelPricing> = {
   'gpt-5': { inputPerMillion: 1.25, outputPerMillion: 10.0 },
   'gpt-5-mini': { inputPerMillion: 0.25, outputPerMillion: 2.0 },
   'gpt-5-nano': { inputPerMillion: 0.05, outputPerMillion: 0.4 },
 };
 
-// Optional multipliers by service tier; defaults to 1.0 until official tier pricing deltas are published
+// Service tier multipliers based on OpenAI pricing (Standard tier is baseline at 1.0)
+// Flex/Batch tier is 50% of Standard pricing
+// Priority tier is 2x Standard for gpt-5 models, 1.8x for gpt-5-mini
 export const SERVICE_TIER_MULTIPLIER: Record<'flex' | 'default' | 'priority', number> = {
-  flex: 1.0,
-  default: 1.0,
-  priority: 1.0,
+  flex: 0.5,      // 50% discount - Batch/Flex tier
+  default: 1.0,   // Standard tier (baseline)
+  priority: 2.0,  // 2x premium for gpt-5, 1.8x for gpt-5-mini (using conservative 2.0x)
 };
 
 export function getModelPricing(model: string): ModelPricing | null {

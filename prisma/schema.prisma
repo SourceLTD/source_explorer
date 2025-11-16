@@ -17,6 +17,8 @@ model frame_roles {
   description  String?
   notes        String?
   main         Boolean?
+  examples     String[]   @default([])
+  nickname     String?
   frames       frames     @relation(fields: [frame_id], references: [id], onDelete: Cascade)
   role_types   role_types @relation(fields: [role_type_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
@@ -25,21 +27,24 @@ model frame_roles {
 }
 
 model frames {
-  framebank_id                           String        @unique
-  frame_name                             String
-  definition                             String
-  prototypical_synset                    String
-  prototypical_synset_definition         String
-  short_definition                       String
-  is_supporting_frame                    Boolean       @default(false)
-  created_at                             DateTime      @default(now())
-  updated_at                             DateTime      @default(now())
-  communication                          Boolean?
-  id                                     BigInt        @id @default(autoincrement())
-  code                                   String        @unique(map: "frames_code_unique") @db.VarChar
-  frame_roles                            frame_roles[]
-  verbs                                  verbs[]
-  verbs_verbs_secondary_frame_idToframes verbs[]       @relation("verbs_secondary_frame_idToframes")
+  framebank_id                                      String            @unique
+  frame_name                                        String
+  definition                                        String
+  prototypical_synset                               String
+  prototypical_synset_definition                    String
+  short_definition                                  String
+  is_supporting_frame                               Boolean           @default(false)
+  created_at                                        DateTime          @default(now())
+  updated_at                                        DateTime          @default(now())
+  communication                                     Boolean?
+  id                                                BigInt            @id @default(autoincrement())
+  code                                              String            @unique(map: "frames_code_unique") @db.VarChar
+  frame_relations_frame_relations_source_idToframes frame_relations[] @relation("frame_relations_source_idToframes")
+  frame_relations_frame_relations_target_idToframes frame_relations[] @relation("frame_relations_target_idToframes")
+  frame_roles                                       frame_roles[]
+  llm_job_items                                     llm_job_items[]
+  verbs                                             verbs[]
+  verbs_verbs_secondary_frame_idToframes            verbs[]           @relation("verbs_secondary_frame_idToframes")
 
   @@index([framebank_id], map: "idx_framebank_id")
   @@index([frame_name], map: "idx_frames_frame_name")
@@ -512,10 +517,17 @@ model llm_job_items {
   started_at       DateTime?           @db.Timestamptz(6)
   completed_at     DateTime?           @db.Timestamptz(6)
   updated_at       DateTime            @default(now()) @db.Timestamptz(6)
+  adverb_id        BigInt?
+  frame_id         BigInt?
+  adverbs          adverbs?            @relation(fields: [adverb_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_llm_job_items_adverb")
   adjectives       adjectives?         @relation(fields: [adjective_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  frames           frames?             @relation(fields: [frame_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   llm_jobs         llm_jobs            @relation(fields: [job_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   nouns            nouns?              @relation(fields: [noun_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   verbs            verbs?              @relation(fields: [verb_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([adverb_id], map: "idx_llm_job_items_adverb")
+  @@index([frame_id], map: "idx_llm_job_items_frame")
 }
 
 model llm_jobs {
@@ -544,7 +556,85 @@ model llm_jobs {
   completed_at    DateTime?       @db.Timestamptz(6)
   updated_at      DateTime        @default(now()) @db.Timestamptz(6)
   deleted         Boolean         @default(false)
+  submitted_items Int             @default(0)
+  unseen_change   Boolean         @default(false)
   llm_job_items   llm_job_items[]
+}
+
+model frame_relations {
+  id                                       BigInt              @id @default(autoincrement())
+  source_id                                BigInt
+  target_id                                BigInt
+  type                                     frame_relation_type
+  created_at                               DateTime?           @default(now()) @db.Timestamp(6)
+  updated_at                               DateTime?           @default(now()) @db.Timestamp(6)
+  frames_frame_relations_source_idToframes frames              @relation("frame_relations_source_idToframes", fields: [source_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_frame_relations_source")
+  frames_frame_relations_target_idToframes frames              @relation("frame_relations_target_idToframes", fields: [target_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_frame_relations_target")
+
+  @@unique([source_id, type, target_id], map: "uq_frame_relation")
+  @@index([source_id], map: "idx_frame_relations_source")
+  @@index([source_id, type], map: "idx_frame_relations_source_type")
+  @@index([target_id], map: "idx_frame_relations_target")
+  @@index([target_id, type], map: "idx_frame_relations_target_type")
+  @@index([type], map: "idx_frame_relations_type")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model adverb_relations {
+  id                                          BigInt               @id @default(autoincrement())
+  source_id                                   BigInt
+  target_id                                   BigInt
+  type                                        adverb_relation_type
+  weight                                      Float?
+  properties                                  Json?
+  created_at                                  DateTime             @default(now()) @db.Timestamp(6)
+  updated_at                                  DateTime             @default(now()) @db.Timestamp(6)
+  adverbs_adverb_relations_source_idToadverbs adverbs              @relation("adverb_relations_source_idToadverbs", fields: [source_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_adverb_relations_source")
+  adverbs_adverb_relations_target_idToadverbs adverbs              @relation("adverb_relations_target_idToadverbs", fields: [target_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_adverb_relations_target")
+
+  @@unique([source_id, type, target_id], map: "uq_adverb_relation")
+  @@index([properties], map: "idx_adverb_relations_properties", type: Gin)
+  @@index([source_id], map: "idx_adverb_relations_source")
+  @@index([source_id, type], map: "idx_adverb_relations_source_type")
+  @@index([target_id], map: "idx_adverb_relations_target")
+  @@index([target_id, type], map: "idx_adverb_relations_target_type")
+  @@index([type], map: "idx_adverb_relations_type")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model adverbs {
+  id                                                   BigInt                   @id @default(autoincrement())
+  code                                                 String                   @unique @db.VarChar
+  legacy_id                                            String                   @db.VarChar
+  lemmas                                               String[]                 @default([])
+  src_lemmas                                           String[]                 @default([])
+  gloss                                                String
+  lexfile                                              String                   @db.VarChar
+  examples                                             String[]                 @default([])
+  is_mwe                                               Boolean                  @default(false)
+  gradable                                             Boolean?
+  gloss_tsv                                            Unsupported("tsvector")?
+  examples_tsv                                         Unsupported("tsvector")?
+  flagged                                              Boolean?                 @default(false)
+  flagged_reason                                       String?
+  forbidden                                            Boolean?                 @default(false)
+  forbidden_reason                                     String?
+  legal_gloss                                          String?
+  legal_constraints                                    String[]
+  created_at                                           DateTime                 @default(now()) @db.Timestamp(6)
+  updated_at                                           DateTime                 @default(now()) @db.Timestamp(6)
+  adverb_relations_adverb_relations_source_idToadverbs adverb_relations[]       @relation("adverb_relations_source_idToadverbs")
+  adverb_relations_adverb_relations_target_idToadverbs adverb_relations[]       @relation("adverb_relations_target_idToadverbs")
+  llm_job_items                                        llm_job_items[]
+
+  @@index([examples_tsv], map: "idx_adverbs_examples_tsv", type: Gin)
+  @@index([flagged], map: "idx_adverbs_flagged")
+  @@index([forbidden], map: "idx_adverbs_forbidden")
+  @@index([gloss_tsv], map: "idx_adverbs_gloss_tsv", type: Gin)
+  @@index([gradable], map: "idx_adverbs_gradable")
+  @@index([is_mwe], map: "idx_adverbs_is_mwe")
+  @@index([lemmas], map: "idx_adverbs_lemmas_gin", type: Gin)
+  @@index([lexfile], map: "idx_adverbs_lexfile")
 }
 
 enum RelationType {
@@ -635,6 +725,7 @@ enum predicate_commitment {
 
 enum llm_job_item_status {
   queued
+  submitting
   processing
   succeeded
   failed
@@ -648,4 +739,22 @@ enum llm_job_status {
   failed
   cancelled
   paused
+}
+
+enum frame_relation_type {
+  causes
+}
+
+enum adverb_relation_type {
+  also
+  similar
+  antonym
+  domain_topic
+  domain_region
+  domain_usage
+  member_of_domain_topic
+  member_of_domain_region
+  member_of_domain_usage
+  derivationally_related
+  pertainym
 }

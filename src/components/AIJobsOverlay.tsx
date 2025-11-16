@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, memo } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api-client';
 import BooleanFilterBuilder from '@/components/BooleanFilterBuilder';
@@ -8,16 +8,19 @@ import { createEmptyGroup, type BooleanFilterGroup } from '@/lib/filters/types';
 import { parseURLToFilterAST } from '@/lib/filters/url';
 import { useSearchParams } from 'next/navigation';
 import { showGlobalAlert } from '@/lib/alerts';
-import type { SerializedJob } from '@/lib/llm/types';
+import type { SerializedJob, JobScope } from '@/lib/llm/types';
+import { getVariablesForEntityType } from '@/lib/llm/schema-variables';
+import { ChevronLeftIcon, ChevronRightIcon, ClipboardDocumentIcon } from '@heroicons/react/24/outline';
 
 type ScopeMode = 'selection' | 'manual' | 'frames' | 'all' | 'filters';
 
 interface AIJobsOverlayProps {
   isOpen: boolean;
   onClose: () => void;
-  mode: 'verbs' | 'nouns' | 'adjectives';
+  mode: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames';
   selectedIds: string[];
   onJobsUpdated?: (pendingJobs: number) => void;
+  onUnseenCountChange?: (count: number) => void;
 }
 
 interface JobListResponse {
@@ -25,8 +28,11 @@ interface JobListResponse {
 }
 
 interface PreviewResponse {
-  prompt: string;
-  variables: Record<string, string>;
+  previews: Array<{
+    prompt: string;
+    variables: Record<string, string>;
+  }>;
+  totalEntries: number;
 }
 
 const MODEL_OPTIONS = [
@@ -35,20 +41,7 @@ const MODEL_OPTIONS = [
   { value: 'gpt-5', label: 'GPT-5 (highest quality)' },
 ];
 
-const AVAILABLE_VARIABLES = [
-  { key: 'id', label: 'Entry ID (code)' },
-  { key: 'code', label: 'Lexical Code (e.g., say.v.01)' },
-  { key: 'pos', label: 'Part of Speech' },
-  { key: 'gloss', label: 'Definition / Gloss' },
-  { key: 'lemmas', label: 'Lemmas (comma separated)' },
-  { key: 'lemmas_json', label: 'Lemmas JSON' },
-  { key: 'examples', label: 'Examples (newline separated)' },
-  { key: 'examples_json', label: 'Examples JSON' },
-  { key: 'flagged', label: 'Current flagged state' },
-  { key: 'flagged_reason', label: 'Existing flagged reason' },
-  { key: 'frame_name', label: 'Frame name (verbs only)' },
-  { key: 'lexfile', label: 'Lexfile' },
-];
+// Dynamic variables removed - now loaded from schema-variables utility
 
 const DEFAULT_PROMPT = `You are reviewing lexical entries for quality assurance.
 
@@ -124,10 +117,14 @@ export function AIJobsOverlay({
   mode,
   selectedIds,
   onJobsUpdated,
+  onUnseenCountChange,
 }: AIJobsOverlayProps) {
   const [jobs, setJobs] = useState<SerializedJob[]>([]);
   const [jobsLoading, setJobsLoading] = useState(false);
   const [jobsError, setJobsError] = useState<string | null>(null);
+  const [selectedJobDetails, setSelectedJobDetails] = useState<SerializedJob | null>(null);
+  const [selectedJobLoading, setSelectedJobLoading] = useState(false);
+  const [itemLimits, setItemLimits] = useState({ pending: 10, succeeded: 10, failed: 10 });
   const [model, setModel] = useState<string>(MODEL_OPTIONS[0].value);
   const [priority, setPriority] = useState<'flex' | 'normal' | 'priority'>('normal');
   const [reasoningEffort, setReasoningEffort] = useState<'low' | 'medium' | 'high'>('medium');
@@ -151,6 +148,8 @@ export function AIJobsOverlay({
   const [frameIdSuggestions, setFrameIdSuggestions] = useState<Array<{ id: string; code: string; frame_name: string }>>([]);
   const [validatedManualIds, setValidatedManualIds] = useState<Set<string>>(new Set());
   const [validatedFrameIds, setValidatedFrameIds] = useState<Set<string>>(new Set());
+  const [frameIncludeVerbs, setFrameIncludeVerbs] = useState(false);
+  const [frameFlagTarget, setFrameFlagTarget] = useState<'frame' | 'verb' | 'both'>('verb');
   const [manualIdActiveIndex, setManualIdActiveIndex] = useState<number>(-1);
   const [frameIdActiveIndex, setFrameIdActiveIndex] = useState<number>(-1);
   const manualIdInputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -158,6 +157,7 @@ export function AIJobsOverlay({
   const [promptTemplate, setPromptTemplate] = useState(DEFAULT_PROMPT);
   const [preview, setPreview] = useState<PreviewResponse | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [currentPreviewIndex, setCurrentPreviewIndex] = useState(0);
   const [estimate, setEstimate] = useState<{
     totalItems: number;
     sampleSize: number;
@@ -181,7 +181,18 @@ export function AIJobsOverlay({
   const [isCreating, setIsCreating] = useState(false);
   const [currentStep, setCurrentStep] = useState<StepperStep>('details');
   const [variableActiveIndex, setVariableActiveIndex] = useState<number>(-1);
+  const [submissionProgress, setSubmissionProgress] = useState<{
+    jobId: string;
+    submitted: number;
+    total: number;
+    failed: number;
+    isSubmitting: boolean;
+  } | null>(null);
   const searchParams = useSearchParams();
+  const loadJobsInProgressRef = useRef(false);
+  const pollingInProgressRef = useRef(false);
+  const [unseenCount, setUnseenCount] = useState(0);
+  const unseenPollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const parsedSelectionCount = selectedIds.length;
 
@@ -223,6 +234,61 @@ export function AIJobsOverlay({
     setCurrentStep('details');
     resetCreationFields();
   }, [resetCreationFields]);
+
+  const loadJobSettings = useCallback((job: SerializedJob) => {
+    // Parse config JSON
+    const config = job.config as { 
+      model?: string; 
+      promptTemplate?: string; 
+      serviceTier?: string | null;
+      reasoning?: { effort?: 'low' | 'medium' | 'high' } | null;
+    } | null;
+    
+    const scope = job.scope as JobScope | null;
+
+    // Load basic settings
+    setLabel(job.label ?? DEFAULT_LABEL);
+    setModel(config?.model ?? MODEL_OPTIONS[0].value);
+    setPriority(serviceTierToPriority(config?.serviceTier));
+    setReasoningEffort(config?.reasoning?.effort ?? 'medium');
+    setPromptTemplate(config?.promptTemplate ?? DEFAULT_PROMPT);
+
+    // Parse and load scope settings
+    if (scope) {
+      if (scope.kind === 'ids') {
+        // Check if the IDs match current selection
+        const scopeIds = scope.ids ?? [];
+        if (scopeIds.length > 0 && scopeIds.length === selectedIds.length && 
+            scopeIds.every(id => selectedIds.includes(id))) {
+          setScopeMode('selection');
+        } else {
+          setScopeMode('manual');
+          setManualIdsText(idsToText(scopeIds));
+        }
+      } else if (scope.kind === 'frame_ids') {
+        setScopeMode('frames');
+        setFrameIdsText(idsToText(scope.frameIds ?? []));
+        setFrameIncludeVerbs(scope.includeVerbs ?? false);
+        setFrameFlagTarget(scope.flagTarget ?? 'verb');
+      } else if (scope.kind === 'filters') {
+        const filters = scope.filters;
+        const hasNoFilters = !filters?.where || (filters.where.children && filters.where.children.length === 0);
+        const isAll = (filters?.limit === 0 || !filters?.limit) && hasNoFilters;
+        
+        if (isAll) {
+          setScopeMode('all');
+        } else {
+          setScopeMode('filters');
+          setFilterGroup(filters?.where ?? createEmptyGroup());
+          setFilterLimit(filters?.limit ?? 50);
+        }
+      }
+    }
+
+    // Manually start the creation flow (don't call startCreateFlow as it resets fields)
+    setIsCreating(true);
+    setCurrentStep('details');
+  }, [selectedIds]);
 
   useEffect(() => {
     if (currentStep !== 'prompt') {
@@ -279,6 +345,39 @@ export function AIJobsOverlay({
     }
   }, [isOpen, closeCreateFlow]);
 
+  // Poll for unseen count when overlay is closed
+  useEffect(() => {
+    if (!isOpen) {
+      const pollUnseen = async () => {
+        try {
+          const response = await fetch(`/api/llm-jobs/unseen-count?pos=${mode}`);
+          const data = await response.json();
+          setUnseenCount(data.count || 0);
+        } catch (error) {
+          console.error('Failed to fetch unseen count:', error);
+        }
+      };
+      
+      pollUnseen(); // Initial fetch
+      unseenPollIntervalRef.current = setInterval(pollUnseen, 30000); // Every 30s
+      
+      return () => {
+        if (unseenPollIntervalRef.current) {
+          clearInterval(unseenPollIntervalRef.current);
+        }
+      };
+    } else {
+      setUnseenCount(0); // Reset when overlay opens
+    }
+  }, [isOpen, mode]);
+
+  // Notify parent of unseen count changes
+  useEffect(() => {
+    if (onUnseenCountChange) {
+      onUnseenCountChange(unseenCount);
+    }
+  }, [unseenCount, onUnseenCountChange]);
+
   const manualIds = useMemo(() => parseIds(manualIdsText), [manualIdsText]);
   const frameIds = useMemo(() => parseIds(frameIdsText), [frameIdsText]);
 
@@ -330,11 +429,12 @@ export function AIJobsOverlay({
     return false;
   }, [currentStep, isScopeValid, promptIsValid]);
 
-  const handlePreview = useCallback(async () => {
+    const handlePreview = useCallback(async () => {
     setPreviewLoading(true);
     setPreview(null);
+    setCurrentPreviewIndex(0);
     try {
-      const scope = buildScope(scopeMode, mode, selectedIds, manualIdsText, frameIdsText, filterGroup, filterLimit);
+      const scope = buildScope(scopeMode, mode, selectedIds, manualIdsText, frameIdsText, filterGroup, filterLimit, frameIncludeVerbs, frameFlagTarget);
       const response = await api.post<PreviewResponse>('/api/llm-jobs/preview', {
         model,
         promptTemplate,
@@ -345,8 +445,11 @@ export function AIJobsOverlay({
       setPreview(response);
     } catch (error) {
       setPreview({
-        prompt: error instanceof Error ? error.message : 'Failed to render preview',
-        variables: {},
+        previews: [{
+          prompt: error instanceof Error ? error.message : 'Failed to render preview',
+          variables: {},
+        }],
+        totalEntries: 0,
       });
     } finally {
       setPreviewLoading(false);
@@ -359,6 +462,8 @@ export function AIJobsOverlay({
     frameIdsText,
     filterGroup,
     filterLimit,
+    frameIncludeVerbs,
+    frameFlagTarget,
     model,
     promptTemplate,
     priority,
@@ -370,7 +475,7 @@ export function AIJobsOverlay({
     setEstimateError(null);
     setEstimate(null);
     try {
-      const scope = buildScope(scopeMode, mode, selectedIds, manualIdsText, frameIdsText, filterGroup, filterLimit);
+      const scope = buildScope(scopeMode, mode, selectedIds, manualIdsText, frameIdsText, filterGroup, filterLimit, frameIncludeVerbs, frameFlagTarget);
       const response = await api.post<{
         totalItems: number;
         sampleSize: number;
@@ -401,6 +506,8 @@ export function AIJobsOverlay({
     frameIdsText,
     filterGroup,
     filterLimit,
+    frameIncludeVerbs,
+    frameFlagTarget,
     model,
     promptTemplate,
     priority,
@@ -587,6 +694,10 @@ export function AIJobsOverlay({
                 filterValidateCount={filterValidateCount}
                 filterValidateSample={filterValidateSample}
                 onValidateFilters={handleValidateFilters}
+                frameIncludeVerbs={frameIncludeVerbs}
+                onFrameIncludeVerbsChange={setFrameIncludeVerbs}
+                frameFlagTarget={frameFlagTarget}
+                onFrameFlagTargetChange={setFrameFlagTarget}
             />
             {!isScopeValid && (
               <p className="text-xs text-red-500">
@@ -672,7 +783,8 @@ export function AIJobsOverlay({
           <div className="space-y-6">
             <div className="rounded-md border border-gray-200 bg-gray-50 p-2">
               <h4 className="text-xs font-semibold text-gray-800 mb-1.5">Summary</h4>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[11px]">
+              <div className="grid grid-cols-3 gap-x-4 gap-y-0.5 text-[11px]">
+                {/* Row 1: Label, Model, Priority */}
                 <div className="flex items-center justify-between">
                   <span className="text-gray-600">Label:</span>
                   <span className="text-gray-900 font-medium">{label || '—'}</span>
@@ -685,41 +797,53 @@ export function AIJobsOverlay({
                   <span className="text-gray-600">Priority:</span>
                   <span className="text-gray-900 font-medium">{priority}</span>
                 </div>
+                
+                {/* Row 2: Reasoning, Scope, Items */}
                 <div className="flex items-center justify-between">
                   <span className="text-gray-600">Reasoning:</span>
                   <span className="text-gray-900 font-medium">{reasoningEffort}</span>
                 </div>
-                <div className="flex items-center justify-between col-span-2">
+                <div className="flex items-center justify-between">
                   <span className="text-gray-600">Scope:</span>
                   <span className="text-gray-900 font-medium">{scopeSummary}</span>
                 </div>
-                {estimateLoading && (
-                  <div className="flex items-center justify-between col-span-2">
+                {estimateLoading ? (
+                  <div className="flex items-center justify-between col-span-3">
                     <span className="text-gray-600">Cost:</span>
                     <span className="text-gray-900 font-medium">Calculating…</span>
                   </div>
-                )}
-                {!estimateLoading && estimate && (
+                ) : !estimate ? (
+                  <div className="col-span-3"></div>
+                ) : (
                   <>
+                    {/* Items (completes row 2, col 3) */}
                     <div className="flex items-center justify-between">
                       <span className="text-gray-600">Items:</span>
                       <span className="text-gray-900 font-medium">{estimate.totalItems} <span className="text-gray-500">(sample {estimate.sampleSize})</span></span>
                     </div>
+                    
+                    {/* Row 3: Input/item, Output/item, Input total */}
                     <div className="flex items-center justify-between">
                       <span className="text-gray-600">Input/item:</span>
-                      <span className="text-gray-900 font-medium">{estimate.inputTokensPerItem}</span>
+                      <span className="text-gray-900 font-medium">{estimate.inputTokensPerItem} tok</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-600">Output/item:</span>
+                      <span className="text-gray-900 font-medium">{estimate.outputTokensPerItem} tok</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-gray-600">Input total:</span>
-                      <span className="text-gray-900 font-medium">{estimate.totalInputTokens.toLocaleString()}</span>
+                      <span className="text-gray-900 font-medium">{estimate.totalInputTokens.toLocaleString()} tok</span>
                     </div>
+                    
+                    {/* Row 4: Output total, Est. cost, (empty) */}
                     <div className="flex items-center justify-between">
                       <span className="text-gray-600">Output total:</span>
-                      <span className="text-gray-900 font-medium">{estimate.totalOutputTokens.toLocaleString()}</span>
+                      <span className="text-gray-900 font-medium">{estimate.totalOutputTokens.toLocaleString()} tok</span>
                     </div>
-                    <div className="flex items-center justify-between col-span-2">
+                    <div className="flex items-center justify-between">
                       <span className="text-gray-600">Est. cost:</span>
-                      <span className="text-gray-900 font-medium">${(estimate.estimatedCostUSD ?? 0).toFixed(4)} <span className="text-gray-500 text-[10px]">(estimate)</span></span>
+                      <span className="text-gray-900 font-medium">${(estimate.estimatedCostUSD ?? 0).toFixed(4)}</span>
                     </div>
                   </>
                 )}
@@ -754,20 +878,64 @@ export function AIJobsOverlay({
               </div>
               {previewLoading && <p className="text-xs text-gray-500">Rendering preview for the current scope…</p>}
               {preview && !previewLoading && (
-                <div className="rounded-md border border-gray-200 bg-white p-3 text-xs text-gray-700">
-                  <pre className="max-h-48 overflow-auto whitespace-pre-wrap text-[11px] text-gray-800">{preview.prompt}</pre>
-                  {Object.keys(preview.variables).length > 0 && (
-                    <div className="mt-3 space-y-1">
-                      <h5 className="text-[11px] font-semibold text-gray-700">Variables</h5>
-                      <div className="grid grid-cols-1 gap-1">
-                        {Object.entries(preview.variables).map(([key, value]) => (
-                          <div key={key} className="rounded border border-gray-100 bg-gray-50 px-2 py-1 text-[11px] text-gray-600">
-                            <span className="font-semibold text-gray-700">{key}</span>: {truncate(value, 80)}
-                          </div>
-                        ))}
-                      </div>
+                <div className="space-y-2">
+                  {preview.previews.length > 1 && (
+                    <div className="flex items-center justify-between text-xs text-gray-600">
+                      <button
+                        onClick={() => setCurrentPreviewIndex(Math.max(0, currentPreviewIndex - 1))}
+                        disabled={currentPreviewIndex === 0}
+                        className="flex items-center gap-1 rounded px-2 py-1 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                        title="Previous preview"
+                      >
+                        <ChevronLeftIcon className="h-4 w-4" />
+                        <span>Previous</span>
+                      </button>
+                      <span className="font-medium">
+                        {currentPreviewIndex + 1} of {preview.previews.length}
+                        {preview.totalEntries > preview.previews.length && ` (${preview.totalEntries} total)`}
+                      </span>
+                      <button
+                        onClick={() => setCurrentPreviewIndex(Math.min(preview.previews.length - 1, currentPreviewIndex + 1))}
+                        disabled={currentPreviewIndex === preview.previews.length - 1}
+                        className="flex items-center gap-1 rounded px-2 py-1 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                        title="Next preview"
+                      >
+                        <span>Next</span>
+                        <ChevronRightIcon className="h-4 w-4" />
+                      </button>
                     </div>
                   )}
+                  <div className="rounded-md border border-gray-200 bg-white text-xs text-gray-700 flex">
+                    {/* Variables Section - 1/5 width */}
+                    {Object.keys(preview.previews[currentPreviewIndex].variables).length > 0 && (
+                      <div className="w-1/5 border-r border-gray-200 p-3 space-y-1">
+                        <h5 className="text-[11px] font-semibold text-gray-700 mb-2">Variables</h5>
+                        <div className="space-y-1">
+                          {Object.entries(preview.previews[currentPreviewIndex].variables).map(([key, value]) => (
+                            <div key={key} className="rounded border border-gray-100 bg-gray-50 px-2 py-1 text-[11px] text-gray-600">
+                              <div className="font-semibold text-gray-700 break-words">{key}</div>
+                              <div className="text-gray-600 break-words">{truncate(value, 80)}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {/* Prompt Section - 4/5 width */}
+                    <div className={`relative p-3 ${Object.keys(preview.previews[currentPreviewIndex].variables).length > 0 ? 'w-4/5' : 'w-full'}`}>
+                      <button
+                        onClick={() => {
+                          const currentPreview = preview.previews[currentPreviewIndex];
+                          navigator.clipboard.writeText(currentPreview.prompt);
+                          showGlobalAlert({ message: 'Copied to clipboard', type: 'success' });
+                        }}
+                        className="absolute top-2 right-2 p-1.5 rounded hover:bg-gray-100 text-gray-500 hover:text-gray-700 z-10 cursor-pointer"
+                        title="Copy to clipboard"
+                      >
+                        <ClipboardDocumentIcon className="h-4 w-4" />
+                      </button>
+                      <pre className="max-h-48 overflow-auto whitespace-pre-wrap text-[11px] text-gray-800 pr-8">{preview.previews[currentPreviewIndex].prompt}</pre>
+                    </div>
+                  </div>
                 </div>
               )}
               {!preview && !previewLoading && (
@@ -787,19 +955,214 @@ export function AIJobsOverlay({
 
   const nextButtonLabel = currentStep === 'prompt' ? 'Review' : 'Next';
 
-  const loadJobs = useCallback(async () => {
-    setJobsLoading(true);
-    setJobsError(null);
-    try {
-      const response = await api.get<JobListResponse>('/api/llm-jobs?includeCompleted=true');
-      setJobs(response.jobs);
-      setActiveJobId(prev => prev ?? response.jobs[0]?.id ?? null);
-    } catch (error) {
-      setJobsError(error instanceof Error ? error.message : 'Failed to load jobs');
-    } finally {
-      setJobsLoading(false);
+  const loadJobs = useCallback(async (silent = false) => {
+    if (loadJobsInProgressRef.current) {
+      console.log('[loadJobs] Already in progress, skipping');
+      return;
     }
+    
+    loadJobsInProgressRef.current = true;
+    if (!silent) {
+      setJobsLoading(true);
+      setJobsError(null);
+    }
+    
+    try {
+      // Don't pass entityType - we removed that filtering for performance
+      const response = await api.get<JobListResponse>(`/api/llm-jobs?includeCompleted=true&limit=50`);
+      
+      // Smart update: only update state if jobs actually changed
+      setJobs(prevJobs => {
+        // Quick check: if lengths differ, definitely update
+        if (prevJobs.length !== response.jobs.length) {
+          return response.jobs;
+        }
+        
+        // Check if any job has changed
+        let hasChanges = false;
+        for (let i = 0; i < prevJobs.length; i++) {
+          const prev = prevJobs[i];
+          const next = response.jobs.find(j => j.id === prev.id);
+          
+          if (!next) {
+            hasChanges = true;
+            break;
+          }
+          
+          // Compare relevant fields
+          if (
+            prev.status !== next.status ||
+            prev.submitted_items !== next.submitted_items ||
+            prev.processed_items !== next.processed_items ||
+            prev.succeeded_items !== next.succeeded_items ||
+            prev.failed_items !== next.failed_items ||
+            prev.flagged_items !== next.flagged_items ||
+            prev.updated_at !== next.updated_at
+          ) {
+            hasChanges = true;
+            break;
+          }
+        }
+        
+        // If nothing changed, return same reference to prevent re-render
+        return hasChanges ? response.jobs : prevJobs;
+      });
+      
+      setActiveJobId(prev => prev ?? response.jobs[0]?.id ?? null);
+      
+      // Clear any previous errors on success
+      if (!silent) {
+        setJobsError(null);
+      }
+    } catch (error) {
+      // Don't show transient database errors in the UI - they resolve themselves
+      // Only log them to console for debugging
+      const errorMessage = error instanceof Error ? error.message : 'Failed to load jobs';
+      const isTransient = errorMessage.includes('connection') ||
+                         errorMessage.includes('unavailable') ||
+                         errorMessage.includes('timed out') ||
+                         errorMessage.includes('try again');
+      
+      if (isTransient) {
+        console.warn('[loadJobs] Transient database error, will retry on next poll:', errorMessage);
+        // Don't set error state for transient errors - just silently retry on next poll
+      } else {
+        // Only show persistent errors to users
+        setJobsError(errorMessage);
+      }
+    } finally {
+      if (!silent) {
+        setJobsLoading(false);
+      }
+      loadJobsInProgressRef.current = false;
+    }
+  }, [mode]);
+
+  const loadJobDetails = useCallback(async (jobId: string, silent = false) => {
+    if (!silent) {
+      setSelectedJobLoading(true);
+    }
+    try {
+      const params = new URLSearchParams({
+        pendingLimit: itemLimits.pending.toString(),
+        succeededLimit: itemLimits.succeeded.toString(),
+        failedLimit: itemLimits.failed.toString(),
+      });
+      const job = await api.get<SerializedJob>(`/api/llm-jobs/${jobId}?${params}`);
+      
+      // Smart update: only update state if job actually changed
+      setSelectedJobDetails(prev => {
+        if (!prev || prev.id !== job.id) {
+          // Different job, always update
+          return job;
+        }
+        
+        // Same job - check if any fields changed
+        const hasMetadataChanges = 
+          prev.status !== job.status ||
+          prev.total_items !== job.total_items ||
+          prev.submitted_items !== job.submitted_items ||
+          prev.processed_items !== job.processed_items ||
+          prev.succeeded_items !== job.succeeded_items ||
+          prev.failed_items !== job.failed_items ||
+          prev.flagged_items !== job.flagged_items ||
+          prev.updated_at !== job.updated_at;
+        
+        // Check if items changed
+        const hasItemChanges = prev.items.length !== job.items.length || 
+          prev.items.some((item, idx) => {
+            const newItem = job.items[idx];
+            return !newItem || 
+              item.status !== newItem.status ||
+              item.updated_at !== newItem.updated_at ||
+              item.flagged !== newItem.flagged;
+          });
+        
+        // If nothing changed, return same reference to prevent re-render
+        if (!hasMetadataChanges && !hasItemChanges) {
+          return prev;
+        }
+        
+        // If only metadata changed (not items), preserve items array
+        if (hasMetadataChanges && !hasItemChanges) {
+          return {
+            ...prev,
+            status: job.status,
+            total_items: job.total_items,
+            submitted_items: job.submitted_items,
+            processed_items: job.processed_items,
+            succeeded_items: job.succeeded_items,
+            failed_items: job.failed_items,
+            flagged_items: job.flagged_items,
+            updated_at: job.updated_at,
+          };
+        }
+        
+        // Otherwise, full update
+        return job;
+      });
+
+      // Mark job as seen when user clicks on it (not during background polling)
+      if (!silent) {
+        try {
+          await fetch(`/api/llm-jobs/${jobId}/mark-seen`, { method: 'POST' });
+        } catch (error) {
+          console.error('Failed to mark job as seen:', error);
+        }
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      
+      // If job not found, it was likely deleted - clear selection
+      if (errorMessage.includes('Job not found') || errorMessage.includes('404')) {
+        console.log('Job not found, clearing selection');
+        setSelectedJobDetails(null);
+        setActiveJobId(null);
+      } else {
+        console.error('Failed to load job details:', error);
+        if (!silent) {
+          setSelectedJobDetails(null);
+        }
+      }
+    } finally {
+      if (!silent) {
+        setSelectedJobLoading(false);
+      }
+    }
+  }, [itemLimits]);
+
+  const loadMoreItems = useCallback((status: 'pending' | 'succeeded' | 'failed') => {
+    setItemLimits(prev => ({
+      ...prev,
+      [status]: prev[status] + 10,
+    }));
   }, []);
+
+  // Reset itemLimits when active job changes
+  useEffect(() => {
+    if (activeJobId) {
+      setItemLimits({ pending: 10, succeeded: 10, failed: 10 });
+    }
+  }, [activeJobId]);
+
+  // Note: Lambda function now handles all submission automatically
+  // This function is kept for backward compatibility but just tracks progress from DB
+  const startJobSubmission = useCallback(async (jobId: string) => {
+    // Lambda handles submission - this just shows progress based on DB values
+    console.log(`[Submit] Job ${jobId} submission handled by Lambda function`);
+    
+    // Initialize progress tracking from current DB values
+    const job = jobs.find(j => j.id === jobId);
+    if (job) {
+      setSubmissionProgress({
+        jobId: job.id,
+        submitted: job.submitted_items ?? 0,
+        total: job.total_items,
+        failed: job.failed_items ?? 0,
+        isSubmitting: job.status === 'queued' || (job.submitted_items ?? 0) < job.total_items,
+      });
+    }
+  }, [jobs]);
 
   useEffect(() => {
     if (isOpen) {
@@ -807,17 +1170,78 @@ export function AIJobsOverlay({
     }
   }, [isOpen, loadJobs]);
 
+  // Load job details when a job is selected
+  useEffect(() => {
+    if (activeJobId && isOpen && !isCreating) {
+      void loadJobDetails(activeJobId);
+    }
+  }, [activeJobId, isOpen, isCreating, loadJobDetails]);
+
+  // Track submission progress for active jobs (Lambda handles actual submission)
+  useEffect(() => {
+    if (!isOpen || jobs.length === 0) return;
+    
+    // Find jobs that are actively being submitted/processed
+    const activeJob = jobs.find(job => 
+      (job.status === 'queued' || job.status === 'running') &&
+      (job.submitted_items ?? 0) < job.total_items
+    );
+    
+    if (activeJob) {
+      // Show progress for the active job (updated by Lambda in DB)
+      setSubmissionProgress({
+        jobId: activeJob.id,
+        submitted: activeJob.submitted_items ?? 0,
+        total: activeJob.total_items,
+        failed: activeJob.failed_items ?? 0,
+        isSubmitting: true,
+      });
+    } else if (submissionProgress?.isSubmitting) {
+      // Clear progress when job is complete
+      setSubmissionProgress(null);
+    }
+  }, [isOpen, jobs, submissionProgress?.isSubmitting]);
+
+  // Simple periodic refresh - Lambda function handles both submission and polling
+  // This just fetches the latest data from the database to show progress
   useEffect(() => {
     if (!isOpen) return;
-    const hasPending = jobs.some(job => job.status === 'queued' || job.status === 'running');
-    if (!hasPending) return;
+    
+    const activeJobs = jobs.filter(job => job.status === 'queued' || job.status === 'running');
+    if (activeJobs.length === 0) return;
 
-    const interval = setInterval(() => {
-      void loadJobs();
-    }, 5000);
+    // Reload data from database every 5 seconds
+    // AWS Lambda is doing the actual OpenAI polling in the background
+    const interval = setInterval(async () => {
+      if (pollingInProgressRef.current) {
+        console.log('[Refresh] Skipping - previous refresh still in progress');
+        return;
+      }
+
+      pollingInProgressRef.current = true;
+      try {
+        // Use silent=true to avoid loading spinners and only update if data changed
+        await loadJobs(true);
+        if (activeJobId && !isCreating) {
+          await loadJobDetails(activeJobId, true);
+        }
+      } catch (error) {
+        // Check if this is a "Job not found" error (likely because job was deleted)
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        if (errorMessage.includes('Job not found') || errorMessage.includes('404')) {
+          console.log('[Refresh] Active job no longer exists, clearing selection');
+          setActiveJobId(null);
+          setSelectedJobDetails(null);
+        } else {
+          console.error('Failed to refresh job data:', error);
+        }
+      } finally {
+        pollingInProgressRef.current = false;
+      }
+    }, 5000); // 5 second refresh interval
 
     return () => clearInterval(interval);
-  }, [isOpen, jobs, loadJobs]);
+  }, [isOpen, jobs, loadJobDetails, activeJobId, isCreating, loadJobs]);
 
   useEffect(() => {
     if (typeof onJobsUpdated === 'function') {
@@ -825,13 +1249,18 @@ export function AIJobsOverlay({
     }
   }, [pendingJobsCount, onJobsUpdated]);
 
+  // Dynamic variables based on mode
+  const availableVariables = useMemo(() => {
+    return getVariablesForEntityType(mode);
+  }, [mode]);
+
   const filteredVariables = useMemo(() => {
     const query = variableQuery.trim().toLowerCase();
-    if (!query) return AVAILABLE_VARIABLES;
-    return AVAILABLE_VARIABLES.filter(variable =>
+    if (!query) return availableVariables;
+    return availableVariables.filter(variable =>
       variable.key.toLowerCase().includes(query) || variable.label.toLowerCase().includes(query)
     );
-  }, [variableQuery]);
+  }, [variableQuery, availableVariables]);
   const renderHighlighted = (text: string) => {
     // Only highlight well-formed {{variable_name}} tokens (no nested braces)
     const tokenRegex = /(\{\{[a-zA-Z0-9_]+\}\})/g;
@@ -1204,7 +1633,7 @@ export function AIJobsOverlay({
     setFilterValidateCount(null);
     setFilterValidateSample([]);
     try {
-      const scope = buildScope('filters', mode, [], '', '', filterGroup, filterLimit);
+      const scope = buildScope('filters', mode, [], '', '', filterGroup, filterLimit, frameIncludeVerbs, frameFlagTarget);
       const resp = await api.post<{ totalItems: number; sampleSize: number; sample: Array<{ code: string; gloss: string }> }>(
         '/api/llm-jobs/validate',
         { scope }
@@ -1223,7 +1652,9 @@ export function AIJobsOverlay({
     setSubmissionLoading(true);
     setSubmissionError(null);
     try {
-      const scope = buildScope(scopeMode, mode, selectedIds, manualIdsText, frameIdsText, filterGroup, filterLimit);
+      const scope = buildScope(scopeMode, mode, selectedIds, manualIdsText, frameIdsText, filterGroup, filterLimit, frameIncludeVerbs, frameFlagTarget);
+      
+      // Create job (fast, DB-only operation)
       const job = await api.post<SerializedJob>('/api/llm-jobs', {
         label,
         model,
@@ -1235,15 +1666,31 @@ export function AIJobsOverlay({
           source: 'table-mode',
         },
       });
+      
+      // Update UI immediately
       await loadJobs();
       setActiveJobId(job.id);
       closeCreateFlow();
+      
+      // Start submission progress tracking (Lambda will handle actual submission)
+      setSubmissionProgress({
+        jobId: job.id,
+        submitted: 0,
+        total: job.total_items,
+        failed: 0,
+        isSubmitting: true,
+      });
+      
       showGlobalAlert({
         type: 'success',
-        title: 'Success',
-        message: `Job ${job.id} submitted with ${job.total_items} item${job.total_items === 1 ? '' : 's'}.`,
-        durationMs: 6000,
+        title: 'Job Created',
+        message: `Job ${job.id} created with ${job.total_items} item${job.total_items === 1 ? '' : 's'}. Lambda will submit items automatically.`,
+        durationMs: 5000,
       });
+      
+      // Initialize progress display (Lambda handles actual submission)
+      void startJobSubmission(job.id);
+      
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to submit job';
       setSubmissionError(message);
@@ -1258,20 +1705,30 @@ export function AIJobsOverlay({
     }
   };
 
-  const handleCancelJob = async (jobId: string) => {
+  const handleCancelJob = useCallback(async (jobId: string) => {
     try {
       await api.post(`/api/llm-jobs/${jobId}/cancel`, {});
       await loadJobs();
+      // Reload the job details to show updated status
+      if (activeJobId === jobId) {
+        await loadJobDetails(jobId);
+      }
     } catch (error) {
       console.error('Failed to cancel job', error);
     }
-  };
+  }, [loadJobs, loadJobDetails, activeJobId]);
 
-  const handleDeleteJob = async (jobId: string) => {
+  const handleDeleteJob = useCallback(async (jobId: string) => {
     try {
       await api.delete(`/api/llm-jobs/${jobId}`);
-      await loadJobs();
+      
+      // Immediately clear the selection to prevent race conditions with polling
       setActiveJobId(prev => (prev === jobId ? null : prev));
+      setSelectedJobDetails(null);
+      
+      // Then reload the job list
+      await loadJobs();
+      
       showGlobalAlert({
         type: 'success',
         title: 'Deleted',
@@ -1287,7 +1744,7 @@ export function AIJobsOverlay({
         durationMs: 7000,
       });
     }
-  };
+  }, [loadJobs]);
 
   const selectedJob = useMemo(() => jobs.find(job => job.id === activeJobId) ?? jobs[0] ?? null, [jobs, activeJobId]);
 
@@ -1316,7 +1773,7 @@ export function AIJobsOverlay({
               </span>
             )}
             <button
-              onClick={loadJobs}
+              onClick={() => loadJobs()}
               disabled={jobsLoading}
               className={`inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-sm font-medium transition focus:outline-none focus:ring-2 ${
                 jobsLoading
@@ -1412,7 +1869,17 @@ export function AIJobsOverlay({
                       className="cursor-pointer inline-flex items-center gap-2 rounded-md bg-gradient-to-r from-blue-500 to-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:from-blue-600 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60 disabled:pointer-events-none"
                       type="button"
                     >
-                      {submissionLoading ? 'Submitting…' : 'Submit Job'}
+                      {submissionLoading ? (
+                        <>
+                          <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                          </svg>
+                          Creating Job…
+                        </>
+                      ) : (
+                        'Submit Job'
+                      )}
                     </button>
                   )}
                 </div>
@@ -1448,7 +1915,7 @@ export function AIJobsOverlay({
                 ) : (
                   <ul className="divide-y divide-gray-200">
                     {jobs.map(job => (
-                      <li key={job.id}>
+                      <li key={job.id} className="relative">
                         <button
                           onClick={() => setActiveJobId(job.id)}
                           className={`cursor-pointer flex w-full flex-col items-start gap-1 rounded-md px-4 py-3 text-left transition ${
@@ -1458,7 +1925,30 @@ export function AIJobsOverlay({
                         >
                           <div className="flex w-full items-center justify-between">
                             <span className="text-sm font-medium text-gray-900">{job.label ?? `Job ${job.id}`}</span>
-                            <StatusPill status={job.status} />
+                            <div className="flex items-center gap-2">
+                              <div
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  loadJobSettings(job);
+                                }}
+                                className="cursor-pointer rounded p-1 text-blue-600 hover:bg-blue-50"
+                                title="Clone job settings"
+                                role="button"
+                                tabIndex={0}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    loadJobSettings(job);
+                                  }
+                                }}
+                              >
+                                <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                </svg>
+                              </div>
+                              <StatusPill status={job.status} />
+                            </div>
                           </div>
                           <div className="flex w-full items-center justify-between text-xs text-gray-500">
                             <span>{job.total_items} items</span>
@@ -1474,12 +1964,26 @@ export function AIJobsOverlay({
 
             <main className="relative flex flex-1 flex-col overflow-hidden bg-white">
               <div className="flex-1 overflow-auto px-8 py-6">
-                {selectedJob ? (
+                {selectedJobLoading ? (
+                  <div className="flex h-full items-center justify-center text-sm text-gray-500">
+                    <div className="flex flex-col items-center gap-2">
+                      <svg className="h-6 w-6 animate-spin text-blue-600" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      <span>Loading job details...</span>
+                    </div>
+                  </div>
+                ) : selectedJobDetails ? (
                   <JobDetails
-                    job={selectedJob}
-                    onCancel={() => handleCancelJob(selectedJob.id)}
-                    onDelete={() => handleDeleteJob(selectedJob.id)}
+                    job={selectedJobDetails}
+                    onCancel={handleCancelJob}
+                    onDelete={handleDeleteJob}
                     onClose={onClose}
+                    onCloneSettings={loadJobSettings}
+                    submissionProgress={submissionProgress}
+                    mode={mode}
+                    onLoadMore={loadMoreItems}
                   />
                 ) : (
                   <div className="flex h-full items-center justify-center text-sm text-gray-500">
@@ -1502,14 +2006,26 @@ function parseIds(raw: string): string[] {
     .filter(Boolean);
 }
 
+function idsToText(ids: string[]): string {
+  return ids.join(', ');
+}
+
+function serviceTierToPriority(tier?: string | null): 'flex' | 'normal' | 'priority' {
+  if (tier === 'flex') return 'flex';
+  if (tier === 'priority') return 'priority';
+  return 'normal'; // default or null
+}
+
 function buildScope(
   mode: ScopeMode,
-  pos: 'verbs' | 'nouns' | 'adjectives',
+  pos: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames',
   selectedIds: string[],
   manualIdsText: string,
   frameIdsText: string,
   filterGroup?: BooleanFilterGroup,
-  filterLimit?: number
+  filterLimit?: number,
+  frameIncludeVerbs?: boolean,
+  frameFlagTarget?: 'frame' | 'verb' | 'both'
 ) {
   switch (mode) {
     case 'selection':
@@ -1544,6 +2060,8 @@ function buildScope(
         kind: 'frame_ids',
         pos,
         frameIds: parseIds(frameIdsText),
+        includeVerbs: frameIncludeVerbs,
+        flagTarget: frameFlagTarget,
       };
     default:
       return {
@@ -1568,7 +2086,7 @@ function truncate(value: string, length: number) {
   return `${value.slice(0, length)}…`;
 }
 
-function StatusPill({ status }: { status: SerializedJob['status'] }) {
+const StatusPill = memo(function StatusPill({ status }: { status: SerializedJob['status'] }) {
   const { label, color } = useMemo(() => {
     switch (status) {
       case 'queued':
@@ -1593,13 +2111,48 @@ function StatusPill({ status }: { status: SerializedJob['status'] }) {
       {label}
     </span>
   );
-}
+});
 
-function JobDetails({ job, onCancel, onDelete, onClose }: { job: SerializedJob; onCancel: () => void; onDelete: () => void; onClose: () => void }) {
+const JobDetails = memo(function JobDetails({ 
+  job, 
+  onCancel, 
+  onDelete, 
+  onClose,
+  onCloneSettings,
+  submissionProgress,
+  mode,
+  onLoadMore
+}: { 
+  job: SerializedJob; 
+  onCancel: (jobId: string) => void; 
+  onDelete: (jobId: string) => void; 
+  onClose: () => void;
+  onCloneSettings: (job: SerializedJob) => void;
+  submissionProgress: {
+    jobId: string;
+    submitted: number;
+    total: number;
+    failed: number;
+    isSubmitting: boolean;
+  } | null;
+  mode: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames';
+  onLoadMore: (status: 'pending' | 'succeeded' | 'failed') => void;
+}) {
   const router = useRouter();
-  const pendingItems = job.items.filter(item => item.status === 'queued' || item.status === 'processing');
-  const succeededItems = job.items.filter(item => item.status === 'succeeded');
-  const failedItems = job.items.filter(item => item.status === 'failed');
+  
+  // Memoize filtered item lists to prevent re-computation
+  const pendingItems = useMemo(
+    () => job.items.filter(item => item.status === 'queued' || item.status === 'processing'),
+    [job.items]
+  );
+  const succeededItems = useMemo(
+    () => job.items.filter(item => item.status === 'succeeded'),
+    [job.items]
+  );
+  const failedItems = useMemo(
+    () => job.items.filter(item => item.status === 'failed'),
+    [job.items]
+  );
 
   return (
     <div className="space-y-4">
@@ -1609,33 +2162,114 @@ function JobDetails({ job, onCancel, onDelete, onClose }: { job: SerializedJob; 
           <p className="text-xs text-gray-500">Created {new Date(job.created_at).toLocaleString()}</p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => onCloneSettings(job)}
+            className="cursor-pointer inline-flex items-center gap-2 rounded-md border border-blue-600 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+            title="Clone job settings to create a new job"
+          >
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+            Clone Job Settings
+          </button>
           {job.status === 'completed' && (
             <button
               onClick={() => {
                 onClose();
-                router.push(`/table?flaggedByJobId=${encodeURIComponent(job.id)}`);
+                // Navigate to the correct table page based on entity type
+                const baseUrl = mode === 'verbs' || mode === 'frames'
+                  ? `/table?flaggedByJobId=${encodeURIComponent(job.id)}&tab=${mode}`
+                  : `/table/${mode}?flaggedByJobId=${encodeURIComponent(job.id)}`;
+                router.push(baseUrl);
               }}
               className="cursor-pointer inline-flex items-center gap-2 rounded-md border border-blue-600 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100"
             >
-              See all flagged verbs
+              See all flagged {mode}
             </button>
           )}
           {['queued', 'running'].includes(job.status) && (
             <button
-              onClick={onCancel}
+              onClick={() => onCancel(job.id)}
               className="cursor-pointer inline-flex items-center gap-2 rounded-md border border-red-600 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100"
             >
               Cancel Job
             </button>
           )}
           <button
-            onClick={onDelete}
+            onClick={() => onDelete(job.id)}
             className="cursor-pointer inline-flex items-center gap-2 rounded-md border border-red-600 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100"
           >
             Delete Job
           </button>
         </div>
       </div>
+
+      {submissionProgress && submissionProgress.jobId === job.id && (
+        <div className="rounded-md border border-blue-200 bg-blue-50 p-3">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-semibold text-blue-800">
+              Submitting to OpenAI...
+            </span>
+            <span className="text-sm text-blue-700">
+              {submissionProgress.submitted} / {submissionProgress.total}
+            </span>
+          </div>
+          <div className="h-2 w-full rounded-full bg-blue-200">
+            <div 
+              className="h-full rounded-full bg-blue-600 transition-all duration-300"
+              style={{ 
+                width: `${(submissionProgress.submitted / submissionProgress.total) * 100}%` 
+              }}
+            />
+          </div>
+          {submissionProgress.failed > 0 && (
+            <p className="mt-2 text-xs text-red-600">
+              {submissionProgress.failed} items failed to submit
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Completion Progress - shown when items are being processed by OpenAI */}
+      {['queued', 'running'].includes(job.status) && 
+       job.submitted_items === job.total_items && 
+       (job.processed_items ?? 0) < job.total_items && (
+        <div className="rounded-md border border-green-200 bg-green-50 p-3">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-semibold text-green-800">
+              Processing with OpenAI...
+            </span>
+            <span className="text-sm text-green-700">
+              {job.processed_items ?? 0} / {job.total_items}
+            </span>
+          </div>
+          <div className="h-2 w-full rounded-full bg-green-200">
+            <div 
+              className="h-full rounded-full bg-green-600 transition-all duration-300"
+              style={{ 
+                width: `${((job.processed_items ?? 0) / job.total_items) * 100}%` 
+              }}
+            />
+          </div>
+          <div className="mt-2 flex gap-3 text-xs">
+            {(job.succeeded_items ?? 0) > 0 && (
+              <span className="text-green-700">
+                ✓ {job.succeeded_items} succeeded
+              </span>
+            )}
+            {(job.failed_items ?? 0) > 0 && (
+              <span className="text-red-600">
+                ✗ {job.failed_items} failed
+              </span>
+            )}
+            {(job.flagged_items ?? 0) > 0 && (
+              <span className="text-amber-600">
+                ⚠ {job.flagged_items} flagged
+              </span>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Metric label="Status" value={<StatusPill status={job.status} />} />
@@ -1652,15 +2286,50 @@ function JobDetails({ job, onCancel, onDelete, onClose }: { job: SerializedJob; 
 
       <section className="space-y-3">
         <h4 className="text-sm font-semibold text-gray-800">Job Items</h4>
-        <ItemList title="Pending" items={pendingItems} emptyMessage="No items pending." />
-        <ItemList title="Succeeded" items={succeededItems} emptyMessage="No successes yet." limit={5} />
-        <ItemList title="Failed" items={failedItems} emptyMessage="No failures." limit={5} />
+        <ItemList 
+          title="Pending" 
+          items={pendingItems} 
+          emptyMessage="No items pending." 
+          totalCount={job.total_items - job.succeeded_items - job.failed_items}
+          onLoadMore={() => onLoadMore('pending')}
+        />
+        <ItemList 
+          title="Succeeded" 
+          items={succeededItems} 
+          emptyMessage="No successes yet." 
+          totalCount={job.succeeded_items}
+          onLoadMore={() => onLoadMore('succeeded')}
+        />
+        <ItemList 
+          title="Failed" 
+          items={failedItems} 
+          emptyMessage="No failures." 
+          totalCount={job.failed_items}
+          onLoadMore={() => onLoadMore('failed')}
+        />
       </section>
     </div>
   );
-}
+}, (prevProps, nextProps) => {
+  // Custom comparison to prevent re-renders when only counts change
+  // We compare key fields that should trigger re-render
+  return (
+    prevProps.job.id === nextProps.job.id &&
+    prevProps.job.status === nextProps.job.status &&
+    prevProps.job.processed_items === nextProps.job.processed_items &&
+    prevProps.job.succeeded_items === nextProps.job.succeeded_items &&
+    prevProps.job.failed_items === nextProps.job.failed_items &&
+    prevProps.job.flagged_items === nextProps.job.flagged_items &&
+    prevProps.job.items.length === nextProps.job.items.length &&
+    prevProps.submissionProgress?.jobId === nextProps.submissionProgress?.jobId &&
+    prevProps.submissionProgress?.submitted === nextProps.submissionProgress?.submitted &&
+    prevProps.onCancel === nextProps.onCancel &&
+    prevProps.onDelete === nextProps.onDelete &&
+    prevProps.onCloneSettings === nextProps.onCloneSettings
+  );
+});
 
-function Metric({ label, value, helper }: { label: string; value: string | JSX.Element; helper?: string }) {
+const Metric = memo(function Metric({ label, value, helper }: { label: string; value: string | JSX.Element; helper?: string }) {
   return (
     <div className="rounded-md border border-gray-200 bg-white p-3 shadow-sm">
       <div className="text-xs font-medium text-gray-500">{label}</div>
@@ -1668,54 +2337,83 @@ function Metric({ label, value, helper }: { label: string; value: string | JSX.E
       {helper && <div className="text-[11px] text-gray-500">{helper}</div>}
     </div>
   );
-}
+});
 
-function ItemList({
+const ItemList = memo(function ItemList({
   title,
   items,
   emptyMessage,
-  limit,
+  totalCount,
+  onLoadMore,
 }: {
   title: string;
   items: SerializedJob['items'];
   emptyMessage: string;
-  limit?: number;
+  totalCount: number;
+  onLoadMore?: () => void;
 }) {
-  const displayItems = limit ? items.slice(0, limit) : items;
+  const hasMore = items.length < totalCount;
+  const remaining = totalCount - items.length;
+  
   return (
     <div>
       <div className="mb-1 flex items-center justify-between">
         <h5 className="text-xs font-semibold uppercase tracking-wide text-gray-600">{title}</h5>
-        {limit && items.length > limit && (
-          <span className="text-[11px] text-gray-500">Showing {limit} of {items.length}</span>
+        {items.length > 0 && (
+          <span className="text-[11px] text-gray-500">Showing {items.length} of {totalCount}</span>
         )}
       </div>
-      {displayItems.length === 0 ? (
+      {items.length === 0 ? (
         <div className="rounded border border-dashed border-gray-200 p-3 text-[11px] text-gray-500">{emptyMessage}</div>
       ) : (
-        <ul className="space-y-2">
-          {displayItems.map(item => (
-            <li key={item.id} className="rounded border border-gray-200 bg-gray-50 px-3 py-2 text-[11px] text-gray-700">
-              <div className="flex items-center justify-between">
-                <div>
-                  <span className="font-semibold text-gray-800">{item.entry.code ?? item.id}</span>
-                  <span className="ml-2 uppercase text-gray-500">{item.entry.pos}</span>
-                </div>
-                <span className="text-gray-500">{item.status}</span>
-              </div>
-              {item.last_error && <div className="mt-1 text-[10px] text-red-600">{item.last_error}</div>}
-              {item.response_payload && item.status === 'succeeded' && (
-                <div className="mt-1 text-[10px] text-gray-600">
-                  Flagged: {item.flagged ? 'Yes' : 'No'}
-                </div>
-              )}
-            </li>
-          ))}
-        </ul>
+        <>
+          <ul className="space-y-2">
+            {items.map(item => {
+              const getItemColors = () => {
+                switch (item.status) {
+                  case 'pending':
+                    return 'border-blue-200 bg-blue-50 text-blue-700';
+                  case 'succeeded':
+                    return 'border-green-200 bg-green-50 text-green-700';
+                  case 'failed':
+                    return 'border-red-200 bg-red-50 text-red-700';
+                  default:
+                    return 'border-gray-200 bg-gray-50 text-gray-700';
+                }
+              };
+              
+              return (
+                <li key={item.id} className={`rounded border px-3 py-2 text-[11px] ${getItemColors()}`}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="font-semibold">{item.entry.code ?? item.id}</span>
+                      <span className="ml-2 uppercase opacity-75">{item.entry.pos}</span>
+                    </div>
+                    <span className="opacity-75">{item.status}</span>
+                  </div>
+                  {item.last_error && <div className="mt-1 text-[10px] text-red-600">{item.last_error}</div>}
+                  {item.response_payload && item.status === 'succeeded' && (
+                    <div className="mt-1 text-[10px] opacity-75">
+                      Flagged: {item.flagged ? 'Yes' : 'No'}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+          {hasMore && onLoadMore && (
+            <button
+              onClick={onLoadMore}
+              className="mt-2 w-full rounded border border-gray-300 bg-white px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+              Load More ({remaining} remaining)
+            </button>
+          )}
+        </>
       )}
     </div>
   );
-}
+});
 
 function formatRuntime(start: string | null, end?: string) {
   if (!start) return '—';
@@ -1729,7 +2427,7 @@ function formatRuntime(start: string | null, end?: string) {
   return `${minutes}m ${seconds}s`;
 }
 
-function ScopeSelector({
+const ScopeSelector = memo(function ScopeSelector({
   mode,
   setMode,
   selectedCount,
@@ -1767,6 +2465,10 @@ function ScopeSelector({
   filterValidateCount,
   filterValidateSample,
   onValidateFilters,
+  frameIncludeVerbs,
+  onFrameIncludeVerbsChange,
+  frameFlagTarget,
+  onFrameFlagTargetChange,
 }: {
   mode: ScopeMode;
   setMode: (mode: ScopeMode) => void;
@@ -1792,7 +2494,7 @@ function ScopeSelector({
   validatedFrameIds: Set<string>;
   manualIds: string[];
   frameIds: string[];
-  pos: 'verbs' | 'nouns' | 'adjectives';
+  pos: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames';
   manualIdActiveIndex: number;
   frameIdActiveIndex: number;
   filterGroup: BooleanFilterGroup;
@@ -1805,6 +2507,10 @@ function ScopeSelector({
   filterValidateCount: number | null;
   filterValidateSample: Array<{ code: string; gloss: string }>;
   onValidateFilters: () => void;
+  frameIncludeVerbs?: boolean;
+  onFrameIncludeVerbsChange?: (include: boolean) => void;
+  frameFlagTarget?: 'frame' | 'verb' | 'both';
+  onFrameFlagTargetChange?: (target: 'frame' | 'verb' | 'both') => void;
 }) {
   return (
     <div className="space-y-2 rounded-md border border-gray-200 bg-white p-3 shadow-sm">
@@ -1985,7 +2691,7 @@ function ScopeSelector({
             <div className="text-sm font-medium text-gray-800">Frame IDs</div>
             <p className="text-xs text-gray-500">Enter frame codes or IDs to target all associated verbs.</p>
             {mode === 'frames' && (
-              <div className="relative mt-2">
+              <div className="relative mt-2 space-y-3">
                 <textarea
                   ref={frameIdInputRef}
                   value={frameIdsText}
@@ -2028,6 +2734,65 @@ function ScopeSelector({
                     ))}
                   </div>
                 )}
+                
+                {/* Frames-specific controls (only when pos='frames') */}
+                {pos === 'frames' && (
+                  <div className="space-y-2 rounded-md border border-blue-200 bg-blue-50 p-2">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="frameIncludeVerbs"
+                        checked={frameIncludeVerbs ?? false}
+                        onChange={(e) => onFrameIncludeVerbsChange?.(e.target.checked)}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <label htmlFor="frameIncludeVerbs" className="text-xs font-medium text-gray-800">
+                        Include associated verbs in scope
+                      </label>
+                    </div>
+                    
+                    <div className="space-y-1">
+                      <div className="text-xs font-medium text-gray-800">What to flag:</div>
+                      <div className="space-y-1">
+                        <label className="flex items-center gap-2">
+                          <input
+                            type="radio"
+                            name="frameFlagTarget"
+                            value="verb"
+                            checked={frameFlagTarget === 'verb'}
+                            onChange={() => onFrameFlagTargetChange?.('verb')}
+                            className="text-blue-600 focus:ring-blue-500"
+                          />
+                          <span className="text-xs text-gray-700">Verbs only</span>
+                        </label>
+                        <label className="flex items-center gap-2">
+                          <input
+                            type="radio"
+                            name="frameFlagTarget"
+                            value="frame"
+                            checked={frameFlagTarget === 'frame'}
+                            onChange={() => onFrameFlagTargetChange?.('frame')}
+                            className="text-blue-600 focus:ring-blue-500"
+                            disabled={true}
+                          />
+                          <span className="text-xs text-gray-500">Frame only (not supported yet)</span>
+                        </label>
+                        <label className="flex items-center gap-2">
+                          <input
+                            type="radio"
+                            name="frameFlagTarget"
+                            value="both"
+                            checked={frameFlagTarget === 'both'}
+                            onChange={() => onFrameFlagTargetChange?.('both')}
+                            className="text-blue-600 focus:ring-blue-500"
+                            disabled={true}
+                          />
+                          <span className="text-xs text-gray-500">Both frame and verbs (not supported yet)</span>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -2036,7 +2801,7 @@ function ScopeSelector({
       </div>
     </div>
   );
-}
+});
 
 export default AIJobsOverlay;
 

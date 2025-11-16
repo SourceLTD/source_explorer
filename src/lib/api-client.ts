@@ -5,6 +5,7 @@
 interface ApiError {
   error: string;
   retryable?: boolean;
+  isTransient?: boolean;
   timestamp?: string;
 }
 
@@ -78,6 +79,7 @@ export async function apiRequest<T>(
       
       // Check if this is a retryable error
       const isRetryable = errorData.retryable || 
+        errorData.isTransient ||
         response.status === 503 || // Service Unavailable
         response.status === 504 || // Gateway Timeout
         response.status === 502;   // Bad Gateway

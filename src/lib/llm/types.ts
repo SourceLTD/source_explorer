@@ -1,7 +1,7 @@
 import type { llm_job_items, llm_jobs } from '@prisma/client';
 import type { BooleanFilterGroup } from '@/lib/filters/types';
 
-export type PartOfSpeech = 'verbs' | 'nouns' | 'adjectives';
+export type PartOfSpeech = 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames';
 
 export interface JobScopeIds {
   kind: 'ids';
@@ -13,6 +13,8 @@ export interface JobScopeFrameIds {
   kind: 'frame_ids';
   frameIds: string[];
   pos?: PartOfSpeech;
+  includeVerbs?: boolean;
+  flagTarget?: 'frame' | 'verb' | 'both';
 }
 
 export interface JobScopeFilters {
@@ -46,13 +48,19 @@ export interface LexicalEntrySummary {
   code: string;
   pos: PartOfSpeech;
   gloss: string;
-  lemmas: string[];
-  examples: string[];
+  lemmas?: string[];
+  examples?: string[];
   flagged?: boolean | null;
   flagged_reason?: string | null;
   frame_name?: string | null;
   lexfile?: string | null;
   additional?: Record<string, unknown>;
+  // Frame-specific fields
+  framebank_id?: string | null;
+  definition?: string | null;
+  short_definition?: string | null;
+  prototypical_synset?: string | null;
+  is_supporting_frame?: boolean | null;
 }
 
 export interface RenderedPrompt {
@@ -60,7 +68,7 @@ export interface RenderedPrompt {
   variables: Record<string, string>;
 }
 
-export interface SerializedJobItem extends Omit<llm_job_items, 'id' | 'job_id' | 'created_at' | 'updated_at' | 'started_at' | 'completed_at' | 'verb_id' | 'noun_id' | 'adjective_id'> {
+export interface SerializedJobItem extends Omit<llm_job_items, 'id' | 'job_id' | 'created_at' | 'updated_at' | 'started_at' | 'completed_at' | 'verb_id' | 'noun_id' | 'adjective_id' | 'adverb_id' | 'frame_id'> {
   id: string;
   job_id: string;
   created_at: string;
@@ -70,6 +78,8 @@ export interface SerializedJobItem extends Omit<llm_job_items, 'id' | 'job_id' |
   verb_id: string | null;
   noun_id: string | null;
   adjective_id: string | null;
+  adverb_id: string | null;
+  frame_id: string | null;
 }
 
 export interface SerializedJob extends Omit<llm_jobs, 'id' | 'created_at' | 'updated_at' | 'started_at' | 'completed_at' | 'cost_microunits'> {
@@ -93,10 +103,17 @@ export interface JobListOptions {
   includeCompleted?: boolean;
   limit?: number;
   refreshBeforeReturn?: boolean;
+  entityType?: PartOfSpeech;
 }
 
 export interface JobDetailOptions {
   refresh?: boolean;
+  refreshLimit?: number;
+  statusLimits?: {
+    pending?: number;
+    succeeded?: number;
+    failed?: number;
+  };
 }
 
 export interface CancelJobResult {

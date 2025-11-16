@@ -26,8 +26,11 @@ async function handleChangeHypernym(req: ChangeHypernymRequest): Promise<NextRes
   const { entryId, oldHypernym, newHypernym, hyponymsToMove, hyponymsToStay } = req;
 
   // Get entry IDs
-  const entry = await prisma.verbs.findUnique({
-    where: { code: entryId } as unknown as Prisma.verbsWhereUniqueInput,
+  const entry = await prisma.verbs.findFirst({
+    where: { 
+      code: entryId,
+      deleted: { not: true }
+    },
     select: { id: true }
   });
 
@@ -35,8 +38,11 @@ async function handleChangeHypernym(req: ChangeHypernymRequest): Promise<NextRes
     return NextResponse.json({ error: 'Entry not found' }, { status: 404 });
   }
 
-  const newHypernymEntry = await prisma.verbs.findUnique({
-    where: { code: newHypernym } as unknown as Prisma.verbsWhereUniqueInput,
+  const newHypernymEntry = await prisma.verbs.findFirst({
+    where: { 
+      code: newHypernym,
+      deleted: { not: true }
+    },
     select: { id: true }
   });
 
@@ -46,8 +52,11 @@ async function handleChangeHypernym(req: ChangeHypernymRequest): Promise<NextRes
 
   // 1. Delete old hypernym relation (entry -> oldHypernym)
   if (oldHypernym) {
-    const oldHypernymEntry = await prisma.verbs.findUnique({
-      where: { code: oldHypernym } as unknown as Prisma.verbsWhereUniqueInput,
+    const oldHypernymEntry = await prisma.verbs.findFirst({
+      where: { 
+        code: oldHypernym,
+        deleted: { not: true }
+      },
       select: { id: true }
     });
 
@@ -81,15 +90,21 @@ async function handleChangeHypernym(req: ChangeHypernymRequest): Promise<NextRes
 
   // 3. For hyponyms that stay: change their hypernym relation from entry to oldHypernym
   if (oldHypernym && hyponymsToStay.length > 0) {
-    const oldHypernymEntry = await prisma.verbs.findUnique({
-      where: { code: oldHypernym } as unknown as Prisma.verbsWhereUniqueInput,
+    const oldHypernymEntry = await prisma.verbs.findFirst({
+      where: { 
+        code: oldHypernym,
+        deleted: { not: true }
+      },
       select: { id: true }
     });
 
     if (oldHypernymEntry) {
       for (const hyponymCode of hyponymsToStay) {
-        const hyponymEntry = await prisma.verbs.findUnique({
-          where: { code: hyponymCode } as unknown as Prisma.verbsWhereUniqueInput,
+        const hyponymEntry = await prisma.verbs.findFirst({
+          where: { 
+            code: hyponymCode,
+            deleted: { not: true }
+          },
           select: { id: true }
         });
 
@@ -179,13 +194,19 @@ export async function POST(request: NextRequest) {
     }
     
     // Convert codes to numeric IDs
-    const sourceEntry = await prisma.verbs.findUnique({
-      where: { code: relationBody.sourceId } as unknown as Prisma.verbsWhereUniqueInput,
+    const sourceEntry = await prisma.verbs.findFirst({
+      where: { 
+        code: relationBody.sourceId,
+        deleted: { not: true }
+      },
       select: { id: true }
     })
     
-    const targetEntry = await prisma.verbs.findUnique({
-      where: { code: relationBody.targetId } as unknown as Prisma.verbsWhereUniqueInput,
+    const targetEntry = await prisma.verbs.findFirst({
+      where: { 
+        code: relationBody.targetId,
+        deleted: { not: true }
+      },
       select: { id: true }
     })
     
@@ -251,13 +272,19 @@ export async function DELETE(request: NextRequest) {
     }
     
     // Convert codes to numeric IDs
-    const sourceEntry = await prisma.verbs.findUnique({
-      where: { code: body.sourceId } as unknown as Prisma.verbsWhereUniqueInput,
+    const sourceEntry = await prisma.verbs.findFirst({
+      where: { 
+        code: body.sourceId,
+        deleted: { not: true }
+      },
       select: { id: true }
     })
     
-    const targetEntry = await prisma.verbs.findUnique({
-      where: { code: body.targetId } as unknown as Prisma.verbsWhereUniqueInput,
+    const targetEntry = await prisma.verbs.findFirst({
+      where: { 
+        code: body.targetId,
+        deleted: { not: true }
+      },
       select: { id: true }
     })
     

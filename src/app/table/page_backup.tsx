@@ -40,7 +40,7 @@ export default function AdjectiveTableMode() {
     setSearchQuery(query);
   };
 
-  const handleEditClick = async (entry: TableEntry) => {
+  const handleEditClick = async (entry: TableEntry | import('@/lib/types').Frame) => {
     console.log('handleEditClick called with entry:', entry);
     setIsEditOverlayOpen(true);
     

@@ -1,3 +1,6 @@
+// Lexical type union for API routes
+export type LexicalType = 'verbs' | 'nouns' | 'adjectives' | 'adverbs';
+
 export interface Verb {
   id: string;
   code?: string; // Human-readable code (e.g., "aphorize.v.01")
@@ -165,6 +168,14 @@ export interface AdjectiveWithRelations extends Adjective {
   targetRelations: AdjectiveRelation[];
 }
 
+export interface FrameRole {
+  id: string;
+  description?: string | null;
+  notes?: string | null;
+  main?: boolean | null;
+  role_type: RoleType;
+}
+
 export interface Frame {
   id: string;
   code?: string; // Human-readable code (e.g., "extend.vf")
@@ -172,7 +183,13 @@ export interface Frame {
   frame_name: string;
   definition: string;
   short_definition: string;
+  prototypical_synset: string;
+  prototypical_synset_definition: string;
   is_supporting_frame: boolean;
+  communication?: boolean | null;
+  createdAt: Date;
+  updatedAt: Date;
+  frame_roles?: FrameRole[];
 }
 
 export interface RoleType {
@@ -306,7 +323,7 @@ export interface PaginationParams {
   lemmas?: string;
   examples?: string;
   particles?: string;
-  frames?: string;
+  // Note: frames filter removed - verbs table only has frame_id (BigInt), not frames array
   flaggedReason?: string;
   forbiddenReason?: string;
   
@@ -321,6 +338,30 @@ export interface PaginationParams {
   parentsCountMax?: number;
   childrenCountMin?: number;
   childrenCountMax?: number;
+  
+  // Date filters
+  createdAfter?: string;
+  createdBefore?: string;
+  updatedAfter?: string;
+  updatedBefore?: string;
+}
+
+export interface FramePaginationParams {
+  page?: number;
+  limit?: number;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+  search?: string;
+  
+  // Frame-specific text filters
+  frame_name?: string;
+  definition?: string;
+  short_definition?: string;
+  prototypical_synset?: string;
+  
+  // Boolean filters
+  is_supporting_frame?: boolean;
+  communication?: boolean;
   
   // Date filters
   createdAfter?: string;

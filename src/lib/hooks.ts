@@ -65,7 +65,7 @@ export function useVerb(id: string | null) {
     setError(null)
 
     try {
-      const response = await fetch(`/api/entries/${entryId}`)
+      const response = await fetch(`/api/verbs/${entryId}`)
       
       if (!response.ok) {
         throw new Error('Failed to fetch entry')
@@ -86,7 +86,7 @@ export function useVerb(id: string | null) {
     setError(null)
 
     try {
-      const response = await fetch(`/api/entries/${entryId}`, {
+      const response = await fetch(`/api/verbs/${entryId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates)
@@ -112,7 +112,7 @@ export function useVerb(id: string | null) {
     setError(null)
 
     try {
-      const response = await fetch(`/api/entries/${entryId}`, {
+      const response = await fetch(`/api/verbs/${entryId}`, {
         method: 'DELETE'
       })
 
@@ -151,7 +151,7 @@ export function useVerbRelations(entryId: string | null) {
     setError(null)
 
     try {
-      const response = await fetch(`/api/entries/${id}/relations`)
+      const response = await fetch(`/api/verbs/${id}/relations`)
       
       if (!response.ok) {
         throw new Error('Failed to fetch relations')

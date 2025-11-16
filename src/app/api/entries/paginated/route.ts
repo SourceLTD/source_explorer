@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
     lemmas: searchParams.get('lemmas') || undefined,
     examples: searchParams.get('examples') || undefined,
     particles: searchParams.get('particles') || undefined,
-    frames: searchParams.get('frames') || undefined,
+    // Note: frames filter removed - verbs table only has frame_id
     flaggedReason: searchParams.get('flaggedReason') || undefined,
     forbiddenReason: searchParams.get('forbiddenReason') || undefined,
     // AI jobs filters

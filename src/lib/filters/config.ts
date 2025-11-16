@@ -45,7 +45,7 @@ const frameOps: FieldOperator[] = [
 
 const computedNumberOps = numberOps;
 
-export function getFieldConfigsForPos(pos: 'verbs' | 'nouns' | 'adjectives'): FieldConfig[] {
+export function getFieldConfigsForPos(pos: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames'): FieldConfig[] {
   if (pos === 'verbs') {
     return [
       { key: 'gloss', label: 'Gloss', type: 'text', db: 'gloss', operators: textOps },
@@ -89,26 +89,60 @@ export function getFieldConfigsForPos(pos: 'verbs' | 'nouns' | 'adjectives'): Fi
     ];
   }
 
-  // adjectives
-  return [
-    { key: 'gloss', label: 'Gloss', type: 'text', db: 'gloss', operators: textOps },
-    { key: 'lemmas', label: 'Lemmas', type: 'string_array', db: 'lemmas', operators: arrayOps },
-    { key: 'examples', label: 'Examples', type: 'string_array', db: 'examples', operators: arrayOps },
-    { key: 'flagged_reason', label: 'Flagged Reason', type: 'text', db: 'flagged_reason', operators: textOps },
-    { key: 'forbidden_reason', label: 'Forbidden Reason', type: 'text', db: 'forbidden_reason', operators: textOps },
-    { key: 'lexfile', label: 'Lexfile', type: 'enum', db: 'lexfile', operators: enumOps },
-    { key: 'is_mwe', label: 'Is MWE', type: 'boolean', db: 'is_mwe', operators: booleanOps },
-    { key: 'flagged', label: 'Flagged', type: 'boolean', db: 'flagged', operators: booleanOps },
-    { key: 'forbidden', label: 'Forbidden', type: 'boolean', db: 'forbidden', operators: booleanOps },
-    { key: 'is_satellite', label: 'Satellite', type: 'boolean', db: 'is_satellite', operators: booleanOps },
-    { key: 'gradable', label: 'Gradable', type: 'boolean', db: 'gradable', operators: booleanOps },
-    { key: 'predicative', label: 'Predicative', type: 'boolean', db: 'predicative', operators: booleanOps },
-    { key: 'attributive', label: 'Attributive', type: 'boolean', db: 'attributive', operators: booleanOps },
-    { key: 'subjective', label: 'Subjective', type: 'boolean', db: 'subjective', operators: booleanOps },
-    { key: 'relational', label: 'Relational', type: 'boolean', db: 'relational', operators: booleanOps },
-    { key: 'created_at', label: 'Created At', type: 'date', db: 'created_at', operators: dateOps },
-    { key: 'updated_at', label: 'Updated At', type: 'date', db: 'updated_at', operators: dateOps },
-  ];
+  if (pos === 'adjectives') {
+    return [
+      { key: 'gloss', label: 'Gloss', type: 'text', db: 'gloss', operators: textOps },
+      { key: 'lemmas', label: 'Lemmas', type: 'string_array', db: 'lemmas', operators: arrayOps },
+      { key: 'examples', label: 'Examples', type: 'string_array', db: 'examples', operators: arrayOps },
+      { key: 'flagged_reason', label: 'Flagged Reason', type: 'text', db: 'flagged_reason', operators: textOps },
+      { key: 'forbidden_reason', label: 'Forbidden Reason', type: 'text', db: 'forbidden_reason', operators: textOps },
+      { key: 'lexfile', label: 'Lexfile', type: 'enum', db: 'lexfile', operators: enumOps },
+      { key: 'is_mwe', label: 'Is MWE', type: 'boolean', db: 'is_mwe', operators: booleanOps },
+      { key: 'flagged', label: 'Flagged', type: 'boolean', db: 'flagged', operators: booleanOps },
+      { key: 'forbidden', label: 'Forbidden', type: 'boolean', db: 'forbidden', operators: booleanOps },
+      { key: 'is_satellite', label: 'Satellite', type: 'boolean', db: 'is_satellite', operators: booleanOps },
+      { key: 'gradable', label: 'Gradable', type: 'boolean', db: 'gradable', operators: booleanOps },
+      { key: 'predicative', label: 'Predicative', type: 'boolean', db: 'predicative', operators: booleanOps },
+      { key: 'attributive', label: 'Attributive', type: 'boolean', db: 'attributive', operators: booleanOps },
+      { key: 'subjective', label: 'Subjective', type: 'boolean', db: 'subjective', operators: booleanOps },
+      { key: 'relational', label: 'Relational', type: 'boolean', db: 'relational', operators: booleanOps },
+      { key: 'created_at', label: 'Created At', type: 'date', db: 'created_at', operators: dateOps },
+      { key: 'updated_at', label: 'Updated At', type: 'date', db: 'updated_at', operators: dateOps },
+    ];
+  }
+
+  if (pos === 'adverbs') {
+    return [
+      { key: 'gloss', label: 'Gloss', type: 'text', db: 'gloss', operators: textOps },
+      { key: 'lemmas', label: 'Lemmas', type: 'string_array', db: 'lemmas', operators: arrayOps },
+      { key: 'examples', label: 'Examples', type: 'string_array', db: 'examples', operators: arrayOps },
+      { key: 'flagged_reason', label: 'Flagged Reason', type: 'text', db: 'flagged_reason', operators: textOps },
+      { key: 'forbidden_reason', label: 'Forbidden Reason', type: 'text', db: 'forbidden_reason', operators: textOps },
+      { key: 'lexfile', label: 'Lexfile', type: 'enum', db: 'lexfile', operators: enumOps },
+      { key: 'is_mwe', label: 'Is MWE', type: 'boolean', db: 'is_mwe', operators: booleanOps },
+      { key: 'flagged', label: 'Flagged', type: 'boolean', db: 'flagged', operators: booleanOps },
+      { key: 'forbidden', label: 'Forbidden', type: 'boolean', db: 'forbidden', operators: booleanOps },
+      { key: 'gradable', label: 'Gradable', type: 'boolean', db: 'gradable', operators: booleanOps },
+      { key: 'created_at', label: 'Created At', type: 'date', db: 'created_at', operators: dateOps },
+      { key: 'updated_at', label: 'Updated At', type: 'date', db: 'updated_at', operators: dateOps },
+    ];
+  }
+
+  if (pos === 'frames') {
+    return [
+      { key: 'frame_name', label: 'Frame Name', type: 'text', db: 'frame_name', operators: textOps },
+      { key: 'definition', label: 'Definition', type: 'text', db: 'definition', operators: textOps },
+      { key: 'code', label: 'Code', type: 'text', db: 'code', operators: textOps },
+      { key: 'framebank_id', label: 'FrameBank ID', type: 'text', db: 'framebank_id', operators: textOps },
+      { key: 'is_supporting_frame', label: 'Is Supporting Frame', type: 'boolean', db: 'is_supporting_frame', operators: booleanOps },
+      { key: 'communication', label: 'Communication', type: 'boolean', db: 'communication', operators: booleanOps },
+      { key: 'created_at', label: 'Created At', type: 'date', db: 'created_at', operators: dateOps },
+      { key: 'updated_at', label: 'Updated At', type: 'date', db: 'updated_at', operators: dateOps },
+    ];
+  }
+
+  // Default fallback
+  return [];
 }
 
 

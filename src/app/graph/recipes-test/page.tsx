@@ -66,8 +66,12 @@ function buildComplexRecipes(): { current: GraphNode; recipes: Recipe[] } {
       frame_name: 'INVESTIGATION',
       definition: 'Conducting an investigation',
       short_definition: 'Investigative activity',
+      prototypical_synset: 'investigate.v.01',
+      prototypical_synset_definition: 'To carry out a systematic inquiry',
       is_supporting_frame: false,
-      code: 'investigate.vf'
+      code: 'investigate.vf',
+      createdAt: new Date(),
+      updatedAt: new Date(),
     },
     roles: [
       { id: 'r-agent', role_type: { id: 'rt1', code: 'agent.rl', label: 'AGENT', generic_description: 'Performer of the act' }, main: true, description: 'investigator', example_sentence: 'The detective investigated the case.', instantiation_type_ids: [] },

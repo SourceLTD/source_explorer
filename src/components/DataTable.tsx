@@ -1,20 +1,21 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
-import { TableEntry, PaginatedResult, PaginationParams, POS_LABELS } from '@/lib/types';
+import { TableEntry, PaginatedResult, PaginationParams, POS_LABELS, Frame } from '@/lib/types';
 import FilterPanel, { FilterState } from './FilterPanel';
 import ColumnVisibilityPanel, { ColumnConfig, ColumnVisibilityState } from './ColumnVisibilityPanel';
+import PageSizeSelector from './PageSizeSelector';
 import { api } from '@/lib/api-client';
 import AIJobsOverlay from './AIJobsOverlay';
 import { SparklesIcon } from '@heroicons/react/24/outline';
 
 interface DataTableProps {
-  onRowClick?: (entry: TableEntry) => void;
-  onEditClick?: (entry: TableEntry) => void;
+  onRowClick?: (entry: TableEntry | Frame) => void;
+  onEditClick?: (entry: TableEntry | Frame) => void;
   searchQuery?: string;
   className?: string;
-  mode?: 'verbs' | 'nouns' | 'adjectives';
+  mode?: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames';
 }
 
 interface SortState {
@@ -57,28 +58,84 @@ interface FrameOption {
 }
 
 // Define all available columns with their configurations
-const DEFAULT_COLUMNS: ColumnConfig[] = [
+// Verbs default columns
+const VERBS_DEFAULT_COLUMNS: ColumnConfig[] = [
   { key: 'id', label: 'ID', visible: true, sortable: true },
   { key: 'legacy_id', label: 'Legacy ID', visible: false, sortable: true },
-  { key: 'frame', label: 'Frame', visible: true, sortable: true },
+  { key: 'frame', label: 'Frame', visible: false, sortable: true },
   { key: 'lemmas', label: 'Lemmas', visible: true, sortable: true },
   { key: 'gloss', label: 'Definition', visible: true, sortable: true },
   { key: 'pos', label: 'Part of Speech', visible: false, sortable: true },
-  { key: 'lexfile', label: 'Lexfile', visible: true, sortable: true },
+  { key: 'lexfile', label: 'Lexfile', visible: false, sortable: true },
   { key: 'isMwe', label: 'Multi-word Expression', visible: false, sortable: true },
   { key: 'transitive', label: 'Transitive', visible: false, sortable: true },
   { key: 'flagged', label: 'Flagged', visible: false, sortable: true },
-  { key: 'flaggedReason', label: 'Flagged Reason', visible: false, sortable: false },
+  { key: 'flaggedReason', label: 'Flagged Reason', visible: true, sortable: false },
   { key: 'forbidden', label: 'Forbidden', visible: false, sortable: true },
-  { key: 'forbiddenReason', label: 'Forbidden Reason', visible: false, sortable: false },
+  { key: 'forbiddenReason', label: 'Forbidden Reason', visible: true, sortable: false },
   { key: 'particles', label: 'Particles', visible: false, sortable: false },
-  { key: 'examples', label: 'Examples', visible: false, sortable: false },
+  { key: 'examples', label: 'Examples', visible: true, sortable: false },
   { key: 'vendler_class', label: 'Vendler Class', visible: false, sortable: true },
   { key: 'legal_constraints', label: 'Legal Constraints', visible: false, sortable: false },
   { key: 'roles', label: 'Roles', visible: false, sortable: false },
   { key: 'createdAt', label: 'Created', visible: false, sortable: true },
   { key: 'updatedAt', label: 'Updated', visible: false, sortable: true },
   { key: 'actions', label: 'Actions', visible: true, sortable: false },
+];
+
+// Nouns and Adjectives default columns (no frame, transitive, vendler_class, roles)
+const NOUNS_ADJECTIVES_DEFAULT_COLUMNS: ColumnConfig[] = [
+  { key: 'id', label: 'ID', visible: true, sortable: true },
+  { key: 'legacy_id', label: 'Legacy ID', visible: false, sortable: true },
+  { key: 'lemmas', label: 'Lemmas', visible: true, sortable: true },
+  { key: 'gloss', label: 'Definition', visible: true, sortable: true },
+  { key: 'pos', label: 'Part of Speech', visible: false, sortable: true },
+  { key: 'lexfile', label: 'Lexfile', visible: false, sortable: true },
+  { key: 'isMwe', label: 'Multi-word Expression', visible: false, sortable: true },
+  { key: 'flagged', label: 'Flagged', visible: false, sortable: true },
+  { key: 'flaggedReason', label: 'Flagged Reason', visible: true, sortable: false },
+  { key: 'forbidden', label: 'Forbidden', visible: false, sortable: true },
+  { key: 'forbiddenReason', label: 'Forbidden Reason', visible: true, sortable: false },
+  { key: 'examples', label: 'Examples', visible: true, sortable: false },
+  { key: 'legal_constraints', label: 'Legal Constraints', visible: false, sortable: false },
+  { key: 'createdAt', label: 'Created', visible: false, sortable: true },
+  { key: 'updatedAt', label: 'Updated', visible: false, sortable: true },
+  { key: 'actions', label: 'Actions', visible: true, sortable: false },
+];
+
+// Adverbs-specific columns
+const ADVERBS_COLUMNS: ColumnConfig[] = [
+  { key: 'id', label: 'ID', visible: true, sortable: true },
+  { key: 'legacy_id', label: 'Legacy ID', visible: false, sortable: true },
+  { key: 'lemmas', label: 'Lemmas', visible: true, sortable: true },
+  { key: 'gloss', label: 'Definition', visible: true, sortable: true },
+  { key: 'pos', label: 'Part of Speech', visible: false, sortable: true },
+  { key: 'lexfile', label: 'Lexfile', visible: false, sortable: true },
+  { key: 'isMwe', label: 'Multi-word Expression', visible: false, sortable: true },
+  { key: 'gradable', label: 'Gradable', visible: false, sortable: true },
+  { key: 'flagged', label: 'Flagged', visible: false, sortable: true },
+  { key: 'flaggedReason', label: 'Flagged Reason', visible: true, sortable: false },
+  { key: 'forbidden', label: 'Forbidden', visible: false, sortable: true },
+  { key: 'forbiddenReason', label: 'Forbidden Reason', visible: true, sortable: false },
+  { key: 'examples', label: 'Examples', visible: true, sortable: false },
+  { key: 'legal_constraints', label: 'Legal Constraints', visible: false, sortable: false },
+  { key: 'createdAt', label: 'Created', visible: false, sortable: true },
+  { key: 'updatedAt', label: 'Updated', visible: false, sortable: true },
+  { key: 'actions', label: 'Actions', visible: true, sortable: false },
+];
+
+// Frames-specific columns
+const FRAMES_COLUMNS: ColumnConfig[] = [
+  { key: 'code', label: 'Code', visible: true, sortable: true },
+  { key: 'frame_name', label: 'Frame Name', visible: true, sortable: true },
+  { key: 'definition', label: 'Definition', visible: true, sortable: false },
+  { key: 'short_definition', label: 'Short Definition', visible: true, sortable: false },
+  { key: 'prototypical_synset', label: 'Prototypical Synset', visible: true, sortable: true },
+  { key: 'is_supporting_frame', label: 'Supporting Frame', visible: false, sortable: true },
+  { key: 'communication', label: 'Communication', visible: false, sortable: true },
+  { key: 'frame_roles', label: 'Frame Roles', visible: true, sortable: false },
+  { key: 'createdAt', label: 'Created', visible: false, sortable: true },
+  { key: 'updatedAt', label: 'Updated', visible: false, sortable: true },
 ];
 
 // Default column widths in pixels
@@ -104,11 +161,32 @@ const DEFAULT_COLUMN_WIDTHS: ColumnWidthState = {
   createdAt: 100,
   updatedAt: 100,
   actions: 80,
+  // Frame columns
+  code: 120,
+  frame_name: 200,
+  definition: 350,
+  short_definition: 250,
+  prototypical_synset: 180,
+  is_supporting_frame: 150,
+  communication: 120,
+  frame_roles: 250,
 };
 
-const getDefaultVisibility = (): ColumnVisibilityState => {
+const getDefaultVisibility = (mode?: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames'): ColumnVisibilityState => {
   const visibility: ColumnVisibilityState = {};
-  DEFAULT_COLUMNS.forEach(col => {
+  let columns: ColumnConfig[];
+  
+  if (mode === 'frames') {
+    columns = FRAMES_COLUMNS;
+  } else if (mode === 'adverbs') {
+    columns = ADVERBS_COLUMNS;
+  } else if (mode === 'nouns' || mode === 'adjectives') {
+    columns = NOUNS_ADJECTIVES_DEFAULT_COLUMNS;
+  } else {
+    columns = VERBS_DEFAULT_COLUMNS;
+  }
+  
+  columns.forEach(col => {
     visibility[col.key] = col.visible;
   });
   return visibility;
@@ -118,8 +196,8 @@ const getDefaultColumnWidths = (): ColumnWidthState => {
   return { ...DEFAULT_COLUMN_WIDTHS };
 };
 
-const sanitizeColumnVisibility = (visibility?: ColumnVisibilityState | null): ColumnVisibilityState => {
-  const defaultVisibility = getDefaultVisibility();
+const sanitizeColumnVisibility = (visibility?: ColumnVisibilityState | null, mode?: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames'): ColumnVisibilityState => {
+  const defaultVisibility = getDefaultVisibility(mode);
   if (!visibility) {
     return defaultVisibility;
   }
@@ -139,14 +217,19 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [isInitialized, setIsInitialized] = useState(false);
+  const prevModeRef = useRef(mode);
   const apiPrefix = useMemo(() => {
     if (mode === 'nouns') return '/api/nouns';
     if (mode === 'adjectives') return '/api/adjectives';
-    return '/api/entries';
+    if (mode === 'adverbs') return '/api/adverbs';
+    if (mode === 'frames') return '/api/frames';
+    return '/api/verbs';
   }, [mode]);
   const graphBasePath = useMemo(() => {
     if (mode === 'nouns') return '/graph/nouns';
     if (mode === 'adjectives') return '/graph/adjectives';
+    if (mode === 'adverbs') return '/graph/adverbs';
+    if (mode === 'frames') return '/graph/frames';
     return '/graph';
   }, [mode]);
 
@@ -200,13 +283,14 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
     // Parse column visibility
     const columnsParam = params.get('columns');
     let columnVisibility: ColumnVisibilityState | null = null;
-    if (columnsParam) {
+    if (columnsParam && columnsParam !== 'default') {
       try {
         columnVisibility = JSON.parse(decodeURIComponent(columnsParam));
       } catch {
         // Fallback to default
       }
     }
+    // If columnsParam === 'default' or null, columnVisibility remains null (uses default)
 
     // Parse sort state
     const sortBy = params.get('sortBy') || 'id';
@@ -227,7 +311,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
 
   const initialState = getInitialStateFromURL();
 
-  const [data, setData] = useState<PaginatedResult<TableEntry> | null>(null);
+  const [data, setData] = useState<PaginatedResult<TableEntry | Frame> | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(initialState.currentPage);
@@ -242,36 +326,14 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
   const [columnVisibility, setColumnVisibility] = useState<ColumnVisibilityState>(() => {
     // First try URL params
     if (initialState.columnVisibility) {
-      return sanitizeColumnVisibility(initialState.columnVisibility);
+      return sanitizeColumnVisibility(initialState.columnVisibility, mode);
     }
-    // Then try localStorage
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('table-column-visibility');
-      if (saved) {
-        try {
-          return sanitizeColumnVisibility(JSON.parse(saved));
-        } catch {
-          return getDefaultVisibility();
-        }
-      }
-    }
-    return getDefaultVisibility();
+    // Use defaults (localStorage will be loaded after mount to avoid hydration issues)
+    return getDefaultVisibility(mode);
   });
   const [isColumnPanelOpen, setIsColumnPanelOpen] = useState(false);
-  const [columnWidths, setColumnWidths] = useState<ColumnWidthState>(() => {
-    // Try to load from localStorage, fallback to defaults
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('table-column-widths');
-      if (saved) {
-        try {
-          return JSON.parse(saved);
-        } catch {
-          return getDefaultColumnWidths();
-        }
-      }
-    }
-    return getDefaultColumnWidths();
-  });
+  const [isPageSizePanelOpen, setIsPageSizePanelOpen] = useState(false);
+  const [columnWidths, setColumnWidths] = useState<ColumnWidthState>(getDefaultColumnWidths());
   const [isResizing, setIsResizing] = useState(false);
   const [, setResizingColumn] = useState<string | null>(null);
   const [moderationModal, setModerationModal] = useState<ModerationModalState>({
@@ -351,6 +413,126 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
     setIsInitialized(true);
   }, []);
 
+  // Load column widths from localStorage after mount (avoids hydration mismatch)
+  useEffect(() => {
+    const saved = localStorage.getItem('table-column-widths-v2');
+    if (saved) {
+      try {
+        setColumnWidths(JSON.parse(saved));
+      } catch {
+        // Invalid JSON, keep defaults
+      }
+    }
+  }, []);
+
+  // Load column visibility from localStorage after mount (avoids hydration mismatch)
+  // Only if not set via URL params
+  useEffect(() => {
+    if (!initialState.columnVisibility) {
+      const saved = localStorage.getItem('table-column-visibility-v2');
+      if (saved) {
+        try {
+          setColumnVisibility(sanitizeColumnVisibility(JSON.parse(saved), mode));
+        } catch {
+          // Invalid JSON, keep defaults
+        }
+      }
+    }
+  }, [initialState.columnVisibility, mode]);
+
+  // Reset state when mode changes
+  useEffect(() => {
+    if (!isInitialized) return;
+    
+    // Only reset if mode actually changed
+    if (prevModeRef.current === mode) return;
+    
+    // Update the ref
+    prevModeRef.current = mode;
+    
+    // Re-read state from URL params when mode changes
+    const params = new URLSearchParams(searchParams?.toString() || '');
+    
+    // Parse filters
+    const filters: FilterState = {};
+    
+    // Parse text filters
+    ['gloss', 'lemmas', 'examples', 'particles', 'frames', 'flaggedReason', 'forbiddenReason'].forEach(key => {
+      const value = params.get(key);
+      if (value !== null) {
+        filters[key as 'gloss' | 'lemmas' | 'examples' | 'particles' | 'frames' | 'flaggedReason' | 'forbiddenReason'] = value;
+      }
+    });
+    
+    // Parse categorical filters
+    ['pos', 'lexfile', 'frame_id', 'flaggedByJobId'].forEach(key => {
+      const value = params.get(key);
+      if (value !== null) {
+        filters[key as 'pos' | 'lexfile' | 'frame_id' | 'flaggedByJobId'] = value;
+      }
+    });
+    
+    // Parse boolean filters
+    ['isMwe', 'transitive', 'flagged', 'forbidden'].forEach(key => {
+      const value = params.get(key);
+      if (value !== null) {
+        filters[key as 'isMwe' | 'transitive' | 'flagged' | 'forbidden'] = value === 'true';
+      }
+    });
+    
+    // Parse numeric filters
+    ['parentsCountMin', 'parentsCountMax', 'childrenCountMin', 'childrenCountMax'].forEach(key => {
+      const value = params.get(key);
+      if (value !== null) {
+        filters[key as 'parentsCountMin' | 'parentsCountMax' | 'childrenCountMin' | 'childrenCountMax'] = parseInt(value);
+      }
+    });
+    
+    // Parse date filters
+    ['createdAfter', 'createdBefore', 'updatedAfter', 'updatedBefore'].forEach(key => {
+      const value = params.get(key);
+      if (value !== null) {
+        filters[key as 'createdAfter' | 'createdBefore' | 'updatedAfter' | 'updatedBefore'] = value;
+      }
+    });
+
+    // Parse column visibility
+    const columnsParam = params.get('columns');
+    let columnVisibility: ColumnVisibilityState | null = null;
+    if (columnsParam && columnsParam !== 'default') {
+      try {
+        columnVisibility = JSON.parse(decodeURIComponent(columnsParam));
+      } catch {
+        // Fallback to default
+      }
+    }
+
+    // Parse sort state
+    const sortBy = params.get('sortBy') || 'id';
+    const sortOrder = (params.get('sortOrder') as 'asc' | 'desc') || 'asc';
+
+    // Parse pagination
+    const page = parseInt(params.get('page') || '1');
+    const limit = parseInt(params.get('limit') || '10');
+    
+    // Reset filters to URL state or empty
+    setFilters(filters);
+    
+    // Reset column visibility to URL state or default for the new mode
+    const newColumnVisibility = columnVisibility || getDefaultVisibility(mode);
+    setColumnVisibility(sanitizeColumnVisibility(newColumnVisibility, mode));
+    
+    // Reset sort state
+    setSortState({ field: sortBy, order: sortOrder });
+    
+    // Reset pagination
+    setCurrentPage(page);
+    setPageSize(limit);
+    
+    // Clear selection
+    setSelection({ selectedIds: new Set(), selectAll: false });
+  }, [mode, isInitialized, searchParams]);
+
   // Close context menu when clicking outside
   useEffect(() => {
     const handleClickOutside = () => {
@@ -379,7 +561,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
     });
 
     // Add column visibility (only if different from default)
-    const defaultVisibility = getDefaultVisibility();
+    const defaultVisibility = getDefaultVisibility(mode);
     const hasNonDefaultColumns = Object.entries(columnVisibility).some(
       ([key, value]) => value !== defaultVisibility[key]
     );
@@ -526,19 +708,19 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
   };
 
   const handleColumnVisibilityChange = (newVisibility: ColumnVisibilityState) => {
-    const sanitizedVisibility = sanitizeColumnVisibility(newVisibility);
+    const sanitizedVisibility = sanitizeColumnVisibility(newVisibility, mode);
     setColumnVisibility(sanitizedVisibility);
     // Save to localStorage
     if (typeof window !== 'undefined') {
-      localStorage.setItem('table-column-visibility', JSON.stringify(sanitizedVisibility));
+      localStorage.setItem('table-column-visibility-v2', JSON.stringify(sanitizedVisibility));
     }
   };
 
   const handleResetColumns = () => {
-    const defaultVisibility = getDefaultVisibility();
+    const defaultVisibility = getDefaultVisibility(mode);
     setColumnVisibility(defaultVisibility);
     if (typeof window !== 'undefined') {
-      localStorage.setItem('table-column-visibility', JSON.stringify(defaultVisibility));
+      localStorage.setItem('table-column-visibility-v2', JSON.stringify(defaultVisibility));
     }
   };
 
@@ -546,7 +728,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
     const newWidths = { ...columnWidths, [columnKey]: Math.max(50, width) }; // Minimum width of 50px
     setColumnWidths(newWidths);
     if (typeof window !== 'undefined') {
-      localStorage.setItem('table-column-widths', JSON.stringify(newWidths));
+      localStorage.setItem('table-column-widths-v2', JSON.stringify(newWidths));
     }
   };
 
@@ -554,7 +736,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
     const defaultWidths = getDefaultColumnWidths();
     setColumnWidths(defaultWidths);
     if (typeof window !== 'undefined') {
-      localStorage.setItem('table-column-widths', JSON.stringify(defaultWidths));
+      localStorage.setItem('table-column-widths-v2', JSON.stringify(defaultWidths));
     }
   };
 
@@ -584,9 +766,16 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
   };
 
   // Get current column configurations with visibility state
-  const currentColumns = DEFAULT_COLUMNS.map(col => ({
+  const getColumnsForMode = () => {
+    if (mode === 'frames') return FRAMES_COLUMNS;
+    if (mode === 'adverbs') return ADVERBS_COLUMNS;
+    if (mode === 'nouns' || mode === 'adjectives') return NOUNS_ADJECTIVES_DEFAULT_COLUMNS;
+    return VERBS_DEFAULT_COLUMNS;
+  };
+
+  const currentColumns = getColumnsForMode().map(col => ({
     ...col,
-    // Always show actions column if onEditClick is provided
+    // Always show actions column if onEditClick is provided (not available for frames)
     visible: col.key === 'actions' && onEditClick ? true : (columnVisibility[col.key] ?? col.visible)
   }));
 
@@ -920,10 +1109,17 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
       return { allFlagged: false, noneFlagged: true, allForbidden: false, noneForbidden: true };
     }
 
-    const allFlagged = selectedEntries.every(entry => entry.flagged);
-    const noneFlagged = selectedEntries.every(entry => !entry.flagged);
-    const allForbidden = selectedEntries.every(entry => entry.forbidden);
-    const noneForbidden = selectedEntries.every(entry => !entry.forbidden);
+    // Filter to only TableEntry items (frames don't have flagged/forbidden)
+    const moderatableEntries = selectedEntries.filter((entry): entry is TableEntry => 'flagged' in entry);
+    
+    if (moderatableEntries.length === 0) {
+      return { allFlagged: false, noneFlagged: true, allForbidden: false, noneForbidden: true };
+    }
+
+    const allFlagged = moderatableEntries.every(entry => entry.flagged);
+    const noneFlagged = moderatableEntries.every(entry => !entry.flagged);
+    const allForbidden = moderatableEntries.every(entry => entry.forbidden);
+    const noneForbidden = moderatableEntries.every(entry => !entry.forbidden);
     
     return { allFlagged, noneFlagged, allForbidden, noneForbidden };
   };
@@ -948,10 +1144,20 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
     );
   };
 
-  const truncateText = (text: string, maxLength: number) => {
+  const truncateText = (text: string | null | undefined, maxLength: number) => {
+    if (!text) return '—';
     if (text.length <= maxLength) return text;
     return text.substring(0, maxLength) + '...';
   };
+
+  // Helper component for empty/null values
+  const EmptyCell = () => <span className="text-gray-400 text-sm">—</span>;
+  
+  // Helper component for N/A values
+  const NACell = () => <span className="text-gray-400 text-sm">N/A</span>;
+  
+  // Helper component for None values
+  const NoneCell = () => <span className="text-gray-400 text-sm">None</span>;
 
   const formatDate = (date: Date | string | null | undefined) => {
     if (!date) return '—';
@@ -960,7 +1166,92 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
     return dateObj.toLocaleDateString();
   };
 
-  const renderCellContent = (entry: TableEntry, columnKey: string) => {
+  const renderCellContent = (entry: TableEntry | Frame, columnKey: string) => {
+    // Type guard to check if entry is a Frame
+    const isFrame = (e: TableEntry | Frame): e is Frame => {
+      return mode === 'frames' && 'frame_name' in e;
+    };
+
+    // Handle frame-specific columns
+    if (isFrame(entry)) {
+      switch (columnKey) {
+        case 'code':
+          return <span className="text-sm font-mono text-blue-600 break-words">{entry.code || '—'}</span>;
+        case 'frame_name':
+          return <span className="inline-block max-w-full text-sm font-semibold text-gray-900 break-words">{entry.frame_name}</span>;
+        case 'definition':
+          return (
+            <div className="text-sm text-gray-900 break-words max-w-full">
+              {truncateText(entry.definition, 200)}
+            </div>
+          );
+        case 'short_definition':
+          return (
+            <div className="text-sm text-gray-700 break-words max-w-full">
+              {truncateText(entry.short_definition, 100)}
+            </div>
+          );
+        case 'prototypical_synset':
+          return (
+            <span className="inline-block max-w-full text-sm font-mono text-blue-600 hover:text-blue-800 cursor-pointer break-words"
+              onClick={(e) => {
+                e.stopPropagation();
+                router.push(`${graphBasePath}?entry=${entry.prototypical_synset}`);
+              }}
+              title={`Click to view ${entry.prototypical_synset} in graph mode`}
+            >
+              {entry.prototypical_synset}
+            </span>
+          );
+        case 'is_supporting_frame':
+          return (
+            <span className={`inline-block px-2 py-1 text-xs rounded font-medium ${
+              entry.is_supporting_frame 
+                ? 'bg-green-100 text-green-800' 
+                : 'bg-gray-100 text-gray-600'
+            }`}>
+              {entry.is_supporting_frame ? 'Yes' : 'No'}
+            </span>
+          );
+        case 'communication':
+          if (entry.communication === null || entry.communication === undefined) {
+            return <NACell />;
+          }
+          return (
+            <span className={`inline-block px-2 py-1 text-xs rounded font-medium ${
+              entry.communication 
+                ? 'bg-blue-100 text-blue-800' 
+                : 'bg-gray-100 text-gray-600'
+            }`}>
+              {entry.communication ? 'Yes' : 'No'}
+            </span>
+          );
+        case 'frame_roles':
+          if (!entry.frame_roles || entry.frame_roles.length === 0) {
+            return <EmptyCell />;
+          }
+          const roleLabels = entry.frame_roles.map(fr => fr.role_type.label).join(', ');
+          return (
+            <div className="flex flex-col gap-1 max-w-full" title={roleLabels}>
+              <span className="text-xs text-gray-700">
+                {entry.frame_roles.length} {entry.frame_roles.length === 1 ? 'role' : 'roles'}
+              </span>
+              <span className="text-xs text-gray-500 break-words">
+                ({roleLabels})
+              </span>
+            </div>
+          );
+        case 'createdAt':
+          return <span className="text-xs text-gray-500 break-words">{formatDate(entry.createdAt)}</span>;
+        case 'updatedAt':
+          return <span className="text-xs text-gray-500 break-words">{formatDate(entry.updatedAt)}</span>;
+        default:
+          return <span className="text-sm text-gray-900 break-words">{String((entry as unknown as Record<string, unknown>)[columnKey] || '')}</span>;
+      }
+    }
+
+    // Handle TableEntry columns
+    const tableEntry = entry as TableEntry;
     switch (columnKey) {
       case 'lemmas':
         // Display regular lemmas first, then src_lemmas in bold at the end
@@ -1030,16 +1321,18 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
           </div>
         );
       case 'pos':
+        if (isFrame(entry)) return <EmptyCell />;
         return (
           <span className="inline-block px-2 py-1 text-xs bg-green-100 text-green-800 rounded font-medium">
             {POS_LABELS[entry.pos as keyof typeof POS_LABELS] || entry.pos}
           </span>
         );
       case 'lexfile':
-        return <span className="text-xs text-gray-500">{entry.lexfile.replace(/^verb\./, '')}</span>;
+        if (isFrame(entry)) return <EmptyCell />;
+        return <span className="text-xs text-gray-500 break-words">{entry.lexfile?.replace(/^verb\./, '') || '—'}</span>;
       case 'frame':
         if (!entry.frame) {
-          return <span className="text-gray-400 text-sm">—</span>;
+          return <EmptyCell />;
         }
         return (
           <span className="inline-block max-w-full px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded font-medium uppercase break-words whitespace-normal">
@@ -1058,7 +1351,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
         );
       case 'transitive':
         if (entry.transitive === null || entry.transitive === undefined) {
-          return <span className="text-gray-400 text-sm">N/A</span>;
+          return <NACell />;
         }
         return (
           <span className={`inline-block px-2 py-1 text-xs rounded font-medium ${
@@ -1070,8 +1363,9 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
           </span>
         );
       case 'flagged':
+        if (isFrame(entry)) return <NACell />;
         if (entry.flagged === null || entry.flagged === undefined) {
-          return <span className="text-gray-400 text-sm">N/A</span>;
+          return <NACell />;
         }
         return (
           <div className="flex items-center gap-1">
@@ -1095,8 +1389,9 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
           </div>
         );
       case 'forbidden':
+        if (isFrame(entry)) return <NACell />;
         if (entry.forbidden === null || entry.forbidden === undefined) {
-          return <span className="text-gray-400 text-sm">N/A</span>;
+          return <NACell />;
         }
         return (
           <div className="flex items-center gap-1">
@@ -1120,20 +1415,22 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
           </div>
         );
       case 'flaggedReason':
+        if (isFrame(entry)) return <NACell />;
         if (!entry.flaggedReason) {
-          return <span className="text-gray-400 text-sm">None</span>;
+          return <span className="text-gray-400 text-xs">None</span>;
         }
         return (
-          <div className="text-sm text-gray-700 break-words">
+          <div className="text-xs text-gray-700 break-words">
             {entry.flaggedReason}
           </div>
         );
       case 'forbiddenReason':
+        if (isFrame(entry)) return <NACell />;
         if (!entry.forbiddenReason) {
-          return <span className="text-gray-400 text-sm">None</span>;
+          return <span className="text-gray-400 text-xs">None</span>;
         }
         return (
-          <div className="text-sm text-gray-700 break-words">
+          <div className="text-xs text-gray-700 break-words">
             {entry.forbiddenReason}
           </div>
         );
@@ -1160,7 +1457,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
         );
       case 'examples':
         if (!entry.examples || entry.examples.length === 0) {
-          return <span className="text-gray-400 text-sm">None</span>;
+          return <NoneCell />;
         }
         return (
           <div className="space-y-1 text-xs text-gray-700 max-w-md">
@@ -1195,7 +1492,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
         );
       case 'legal_constraints':
         if (!entry.legal_constraints || entry.legal_constraints.length === 0) {
-          return <span className="text-gray-400 text-sm">None</span>;
+          return <NoneCell />;
         }
         return (
           <div className="flex flex-wrap gap-1">
@@ -1217,7 +1514,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
         );
       case 'roles':
         if (!entry.roles || entry.roles.length === 0) {
-          return <span className="text-gray-400 text-sm">None</span>;
+          return <NoneCell />;
         }
         
         // Create a map of role IDs to check which roles are in groups
@@ -1281,13 +1578,13 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
           </div>
         );
       case 'id':
-        return <span className="text-sm font-mono text-blue-600">{entry.id}</span>;
+        return <span className="text-xs font-mono text-blue-600 break-words">{entry.id}</span>;
       case 'legacy_id':
-        return <span className="text-sm font-mono text-gray-600">{entry.legacy_id}</span>;
+        return <span className="text-sm font-mono text-gray-600 break-words">{entry.legacy_id}</span>;
       case 'createdAt':
-        return <span className="text-xs text-gray-500">{formatDate(entry.createdAt)}</span>;
+        return <span className="text-xs text-gray-500 break-words">{formatDate(entry.createdAt)}</span>;
       case 'updatedAt':
-        return <span className="text-xs text-gray-500">{formatDate(entry.updatedAt)}</span>;
+        return <span className="text-xs text-gray-500 break-words">{formatDate(entry.updatedAt)}</span>;
       case 'actions':
         return (
           <div className="flex items-center justify-center">
@@ -1311,7 +1608,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
           </div>
         );
       default:
-        return <span className="text-sm text-gray-900">{String((entry as unknown as Record<string, unknown>)[columnKey] || '')}</span>;
+        return <span className="text-sm text-gray-900 break-words">{String((entry as unknown as Record<string, unknown>)[columnKey] || '')}</span>;
     }
   };
 
@@ -1320,25 +1617,31 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
     return `${width}px`;
   };
 
-  const getRowBackgroundColor = (entry: TableEntry, isSelected: boolean, isHovered: boolean = false) => {
+  const getRowBackgroundColor = (entry: TableEntry | Frame, isSelected: boolean, isHovered: boolean = false) => {
     // Priority: Selection > Forbidden > Flagged > Default
     if (isSelected) {
       return 'bg-blue-50';
     }
     
-    if (entry.forbidden) {
+    // Only TableEntry has flagged/forbidden properties
+    if ('forbidden' in entry && entry.forbidden) {
       return isHovered ? 'hover:bg-red-200' : '';
     }
     
-    if (entry.flagged) {
+    if ('flagged' in entry && entry.flagged) {
       return isHovered ? 'hover:bg-blue-200' : '';
     }
     
     return 'hover:bg-gray-50';
   };
 
-  const getRowInlineStyles = (entry: TableEntry, isSelected: boolean) => {
+  const getRowInlineStyles = (entry: TableEntry | Frame, isSelected: boolean) => {
     if (isSelected) {
+      return {};
+    }
+    
+    // Only TableEntry has flagged/forbidden properties
+    if (!('forbidden' in entry)) {
       return {};
     }
     
@@ -1391,21 +1694,8 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
     );
   }
 
-  if (!data || data.data.length === 0) {
-    return (
-      <div className={`bg-white rounded-lg shadow-sm border border-gray-200 ${className || ''}`}>
-        <div className="p-8 text-center text-gray-400">
-          <svg className="h-24 w-24 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-          </svg>
-          <p>No entries found</p>
-          {(searchQuery || Object.keys(filters).length > 0) && (
-            <p className="text-sm mt-2">Try adjusting your search or filters</p>
-          )}
-        </div>
-      </div>
-    );
-  }
+  // Don't return early for empty data - we want to keep the toolbar visible
+  const hasData = data && data.data.length > 0;
 
   return (
     <div className={`bg-white rounded-lg shadow-sm border border-gray-200 ${className || ''} ${isResizing ? 'select-none' : ''}`}>
@@ -1437,6 +1727,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
                 filters={filters}
                 onFiltersChange={handleFiltersChange}
                 onClearAll={handleClearAllFilters}
+                mode={mode}
               />
             </div>
             <div className="relative">
@@ -1458,23 +1749,25 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
               </svg>
               Reset Widths
             </button>
-            <button
-              onClick={() => setIsAIOverlayOpen(true)}
-              className="relative inline-flex items-center justify-center rounded-md bg-gradient-to-r from-blue-500 to-blue-600 px-3 py-2 text-white shadow-sm transition-colors hover:from-blue-600 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
-              title="Open AI batch moderation"
-              aria-label="Open AI batch moderation"
-              type="button"
-            >
-              <SparklesIcon className="h-5 w-5" aria-hidden="true" />
-              {pendingAIJobs > 0 && (
-                <span className="absolute -top-1 -right-1 inline-flex min-h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-600 px-1 text-[11px] font-bold text-white">
-                  {pendingAIJobs > 99 ? '99+' : pendingAIJobs}
-                </span>
-              )}
-            </button>
+            {mode !== 'frames' && (
+              <button
+                onClick={() => setIsAIOverlayOpen(true)}
+                className="relative inline-flex items-center justify-center rounded-md bg-gradient-to-r from-blue-500 to-blue-600 px-3 py-2 text-white shadow-sm transition-colors hover:from-blue-600 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                title="Open AI batch moderation"
+                aria-label="Open AI batch moderation"
+                type="button"
+              >
+                <SparklesIcon className="h-5 w-5" aria-hidden="true" />
+                {pendingAIJobs > 0 && (
+                  <span className="absolute -top-1 -right-1 inline-flex min-h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-600 px-1 text-[11px] font-bold text-white">
+                    {pendingAIJobs > 99 ? '99+' : pendingAIJobs}
+                  </span>
+                )}
+              </button>
+            )}
             
             {/* Moderation Actions */}
-            {selection.selectedIds.size > 0 && (() => {
+            {mode !== 'frames' && selection.selectedIds.size > 0 && (() => {
               const { allFlagged, noneFlagged, allForbidden, noneForbidden } = getSelectionModerationState();
               const mixedFlagged = !allFlagged && !noneFlagged;
               const mixedForbidden = !allForbidden && !noneForbidden;
@@ -1549,24 +1842,18 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
             })()}
           </div>
 
-          <div className="flex items-center gap-2">
-            <label className="text-sm font-medium text-gray-700">Show:</label>
-            <select
-              value={pageSize}
-              onChange={(e) => handlePageSizeChange(parseInt(e.target.value))}
-              className="px-3 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 cursor-pointer"
-            >
-              <option value={10}>10</option>
-              <option value={20}>20</option>
-              <option value={50}>50</option>
-              <option value={100}>100</option>
-            </select>
-          </div>
+          <PageSizeSelector
+            isOpen={isPageSizePanelOpen}
+            onToggle={() => setIsPageSizePanelOpen(!isPageSizePanelOpen)}
+            pageSize={pageSize}
+            onPageSizeChange={handlePageSizeChange}
+            totalItems={data?.total}
+          />
         </div>
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto relative max-h-[calc(100vh-300px)] overflow-y-auto">
+      <div className="overflow-x-auto relative h-[calc(100vh-300px)] overflow-y-auto bg-gray-50">
         {loading && (
           <div className="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center z-10">
             <div className="animate-spin h-8 w-8 border-2 border-gray-300 border-t-blue-600 rounded-full"></div>
@@ -1575,14 +1862,16 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
         <table className="w-full" style={{ tableLayout: 'fixed' }}>
           <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-20">
             <tr>
-              <th className="px-4 py-3 text-left w-12 bg-gray-50" style={{ width: '48px' }}>
-                <input
-                  type="checkbox"
-                  checked={selection.selectAll}
-                  onChange={handleSelectAll}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-              </th>
+              {mode !== 'frames' && (
+                <th className="px-4 py-3 text-left w-12 bg-gray-50" style={{ width: '48px' }}>
+                  <input
+                    type="checkbox"
+                    checked={selection.selectAll}
+                    onChange={handleSelectAll}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                </th>
+              )}
               {visibleColumns.map((column) => (
                 <th 
                   key={column.key}
@@ -1607,50 +1896,69 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
               ))}
             </tr>
           </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {data.data.map((entry) => {
-              const isSelected = selection.selectedIds.has(entry.id);
-              return (
-              <tr
-                key={entry.id}
-                className={`${getRowBackgroundColor(entry, isSelected)} ${isSelected ? 'bg-blue-50' : ''}`}
-                style={getRowInlineStyles(entry, isSelected)}
-                onContextMenu={(e) => handleContextMenu(e, entry.id)}
-                onDoubleClick={(e) => {
-                  e.preventDefault();
-                  handleSelectRow(entry.id);
-                }}
-              >
-                <td className="px-4 py-4 whitespace-nowrap w-12" style={{ width: '48px' }}>
-                  <input
-                    type="checkbox"
-                    checked={selection.selectedIds.has(entry.id)}
-                    onChange={(e) => {
-                      e.stopPropagation();
-                      handleSelectRow(entry.id);
-                    }}
-                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
+          <tbody className="bg-gray-50 divide-y divide-gray-200">
+            {hasData ? (
+              data.data.map((entry) => {
+                const isSelected = selection.selectedIds.has(entry.id);
+                return (
+                <tr
+                  key={entry.id}
+                  className={`${getRowBackgroundColor(entry, isSelected)} ${isSelected ? 'bg-blue-50' : 'bg-white'}`}
+                  style={getRowInlineStyles(entry, isSelected)}
+                  onContextMenu={(e) => handleContextMenu(e, entry.id)}
+                  onDoubleClick={(e) => {
+                    e.preventDefault();
+                    handleSelectRow(entry.id);
+                  }}
+                >
+                  {mode !== 'frames' && (
+                    <td className="px-4 py-4 whitespace-nowrap w-12" style={{ width: '48px' }}>
+                      <input
+                        type="checkbox"
+                        checked={selection.selectedIds.has(entry.id)}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          handleSelectRow(entry.id);
+                        }}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                    </td>
+                  )}
+                  {visibleColumns.map((column) => {
+                    const isClickable = onRowClick && column.key !== 'isMwe' && column.key !== 'transitive' && column.key !== 'gloss' && column.key !== 'actions';
+                    const cellClassName = `px-4 py-4 break-words ${isClickable ? 'cursor-pointer' : ''} align-top border-r border-gray-200`;
+                    
+                    return (
+                      <td 
+                        key={column.key}
+                        className={cellClassName}
+                        style={{ width: getColumnWidth(column.key), minWidth: '50px' }}
+                        onClick={isClickable ? () => onRowClick?.(entry) : undefined}
+                      >
+                        <div className="max-w-full">
+                          {renderCellContent(entry, column.key)}
+                        </div>
+                      </td>
+                    );
+                  })}
+                </tr>
+                );
+              })
+            ) : (
+              <tr>
+                <td colSpan={visibleColumns.length + (mode !== 'frames' ? 1 : 0)} className="px-4 py-12 text-center">
+                  <div className="text-gray-400">
+                    <svg className="h-24 w-24 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <p className="text-lg">No entries found</p>
+                    {(searchQuery || Object.keys(filters).length > 0) && (
+                      <p className="text-sm mt-2">Try adjusting your search or filters</p>
+                    )}
+                  </div>
                 </td>
-                {visibleColumns.map((column) => {
-                  const isClickable = onRowClick && column.key !== 'isMwe' && column.key !== 'transitive' && column.key !== 'gloss' && column.key !== 'actions';
-                  const allowsWrap = ['gloss', 'examples', 'legal_constraints', 'roles', 'flaggedReason', 'forbiddenReason', 'frame'].includes(column.key);
-                  const cellClassName = `px-4 py-4 ${allowsWrap ? 'break-words' : 'whitespace-nowrap'} ${isClickable ? 'cursor-pointer' : ''} align-top border-r border-gray-200`;
-                  
-                  return (
-                    <td 
-                      key={column.key}
-                      className={cellClassName}
-                      style={{ width: getColumnWidth(column.key), minWidth: '50px' }}
-                      onClick={isClickable ? () => onRowClick?.(entry) : undefined}
-                    >
-                      {renderCellContent(entry, column.key)}
-                </td>
-                  );
-                })}
               </tr>
-              );
-            })}
+            )}
           </tbody>
         </table>
       </div>
@@ -1658,54 +1966,65 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
       {/* Pagination */}
       <div className="px-4 py-3 border-t border-gray-200 bg-gray-50 flex items-center justify-between">
         <div className="text-sm text-gray-700">
-          Showing {((data.page - 1) * data.limit) + 1} to {Math.min(data.page * data.limit, data.total)} of {data.total} entries
+          {hasData ? (
+            <>Showing {((data.page - 1) * data.limit) + 1} to {Math.min(data.page * data.limit, data.total)} of {data.total} entries</>
+          ) : (
+            <>Showing 0 of {data?.total || 0} entries</>
+          )}
         </div>
         
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => handlePageChange(data.page - 1)}
-            disabled={!data.hasPrev || loading}
-            className="px-4 py-2 text-sm font-medium border border-gray-300 rounded-md hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed bg-white text-gray-700 cursor-pointer"
-          >
-            Previous
-          </button>
-          
-          <div className="flex items-center gap-1">
-            {Array.from({ length: Math.min(5, data.totalPages) }, (_, i) => {
-              const pageNum = Math.max(1, Math.min(data.totalPages - 4, data.page - 2)) + i;
-              if (pageNum > data.totalPages) return null;
-              
-              return (
-                <button
-                  key={pageNum}
-                  onClick={() => handlePageChange(pageNum)}
-                  disabled={loading}
-                  className={`px-4 py-2 text-sm font-semibold border-gray-300 rounded-md min-w-[40px] ${
-                    pageNum === data.page
-                      ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
-                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'
-                  } disabled:opacity-50 transition-colors cursor-pointer`}
-                >
-                  {pageNum}
-                </button>
-              );
-            })}
+        {hasData && (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => handlePageChange(data.page - 1)}
+              disabled={!data.hasPrev || loading}
+              className="px-4 py-2 text-sm font-medium border border-gray-300 rounded-md hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed bg-white text-gray-700 cursor-pointer"
+            >
+              Previous
+            </button>
+            
+            <div className="flex items-center gap-1">
+              {Array.from({ length: Math.min(5, data.totalPages) }, (_, i) => {
+                const pageNum = Math.max(1, Math.min(data.totalPages - 4, data.page - 2)) + i;
+                if (pageNum > data.totalPages) return null;
+                
+                return (
+                  <button
+                    key={pageNum}
+                    onClick={() => handlePageChange(pageNum)}
+                    disabled={loading}
+                    className={`px-4 py-2 text-sm font-semibold border-gray-300 rounded-md min-w-[40px] ${
+                      pageNum === data.page
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'
+                    } disabled:opacity-50 transition-colors cursor-pointer`}
+                  >
+                    {pageNum}
+                  </button>
+                );
+              })}
+            </div>
+            
+            <button
+              onClick={() => handlePageChange(data.page + 1)}
+              disabled={!data.hasNext || loading}
+              className="px-4 py-2 text-sm font-medium border border-gray-300 rounded-md hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed bg-white text-gray-700 cursor-pointer"
+            >
+              Next
+            </button>
           </div>
-          
-          <button
-            onClick={() => handlePageChange(data.page + 1)}
-            disabled={!data.hasNext || loading}
-            className="px-4 py-2 text-sm font-medium border border-gray-300 rounded-md hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed bg-white text-gray-700 cursor-pointer"
-          >
-            Next
-          </button>
-        </div>
+        )}
       </div>
 
       {/* Context Menu */}
       {contextMenu.isOpen && contextMenu.entryId && (() => {
         const entry = data?.data.find(e => e.id === contextMenu.entryId);
         if (!entry) return null;
+
+        // Check if entry is a Frame
+        const isFrameEntry = mode === 'frames' && 'frame_name' in entry;
+        const frameEntry = isFrameEntry ? entry as Frame : null;
+        const tableEntry = !isFrameEntry ? entry as TableEntry : null;
 
         return (
           <div
@@ -1718,10 +2037,21 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
           >
             {/* Entry info header */}
             <div className="px-4 py-2 border-b border-gray-200 bg-gray-50">
-              <div className="text-xs font-mono text-blue-600">{entry.id}</div>
-              <div className="text-xs text-gray-600 mt-1 truncate max-w-xs">
-                {entry.gloss.substring(0, 50)}{entry.gloss.length > 50 ? '...' : ''}
-              </div>
+              {frameEntry ? (
+                <>
+                  <div className="text-xs font-mono text-blue-600">{frameEntry.code || frameEntry.id}</div>
+                  <div className="text-xs text-gray-600 mt-1 truncate max-w-xs">
+                    {frameEntry.frame_name}
+                  </div>
+                </>
+              ) : tableEntry ? (
+                <>
+                  <div className="text-xs font-mono text-blue-600">{tableEntry.id}</div>
+                  <div className="text-xs text-gray-600 mt-1 truncate max-w-xs">
+                    {tableEntry.gloss.substring(0, 50)}{tableEntry.gloss.length > 50 ? '...' : ''}
+                  </div>
+                </>
+              ) : null}
             </div>
 
             {/* Menu items */}
@@ -1729,19 +2059,24 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
               <button
                 onClick={() => {
                   setContextMenu({ isOpen: false, x: 0, y: 0, entryId: null });
-                  router.push(`${graphBasePath}?entry=${entry.id}`);
+                  // For frames, navigate to prototypical_synset; for entries, navigate to the entry itself
+                  const targetId = frameEntry ? frameEntry.prototypical_synset : (tableEntry?.id || '');
+                  router.push(`${graphBasePath}?entry=${targetId}`);
                 }}
                 className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-800 flex items-center gap-2"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
-                Open in Graph Mode
+                {frameEntry ? 'Open Prototypical Synset in Graph Mode' : 'Open in Graph Mode'}
               </button>
 
-              <div className="border-t border-gray-200 my-1"></div>
+              {/* Only show moderation actions for table entries, not frames */}
+              {tableEntry && (
+                <>
+                  <div className="border-t border-gray-200 my-1"></div>
 
-              {!entry.flagged ? (
+                  {!tableEntry.flagged ? (
                 <button
                   onClick={() => handleContextMenuAction('flag')}
                   className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-orange-50 hover:text-orange-800 flex items-center gap-2"
@@ -1763,7 +2098,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
                 </button>
               )}
 
-              {!entry.forbidden ? (
+              {!tableEntry.forbidden ? (
                 <button
                   onClick={() => handleContextMenuAction('forbid')}
                   className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-red-50 hover:text-red-800 flex items-center gap-2"
@@ -1784,6 +2119,8 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
                   Allow Entry
                 </button>
               )}
+                </>
+              )}
             </div>
           </div>
         );
@@ -1792,11 +2129,13 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
       {/* Moderation Modal */}
       {moderationModal.isOpen && (() => {
         const selectedEntries = data?.data.filter(entry => selection.selectedIds.has(entry.id)) || [];
+        // Filter to only TableEntry items (frames don't have flagged/forbidden)
+        const moderatableEntries = selectedEntries.filter((e): e is TableEntry => 'flagged' in e);
         const existingReasons = {
-          flagged: selectedEntries
+          flagged: moderatableEntries
             .filter(e => e.flagged && e.flaggedReason)
             .map(e => ({ id: e.id, reason: e.flaggedReason! })),
-          forbidden: selectedEntries
+          forbidden: moderatableEntries
             .filter(e => e.forbidden && e.forbiddenReason)
             .map(e => ({ id: e.id, reason: e.forbiddenReason! }))
         };
@@ -1908,7 +2247,9 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
         const frameSummary = (() => {
           if (selectedEntries.length === 0) return [];
           const counts = new Map<string, { label: string; count: number }>();
-          selectedEntries.forEach(entry => {
+          // Only verbs have frame property
+          const verbEntries = selectedEntries.filter((e): e is TableEntry => 'frame' in e);
+          verbEntries.forEach(entry => {
             const key = entry.frame ?? '__NONE__';
             const label = entry.frame ?? 'No frame assigned';
             const existing = counts.get(key);

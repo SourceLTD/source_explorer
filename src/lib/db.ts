@@ -1,7 +1,7 @@
 import { unstable_cache, revalidateTag } from 'next/cache';
 import { prisma } from './prisma';
 import { withRetry } from './db-utils'; 
-import { RelationType, type Verb, type VerbWithRelations, type VerbRelation, type GraphNode, type SearchResult, type PaginationParams, type PaginatedResult, type TableEntry, type EntryRecipes, type Recipe, type RecipePredicateNode, type RecipePredicateRoleMapping, type LogicNode, type LogicNodeKind } from './types';
+import { RelationType, type Verb, type VerbWithRelations, type VerbRelation, type GraphNode, type SearchResult, type PaginationParams, type PaginatedResult, type TableEntry, type EntryRecipes, type Recipe, type RecipePredicateNode, type RecipePredicateRoleMapping, type LogicNode, type LogicNodeKind, type Frame, type FramePaginationParams } from './types';
 import type { verbs as PrismaVerb, verb_relations as PrismaVerbRelation } from '@prisma/client';
 import { Prisma } from '@prisma/client';
 
@@ -92,17 +92,20 @@ type PrismaEntryWithCounts = {
 
 export async function getEntryById(id: string): Promise<VerbWithRelations | null> {
   const entry = await withRetry(
-    () => prisma.verbs.findUnique({
-      where: { code: id } as unknown as Prisma.verbsWhereUniqueInput, // Query by code (human-readable ID)
+    () => prisma.verbs.findFirst({
+      where: { 
+        code: id,
+        deleted: { not: true }
+      } as Prisma.verbsWhereInput, // Query by code (human-readable ID)
       include: {
         verb_relations_verb_relations_source_idToverbs: {
           include: {
-            verbs_verb_relations_target_idToverbs: true,
+            verbs_verb_relations_target_idToverbs: true
           },
         },
         verb_relations_verb_relations_target_idToverbs: {
           include: {
-            verbs_verb_relations_source_idToverbs: true,
+            verbs_verb_relations_source_idToverbs: true
           },
         },
       },
@@ -138,42 +141,46 @@ export async function getEntryById(id: string): Promise<VerbWithRelations | null
     legal_constraints: entry.legal_constraints || undefined,
     createdAt: entry.created_at,
     updatedAt: entry.updated_at,
-    sourceRelations: verb_relations_verb_relations_source_idToverbs.map(rel => ({
-      sourceId: rel.source_id.toString(),
-      targetId: rel.target_id.toString(),
-      type: rel.type as RelationType,
-      target: rel.verbs_verb_relations_target_idToverbs ? {
-        ...rel.verbs_verb_relations_target_idToverbs,
-        id: (rel.verbs_verb_relations_target_idToverbs as { code?: string }).code || rel.verbs_verb_relations_target_idToverbs.id.toString(),
-        frame_id: (rel.verbs_verb_relations_target_idToverbs as { frame_id?: bigint | null }).frame_id?.toString() ?? null,
-        transitive: rel.verbs_verb_relations_target_idToverbs.transitive || undefined,
-        flagged: rel.verbs_verb_relations_target_idToverbs.flagged ?? undefined,
-        flaggedReason: (rel.verbs_verb_relations_target_idToverbs as PrismaEntryWithOptionalFields).flaggedReason || undefined,
-        forbidden: rel.verbs_verb_relations_target_idToverbs.forbidden ?? undefined,
-        forbiddenReason: (rel.verbs_verb_relations_target_idToverbs as PrismaEntryWithOptionalFields).forbiddenReason || undefined
-      } as unknown as Verb : undefined,
-    })),
-    targetRelations: verb_relations_verb_relations_target_idToverbs.map(rel => ({
-      sourceId: rel.source_id.toString(),
-      targetId: rel.target_id.toString(),
-      type: rel.type as RelationType,
-      source: rel.verbs_verb_relations_source_idToverbs ? {
-        ...rel.verbs_verb_relations_source_idToverbs,
-        id: (rel.verbs_verb_relations_source_idToverbs as { code?: string }).code || rel.verbs_verb_relations_source_idToverbs.id.toString(),
-        frame_id: (rel.verbs_verb_relations_source_idToverbs as { frame_id?: bigint | null }).frame_id?.toString() ?? null,
-        transitive: rel.verbs_verb_relations_source_idToverbs.transitive || undefined,
-        flagged: rel.verbs_verb_relations_source_idToverbs.flagged ?? undefined,
-        flaggedReason: (rel.verbs_verb_relations_source_idToverbs as PrismaEntryWithOptionalFields).flaggedReason || undefined,
-        forbidden: rel.verbs_verb_relations_source_idToverbs.forbidden ?? undefined,
-        forbiddenReason: (rel.verbs_verb_relations_source_idToverbs as PrismaEntryWithOptionalFields).forbiddenReason || undefined
-      } as unknown as Verb : undefined,
-    })),
+    sourceRelations: verb_relations_verb_relations_source_idToverbs
+      .filter(rel => rel.verbs_verb_relations_target_idToverbs && !rel.verbs_verb_relations_target_idToverbs.deleted)
+      .map(rel => ({
+        sourceId: rel.source_id.toString(),
+        targetId: rel.target_id.toString(),
+        type: rel.type as RelationType,
+        target: rel.verbs_verb_relations_target_idToverbs ? {
+          ...rel.verbs_verb_relations_target_idToverbs,
+          id: (rel.verbs_verb_relations_target_idToverbs as { code?: string }).code || rel.verbs_verb_relations_target_idToverbs.id.toString(),
+          frame_id: (rel.verbs_verb_relations_target_idToverbs as { frame_id?: bigint | null }).frame_id?.toString() ?? null,
+          transitive: rel.verbs_verb_relations_target_idToverbs.transitive || undefined,
+          flagged: rel.verbs_verb_relations_target_idToverbs.flagged ?? undefined,
+          flaggedReason: (rel.verbs_verb_relations_target_idToverbs as PrismaEntryWithOptionalFields).flaggedReason || undefined,
+          forbidden: rel.verbs_verb_relations_target_idToverbs.forbidden ?? undefined,
+          forbiddenReason: (rel.verbs_verb_relations_target_idToverbs as PrismaEntryWithOptionalFields).forbiddenReason || undefined
+        } as unknown as Verb : undefined,
+      })),
+    targetRelations: verb_relations_verb_relations_target_idToverbs
+      .filter(rel => rel.verbs_verb_relations_source_idToverbs && !rel.verbs_verb_relations_source_idToverbs.deleted)
+      .map(rel => ({
+        sourceId: rel.source_id.toString(),
+        targetId: rel.target_id.toString(),
+        type: rel.type as RelationType,
+        source: rel.verbs_verb_relations_source_idToverbs ? {
+          ...rel.verbs_verb_relations_source_idToverbs,
+          id: (rel.verbs_verb_relations_source_idToverbs as { code?: string }).code || rel.verbs_verb_relations_source_idToverbs.id.toString(),
+          frame_id: (rel.verbs_verb_relations_source_idToverbs as { frame_id?: bigint | null }).frame_id?.toString() ?? null,
+          transitive: rel.verbs_verb_relations_source_idToverbs.transitive || undefined,
+          flagged: rel.verbs_verb_relations_source_idToverbs.flagged ?? undefined,
+          flaggedReason: (rel.verbs_verb_relations_source_idToverbs as PrismaEntryWithOptionalFields).flaggedReason || undefined,
+          forbidden: rel.verbs_verb_relations_source_idToverbs.forbidden ?? undefined,
+          forbiddenReason: (rel.verbs_verb_relations_source_idToverbs as PrismaEntryWithOptionalFields).forbiddenReason || undefined
+        } as unknown as Verb : undefined,
+      })),
   };
 }
 
-export async function searchEntries(query: string, limit = 20, table: 'verbs' | 'nouns' | 'adjectives' = 'verbs'): Promise<SearchResult[]> {
+export async function searchEntries(query: string, limit = 20, table: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' = 'verbs'): Promise<SearchResult[]> {
   // Map table to POS character
-  const posMap = { verbs: 'v', nouns: 'n', adjectives: 'a' };
+  const posMap = { verbs: 'v', nouns: 'n', adjectives: 'a', adverbs: 'r' };
   const pos = posMap[table];
   
   // If query contains a dot, only search IDs
@@ -199,8 +206,9 @@ export async function searchEntries(query: string, limit = 20, table: 'verbs' | 
         END as rank
       FROM ${Prisma.raw(table)}
       WHERE 
-        code ILIKE ${query + '%'} OR
-        legacy_id ILIKE ${query + '%'}
+        (code ILIKE ${query + '%'} OR
+        legacy_id ILIKE ${query + '%'})
+        AND (deleted = false OR deleted IS NULL)
       ORDER BY rank DESC, code
       LIMIT ${limit}
     `,
@@ -240,6 +248,7 @@ export async function searchEntries(query: string, limit = 20, table: 'verbs' | 
       ) as rank
     FROM ${Prisma.raw(table)}
     WHERE 
+      (
       -- Full text search (handles natural language and phrases)
       gloss_tsv @@ websearch_to_tsquery('english', ${query}) OR
       examples_tsv @@ websearch_to_tsquery('english', ${query}) OR
@@ -251,6 +260,8 @@ export async function searchEntries(query: string, limit = 20, table: 'verbs' | 
       EXISTS (SELECT 1 FROM unnest(src_lemmas) AS l2 WHERE l2 ILIKE ${query + '%'}) OR
       -- Fallback substring match on gloss for phrases that FTS might miss
       gloss ILIKE ${'%' + query + '%'}
+      )
+      AND (deleted = false OR deleted IS NULL)
     ORDER BY rank DESC, code
     LIMIT ${limit}
   `,
@@ -265,8 +276,11 @@ export async function searchEntries(query: string, limit = 20, table: 'verbs' | 
 export async function getRecipesForEntryInternal(entryId: string): Promise<EntryRecipes> {
   // First get the numeric ID from the code
   const entry = await withRetry(
-    () => prisma.verbs.findUnique({
-      where: { code: entryId } as unknown as Prisma.verbsWhereUniqueInput,
+    () => prisma.verbs.findFirst({
+      where: { 
+        code: entryId,
+        deleted: { not: true }
+      } as Prisma.verbsWhereInput,
       select: { id: true }
     }),
     undefined,
@@ -348,6 +362,7 @@ export async function getRecipesForEntryInternal(entryId: string): Promise<Entry
       FROM recipe_predicates rp
       JOIN verbs le ON le.id = rp.predicate_verb_id
       WHERE rp.recipe_id = ANY(${recipeIds}::bigint[])
+        AND (le.deleted = false OR le.deleted IS NULL)
       ORDER BY COALESCE(rp.position, 0) ASC
     `,
     undefined,
@@ -837,7 +852,9 @@ export async function updateEntry(id: string, updates: Partial<Pick<Verb, 'gloss
 
   const updatedEntry = await withRetry(
     () => prisma.verbs.update({
-    where: { code: id } as unknown as Prisma.verbsWhereUniqueInput, // Query by code (human-readable ID)
+    where: { 
+      code: id
+    } as unknown as Prisma.verbsWhereUniqueInput, // Query by code (human-readable ID)
     data: prismaUpdates,
     include: {
       verb_relations_verb_relations_source_idToverbs: {
@@ -886,35 +903,39 @@ export async function updateEntry(id: string, updates: Partial<Pick<Verb, 'gloss
     legal_constraints: updatedEntry.legal_constraints || undefined,
     createdAt: updatedEntry.created_at,
     updatedAt: updatedEntry.updated_at,
-    sourceRelations: verb_relations_verb_relations_source_idToverbs.map(rel => ({
-      sourceId: rel.source_id.toString(),
-      targetId: rel.target_id.toString(),
-      type: rel.type as RelationType,
-      target: rel.verbs_verb_relations_target_idToverbs ? {
-        ...rel.verbs_verb_relations_target_idToverbs,
-        id: (rel.verbs_verb_relations_target_idToverbs as { code?: string }).code || rel.verbs_verb_relations_target_idToverbs.id.toString(),
-        frame_id: (rel.verbs_verb_relations_target_idToverbs as { frame_id?: bigint | null }).frame_id?.toString() ?? null,
-        transitive: rel.verbs_verb_relations_target_idToverbs.transitive || undefined,
-        flagged: rel.verbs_verb_relations_target_idToverbs.flagged ?? undefined,
-        flaggedReason: (rel.verbs_verb_relations_target_idToverbs as PrismaEntryWithOptionalFields).flaggedReason || undefined,
-        forbidden: rel.verbs_verb_relations_target_idToverbs.forbidden ?? undefined,
-        forbiddenReason: (rel.verbs_verb_relations_target_idToverbs as PrismaEntryWithOptionalFields).forbiddenReason || undefined
-      } as unknown as Verb : undefined,
+    sourceRelations: verb_relations_verb_relations_source_idToverbs
+      .filter(rel => rel.verbs_verb_relations_target_idToverbs && !rel.verbs_verb_relations_target_idToverbs.deleted)
+      .map(rel => ({
+        sourceId: rel.source_id.toString(),
+        targetId: rel.target_id.toString(),
+        type: rel.type as RelationType,
+        target: rel.verbs_verb_relations_target_idToverbs ? {
+          ...rel.verbs_verb_relations_target_idToverbs,
+          id: (rel.verbs_verb_relations_target_idToverbs as { code?: string }).code || rel.verbs_verb_relations_target_idToverbs.id.toString(),
+          frame_id: (rel.verbs_verb_relations_target_idToverbs as { frame_id?: bigint | null }).frame_id?.toString() ?? null,
+          transitive: rel.verbs_verb_relations_target_idToverbs.transitive || undefined,
+          flagged: rel.verbs_verb_relations_target_idToverbs.flagged ?? undefined,
+          flaggedReason: (rel.verbs_verb_relations_target_idToverbs as PrismaEntryWithOptionalFields).flaggedReason || undefined,
+          forbidden: rel.verbs_verb_relations_target_idToverbs.forbidden ?? undefined,
+          forbiddenReason: (rel.verbs_verb_relations_target_idToverbs as PrismaEntryWithOptionalFields).forbiddenReason || undefined
+        } as unknown as Verb : undefined,
       } as VerbRelation)),
-    targetRelations: verb_relations_verb_relations_target_idToverbs.map(rel => ({
-      sourceId: rel.source_id.toString(),
-      targetId: rel.target_id.toString(),
-      type: rel.type as RelationType,
-      source: rel.verbs_verb_relations_source_idToverbs ? {
-        ...rel.verbs_verb_relations_source_idToverbs,
-        id: (rel.verbs_verb_relations_source_idToverbs as { code?: string }).code || rel.verbs_verb_relations_source_idToverbs.id.toString(),
-        frame_id: (rel.verbs_verb_relations_source_idToverbs as { frame_id?: bigint | null }).frame_id?.toString() ?? null,
-        transitive: rel.verbs_verb_relations_source_idToverbs.transitive || undefined,
-        flagged: rel.verbs_verb_relations_source_idToverbs.flagged ?? undefined,
-        flaggedReason: (rel.verbs_verb_relations_source_idToverbs as PrismaEntryWithOptionalFields).flaggedReason || undefined,
-        forbidden: rel.verbs_verb_relations_source_idToverbs.forbidden ?? undefined,
-        forbiddenReason: (rel.verbs_verb_relations_source_idToverbs as PrismaEntryWithOptionalFields).forbiddenReason || undefined
-      } as unknown as Verb : undefined,
+    targetRelations: verb_relations_verb_relations_target_idToverbs
+      .filter(rel => rel.verbs_verb_relations_source_idToverbs && !rel.verbs_verb_relations_source_idToverbs.deleted)
+      .map(rel => ({
+        sourceId: rel.source_id.toString(),
+        targetId: rel.target_id.toString(),
+        type: rel.type as RelationType,
+        source: rel.verbs_verb_relations_source_idToverbs ? {
+          ...rel.verbs_verb_relations_source_idToverbs,
+          id: (rel.verbs_verb_relations_source_idToverbs as { code?: string }).code || rel.verbs_verb_relations_source_idToverbs.id.toString(),
+          frame_id: (rel.verbs_verb_relations_source_idToverbs as { frame_id?: bigint | null }).frame_id?.toString() ?? null,
+          transitive: rel.verbs_verb_relations_source_idToverbs.transitive || undefined,
+          flagged: rel.verbs_verb_relations_source_idToverbs.flagged ?? undefined,
+          flaggedReason: (rel.verbs_verb_relations_source_idToverbs as PrismaEntryWithOptionalFields).flaggedReason || undefined,
+          forbidden: rel.verbs_verb_relations_source_idToverbs.forbidden ?? undefined,
+          forbiddenReason: (rel.verbs_verb_relations_source_idToverbs as PrismaEntryWithOptionalFields).forbiddenReason || undefined
+        } as unknown as Verb : undefined,
       } as VerbRelation)),
   };
 }
@@ -1067,8 +1088,11 @@ async function updateEntryRoleGroups(entryId: string, roleGroups?: unknown[]) {
 async function getVerbGraphNode(entryId: string): Promise<GraphNode | null> {
   // Use a more efficient query that only fetches what we need
   const entry = await withRetry(
-    () => prisma.verbs.findUnique({
-      where: { code: entryId } as unknown as Prisma.verbsWhereUniqueInput, // Query by code (human-readable ID)
+    () => prisma.verbs.findFirst({
+      where: { 
+        code: entryId,
+        deleted: { not: true }
+      } as Prisma.verbsWhereInput, // Query by code (human-readable ID)
       include: {
         frames: {
           select: {
@@ -1078,7 +1102,11 @@ async function getVerbGraphNode(entryId: string): Promise<GraphNode | null> {
             frame_name: true,
             definition: true,
             short_definition: true,
+            prototypical_synset: true,
+            prototypical_synset_definition: true,
             is_supporting_frame: true,
+            created_at: true,
+            updated_at: true,
           } as Prisma.framesSelect
         },
         verb_relations_verb_relations_source_idToverbs: {
@@ -1104,6 +1132,7 @@ async function getVerbGraphNode(entryId: string): Promise<GraphNode | null> {
                 forbidden_reason: true,
                 flagged: true,
                 flagged_reason: true,
+                deleted: true,
               } as Prisma.verbsSelect
             }
           }
@@ -1129,6 +1158,7 @@ async function getVerbGraphNode(entryId: string): Promise<GraphNode | null> {
                 forbidden_reason: true,
                 flagged: true,
                 flagged_reason: true,
+                deleted: true,
               } as Prisma.verbsSelect
             }
           }
@@ -1200,7 +1230,10 @@ async function getVerbGraphNode(entryId: string): Promise<GraphNode | null> {
 
   // Get parents (hypernyms) - these are broader concepts
   const parents: GraphNode[] = entry.verb_relations_verb_relations_source_idToverbs
-    .filter(rel => rel.type === 'hypernym' && rel.verbs_verb_relations_target_idToverbs)
+    .filter(rel => {
+      const target = rel.verbs_verb_relations_target_idToverbs;
+      return rel.type === 'hypernym' && target && target.deleted !== true;
+    })
     .map(rel => {
       const target = rel.verbs_verb_relations_target_idToverbs as { id: bigint | string; code?: string };
       return {
@@ -1228,7 +1261,10 @@ async function getVerbGraphNode(entryId: string): Promise<GraphNode | null> {
 
   // Get children (hyponyms) - these are more specific concepts
   const children: GraphNode[] = entry.verb_relations_verb_relations_target_idToverbs
-    .filter(rel => rel.type === 'hypernym' && rel.verbs_verb_relations_source_idToverbs)
+    .filter(rel => {
+      const source = rel.verbs_verb_relations_source_idToverbs;
+      return rel.type === 'hypernym' && source && source.deleted !== true;
+    })
     .map(rel => {
       const source = rel.verbs_verb_relations_source_idToverbs as { id: bigint | string; code?: string };
       return {
@@ -1256,7 +1292,10 @@ async function getVerbGraphNode(entryId: string): Promise<GraphNode | null> {
 
   // Get entails relationships
   const entails: GraphNode[] = entry.verb_relations_verb_relations_source_idToverbs
-    .filter(rel => rel.type === 'entails' && rel.verbs_verb_relations_target_idToverbs)
+    .filter(rel => {
+      const target = rel.verbs_verb_relations_target_idToverbs;
+      return rel.type === 'entails' && target && target.deleted !== true;
+    })
     .map(rel => {
       const target = rel.verbs_verb_relations_target_idToverbs as { id: bigint | string; code?: string };
       return {
@@ -1284,7 +1323,10 @@ async function getVerbGraphNode(entryId: string): Promise<GraphNode | null> {
 
   // Get causes relationships
   const causes: GraphNode[] = entry.verb_relations_verb_relations_source_idToverbs
-    .filter(rel => rel.type === 'causes' && rel.verbs_verb_relations_target_idToverbs)
+    .filter(rel => {
+      const target = rel.verbs_verb_relations_target_idToverbs;
+      return rel.type === 'causes' && target && target.deleted !== true;
+    })
     .map(rel => {
       const target = rel.verbs_verb_relations_target_idToverbs as { id: bigint | string; code?: string };
       return {
@@ -1312,7 +1354,10 @@ async function getVerbGraphNode(entryId: string): Promise<GraphNode | null> {
 
   // Get also_see relationships
   const alsoSee: GraphNode[] = entry.verb_relations_verb_relations_source_idToverbs
-    .filter(rel => rel.type === 'also_see' && rel.verbs_verb_relations_target_idToverbs)
+    .filter(rel => {
+      const target = rel.verbs_verb_relations_target_idToverbs;
+      return rel.type === 'also_see' && target && target.deleted !== true;
+    })
     .map(rel => {
       const target = rel.verbs_verb_relations_target_idToverbs as { id: bigint | string; code?: string };
       return {
@@ -1414,7 +1459,12 @@ async function getVerbGraphNode(entryId: string): Promise<GraphNode | null> {
           frame_name: frameData.frame_name,
           definition: frameData.definition,
           short_definition: frameData.short_definition,
+          prototypical_synset: (frameData as any).prototypical_synset,
+          prototypical_synset_definition: (frameData as any).prototypical_synset_definition,
           is_supporting_frame: frameData.is_supporting_frame,
+          code: frameData.code || frameData.id.toString(),
+          createdAt: (frameData as any).created_at,
+          updatedAt: (frameData as any).updated_at,
         }
       : null,
     roles,
@@ -1821,6 +1871,7 @@ async function getAncestorPathInternal(entryId: string): Promise<GraphNode[]> {
           0 as depth
         FROM verbs e
         WHERE e.code = ${entryId}
+          AND (e.deleted = false OR e.deleted IS NULL)
         
         UNION ALL
         
@@ -1843,6 +1894,7 @@ async function getAncestorPathInternal(entryId: string): Promise<GraphNode[]> {
           FROM verb_relations r
           INNER JOIN verbs e ON r.target_id = e.id
           WHERE r.source_id = ap.id AND r.type = 'hypernym'
+            AND (e.deleted = false OR e.deleted IS NULL)
           ORDER BY e.code
           LIMIT 1
         ) e ON true
@@ -1895,7 +1947,8 @@ export async function updateModerationStatus(
     flaggedReason?: string; 
     forbidden?: boolean; 
     forbiddenReason?: string; 
-  }
+  },
+  lexicalType: LexicalType = 'verbs'
 ): Promise<number> {
   // Transform camelCase to snake_case for Prisma
   const prismaUpdates: Record<string, unknown> = {};
@@ -1904,14 +1957,58 @@ export async function updateModerationStatus(
   if (updates.forbidden !== undefined) prismaUpdates.forbidden = updates.forbidden;
   if (updates.forbiddenReason !== undefined) prismaUpdates.forbidden_reason = updates.forbiddenReason;
 
-  const result = await prisma.verbs.updateMany({
-    where: {
-      code: {
-        in: ids // ids are now codes (human-readable IDs)
-      }
-    } as Prisma.verbsWhereInput,
-    data: prismaUpdates
-  });
+  let result;
+  
+  // Update the correct table based on lexical type
+  switch (lexicalType) {
+    case 'verbs':
+      result = await prisma.verbs.updateMany({
+        where: {
+          code: {
+            in: ids
+          },
+          deleted: false
+        } as Prisma.verbsWhereInput,
+        data: prismaUpdates
+      });
+      break;
+    
+    case 'nouns':
+      result = await prisma.nouns.updateMany({
+        where: {
+          code: {
+            in: ids
+          }
+        } as Prisma.nounsWhereInput,
+        data: prismaUpdates
+      });
+      break;
+    
+    case 'adjectives':
+      result = await prisma.adjectives.updateMany({
+        where: {
+          code: {
+            in: ids
+          }
+        } as Prisma.adjectivesWhereInput,
+        data: prismaUpdates
+      });
+      break;
+    
+    case 'adverbs':
+      result = await prisma.adverbs.updateMany({
+        where: {
+          code: {
+            in: ids
+          }
+        } as Prisma.adverbsWhereInput,
+        data: prismaUpdates
+      });
+      break;
+    
+    default:
+      throw new Error(`Unsupported lexical type: ${lexicalType}`);
+  }
 
   // Invalidate all caches since moderation status affects display
   revalidateAllEntryCaches();
@@ -1958,6 +2055,7 @@ export async function updateFramesForEntries(
       code: {
         in: ids,
       },
+      deleted: false
     } as Prisma.verbsWhereInput,
     data: {
       frame_id: resolvedFrameId,
@@ -1972,7 +2070,7 @@ export async function updateFramesForEntries(
 export async function getPaginatedEntries(params: PaginationParams = {}): Promise<PaginatedResult<TableEntry>> {
   const {
     page = 1,
-    limit = 20,
+    limit: rawLimit = 20,
     sortBy = 'id',
     sortOrder = 'asc',
     search,
@@ -1983,7 +2081,6 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
     lemmas,
     examples,
     particles,
-    frames,
     flaggedReason,
     forbiddenReason,
     isMwe,
@@ -2001,11 +2098,18 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
     flaggedByJobId
   } = params;
 
+  // Handle "show all" case where limit is -1
+  const limit = rawLimit === -1 ? 20000 : rawLimit;
   const skip = (page - 1) * limit;
 
   // Build where clause
   const whereClause: Record<string, unknown> = {};
   const andConditions: Record<string, unknown>[] = [];
+  
+  // Always filter out deleted entries
+  andConditions.push({ 
+    deleted: false
+  });
   
   // Global search (legacy)
   if (search) {
@@ -2157,13 +2261,8 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
     });
   }
 
-  if (frames) {
-    andConditions.push({
-      frames: {
-        hasSome: frames.split(/[\s,]+/).filter(Boolean)
-      }
-    });
-  }
+  // Note: 'frames' filter removed - verbs table doesn't have a frames array field
+  // It only has frame_id (BigInt) and secondary_frame_id (BigInt)
 
   // Reason text filters
   if (flaggedReason) {
@@ -2517,6 +2616,1137 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
       : b.childrenCount - a.childrenCount
     );
   }
+
+  const totalPages = Math.ceil(total / limit);
+
+  return {
+    data,
+    total,
+    page,
+    limit,
+    totalPages,
+    hasNext: page < totalPages,
+    hasPrev: page > 1
+  };
+}
+
+export async function getPaginatedNouns(params: PaginationParams = {}): Promise<PaginatedResult<TableEntry>> {
+  const {
+    page = 1,
+    limit: rawLimit = 20,
+    sortBy = 'id',
+    sortOrder = 'asc',
+    search,
+    lexfile,
+    gloss,
+    lemmas,
+    examples,
+    flaggedReason,
+    forbiddenReason,
+    isMwe,
+    flagged,
+    forbidden,
+    parentsCountMin,
+    parentsCountMax,
+    childrenCountMin,
+    childrenCountMax,
+    createdAfter,
+    createdBefore,
+    updatedAfter,
+    updatedBefore,
+  } = params;
+
+  // Handle "show all" case where limit is -1
+  const limit = rawLimit === -1 ? 20000 : rawLimit;
+  const skip = (page - 1) * limit;
+
+  // Build where clause
+  const whereClause: Record<string, unknown> = {};
+  const andConditions: Record<string, unknown>[] = [];
+  
+  // Note: nouns don't have a 'deleted' field, so no filter needed
+  
+  // Global search
+  if (search) {
+    andConditions.push({
+      OR: [
+        {
+          gloss: {
+            contains: search,
+            mode: 'insensitive'
+          }
+        },
+        {
+          lemmas: {
+            hasSome: [search]
+          }
+        },
+        {
+          src_lemmas: {
+            hasSome: [search]
+          }
+        },
+        {
+          examples: {
+            hasSome: search.split(' ')
+          }
+        }
+      ]
+    });
+  }
+
+  if (lexfile) {
+    const lexfiles = lexfile.split(',').map(lf => lf.trim()).filter(Boolean);
+    if (lexfiles.length > 0) {
+      andConditions.push({
+        lexfile: {
+          in: lexfiles
+        }
+      });
+    }
+  }
+
+  // Advanced text filters
+  if (gloss) {
+    andConditions.push({
+      gloss: {
+        contains: gloss,
+        mode: 'insensitive'
+      }
+    });
+  }
+
+  if (lemmas) {
+    const lemmaTerms = lemmas.split(/[\s,]+/).filter(Boolean);
+    andConditions.push({
+      OR: [
+        {
+          lemmas: {
+            hasSome: lemmaTerms
+          }
+        },
+        {
+          src_lemmas: {
+            hasSome: lemmaTerms
+          }
+        }
+      ]
+    });
+  }
+
+  if (examples) {
+    andConditions.push({
+      examples: {
+        hasSome: examples.split(/[\s,]+/).filter(Boolean)
+      }
+    });
+  }
+
+  // Reason text filters
+  if (flaggedReason) {
+    andConditions.push({
+      flagged_reason: {
+        contains: flaggedReason,
+        mode: 'insensitive'
+      }
+    } as Prisma.nounsWhereInput);
+  }
+
+  if (forbiddenReason) {
+    andConditions.push({
+      forbidden_reason: {
+        contains: forbiddenReason,
+        mode: 'insensitive'
+      }
+    } as Prisma.nounsWhereInput);
+  }
+
+  // Boolean filters
+  if (isMwe !== undefined) {
+    andConditions.push({ is_mwe: isMwe });
+  }
+
+  if (flagged !== undefined) {
+    andConditions.push({ flagged });
+  }
+
+  if (forbidden !== undefined) {
+    andConditions.push({ forbidden });
+  }
+
+  // Date filters
+  if (createdAfter) {
+    andConditions.push({
+      created_at: {
+        gte: new Date(createdAfter)
+      }
+    });
+  }
+
+  if (createdBefore) {
+    andConditions.push({
+      created_at: {
+        lte: new Date(createdBefore + 'T23:59:59.999Z')
+      }
+    });
+  }
+
+  if (updatedAfter) {
+    andConditions.push({
+      updated_at: {
+        gte: new Date(updatedAfter)
+      }
+    });
+  }
+
+  if (updatedBefore) {
+    andConditions.push({
+      updated_at: {
+        lte: new Date(updatedBefore + 'T23:59:59.999Z')
+      }
+    });
+  }
+
+  // Combine all conditions
+  if (andConditions.length > 0) {
+    whereClause.AND = andConditions;
+  }
+
+  // Get total count
+  const total = await withRetry(
+    () => prisma.nouns.count({
+      where: whereClause
+    }),
+    undefined,
+    'getPaginatedNouns:count'
+  );
+
+  // Build order clause
+  const orderBy: Record<string, unknown> = {};
+  
+  let actualSortBy = sortBy;
+  if (sortBy === 'src_id') {
+    actualSortBy = 'legacy_id';
+  }
+  
+  if (actualSortBy === 'lemmas' || actualSortBy === 'src_lemmas') {
+    orderBy[actualSortBy] = sortOrder;
+  } else if (actualSortBy === 'parentsCount' || actualSortBy === 'childrenCount') {
+    orderBy.id = sortOrder;
+  } else {
+    orderBy[actualSortBy] = sortOrder;
+  }
+
+  // Fetch nouns with relation counts
+  const nouns = await withRetry(
+    () => prisma.nouns.findMany({
+    where: whereClause,
+    skip,
+    take: limit,
+    orderBy,
+    include: {
+      _count: {
+        select: {
+          noun_relations_noun_relations_source_idTonouns: {
+            where: { type: 'hypernym' }
+          },
+          noun_relations_noun_relations_target_idTonouns: {
+            where: { type: 'hyponym' }
+          }
+        }
+      }
+    }
+  }),
+    undefined,
+    'getPaginatedNouns:findMany'
+  );
+
+  // Transform to TableEntry format
+  let data: TableEntry[] = nouns.map(noun => {
+    const nounCode = noun.code || noun.id.toString();
+    
+    return {
+      id: nounCode,
+      legacy_id: noun.legacy_id,
+      lemmas: noun.lemmas,
+      src_lemmas: noun.src_lemmas,
+      gloss: noun.gloss,
+      pos: 'n',
+      lexfile: noun.lexfile,
+      isMwe: noun.is_mwe,
+      transitive: undefined,
+      particles: [],
+      examples: noun.examples,
+      flagged: noun.flagged ?? undefined,
+      flaggedReason: noun.flagged_reason || undefined,
+      forbidden: noun.forbidden ?? undefined,
+      forbiddenReason: noun.forbidden_reason || undefined,
+      frame_id: null,
+      frame: null,
+      vendler_class: null,
+      legal_constraints: noun.legal_constraints || [],
+      roles: [],
+      role_groups: [],
+      parentsCount: noun._count.noun_relations_noun_relations_source_idTonouns,
+      childrenCount: noun._count.noun_relations_noun_relations_target_idTonouns,
+      createdAt: noun.created_at,
+      updatedAt: noun.updated_at
+    };
+  });
+
+  // Apply numeric filters on computed fields
+  if (parentsCountMin !== undefined) {
+    data = data.filter(entry => entry.parentsCount >= parentsCountMin);
+  }
+  if (parentsCountMax !== undefined) {
+    data = data.filter(entry => entry.parentsCount <= parentsCountMax);
+  }
+  if (childrenCountMin !== undefined) {
+    data = data.filter(entry => entry.childrenCount >= childrenCountMin);
+  }
+  if (childrenCountMax !== undefined) {
+    data = data.filter(entry => entry.childrenCount <= childrenCountMax);
+  }
+
+  // Sort by computed fields if needed
+  if (sortBy === 'parentsCount') {
+    data.sort((a, b) => sortOrder === 'asc' 
+      ? a.parentsCount - b.parentsCount 
+      : b.parentsCount - a.parentsCount
+    );
+  } else if (sortBy === 'childrenCount') {
+    data.sort((a, b) => sortOrder === 'asc' 
+      ? a.childrenCount - b.childrenCount 
+      : b.childrenCount - a.childrenCount
+    );
+  }
+
+  const totalPages = Math.ceil(total / limit);
+
+  return {
+    data,
+    total,
+    page,
+    limit,
+    totalPages,
+    hasNext: page < totalPages,
+    hasPrev: page > 1
+  };
+}
+
+export async function getPaginatedAdjectives(params: PaginationParams = {}): Promise<PaginatedResult<TableEntry>> {
+  const {
+    page = 1,
+    limit: rawLimit = 20,
+    sortBy = 'id',
+    sortOrder = 'asc',
+    search,
+    lexfile,
+    gloss,
+    lemmas,
+    examples,
+    flaggedReason,
+    forbiddenReason,
+    isMwe,
+    flagged,
+    forbidden,
+    parentsCountMin,
+    parentsCountMax,
+    childrenCountMin,
+    childrenCountMax,
+    createdAfter,
+    createdBefore,
+    updatedAfter,
+    updatedBefore,
+  } = params;
+
+  // Handle "show all" case where limit is -1
+  const limit = rawLimit === -1 ? 20000 : rawLimit;
+  const skip = (page - 1) * limit;
+
+  // Build where clause
+  const whereClause: Record<string, unknown> = {};
+  const andConditions: Record<string, unknown>[] = [];
+  
+  // Note: adjectives don't have a 'deleted' field, so no filter needed
+  
+  // Global search
+  if (search) {
+    andConditions.push({
+      OR: [
+        {
+          gloss: {
+            contains: search,
+            mode: 'insensitive'
+          }
+        },
+        {
+          lemmas: {
+            hasSome: [search]
+          }
+        },
+        {
+          src_lemmas: {
+            hasSome: [search]
+          }
+        },
+        {
+          examples: {
+            hasSome: search.split(' ')
+          }
+        }
+      ]
+    });
+  }
+
+  if (lexfile) {
+    const lexfiles = lexfile.split(',').map(lf => lf.trim()).filter(Boolean);
+    if (lexfiles.length > 0) {
+      andConditions.push({
+        lexfile: {
+          in: lexfiles
+        }
+      });
+    }
+  }
+
+  // Advanced text filters
+  if (gloss) {
+    andConditions.push({
+      gloss: {
+        contains: gloss,
+        mode: 'insensitive'
+      }
+    });
+  }
+
+  if (lemmas) {
+    const lemmaTerms = lemmas.split(/[\s,]+/).filter(Boolean);
+    andConditions.push({
+      OR: [
+        {
+          lemmas: {
+            hasSome: lemmaTerms
+          }
+        },
+        {
+          src_lemmas: {
+            hasSome: lemmaTerms
+          }
+        }
+      ]
+    });
+  }
+
+  if (examples) {
+    andConditions.push({
+      examples: {
+        hasSome: examples.split(/[\s,]+/).filter(Boolean)
+      }
+    });
+  }
+
+  // Reason text filters
+  if (flaggedReason) {
+    andConditions.push({
+      flagged_reason: {
+        contains: flaggedReason,
+        mode: 'insensitive'
+      }
+    } as Prisma.adjectivesWhereInput);
+  }
+
+  if (forbiddenReason) {
+    andConditions.push({
+      forbidden_reason: {
+        contains: forbiddenReason,
+        mode: 'insensitive'
+      }
+    } as Prisma.adjectivesWhereInput);
+  }
+
+  // Boolean filters
+  if (isMwe !== undefined) {
+    andConditions.push({ is_mwe: isMwe });
+  }
+
+  if (flagged !== undefined) {
+    andConditions.push({ flagged });
+  }
+
+  if (forbidden !== undefined) {
+    andConditions.push({ forbidden });
+  }
+
+  // Date filters
+  if (createdAfter) {
+    andConditions.push({
+      created_at: {
+        gte: new Date(createdAfter)
+      }
+    });
+  }
+
+  if (createdBefore) {
+    andConditions.push({
+      created_at: {
+        lte: new Date(createdBefore + 'T23:59:59.999Z')
+      }
+    });
+  }
+
+  if (updatedAfter) {
+    andConditions.push({
+      updated_at: {
+        gte: new Date(updatedAfter)
+      }
+    });
+  }
+
+  if (updatedBefore) {
+    andConditions.push({
+      updated_at: {
+        lte: new Date(updatedBefore + 'T23:59:59.999Z')
+      }
+    });
+  }
+
+  // Combine all conditions
+  if (andConditions.length > 0) {
+    whereClause.AND = andConditions;
+  }
+
+  // Get total count
+  const total = await withRetry(
+    () => prisma.adjectives.count({
+      where: whereClause
+    }),
+    undefined,
+    'getPaginatedAdjectives:count'
+  );
+
+  // Build order clause
+  const orderBy: Record<string, unknown> = {};
+  
+  let actualSortBy = sortBy;
+  if (sortBy === 'src_id') {
+    actualSortBy = 'legacy_id';
+  }
+  
+  if (actualSortBy === 'lemmas' || actualSortBy === 'src_lemmas') {
+    orderBy[actualSortBy] = sortOrder;
+  } else if (actualSortBy === 'parentsCount' || actualSortBy === 'childrenCount') {
+    orderBy.id = sortOrder;
+  } else {
+    orderBy[actualSortBy] = sortOrder;
+  }
+
+  // Fetch adjectives with relation counts
+  const adjectives = await withRetry(
+    () => prisma.adjectives.findMany({
+    where: whereClause,
+    skip,
+    take: limit,
+    orderBy,
+    include: {
+      _count: {
+        select: {
+          adjective_relations_adjective_relations_source_idToadjectives: {
+            where: { type: 'similar' }
+          },
+          adjective_relations_adjective_relations_target_idToadjectives: {
+            where: { type: 'similar' }
+          }
+        }
+      }
+    }
+  }),
+    undefined,
+    'getPaginatedAdjectives:findMany'
+  );
+
+  // Transform to TableEntry format
+  let data: TableEntry[] = adjectives.map(adjective => {
+    const adjectiveCode = adjective.code || adjective.id.toString();
+    
+    return {
+      id: adjectiveCode,
+      legacy_id: adjective.legacy_id,
+      lemmas: adjective.lemmas,
+      src_lemmas: adjective.src_lemmas,
+      gloss: adjective.gloss,
+      pos: 'a',
+      lexfile: adjective.lexfile,
+      isMwe: adjective.is_mwe,
+      transitive: undefined,
+      particles: [],
+      examples: adjective.examples,
+      flagged: adjective.flagged ?? undefined,
+      flaggedReason: adjective.flagged_reason || undefined,
+      forbidden: adjective.forbidden ?? undefined,
+      forbiddenReason: adjective.forbidden_reason || undefined,
+      frame_id: null,
+      frame: null,
+      vendler_class: null,
+      legal_constraints: adjective.legal_constraints || [],
+      roles: [],
+      role_groups: [],
+      parentsCount: adjective._count.adjective_relations_adjective_relations_source_idToadjectives,
+      childrenCount: adjective._count.adjective_relations_adjective_relations_target_idToadjectives,
+      createdAt: adjective.created_at,
+      updatedAt: adjective.updated_at
+    };
+  });
+
+  // Apply numeric filters on computed fields
+  if (parentsCountMin !== undefined) {
+    data = data.filter(entry => entry.parentsCount >= parentsCountMin);
+  }
+  if (parentsCountMax !== undefined) {
+    data = data.filter(entry => entry.parentsCount <= parentsCountMax);
+  }
+  if (childrenCountMin !== undefined) {
+    data = data.filter(entry => entry.childrenCount >= childrenCountMin);
+  }
+  if (childrenCountMax !== undefined) {
+    data = data.filter(entry => entry.childrenCount <= childrenCountMax);
+  }
+
+  // Sort by computed fields if needed
+  if (sortBy === 'parentsCount') {
+    data.sort((a, b) => sortOrder === 'asc' 
+      ? a.parentsCount - b.parentsCount 
+      : b.parentsCount - a.parentsCount
+    );
+  } else if (sortBy === 'childrenCount') {
+    data.sort((a, b) => sortOrder === 'asc' 
+      ? a.childrenCount - b.childrenCount 
+      : b.childrenCount - a.childrenCount
+    );
+  }
+
+  const totalPages = Math.ceil(total / limit);
+
+  return {
+    data,
+    total,
+    page,
+    limit,
+    totalPages,
+    hasNext: page < totalPages,
+    hasPrev: page > 1
+  };
+}
+
+export async function getPaginatedAdverbs(params: PaginationParams = {}): Promise<PaginatedResult<TableEntry>> {
+  const {
+    page = 1,
+    limit: rawLimit = 20,
+    sortBy = 'id',
+    sortOrder = 'asc',
+    search,
+    lexfile,
+    gloss,
+    lemmas,
+    examples,
+    flaggedReason,
+    forbiddenReason,
+    isMwe,
+    flagged,
+    forbidden,
+    parentsCountMin,
+    parentsCountMax,
+    childrenCountMin,
+    childrenCountMax,
+    createdAfter,
+    createdBefore,
+    updatedAfter,
+    updatedBefore,
+  } = params;
+
+  // Handle "show all" case where limit is -1
+  const limit = rawLimit === -1 ? 20000 : rawLimit;
+  const skip = (page - 1) * limit;
+
+  // Build where clause
+  const whereClause: Record<string, unknown> = {};
+  const andConditions: Record<string, unknown>[] = [];
+  
+  // Note: adverbs don't have a 'deleted' field, so no filter needed
+  
+  // Global search
+  if (search) {
+    andConditions.push({
+      OR: [
+        {
+          gloss: {
+            contains: search,
+            mode: 'insensitive'
+          }
+        },
+        {
+          lemmas: {
+            hasSome: [search]
+          }
+        },
+        {
+          src_lemmas: {
+            hasSome: [search]
+          }
+        },
+        {
+          examples: {
+            hasSome: search.split(' ')
+          }
+        }
+      ]
+    });
+  }
+
+  if (lexfile) {
+    const lexfiles = lexfile.split(',').map(lf => lf.trim()).filter(Boolean);
+    if (lexfiles.length > 0) {
+      andConditions.push({
+        lexfile: {
+          in: lexfiles
+        }
+      });
+    }
+  }
+
+  // Advanced text filters
+  if (gloss) {
+    andConditions.push({
+      gloss: {
+        contains: gloss,
+        mode: 'insensitive'
+      }
+    });
+  }
+
+  if (lemmas) {
+    const lemmaTerms = lemmas.split(/[\s,]+/).filter(Boolean);
+    andConditions.push({
+      OR: [
+        {
+          lemmas: {
+            hasSome: lemmaTerms
+          }
+        },
+        {
+          src_lemmas: {
+            hasSome: lemmaTerms
+          }
+        }
+      ]
+    });
+  }
+
+  if (examples) {
+    andConditions.push({
+      examples: {
+        hasSome: examples.split(/[\s,]+/).filter(Boolean)
+      }
+    });
+  }
+
+  // Reason text filters
+  if (flaggedReason) {
+    andConditions.push({
+      flagged_reason: {
+        contains: flaggedReason,
+        mode: 'insensitive'
+      }
+    } as Prisma.adverbsWhereInput);
+  }
+
+  if (forbiddenReason) {
+    andConditions.push({
+      forbidden_reason: {
+        contains: forbiddenReason,
+        mode: 'insensitive'
+      }
+    } as Prisma.adverbsWhereInput);
+  }
+
+  // Boolean filters
+  if (isMwe !== undefined) {
+    andConditions.push({ is_mwe: isMwe });
+  }
+
+  if (flagged !== undefined) {
+    andConditions.push({ flagged });
+  }
+
+  if (forbidden !== undefined) {
+    andConditions.push({ forbidden });
+  }
+
+  // Date filters
+  if (createdAfter) {
+    andConditions.push({
+      created_at: {
+        gte: new Date(createdAfter)
+      }
+    });
+  }
+
+  if (createdBefore) {
+    andConditions.push({
+      created_at: {
+        lte: new Date(createdBefore + 'T23:59:59.999Z')
+      }
+    });
+  }
+
+  if (updatedAfter) {
+    andConditions.push({
+      updated_at: {
+        gte: new Date(updatedAfter)
+      }
+    });
+  }
+
+  if (updatedBefore) {
+    andConditions.push({
+      updated_at: {
+        lte: new Date(updatedBefore + 'T23:59:59.999Z')
+      }
+    });
+  }
+
+  // Combine all conditions
+  if (andConditions.length > 0) {
+    whereClause.AND = andConditions;
+  }
+
+  // Get total count
+  const total = await withRetry(
+    () => prisma.adverbs.count({
+      where: whereClause
+    }),
+    undefined,
+    'getPaginatedAdverbs:count'
+  );
+
+  // Build order clause
+  const orderBy: Record<string, unknown> = {};
+  
+  let actualSortBy = sortBy;
+  if (sortBy === 'src_id') {
+    actualSortBy = 'legacy_id';
+  }
+  
+  if (actualSortBy === 'lemmas' || actualSortBy === 'src_lemmas') {
+    orderBy[actualSortBy] = sortOrder;
+  } else if (actualSortBy === 'parentsCount' || actualSortBy === 'childrenCount') {
+    orderBy.id = sortOrder;
+  } else {
+    orderBy[actualSortBy] = sortOrder;
+  }
+
+  // Fetch adverbs with relation counts
+  const adverbs = await withRetry(
+    () => prisma.adverbs.findMany({
+    where: whereClause,
+    skip,
+    take: limit,
+    orderBy,
+    include: {
+      _count: {
+        select: {
+          adverb_relations_adverb_relations_source_idToadverbs: {
+            where: { type: 'similar' }
+          },
+          adverb_relations_adverb_relations_target_idToadverbs: {
+            where: { type: 'similar' }
+          }
+        }
+      }
+    }
+  }),
+    undefined,
+    'getPaginatedAdverbs:findMany'
+  );
+
+  // Transform to TableEntry format
+  let data: TableEntry[] = adverbs.map(adverb => {
+    const adverbCode = adverb.code || adverb.id.toString();
+    
+    return {
+      id: adverbCode,
+      legacy_id: adverb.legacy_id,
+      lemmas: adverb.lemmas,
+      src_lemmas: adverb.src_lemmas,
+      gloss: adverb.gloss,
+      pos: 'r',
+      lexfile: adverb.lexfile,
+      isMwe: adverb.is_mwe,
+      transitive: undefined,
+      particles: [],
+      examples: adverb.examples,
+      flagged: adverb.flagged ?? undefined,
+      flaggedReason: adverb.flagged_reason || undefined,
+      forbidden: adverb.forbidden ?? undefined,
+      forbiddenReason: adverb.forbidden_reason || undefined,
+      frame_id: null,
+      frame: null,
+      vendler_class: null,
+      legal_constraints: adverb.legal_constraints || [],
+      roles: [],
+      role_groups: [],
+      parentsCount: adverb._count.adverb_relations_adverb_relations_source_idToadverbs,
+      childrenCount: adverb._count.adverb_relations_adverb_relations_target_idToadverbs,
+      createdAt: adverb.created_at,
+      updatedAt: adverb.updated_at
+    };
+  });
+
+  // Apply numeric filters on computed fields
+  if (parentsCountMin !== undefined) {
+    data = data.filter(entry => entry.parentsCount >= parentsCountMin);
+  }
+  if (parentsCountMax !== undefined) {
+    data = data.filter(entry => entry.parentsCount <= parentsCountMax);
+  }
+  if (childrenCountMin !== undefined) {
+    data = data.filter(entry => entry.childrenCount >= childrenCountMin);
+  }
+  if (childrenCountMax !== undefined) {
+    data = data.filter(entry => entry.childrenCount <= childrenCountMax);
+  }
+
+  // Sort by computed fields if needed
+  if (sortBy === 'parentsCount') {
+    data.sort((a, b) => sortOrder === 'asc' 
+      ? a.parentsCount - b.parentsCount 
+      : b.parentsCount - a.parentsCount
+    );
+  } else if (sortBy === 'childrenCount') {
+    data.sort((a, b) => sortOrder === 'asc' 
+      ? a.childrenCount - b.childrenCount 
+      : b.childrenCount - a.childrenCount
+    );
+  }
+
+  const totalPages = Math.ceil(total / limit);
+
+  return {
+    data,
+    total,
+    page,
+    limit,
+    totalPages,
+    hasNext: page < totalPages,
+    hasPrev: page > 1
+  };
+}
+
+export async function getPaginatedFrames(params: FramePaginationParams = {}): Promise<PaginatedResult<Frame>> {
+  const {
+    page = 1,
+    limit: rawLimit = 20,
+    sortBy = 'frame_name',
+    sortOrder = 'asc',
+    search,
+    frame_name,
+    definition,
+    short_definition,
+    prototypical_synset,
+    is_supporting_frame,
+    communication,
+    createdAfter,
+    createdBefore,
+    updatedAfter,
+    updatedBefore,
+  } = params;
+
+  // Handle "show all" case where limit is -1
+  const limit = rawLimit === -1 ? 20000 : rawLimit;
+  const skip = (page - 1) * limit;
+
+  // Build where clause
+  const andConditions: Record<string, unknown>[] = [];
+
+  // Global search across multiple text fields
+  if (search) {
+    andConditions.push({
+      OR: [
+        {
+          frame_name: {
+            contains: search,
+            mode: 'insensitive'
+          }
+        },
+        {
+          definition: {
+            contains: search,
+            mode: 'insensitive'
+          }
+        },
+        {
+          short_definition: {
+            contains: search,
+            mode: 'insensitive'
+          }
+        },
+        {
+          prototypical_synset: {
+            contains: search,
+            mode: 'insensitive'
+          }
+        }
+      ]
+    });
+  }
+
+  // Text filters
+  if (frame_name) {
+    andConditions.push({
+      frame_name: {
+        contains: frame_name,
+        mode: 'insensitive'
+      }
+    });
+  }
+
+  if (definition) {
+    andConditions.push({
+      definition: {
+        contains: definition,
+        mode: 'insensitive'
+      }
+    });
+  }
+
+  if (short_definition) {
+    andConditions.push({
+      short_definition: {
+        contains: short_definition,
+        mode: 'insensitive'
+      }
+    });
+  }
+
+  if (prototypical_synset) {
+    andConditions.push({
+      prototypical_synset: {
+        contains: prototypical_synset,
+        mode: 'insensitive'
+      }
+    });
+  }
+
+  // Boolean filters
+  if (is_supporting_frame !== undefined) {
+    andConditions.push({ is_supporting_frame });
+  }
+
+  if (communication !== undefined) {
+    andConditions.push({ communication });
+  }
+
+  // Date filters
+  if (createdAfter) {
+    andConditions.push({
+      created_at: {
+        gte: new Date(createdAfter)
+      }
+    });
+  }
+
+  if (createdBefore) {
+    andConditions.push({
+      created_at: {
+        lte: new Date(createdBefore + 'T23:59:59.999Z')
+      }
+    });
+  }
+
+  if (updatedAfter) {
+    andConditions.push({
+      updated_at: {
+        gte: new Date(updatedAfter)
+      }
+    });
+  }
+
+  if (updatedBefore) {
+    andConditions.push({
+      updated_at: {
+        lte: new Date(updatedBefore + 'T23:59:59.999Z')
+      }
+    });
+  }
+
+  const whereClause = andConditions.length > 0 ? { AND: andConditions } : {};
+
+  // Get total count
+  const total = await withRetry(
+    () => prisma.frames.count({ where: whereClause as Prisma.framesWhereInput }),
+    undefined,
+    'getPaginatedFrames:count'
+  );
+
+  // Build orderBy
+  const orderBy: Record<string, 'asc' | 'desc'> = {};
+  
+  // Map sortBy field names
+  if (sortBy === 'createdAt') {
+    orderBy.created_at = sortOrder;
+  } else if (sortBy === 'updatedAt') {
+    orderBy.updated_at = sortOrder;
+  } else {
+    orderBy[sortBy] = sortOrder;
+  }
+
+  // Fetch frames with roles
+  const frames = await withRetry(
+    () => prisma.frames.findMany({
+      where: whereClause as Prisma.framesWhereInput,
+      skip,
+      take: limit,
+      orderBy: orderBy as Prisma.framesOrderByWithRelationInput,
+      include: {
+        frame_roles: {
+          include: {
+            role_types: true
+          }
+        }
+      }
+    }),
+    undefined,
+    'getPaginatedFrames:findMany'
+  );
+
+  // Transform to Frame format
+  const data: Frame[] = frames.map(frame => ({
+    id: frame.id.toString(),
+    code: frame.code,
+    framebank_id: frame.framebank_id,
+    frame_name: frame.frame_name,
+    definition: frame.definition,
+    short_definition: frame.short_definition,
+    prototypical_synset: frame.prototypical_synset,
+    prototypical_synset_definition: frame.prototypical_synset_definition,
+    is_supporting_frame: frame.is_supporting_frame,
+    communication: frame.communication,
+    createdAt: frame.created_at,
+    updatedAt: frame.updated_at,
+    frame_roles: frame.frame_roles.map(fr => ({
+      id: fr.id.toString(),
+      description: fr.description,
+      notes: fr.notes,
+      main: fr.main,
+      role_type: {
+        id: fr.role_types.id.toString(),
+        code: fr.role_types.code,
+        label: fr.role_types.label,
+        generic_description: fr.role_types.generic_description,
+        explanation: fr.role_types.explanation
+      }
+    }))
+  }));
 
   const totalPages = Math.ceil(total / limit);
 

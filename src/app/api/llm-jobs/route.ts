@@ -1,12 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createLLMJob, listLLMJobs } from '@/lib/llm/jobs';
 import type { CreateLLMJobParams } from '@/lib/llm/types';
+import { handleDatabaseError } from '@/lib/db-utils';
+
+// Generous timeout for job creation with large batches
+// Creating a job can involve fetching thousands of entries and rendering prompts
+export const maxDuration = 60;
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const includeCompleted = searchParams.get('includeCompleted') === 'true';
   const refresh = searchParams.get('refresh');
   const limitParam = searchParams.get('limit');
+  const entityType = searchParams.get('entityType') as 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames' | null;
   const limit = limitParam ? Math.min(Math.max(parseInt(limitParam, 10), 1), 50) : undefined;
 
   try {
@@ -14,13 +20,15 @@ export async function GET(request: NextRequest) {
       includeCompleted,
       refreshBeforeReturn: refresh !== 'false',
       limit,
+      entityType: entityType ?? undefined,
     });
     return NextResponse.json({ jobs });
   } catch (error) {
     console.error('[LLM] Failed to list jobs:', error);
+    const { message, status, shouldRetry } = handleDatabaseError(error, 'GET /api/llm-jobs');
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to fetch jobs' },
-      { status: error instanceof Error && 'statusCode' in error ? (error as { statusCode: number }).statusCode : 500 }
+      { error: message, isTransient: shouldRetry },
+      { status }
     );
   }
 }

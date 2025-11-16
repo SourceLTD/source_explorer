@@ -5,7 +5,11 @@ import { prisma } from '@/lib/prisma'
 export async function GET() {
   try {
     const [entriesCount, relationsCount] = await Promise.all([
-      prisma.verbs.count(),
+      prisma.verbs.count({ 
+        where: { 
+          deleted: false
+        } 
+      }),
       prisma.verb_relations.count()
     ])
     

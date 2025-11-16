@@ -21,7 +21,7 @@ interface LexicalGraphProps {
   currentNode: GraphNode;
   onNodeClick: (nodeId: string) => void;
   onEditClick?: () => void;
-  mode?: 'verbs' | 'nouns' | 'adjectives';
+  mode?: 'verbs' | 'nouns' | 'adjectives' | 'adverbs';
 }
 
 

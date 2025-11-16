@@ -161,9 +161,30 @@ export function handleDatabaseError(error: unknown, context?: string): {
     }
   }
   
+  // Log the full error details for debugging
   console.error(`Unexpected database error${context ? ` (${context})` : ''}:`, error);
+  
+  // Provide more context in the error message for debugging
+  const errorDetails = error instanceof Error 
+    ? error.message 
+    : typeof error === 'string' 
+      ? error 
+      : JSON.stringify(error);
+  
+  console.error('Error details:', errorDetails);
+  if (error instanceof Error && error.stack) {
+    console.error('Stack trace:', error.stack);
+  }
+  
+  // In development, include error details for debugging
+  // In production, use generic message to avoid leaking sensitive info
+  const isDevelopment = process.env.NODE_ENV === 'development';
+  const userMessage = isDevelopment && error instanceof Error
+    ? `Database error: ${error.message}`
+    : 'An unexpected error occurred. Please try again.';
+  
   return {
-    message: 'An unexpected error occurred.',
+    message: userMessage,
     status: 500,
     shouldRetry: false,
   };

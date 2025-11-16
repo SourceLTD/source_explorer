@@ -124,7 +124,7 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
     // Asynchronously fetch and find the right recipe
     (async () => {
       try {
-        const response = await fetch(`/api/entries/${verbId}/recipes`);
+        const response = await fetch(`/api/verbs/${verbId}/recipes`);
         if (!response.ok) return;
         
         const data = await response.json();

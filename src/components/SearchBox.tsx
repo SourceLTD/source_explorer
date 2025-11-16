@@ -7,7 +7,7 @@ interface SearchBoxProps {
   onSelectResult: (result: SearchResult) => void;
   onSearchChange?: (query: string) => void;
   placeholder?: string;
-  mode?: 'verbs' | 'nouns' | 'adjectives';
+  mode?: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames';
 }
 
 export default function SearchBox({ onSelectResult, onSearchChange, placeholder = "Search lexical entries...", mode = 'verbs' }: SearchBoxProps) {
@@ -33,6 +33,10 @@ export default function SearchBox({ onSelectResult, onSearchChange, placeholder 
         apiEndpoint = '/api/nouns/search';
       } else if (mode === 'adjectives') {
         apiEndpoint = '/api/adjectives/search';
+      } else if (mode === 'adverbs') {
+        apiEndpoint = '/api/adverbs/search';
+      } else if (mode === 'frames') {
+        apiEndpoint = '/api/frames/search';
       }
       const response = await fetch(`${apiEndpoint}?q=${encodeURIComponent(searchQuery)}&limit=100`);
       if (response.ok) {
@@ -135,7 +139,7 @@ export default function SearchBox({ onSelectResult, onSearchChange, placeholder 
             <button
               key={result.id}
               onClick={() => handleSelectResult(result)}
-              className="w-full px-4 py-3 text-left hover:bg-gray-50 focus:bg-gray-50 focus:outline-none border-b border-gray-100 last:border-b-0"
+              className="w-full px-4 py-3 text-left hover:bg-gray-50 focus:bg-gray-50 focus:outline-none border-b border-gray-100 last:border-b-0 cursor-pointer"
             >
               <div className="w-full">
                 <div className="font-medium text-gray-900 truncate mb-1">

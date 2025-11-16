@@ -21,10 +21,17 @@ export async function GET(request: NextRequest) {
     if (pos === 'verbs') {
       const entries = await prisma.verbs.findMany({
         where: {
-          OR: [
-            { code: { contains: searchTerm, mode: 'insensitive' } },
-            { gloss: { contains: searchTerm, mode: 'insensitive' } },
-          ],
+          AND: [
+            {
+              OR: [
+                { code: { contains: searchTerm, mode: 'insensitive' } },
+                { gloss: { contains: searchTerm, mode: 'insensitive' } },
+              ],
+            },
+            {
+              deleted: false
+            }
+          ]
         },
         select: {
           code: true,
