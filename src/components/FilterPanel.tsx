@@ -298,11 +298,7 @@ export default function FilterPanel({
   const filteredFrames = frameSearchQuery
     ? frames.filter(frame => {
         const query = frameSearchQuery.toLowerCase();
-        return (
-          frame.frame_name.toLowerCase().includes(query) ||
-          (frame.code ? frame.code.toLowerCase().includes(query) : false) ||
-          frame.id.toLowerCase().includes(query)
-        );
+        return frame.frame_name.toLowerCase().includes(query);
       })
     : frames;
 

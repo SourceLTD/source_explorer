@@ -134,9 +134,9 @@ export async function getEntryById(id: string): Promise<VerbWithRelations | null
     examples: entry.examples,
     frame_id: entry.frame_id?.toString() ?? null,
     flagged: entry.flagged ?? undefined,
-    flaggedReason: (entry as PrismaEntryWithOptionalFields).flaggedReason || undefined,
+    flaggedReason: (entry as any).flagged_reason || undefined,
     forbidden: entry.forbidden ?? undefined,
-    forbiddenReason: (entry as PrismaEntryWithOptionalFields).forbiddenReason || undefined,
+    forbiddenReason: (entry as any).forbidden_reason || undefined,
     vendler_class: entry.vendler_class || undefined,
     legal_constraints: entry.legal_constraints || undefined,
     createdAt: entry.created_at,
@@ -153,9 +153,9 @@ export async function getEntryById(id: string): Promise<VerbWithRelations | null
           frame_id: (rel.verbs_verb_relations_target_idToverbs as { frame_id?: bigint | null }).frame_id?.toString() ?? null,
           transitive: rel.verbs_verb_relations_target_idToverbs.transitive || undefined,
           flagged: rel.verbs_verb_relations_target_idToverbs.flagged ?? undefined,
-          flaggedReason: (rel.verbs_verb_relations_target_idToverbs as PrismaEntryWithOptionalFields).flaggedReason || undefined,
+          flaggedReason: (rel.verbs_verb_relations_target_idToverbs as any).flagged_reason || undefined,
           forbidden: rel.verbs_verb_relations_target_idToverbs.forbidden ?? undefined,
-          forbiddenReason: (rel.verbs_verb_relations_target_idToverbs as PrismaEntryWithOptionalFields).forbiddenReason || undefined
+          forbiddenReason: (rel.verbs_verb_relations_target_idToverbs as any).forbidden_reason || undefined
         } as unknown as Verb : undefined,
       })),
     targetRelations: verb_relations_verb_relations_target_idToverbs
@@ -170,9 +170,9 @@ export async function getEntryById(id: string): Promise<VerbWithRelations | null
           frame_id: (rel.verbs_verb_relations_source_idToverbs as { frame_id?: bigint | null }).frame_id?.toString() ?? null,
           transitive: rel.verbs_verb_relations_source_idToverbs.transitive || undefined,
           flagged: rel.verbs_verb_relations_source_idToverbs.flagged ?? undefined,
-          flaggedReason: (rel.verbs_verb_relations_source_idToverbs as PrismaEntryWithOptionalFields).flaggedReason || undefined,
+          flaggedReason: (rel.verbs_verb_relations_source_idToverbs as any).flagged_reason || undefined,
           forbidden: rel.verbs_verb_relations_source_idToverbs.forbidden ?? undefined,
-          forbiddenReason: (rel.verbs_verb_relations_source_idToverbs as PrismaEntryWithOptionalFields).forbiddenReason || undefined
+          forbiddenReason: (rel.verbs_verb_relations_source_idToverbs as any).forbidden_reason || undefined
         } as unknown as Verb : undefined,
       })),
   };
@@ -899,9 +899,9 @@ export async function updateEntry(id: string, updates: Partial<Pick<Verb, 'gloss
     examples: updatedEntry.examples,
     frame_id: updatedEntry.frame_id?.toString() ?? null,
     flagged: updatedEntry.flagged ?? undefined,
-    flaggedReason: (updatedEntry as PrismaEntryWithOptionalFields).flaggedReason || undefined,
+    flaggedReason: (updatedEntry as any).flagged_reason || undefined,
     forbidden: updatedEntry.forbidden ?? undefined,
-    forbiddenReason: (updatedEntry as PrismaEntryWithOptionalFields).forbiddenReason || undefined,
+    forbiddenReason: (updatedEntry as any).forbidden_reason || undefined,
     vendler_class: updatedEntry.vendler_class || undefined,
     legal_constraints: updatedEntry.legal_constraints || undefined,
     createdAt: updatedEntry.created_at,
@@ -918,9 +918,9 @@ export async function updateEntry(id: string, updates: Partial<Pick<Verb, 'gloss
           frame_id: (rel.verbs_verb_relations_target_idToverbs as { frame_id?: bigint | null }).frame_id?.toString() ?? null,
           transitive: rel.verbs_verb_relations_target_idToverbs.transitive || undefined,
           flagged: rel.verbs_verb_relations_target_idToverbs.flagged ?? undefined,
-          flaggedReason: (rel.verbs_verb_relations_target_idToverbs as PrismaEntryWithOptionalFields).flaggedReason || undefined,
+          flaggedReason: (rel.verbs_verb_relations_target_idToverbs as any).flagged_reason || undefined,
           forbidden: rel.verbs_verb_relations_target_idToverbs.forbidden ?? undefined,
-          forbiddenReason: (rel.verbs_verb_relations_target_idToverbs as PrismaEntryWithOptionalFields).forbiddenReason || undefined
+          forbiddenReason: (rel.verbs_verb_relations_target_idToverbs as any).forbidden_reason || undefined
         } as unknown as Verb : undefined,
       } as VerbRelation)),
     targetRelations: verb_relations_verb_relations_target_idToverbs
@@ -935,9 +935,9 @@ export async function updateEntry(id: string, updates: Partial<Pick<Verb, 'gloss
           frame_id: (rel.verbs_verb_relations_source_idToverbs as { frame_id?: bigint | null }).frame_id?.toString() ?? null,
           transitive: rel.verbs_verb_relations_source_idToverbs.transitive || undefined,
           flagged: rel.verbs_verb_relations_source_idToverbs.flagged ?? undefined,
-          flaggedReason: (rel.verbs_verb_relations_source_idToverbs as PrismaEntryWithOptionalFields).flaggedReason || undefined,
+          flaggedReason: (rel.verbs_verb_relations_source_idToverbs as any).flagged_reason || undefined,
           forbidden: rel.verbs_verb_relations_source_idToverbs.forbidden ?? undefined,
-          forbiddenReason: (rel.verbs_verb_relations_source_idToverbs as PrismaEntryWithOptionalFields).forbiddenReason || undefined
+          forbiddenReason: (rel.verbs_verb_relations_source_idToverbs as any).forbidden_reason || undefined
         } as unknown as Verb : undefined,
       } as VerbRelation)),
   };
@@ -1450,9 +1450,9 @@ async function getVerbGraphNode(entryId: string): Promise<GraphNode | null> {
     lexfile: entry.lexfile,
     examples: entry.examples,
     flagged: entry.flagged ?? undefined,
-    flaggedReason: (entry as PrismaEntryWithOptionalFields).flaggedReason || undefined,
+    flaggedReason: (entry as any).flagged_reason || undefined,
     forbidden: entry.forbidden ?? undefined,
-    forbiddenReason: (entry as PrismaEntryWithOptionalFields).forbiddenReason || undefined,
+    forbiddenReason: (entry as any).forbidden_reason || undefined,
     frame_id: entryTyped.frame_id?.toString() ?? null,
     vendler_class: (entry as { vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null }).vendler_class ?? null,
     frame: frameData 
@@ -2576,10 +2576,10 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
       transitive: entry.transitive || undefined,
       particles: entry.particles,
       examples: entry.examples,
-      flagged: (entry as PrismaEntryWithOptionalFields).flagged ?? undefined,
-      flaggedReason: (entry as PrismaEntryWithOptionalFields).flaggedReason || undefined,
-      forbidden: (entry as PrismaEntryWithOptionalFields).forbidden ?? undefined,
-      forbiddenReason: (entry as PrismaEntryWithOptionalFields).forbiddenReason || undefined,
+      flagged: (entry as any).flagged ?? undefined,
+      flaggedReason: (entry as any).flagged_reason || undefined,
+      forbidden: (entry as any).forbidden ?? undefined,
+      forbiddenReason: (entry as any).forbidden_reason || undefined,
       frame_id: frameId ? frameId.toString() : null,
       frame: (entry as { frames?: { frame_name: string } } | undefined)?.frames?.frame_name || null,
       vendler_class: entry.vendler_class ?? null,

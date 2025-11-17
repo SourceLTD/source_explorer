@@ -145,7 +145,7 @@ export function AIJobsOverlay({
   const [showFrameIdMenu, setShowFrameIdMenu] = useState(false);
   const [, setFrameIdQuery] = useState('');
   const [frameIdMenuPosition, setFrameIdMenuPosition] = useState({ top: 0, left: 0 });
-  const [frameIdSuggestions, setFrameIdSuggestions] = useState<Array<{ id: string; code: string; frame_name: string }>>([]);
+  const [frameIdSuggestions, setFrameIdSuggestions] = useState<Array<{ id: string; frame_name: string }>>([]);
   const [validatedManualIds, setValidatedManualIds] = useState<Set<string>>(new Set());
   const [validatedFrameIds, setValidatedFrameIds] = useState<Set<string>>(new Set());
   const [frameIncludeVerbs, setFrameIncludeVerbs] = useState(false);
@@ -704,7 +704,9 @@ export function AIJobsOverlay({
                 {scopeMode === 'manual' && manualIds.length > 0 && manualIds.some(id => !validatedManualIds.has(id))
                   ? 'Some manual IDs are invalid. Please ensure all IDs exist in the database.'
                   : scopeMode === 'frames' && frameIds.length > 0 && frameIds.some(id => !validatedFrameIds.has(id))
-                  ? 'Some frame IDs are invalid. Please ensure all frame IDs exist in the database.'
+                  ? (frameIncludeVerbs && mode === 'verbs' 
+                      ? 'Some frame IDs are invalid or have no associated verbs. Please ensure all frame IDs exist and have verbs.'
+                      : 'Some frame IDs are invalid. Please ensure all frame IDs exist in the database.')
                   : 'Choose at least one target before continuing.'}
               </p>
             )}
@@ -1384,7 +1386,7 @@ export function AIJobsOverlay({
       return;
     }
     try {
-      const response = await api.get<{ results: Array<{ id: string; code: string; frame_name: string }> }>(
+      const response = await api.get<{ results: Array<{ id: string; frame_name: string }> }>(
         `/api/llm-jobs/search-frames?q=${encodeURIComponent(query)}&limit=10`
       );
       setFrameIdSuggestions(response.results);
@@ -1433,11 +1435,32 @@ export function AIJobsOverlay({
       const validIds = new Set<string>();
       for (const id of frameIds) {
         try {
-          const response = await api.get<{ results: Array<{ id: string; code: string }> }>(
+          const response = await api.get<{ results: Array<{ id: string; frame_name: string }> }>(
             `/api/llm-jobs/search-frames?q=${encodeURIComponent(id)}&limit=1`
           );
-          if (response.results.some(r => r.id.toLowerCase() === id.toLowerCase() || r.code.toLowerCase() === id.toLowerCase())) {
-            validIds.add(id);
+          // Match by numeric id or frame_name (case-insensitive)
+          const frameResult = response.results.find(r => 
+            r.id === id || r.frame_name.toLowerCase() === id.toLowerCase()
+          );
+          
+          if (frameResult) {
+            // If we're including verbs, validate that the frame has verbs
+            if (frameIncludeVerbs && mode === 'verbs') {
+              try {
+                // Check if frame has verbs using the paginated endpoint which includes counts
+                // Use the numeric ID for the search
+                const frameDetailsResponse = await api.get(`/api/frames/paginated?search=${encodeURIComponent(frameResult.frame_name)}&limit=1`);
+                const frameData = frameDetailsResponse as { data?: Array<{ verbs_count?: number }> };
+                // Only mark as valid if frame has verbs
+                if (frameData.data && frameData.data.length > 0 && frameData.data[0].verbs_count && frameData.data[0].verbs_count > 0) {
+                  validIds.add(id);
+                }
+              } catch (error) {
+                console.error(`Failed to check verb count for frame ${id}:`, error);
+              }
+            } else {
+              validIds.add(id);
+            }
           }
         } catch (error) {
           console.error(`Failed to validate frame ID ${id}:`, error);
@@ -1447,7 +1470,7 @@ export function AIJobsOverlay({
     };
     const timeoutId = setTimeout(validateIds, 500);
     return () => clearTimeout(timeoutId);
-  }, [frameIds, scopeMode]);
+  }, [frameIds, scopeMode, frameIncludeVerbs, mode]);
 
   const handleManualIdChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
     const { value, selectionStart } = event.target;
@@ -1554,7 +1577,7 @@ export function AIJobsOverlay({
       event.preventDefault();
       const idx = frameIdActiveIndex >= 0 ? frameIdActiveIndex : 0;
       const choice = frameIdSuggestions[idx];
-      if (choice) insertFrameId(choice.id);
+      if (choice) insertFrameId(choice.frame_name);
     } else if (event.key === 'Escape') {
       setShowFrameIdMenu(false);
       setFrameIdActiveIndex(-1);
@@ -2487,7 +2510,7 @@ const ScopeSelector = memo(function ScopeSelector({
   manualIdMenuPosition: { top: number; left: number };
   insertManualId: (code: string) => void;
   showFrameIdMenu: boolean;
-  frameIdSuggestions: Array<{ id: string; code: string; frame_name: string }>;
+  frameIdSuggestions: Array<{ id: string; frame_name: string }>;
   frameIdMenuPosition: { top: number; left: number };
   insertFrameId: (id: string) => void;
   handleManualIdChange: (event: React.ChangeEvent<HTMLTextAreaElement>) => void;
@@ -2693,7 +2716,7 @@ const ScopeSelector = memo(function ScopeSelector({
           />
           <div className="flex-1">
             <div className="text-sm font-medium text-gray-800">Frame IDs</div>
-            <p className="text-xs text-gray-500">Enter frame codes or IDs to target all associated verbs.</p>
+            <p className="text-xs text-gray-500">Enter frame names or numeric IDs only.</p>
             {mode === 'frames' && (
               <div className="relative mt-2 space-y-3">
                 <textarea
@@ -2703,7 +2726,7 @@ const ScopeSelector = memo(function ScopeSelector({
                   onKeyDown={handleFrameIdKeyDown}
                   rows={2}
                   className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  placeholder="e.g., COMMUNICATION, 1023"
+                  placeholder="e.g., Communication, 1023"
                 />
                 {showFrameIdMenu && frameIdSuggestions.length > 0 && (
                   <div
@@ -2714,12 +2737,12 @@ const ScopeSelector = memo(function ScopeSelector({
                       {frameIdSuggestions.map((suggestion, idx) => (
                         <li key={suggestion.id}>
                           <button
-                            onClick={() => insertFrameId(suggestion.id)}
+                            onClick={() => insertFrameId(suggestion.frame_name)}
                             className={`cursor-pointer flex w-full flex-col items-start px-3 py-2 text-left text-xs hover:bg-blue-50 ${idx === frameIdActiveIndex ? 'bg-blue-50' : ''}`}
                             type="button"
                           >
-                            <span className="font-semibold text-gray-800">{suggestion.code}</span>
-                            <span className="text-[11px] text-gray-500">{suggestion.frame_name}</span>
+                            <span className="font-semibold text-gray-800">{suggestion.frame_name}</span>
+                            <span className="text-[11px] text-gray-500">ID: {suggestion.id}</span>
                           </button>
                         </li>
                       ))}

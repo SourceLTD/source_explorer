@@ -132,8 +132,6 @@ export function getFieldConfigsForPos(pos: 'verbs' | 'nouns' | 'adjectives' | 'a
     return [
       { key: 'frame_name', label: 'Frame Name', type: 'text', db: 'frame_name', operators: textOps },
       { key: 'definition', label: 'Definition', type: 'text', db: 'definition', operators: textOps },
-      { key: 'code', label: 'Code', type: 'text', db: 'code', operators: textOps },
-      { key: 'framebank_id', label: 'FrameBank ID', type: 'text', db: 'framebank_id', operators: textOps },
       { key: 'is_supporting_frame', label: 'Is Supporting Frame', type: 'boolean', db: 'is_supporting_frame', operators: booleanOps },
       { key: 'communication', label: 'Communication', type: 'boolean', db: 'communication', operators: booleanOps },
       { key: 'created_at', label: 'Created At', type: 'date', db: 'created_at', operators: dateOps },

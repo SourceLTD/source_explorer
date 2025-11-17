@@ -13,15 +13,10 @@ export async function GET(request: NextRequest) {
 
     const frames = await prisma.frames.findMany({
       where: {
-        OR: [
-          { frame_name: { contains: query, mode: 'insensitive' } },
-          { code: { contains: query, mode: 'insensitive' } },
-          { framebank_id: { contains: query, mode: 'insensitive' } },
-        ],
+        frame_name: { contains: query, mode: 'insensitive' },
       },
       select: {
         id: true,
-        code: true,
         frame_name: true,
         short_definition: true,
       },
@@ -29,8 +24,7 @@ export async function GET(request: NextRequest) {
     });
 
     const results = frames.map(frame => ({
-      id: frame.code,
-      code: frame.code,
+      id: frame.id,
       frame_name: frame.frame_name,
       gloss: frame.short_definition,
     }));

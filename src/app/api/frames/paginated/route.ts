@@ -8,10 +8,35 @@ export async function GET(request: NextRequest) {
     const page = parseInt(searchParams.get('page') || '1', 10);
     const limit = Math.min(parseInt(searchParams.get('limit') || '50', 10), 100);
     const search = searchParams.get('search');
-    const sortBy = searchParams.get('sortBy') || 'frame_name';
+    const rawSortBy = searchParams.get('sortBy') || 'frame_name';
     const sortOrder = searchParams.get('sortOrder') === 'desc' ? 'desc' : 'asc';
     
     const skip = (page - 1) * limit;
+
+    // Map sortBy to valid frame column names
+    // Frames don't have 'gloss', they have 'short_definition' instead
+    const sortByMap: Record<string, string> = {
+      'gloss': 'short_definition',
+      'createdAt': 'created_at',
+      'updatedAt': 'updated_at',
+    };
+    
+    const sortBy = sortByMap[rawSortBy] || rawSortBy;
+    
+    // Valid columns for sorting in the frames table
+    const validSortColumns = [
+      'id', 'code', 'framebank_id', 'frame_name', 'definition', 
+      'short_definition', 'prototypical_synset', 'prototypical_synset_definition',
+      'is_supporting_frame', 'communication', 'created_at', 'updated_at'
+    ];
+    
+    // Validate sortBy column
+    if (!validSortColumns.includes(sortBy)) {
+      return NextResponse.json(
+        { error: `Invalid sortBy column: ${rawSortBy}. Valid columns are: ${validSortColumns.join(', ')}` },
+        { status: 400 }
+      );
+    }
 
     // Build where clause
     let where: Prisma.framesWhereInput = {};
@@ -20,9 +45,9 @@ export async function GET(request: NextRequest) {
       where = {
         OR: [
           { frame_name: { contains: search, mode: 'insensitive' } },
-          { code: { contains: search, mode: 'insensitive' } },
-          { framebank_id: { contains: search, mode: 'insensitive' } },
           { definition: { contains: search, mode: 'insensitive' } },
+          // Only allow numeric ID search, not code or framebank_id
+          ...(search.match(/^\d+$/) ? [{ id: BigInt(search) }] : []),
         ],
       };
     }

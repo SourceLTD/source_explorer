@@ -126,7 +126,6 @@ const ADVERBS_COLUMNS: ColumnConfig[] = [
 
 // Frames-specific columns
 const FRAMES_COLUMNS: ColumnConfig[] = [
-  { key: 'code', label: 'Code', visible: true, sortable: true },
   { key: 'frame_name', label: 'Frame Name', visible: true, sortable: true },
   { key: 'definition', label: 'Definition', visible: true, sortable: false },
   { key: 'short_definition', label: 'Short Definition', visible: true, sortable: false },
@@ -162,7 +161,6 @@ const DEFAULT_COLUMN_WIDTHS: ColumnWidthState = {
   updatedAt: 100,
   actions: 80,
   // Frame columns
-  code: 120,
   frame_name: 200,
   definition: 350,
   short_definition: 250,
@@ -292,9 +290,28 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
     }
     // If columnsParam === 'default' or null, columnVisibility remains null (uses default)
 
-    // Parse sort state
-    const sortBy = params.get('sortBy') || 'id';
+    // Parse sort state with validation for the current mode
+    const rawSortBy = params.get('sortBy') || 'id';
     const sortOrder = (params.get('sortOrder') as 'asc' | 'desc') || 'asc';
+    
+    // Validate and map sortBy for the current mode
+    let sortBy = rawSortBy;
+    const modeColumns = mode === 'frames' ? FRAMES_COLUMNS :
+                       mode === 'adverbs' ? ADVERBS_COLUMNS :
+                       mode === 'nouns' || mode === 'adjectives' ? NOUNS_ADJECTIVES_DEFAULT_COLUMNS :
+                       VERBS_DEFAULT_COLUMNS;
+    
+    const validColumnKeys = modeColumns.map(col => col.key);
+    
+    // Map between mode-specific column names
+    if (mode === 'frames' && rawSortBy === 'gloss') {
+      sortBy = 'frame_name';
+    } else if (mode !== 'frames' && rawSortBy === 'short_definition') {
+      sortBy = 'gloss';
+    } else if (!validColumnKeys.includes(sortBy)) {
+      // If column doesn't exist in current mode, use a safe default
+      sortBy = mode === 'frames' ? 'frame_name' : 'id';
+    }
 
     // Parse pagination
     const page = parseInt(params.get('page') || '1');
@@ -307,7 +324,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
       currentPage: page,
       pageSize: limit
     };
-  }, [searchParams]);
+  }, [searchParams, mode]);
 
   const initialState = getInitialStateFromURL();
 
@@ -374,8 +391,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
     const query = frameSearchQuery.trim().toLowerCase();
     return frameOptions.filter(frame => {
       const nameMatch = frame.frame_name.toLowerCase().includes(query);
-      const code = frame.code ? frame.code.toLowerCase() : '';
-      return nameMatch || code.includes(query);
+      return nameMatch;
     });
   }, [frameOptions, frameSearchQuery]);
 
@@ -508,8 +524,33 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
     }
 
     // Parse sort state
-    const sortBy = params.get('sortBy') || 'id';
+    const rawSortBy = params.get('sortBy') || 'id';
     const sortOrder = (params.get('sortOrder') as 'asc' | 'desc') || 'asc';
+
+    // Map sortBy to valid columns for the current mode
+    // This handles switching between modes where columns have different names
+    let sortBy = rawSortBy;
+    
+    // Get valid columns for the current mode
+    const modeColumns = mode === 'frames' ? FRAMES_COLUMNS :
+                       mode === 'adverbs' ? ADVERBS_COLUMNS :
+                       mode === 'nouns' || mode === 'adjectives' ? NOUNS_ADJECTIVES_DEFAULT_COLUMNS :
+                       VERBS_DEFAULT_COLUMNS;
+    
+    const validColumnKeys = modeColumns.map(col => col.key);
+    
+    // If switching to frames and sortBy is 'gloss', map it to 'short_definition'
+    if (mode === 'frames' && rawSortBy === 'gloss') {
+      sortBy = 'frame_name'; // Default to frame_name for frames when coming from gloss
+    }
+    // If switching from frames to other modes and sortBy is 'short_definition', map to 'gloss'
+    else if (mode !== 'frames' && rawSortBy === 'short_definition') {
+      sortBy = 'gloss';
+    }
+    // If the column doesn't exist in the new mode, reset to a safe default
+    else if (!validColumnKeys.includes(sortBy)) {
+      sortBy = mode === 'frames' ? 'frame_name' : 'id';
+    }
 
     // Parse pagination
     const page = parseInt(params.get('page') || '1');
@@ -522,7 +563,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
     const newColumnVisibility = columnVisibility || getDefaultVisibility(mode);
     setColumnVisibility(sanitizeColumnVisibility(newColumnVisibility, mode));
     
-    // Reset sort state
+    // Reset sort state with validated/mapped column
     setSortState({ field: sortBy, order: sortOrder });
     
     // Reset pagination
@@ -623,10 +664,22 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
     setError(null);
 
     try {
+      // Validate sortBy for the current mode to prevent race conditions
+      const modeColumns = mode === 'frames' ? FRAMES_COLUMNS :
+                         mode === 'adverbs' ? ADVERBS_COLUMNS :
+                         mode === 'nouns' || mode === 'adjectives' ? NOUNS_ADJECTIVES_DEFAULT_COLUMNS :
+                         VERBS_DEFAULT_COLUMNS;
+      const validColumnKeys = modeColumns.map(col => col.key);
+      
+      // Use a safe default if sortBy is invalid for current mode
+      const safeSortBy = validColumnKeys.includes(sortState.field) 
+        ? sortState.field 
+        : (mode === 'frames' ? 'frame_name' : 'id');
+      
       const params: PaginationParams = {
         page: currentPage,
         limit: pageSize,
-        sortBy: sortState.field,
+        sortBy: safeSortBy,
         sortOrder: sortState.order,
         search: searchQuery || undefined,
         ...filters,
@@ -651,7 +704,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
     } finally {
       setLoading(false);
     }
-  }, [currentPage, pageSize, sortState, searchQuery, filters, apiPrefix]);
+  }, [currentPage, pageSize, sortState, searchQuery, filters, apiPrefix, mode]);
 
   useEffect(() => {
     fetchData();
@@ -1209,8 +1262,6 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
     // Handle frame-specific columns
     if (isFrame(entry)) {
       switch (columnKey) {
-        case 'code':
-          return <span className="text-sm font-mono text-blue-600 break-words">{entry.code || '—'}</span>;
         case 'frame_name':
           return <span className="inline-block max-w-full text-sm font-semibold text-gray-900 break-words">{entry.frame_name}</span>;
         case 'definition':
@@ -2378,7 +2429,6 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
                         {filteredFrameOptions.map(frame => (
                           <option key={frame.id} value={frame.id}>
                             {frame.frame_name}
-                            {frame.code ? ` (${frame.code})` : ''}
                           </option>
                         ))}
                       </select>

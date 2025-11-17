@@ -31,6 +31,9 @@ function TableModeContent() {
   const handleTabChange = (tab: 'verbs' | 'frames') => {
     const params = new URLSearchParams(searchParams?.toString() || '');
     params.set('tab', tab);
+    // Clear sortBy and sortOrder when switching tabs to avoid invalid column errors
+    params.delete('sortBy');
+    params.delete('sortOrder');
     router.push(`/table?${params.toString()}`);
   };
 
@@ -74,8 +77,8 @@ function TableModeContent() {
   return (
     <div className="h-screen flex flex-col bg-white">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200 px-6 py-4">
-        <div className="flex items-center justify-between">
+      <header className="bg-white px-6 pt-4">
+        <div className="flex items-center justify-between mb-2">
           <div className="flex items-center space-x-4">
             <button
               onClick={() => router.push('/')}
@@ -111,8 +114,8 @@ function TableModeContent() {
         </div>
         
         {/* Tab Switcher */}
-        <div className="px-6 pt-2">
-          <div className="flex items-center gap-1 border-b border-gray-200">
+        <div className="px-6">
+          <div className="flex items-center gap-1">
             <button
               onClick={() => handleTabChange('verbs')}
               className={`px-4 py-2 text-sm font-medium transition-colors relative cursor-pointer ${
@@ -140,7 +143,7 @@ function TableModeContent() {
       {/* Main Content */}
       <main className="flex-1 flex flex-col bg-white">
         {/* Data Table */}
-        <div className="m-6 bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+        <div className="mx-6 mb-6 bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
           <Suspense fallback={<div className="p-8 text-center text-gray-500">Loading...</div>}>
             <DataTable 
               searchQuery={searchQuery}

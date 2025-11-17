@@ -14,17 +14,16 @@ export async function GET(request: NextRequest) {
   const searchTerm = query.trim().toLowerCase();
 
   try {
+    // Only search by frame_name or numeric id (not framebank_id or code)
     const frames = await prisma.frames.findMany({
       where: {
         OR: [
-          { code: { contains: searchTerm, mode: 'insensitive' } },
           { frame_name: { contains: searchTerm, mode: 'insensitive' } },
           ...(searchTerm.match(/^\d+$/) ? [{ id: BigInt(searchTerm) }] : []),
         ],
       },
       select: {
         id: true,
-        code: true,
         frame_name: true,
       },
       take: limit,
@@ -34,8 +33,7 @@ export async function GET(request: NextRequest) {
     });
 
     const results = frames.map(frame => ({
-      id: frame.code || frame.id.toString(),
-      code: frame.code || frame.id.toString(),
+      id: frame.id.toString(),
       frame_name: frame.frame_name,
     }));
 
