@@ -7,6 +7,7 @@ export async function GET(request: NextRequest) {
   const query = searchParams.get('q');
   const pos = searchParams.get('pos') as PartOfSpeech | null;
   const limitParam = searchParams.get('limit');
+  const exact = searchParams.get('exact') === 'true';
   const limit = limitParam ? Math.min(Math.max(parseInt(limitParam, 10), 1), 50) : 20;
 
   if (!query || query.trim().length === 0) {
@@ -22,7 +23,9 @@ export async function GET(request: NextRequest) {
       const entries = await prisma.verbs.findMany({
         where: {
           AND: [
-            {
+            exact ? {
+              code: { equals: searchTerm, mode: 'insensitive' }
+            } : {
               OR: [
                 { code: { contains: searchTerm, mode: 'insensitive' } },
                 { gloss: { contains: searchTerm, mode: 'insensitive' } },
@@ -45,7 +48,9 @@ export async function GET(request: NextRequest) {
       results = entries;
     } else if (pos === 'nouns') {
       const entries = await prisma.nouns.findMany({
-        where: {
+        where: exact ? {
+          code: { equals: searchTerm, mode: 'insensitive' }
+        } : {
           OR: [
             { code: { contains: searchTerm, mode: 'insensitive' } },
             { gloss: { contains: searchTerm, mode: 'insensitive' } },
@@ -63,7 +68,29 @@ export async function GET(request: NextRequest) {
       results = entries;
     } else if (pos === 'adjectives') {
       const entries = await prisma.adjectives.findMany({
-        where: {
+        where: exact ? {
+          code: { equals: searchTerm, mode: 'insensitive' }
+        } : {
+          OR: [
+            { code: { contains: searchTerm, mode: 'insensitive' } },
+            { gloss: { contains: searchTerm, mode: 'insensitive' } },
+          ],
+        },
+        select: {
+          code: true,
+          gloss: true,
+        },
+        take: limit,
+        orderBy: {
+          code: 'asc',
+        },
+      });
+      results = entries;
+    } else if (pos === 'adverbs') {
+      const entries = await prisma.adverbs.findMany({
+        where: exact ? {
+          code: { equals: searchTerm, mode: 'insensitive' }
+        } : {
           OR: [
             { code: { contains: searchTerm, mode: 'insensitive' } },
             { gloss: { contains: searchTerm, mode: 'insensitive' } },

@@ -5,8 +5,6 @@ import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api-client';
 import BooleanFilterBuilder from '@/components/BooleanFilterBuilder';
 import { createEmptyGroup, type BooleanFilterGroup } from '@/lib/filters/types';
-import { parseURLToFilterAST } from '@/lib/filters/url';
-import { useSearchParams } from 'next/navigation';
 import { showGlobalAlert } from '@/lib/alerts';
 import type { SerializedJob, JobScope } from '@/lib/llm/types';
 import { getVariablesForEntityType } from '@/lib/llm/schema-variables';
@@ -188,7 +186,6 @@ export function AIJobsOverlay({
     failed: number;
     isSubmitting: boolean;
   } | null>(null);
-  const searchParams = useSearchParams();
   const loadJobsInProgressRef = useRef(false);
   const pollingInProgressRef = useRef(false);
   const [unseenCount, setUnseenCount] = useState(0);
@@ -266,10 +263,16 @@ export function AIJobsOverlay({
           setManualIdsText(idsToText(scopeIds));
         }
       } else if (scope.kind === 'frame_ids') {
-        setScopeMode('frames');
-        setFrameIdsText(idsToText(scope.frameIds ?? []));
-        setFrameIncludeVerbs(scope.includeVerbs ?? false);
-        setFrameFlagTarget(scope.flagTarget ?? 'verb');
+        // Only set frames scope if the current entity type supports it
+        if (mode === 'verbs' || mode === 'frames') {
+          setScopeMode('frames');
+          setFrameIdsText(idsToText(scope.frameIds ?? []));
+          setFrameIncludeVerbs(scope.includeVerbs ?? false);
+          setFrameFlagTarget(scope.flagTarget ?? 'verb');
+        } else {
+          // Fall back to selection or manual IDs for incompatible entity types
+          setScopeMode('selection');
+        }
       } else if (scope.kind === 'filters') {
         const filters = scope.filters;
         const hasNoFilters = !filters?.where || (filters.where.children && filters.where.children.length === 0);
@@ -288,7 +291,7 @@ export function AIJobsOverlay({
     // Manually start the creation flow (don't call startCreateFlow as it resets fields)
     setIsCreating(true);
     setCurrentStep('details');
-  }, [selectedIds]);
+  }, [selectedIds, mode]);
 
   useEffect(() => {
     if (currentStep !== 'prompt') {
@@ -392,11 +395,13 @@ export function AIJobsOverlay({
       case 'manual':
         return manualIds.length > 0 && manualIds.every(id => validatedManualIds.has(id));
       case 'frames':
+        // Frames scope only valid for verbs and frames entity types
+        if (mode !== 'verbs' && mode !== 'frames') return false;
         return frameIds.length > 0 && frameIds.every(id => validatedFrameIds.has(id));
       default:
         return false;
     }
-  }, [scopeMode, parsedSelectionCount, manualIds, frameIds, validatedManualIds, validatedFrameIds]);
+  }, [scopeMode, parsedSelectionCount, manualIds, frameIds, validatedManualIds, validatedFrameIds, mode]);
 
   const promptIsValid = useMemo(() => promptTemplate.trim().length > 0, [promptTemplate]);
 
@@ -414,11 +419,13 @@ export function AIJobsOverlay({
       case 'manual':
         return manualIds.length === 0 || !manualIds.every(id => validatedManualIds.has(id));
       case 'frames':
+        // Frames scope only valid for verbs and frames entity types
+        if (mode !== 'verbs' && mode !== 'frames') return true;
         return frameIds.length === 0 || !frameIds.every(id => validatedFrameIds.has(id));
       default:
         return true;
     }
-  }, [submissionLoading, promptIsValid, model, scopeMode, parsedSelectionCount, manualIds, frameIds, validatedManualIds, validatedFrameIds]);
+  }, [submissionLoading, promptIsValid, model, scopeMode, parsedSelectionCount, manualIds, frameIds, validatedManualIds, validatedFrameIds, mode]);
 
   const stepIndex = STEPPER_STEPS.indexOf(currentStep);
   const isLastStep = stepIndex === STEPPER_STEPS.length - 1;
@@ -685,10 +692,6 @@ export function AIJobsOverlay({
                 onFilterGroupChange={setFilterGroup}
                 filterLimit={filterLimit}
                 onFilterLimitChange={setFilterLimit}
-                onImportFromUrl={() => {
-                  const ast = parseURLToFilterAST(mode, searchParams?.toString() ?? '');
-                  if (ast) setFilterGroup(ast);
-                }}
                 filterValidateLoading={filterValidateLoading}
                 filterValidateError={filterValidateError}
                 filterValidateCount={filterValidateCount}
@@ -703,10 +706,12 @@ export function AIJobsOverlay({
               <p className="text-xs text-red-500">
                 {scopeMode === 'manual' && manualIds.length > 0 && manualIds.some(id => !validatedManualIds.has(id))
                   ? 'Some manual IDs are invalid. Please ensure all IDs exist in the database.'
-                  : scopeMode === 'frames' && frameIds.length > 0 && frameIds.some(id => !validatedFrameIds.has(id))
+                  : scopeMode === 'frames' && (mode === 'verbs' || mode === 'frames') && frameIds.length > 0 && frameIds.some(id => !validatedFrameIds.has(id))
                   ? (frameIncludeVerbs && mode === 'verbs' 
                       ? 'Some frame IDs are invalid or have no associated verbs. Please ensure all frame IDs exist and have verbs.'
                       : 'Some frame IDs are invalid. Please ensure all frame IDs exist in the database.')
+                  : scopeMode === 'frames' && (mode !== 'verbs' && mode !== 'frames')
+                  ? 'Frame scope is only available for verbs and frames.'
                   : 'Choose at least one target before continuing.'}
               </p>
             )}
@@ -1410,9 +1415,9 @@ export function AIJobsOverlay({
         try {
           const normalized = normalizeLexicalCode(id);
           const response = await api.get<{ results: Array<{ code: string }> }>(
-            `/api/llm-jobs/search-ids?q=${encodeURIComponent(normalized)}&pos=${mode}&limit=1`
+            `/api/llm-jobs/search-ids?q=${encodeURIComponent(normalized)}&pos=${mode}&exact=true&limit=1`
           );
-          if (response.results.some(r => r.code.toLowerCase() === normalized.toLowerCase())) {
+          if (response.results.length > 0) {
             validIds.add(id);
           }
         } catch (error) {
@@ -1425,9 +1430,9 @@ export function AIJobsOverlay({
     return () => clearTimeout(timeoutId);
   }, [manualIds, scopeMode, mode]);
 
-  // Validate frame IDs
+  // Validate frame IDs (only for verbs and frames entity types)
   useEffect(() => {
-    if (scopeMode !== 'frames' || frameIds.length === 0) {
+    if (scopeMode !== 'frames' || frameIds.length === 0 || (mode !== 'verbs' && mode !== 'frames')) {
       setValidatedFrameIds(new Set());
       return;
     }
@@ -2097,11 +2102,28 @@ function buildScope(
 
 function normalizeLexicalCode(input: string): string {
   const value = input.trim().toLowerCase();
-  const match = value.match(/^([a-z0-9_]+)\.([vna])\.([0-9]{1,2})$/);
+  const match = value.match(/^([a-z0-9_]+)\.([vnar])\.([0-9]{1,2})$/);
   if (!match) return value;
   const [, lemma, pos, sense] = match;
   const padded = sense.padStart(2, '0');
   return `${lemma}.${pos}.${padded}`;
+}
+
+function getManualIdPlaceholder(pos: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames'): string {
+  switch (pos) {
+    case 'verbs':
+      return 'e.g., say.v.01, run.v.02';
+    case 'nouns':
+      return 'e.g., dog.n.01, cat.n.02';
+    case 'adjectives':
+      return 'e.g., big.a.01, small.a.02';
+    case 'adverbs':
+      return 'e.g., quickly.r.01, slowly.r.02';
+    case 'frames':
+      return 'e.g., Communication, Motion';
+    default:
+      return 'e.g., word.pos.01';
+  }
 }
 
 function truncate(value: string, length: number) {
@@ -2486,7 +2508,6 @@ const ScopeSelector = memo(function ScopeSelector({
   onFilterGroupChange,
   filterLimit,
   onFilterLimitChange,
-  onImportFromUrl,
   filterValidateLoading,
   filterValidateError,
   filterValidateCount,
@@ -2528,7 +2549,6 @@ const ScopeSelector = memo(function ScopeSelector({
   onFilterGroupChange: (g: BooleanFilterGroup) => void;
   filterLimit: number;
   onFilterLimitChange: (n: number) => void;
-  onImportFromUrl: () => void;
   filterValidateLoading: boolean;
   filterValidateError: string | null;
   filterValidateCount: number | null;
@@ -2600,13 +2620,6 @@ const ScopeSelector = memo(function ScopeSelector({
                     className="w-24 rounded border border-gray-300 px-2 py-1 text-xs text-gray-800"
                   />
                   <button
-                    onClick={onImportFromUrl}
-                    className="cursor-pointer rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 hover:bg-gray-100"
-                    type="button"
-                  >
-                    Import from table filters
-                  </button>
-                  <button
                     onClick={onValidateFilters}
                     className="cursor-pointer rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 hover:bg-gray-100"
                     type="button"
@@ -2655,7 +2668,7 @@ const ScopeSelector = memo(function ScopeSelector({
           />
           <div className="flex-1">
             <div className="text-sm font-medium text-gray-800">Manual IDs</div>
-            <p className="text-xs text-gray-500">Paste lexical IDs (e.g., say.v.01) separated by commas, spaces, or new lines.</p>
+            <p className="text-xs text-gray-500">Paste lexical IDs separated by commas, spaces, or new lines.</p>
             {mode === 'manual' && (
               <div className="relative mt-2">
                 <textarea
@@ -2665,7 +2678,7 @@ const ScopeSelector = memo(function ScopeSelector({
                   onKeyDown={handleManualIdKeyDown}
                   rows={3}
                   className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  placeholder="e.g., say.v.01, run.v.02"
+                  placeholder={getManualIdPlaceholder(pos)}
                 />
                 {showManualIdMenu && manualIdSuggestions.length > 0 && (
                   <div
@@ -2705,7 +2718,9 @@ const ScopeSelector = memo(function ScopeSelector({
           </div>
         </label>
 
-        <label className={`flex items-start gap-2 rounded-md border px-3 py-2 ${mode === 'frames' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
+        {/* Frame IDs scope - only for verbs and frames */}
+        {(pos === 'verbs' || pos === 'frames') && (
+          <label className={`flex items-start gap-2 rounded-md border px-3 py-2 ${mode === 'frames' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
           <input
             type="radio"
             name="scope"
@@ -2824,6 +2839,7 @@ const ScopeSelector = memo(function ScopeSelector({
             )}
           </div>
         </label>
+        )}
 
       </div>
     </div>
