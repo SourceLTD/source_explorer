@@ -18,6 +18,7 @@ import {
 import { getOpenAIClient } from './client';
 import { translateFilterASTToPrisma } from '@/lib/filters/translate';
 import type { BooleanFilterGroup } from '@/lib/filters/types';
+import { sortRolesByPrecedence } from '@/lib/types';
 
 const TERMINAL_ITEM_STATUSES = new Set(['succeeded', 'failed', 'skipped']);
 
@@ -242,6 +243,7 @@ function buildVariableMap(entry: LexicalEntrySummary): Record<string, string> {
     base.is_supporting_frame = entry.is_supporting_frame ? 'true' : 'false';
   }
 
+  // Add additional fields (includes frame.* fields for verbs)
   if (entry.additional) {
     for (const [key, value] of Object.entries(entry.additional)) {
       base[key] = stringify(value);
@@ -253,7 +255,7 @@ function buildVariableMap(entry: LexicalEntrySummary): Record<string, string> {
 
 export function renderPrompt(template: string, entry: LexicalEntrySummary): RenderedPrompt {
   const variables = buildVariableMap(entry);
-  const prompt = template.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, key: string) => {
+  const prompt = template.replace(/\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g, (_, key: string) => {
     if (variables[key] !== undefined) {
       return variables[key];
     }
@@ -296,7 +298,32 @@ async function fetchEntriesByIds(pos: PartOfSpeech, ids: string[]): Promise<Lexi
         lexfile: true,
         frames: {
           select: {
+            id: true,
+            code: true,
+            framebank_id: true,
             frame_name: true,
+            definition: true,
+            short_definition: true,
+            prototypical_synset: true,
+            prototypical_synset_definition: true,
+            is_supporting_frame: true,
+            communication: true,
+            frame_roles: {
+              select: {
+                id: true,
+                description: true,
+                notes: true,
+                main: true,
+                examples: true,
+                nickname: true,
+                role_types: {
+                  select: {
+                    label: true,
+                    code: true,
+                  },
+                },
+              },
+            },
           },
         },
       },
@@ -306,18 +333,47 @@ async function fetchEntriesByIds(pos: PartOfSpeech, ids: string[]): Promise<Lexi
     entries = uniqueIds
       .map(code => byCode.get(code))
       .filter((record): record is (typeof records)[number] => Boolean(record))
-      .map(record => ({
-        dbId: record.id,
-        code: record.code,
-        pos,
-        gloss: record.gloss,
-        lemmas: record.lemmas,
-        examples: record.examples,
-        flagged: record.flagged,
-        flagged_reason: record.flagged_reason,
-        frame_name: record.frames?.frame_name ?? null,
-        lexfile: record.lexfile,
-      }));
+      .map(record => {
+        const frameData = record.frames ? {
+          'frame.id': record.frames.id.toString(),
+          'frame.code': record.frames.code,
+          'frame.framebank_id': record.frames.framebank_id,
+          'frame.frame_name': record.frames.frame_name,
+          'frame.definition': record.frames.definition,
+          'frame.short_definition': record.frames.short_definition,
+          'frame.prototypical_synset': record.frames.prototypical_synset,
+          'frame.prototypical_synset_definition': record.frames.prototypical_synset_definition,
+          'frame.is_supporting_frame': record.frames.is_supporting_frame,
+          'frame.communication': record.frames.communication,
+          'frame.roles': sortRolesByPrecedence(record.frames.frame_roles.map(fr => ({
+            role_type: fr.role_types,
+            main: fr.main ?? undefined,
+            description: fr.description,
+            examples: fr.examples,
+            nickname: fr.nickname,
+          }))).map(fr => {
+            const roleType = fr.role_type.label;
+            const description = fr.description || '';
+            const examples = fr.examples && fr.examples.length > 0 ? fr.examples.join(', ') : '';
+            const nickname = fr.nickname || '';
+            return `**${roleType}**: ${description}${examples ? ` (e.g. ${examples})` : ''}${nickname ? `; ${nickname}` : ''}`;
+          }).join('\n'),
+        } : {};
+
+        return {
+          dbId: record.id,
+          code: record.code,
+          pos,
+          gloss: record.gloss,
+          lemmas: record.lemmas,
+          examples: record.examples,
+          flagged: record.flagged,
+          flagged_reason: record.flagged_reason,
+          frame_name: record.frames?.frame_name ?? null,
+          lexfile: record.lexfile,
+          additional: frameData,
+        };
+      });
   } else if (pos === 'nouns') {
     const records = await prisma.nouns.findMany({
       where: { code: { in: uniqueIds } },
@@ -463,6 +519,22 @@ async function fetchEntriesByFrameIds(frameIds: string[], pos?: PartOfSpeech, in
       prototypical_synset_definition: true,
       is_supporting_frame: true,
       communication: true,
+      frame_roles: {
+        select: {
+          id: true,
+          description: true,
+          notes: true,
+          main: true,
+          examples: true,
+          nickname: true,
+          role_types: {
+            select: {
+              label: true,
+              code: true,
+            },
+          },
+        },
+      },
       verbs: includeVerbs ? {
         where: {
           deleted: false
@@ -534,8 +606,29 @@ async function fetchEntriesByFrameIds(frameIds: string[], pos?: PartOfSpeech, in
           frame_name: frame.frame_name,
           lexfile: verb.lexfile,
           additional: {
-            frame_id: frame.id.toString(),
-            frame_code: frame.code,
+            'frame.id': frame.id.toString(),
+            'frame.code': frame.code,
+            'frame.framebank_id': frame.framebank_id,
+            'frame.frame_name': frame.frame_name,
+            'frame.definition': frame.definition,
+            'frame.short_definition': frame.short_definition,
+            'frame.prototypical_synset': frame.prototypical_synset,
+            'frame.prototypical_synset_definition': frame.prototypical_synset_definition,
+            'frame.is_supporting_frame': frame.is_supporting_frame,
+            'frame.communication': frame.communication,
+            'frame.roles': sortRolesByPrecedence(frame.frame_roles.map(fr => ({
+              role_type: fr.role_types,
+              main: fr.main ?? undefined,
+              description: fr.description,
+              examples: fr.examples,
+              nickname: fr.nickname,
+            }))).map(fr => {
+              const roleType = fr.role_type.label;
+              const description = fr.description || '';
+              const examples = fr.examples && fr.examples.length > 0 ? fr.examples.join(', ') : '';
+              const nickname = fr.nickname || '';
+              return `**${roleType}**: ${description}${examples ? ` (e.g. ${examples})` : ''}${nickname ? `; ${nickname}` : ''}`;
+            }).join('\n'),
           },
         });
       }
@@ -578,25 +671,83 @@ async function fetchEntriesByFilters(pos: PartOfSpeech, filters: { limit?: numbe
             verb_relations_verb_relations_target_idToverbs: { where: { type: 'hypernym' } },
           },
         },
-        frames: { select: { frame_name: true } },
+        frames: {
+          select: {
+            id: true,
+            code: true,
+            framebank_id: true,
+            frame_name: true,
+            definition: true,
+            short_definition: true,
+            prototypical_synset: true,
+            prototypical_synset_definition: true,
+            is_supporting_frame: true,
+            communication: true,
+            frame_roles: {
+              select: {
+                id: true,
+                description: true,
+                notes: true,
+                main: true,
+                examples: true,
+                nickname: true,
+                role_types: {
+                  select: {
+                    label: true,
+                    code: true,
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     });
 
-    let entries = records.map(record => ({
-      dbId: record.id,
-      code: (record as { code: string }).code,
-      pos,
-      gloss: record.gloss,
-      lemmas: record.lemmas,
-      examples: record.examples,
-      flagged: record.flagged ?? undefined,
-      flagged_reason: (record as { flagged_reason?: string | null }).flagged_reason ?? null,
-      frame_name: (record as { frames?: { frame_name?: string } | null }).frames?.frame_name ?? null,
-      lexfile: record.lexfile,
-      // temporary attachment for filtering only
-      _parentsCount: (record as any)._count?.verb_relations_verb_relations_source_idToverbs ?? 0,
-      _childrenCount: (record as any)._count?.verb_relations_verb_relations_target_idToverbs ?? 0,
-    })) as Array<LexicalEntrySummary & { _parentsCount: number; _childrenCount: number }>;
+    let entries = records.map(record => {
+      const frameData = record.frames ? {
+        'frame.id': record.frames.id.toString(),
+        'frame.code': record.frames.code,
+        'frame.framebank_id': record.frames.framebank_id,
+        'frame.frame_name': record.frames.frame_name,
+        'frame.definition': record.frames.definition,
+        'frame.short_definition': record.frames.short_definition,
+        'frame.prototypical_synset': record.frames.prototypical_synset,
+        'frame.prototypical_synset_definition': record.frames.prototypical_synset_definition,
+        'frame.is_supporting_frame': record.frames.is_supporting_frame,
+        'frame.communication': record.frames.communication,
+        'frame.roles': sortRolesByPrecedence(record.frames.frame_roles.map(fr => ({
+          role_type: fr.role_types,
+          main: fr.main ?? undefined,
+          description: fr.description,
+          examples: fr.examples,
+          nickname: fr.nickname,
+        }))).map(fr => {
+          const roleType = fr.role_type.label;
+          const description = fr.description || '';
+          const examples = fr.examples && fr.examples.length > 0 ? fr.examples.join(', ') : '';
+          const nickname = fr.nickname || '';
+          return `**${roleType}**: ${description}${examples ? ` (e.g. ${examples})` : ''}${nickname ? `; ${nickname}` : ''}`;
+        }).join('\n'),
+      } : {};
+
+      return {
+        dbId: record.id,
+        code: (record as { code: string }).code,
+        pos,
+        gloss: record.gloss,
+        lemmas: record.lemmas,
+        examples: record.examples,
+        flagged: record.flagged ?? undefined,
+        flagged_reason: (record as { flagged_reason?: string | null }).flagged_reason ?? null,
+        frame_name: (record as { frames?: { frame_name?: string } | null }).frames?.frame_name ?? null,
+        lexfile: record.lexfile,
+        additional: frameData,
+        // temporary attachment for filtering only
+        _parentsCount: (record as any)._count?.verb_relations_verb_relations_source_idToverbs ?? 0,
+        _childrenCount: (record as any)._count?.verb_relations_verb_relations_target_idToverbs ?? 0,
+      };
+    }) as Array<LexicalEntrySummary & { _parentsCount: number; _childrenCount: number }>;
 
     // Apply computed filters on counts
     for (const cf of computedFilters) {
@@ -1577,7 +1728,6 @@ export async function listLLMJobs(options: JobListOptions = {}): Promise<Seriali
   let jobs: any[];
   
   // Only include items if explicitly requested (default to false for performance)
-  // Note: entityType filtering is disabled for performance - it would require loading all items
   const includeItemsQuery = options.includeItems === true ? {
     llm_job_items: {
       orderBy: { id: 'asc' as const },
@@ -1589,7 +1739,8 @@ export async function listLLMJobs(options: JobListOptions = {}): Promise<Seriali
       // Hide soft-deleted jobs from lists
       where: ({ deleted: false } as any),
       orderBy: { created_at: 'desc' },
-      take: options.limit ?? 15,
+      // Fetch more than requested to account for filtering by entityType
+      take: options.entityType ? (options.limit ?? 15) * 3 : (options.limit ?? 15),
       include: includeItemsQuery,
     });
   } catch (error) {
@@ -1597,7 +1748,7 @@ export async function listLLMJobs(options: JobListOptions = {}): Promise<Seriali
     if (error instanceof Error && /Unknown argument\s+`?deleted`?/i.test(error.message)) {
       jobs = await getLLMJobsDelegate().findMany({
         orderBy: { created_at: 'desc' },
-        take: options.limit ?? 15,
+        take: options.entityType ? (options.limit ?? 15) * 3 : (options.limit ?? 15),
         include: includeItemsQuery,
       });
     } else {
@@ -1605,9 +1756,16 @@ export async function listLLMJobs(options: JobListOptions = {}): Promise<Seriali
     }
   }
   
-  // Note: entityType filtering is disabled for performance
-  // It would require loading all items for all jobs, which causes hundreds of queries
-  // If we need this feature, it should be implemented with a dedicated entity_type column on jobs table
+  // Filter by entity type if specified (using scope field to infer entity type)
+  if (options.entityType) {
+    jobs = jobs.filter(job => {
+      const scope = job.scope as JobScope | null;
+      const jobEntityType = inferPosFromJobScope(scope);
+      return jobEntityType === options.entityType;
+    });
+    // Limit to requested number after filtering
+    jobs = jobs.slice(0, options.limit ?? 15);
+  }
 
   const serialized = jobs.map(job => {
     const { llm_job_items: itemsRaw, ...jobWithoutItems } = job as typeof job & { llm_job_items?: typeof job.llm_job_items };

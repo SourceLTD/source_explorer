@@ -38,13 +38,15 @@ export default function FramesTableMode() {
             </h1>
           </div>
           
-          <div className="flex items-center gap-4">
-            <SearchBox 
-              onSelectResult={handleSearchResult}
-              onSearchChange={handleSearchQueryChange}
-              placeholder="Search frames..."
-              mode="verbs"
-            />
+          <div className="flex items-center gap-4 flex-1 justify-end">
+            <div className="flex-1 max-w-2xl">
+              <SearchBox 
+                onSelectResult={handleSearchResult}
+                onSearchChange={handleSearchQueryChange}
+                placeholder="Search frames..."
+                mode="verbs"
+              />
+            </div>
             <SignOutButton />
           </div>
 

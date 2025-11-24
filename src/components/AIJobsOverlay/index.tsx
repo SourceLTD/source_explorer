@@ -1,113 +1,30 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, memo } from 'react';
-import { useRouter } from 'next/navigation';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '@/lib/api-client';
-import BooleanFilterBuilder from '@/components/BooleanFilterBuilder';
 import { createEmptyGroup, type BooleanFilterGroup } from '@/lib/filters/types';
 import { showGlobalAlert } from '@/lib/alerts';
 import type { SerializedJob, JobScope } from '@/lib/llm/types';
 import { getVariablesForEntityType } from '@/lib/llm/schema-variables';
 import { ChevronLeftIcon, ChevronRightIcon, ClipboardDocumentIcon } from '@heroicons/react/24/outline';
 
-type ScopeMode = 'selection' | 'manual' | 'frames' | 'all' | 'filters';
-
-interface AIJobsOverlayProps {
-  isOpen: boolean;
-  onClose: () => void;
-  mode: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames';
-  selectedIds: string[];
-  onJobsUpdated?: (pendingJobs: number) => void;
-  onUnseenCountChange?: (count: number) => void;
-}
-
-interface JobListResponse {
-  jobs: SerializedJob[];
-}
-
-interface PreviewResponse {
-  previews: Array<{
-    prompt: string;
-    variables: Record<string, string>;
-  }>;
-  totalEntries: number;
-}
-
-const MODEL_OPTIONS = [
-  { value: 'gpt-5-nano', label: 'GPT-5 Nano (cheapest)' },
-  { value: 'gpt-5-mini', label: 'GPT-5 Mini (balanced)' },
-  { value: 'gpt-5', label: 'GPT-5 (highest quality)' },
-];
-
-// Dynamic variables removed - now loaded from schema-variables utility
-
-const DEFAULT_PROMPT = `You are reviewing lexical entries for quality assurance.
-
-Entry ID: {{id}}
-Part of Speech: {{pos}}
-Gloss: {{gloss}}
-Lemmas: {{lemmas}}
-Examples:\n{{examples}}
-Currently Flagged: {{flagged}}
-Flagged Reason: {{flagged_reason}}
-
-Decide whether the entry should be flagged. Respond using the provided JSON schema.`;
-
-const DEFAULT_LABEL = 'AI Flagging Review';
-const STEPPER_STEPS = ['details', 'scope', 'prompt', 'review'] as const;
-type StepperStep = typeof STEPPER_STEPS[number];
-const STEP_TITLES: Record<StepperStep, string> = {
-  details: 'Job Details',
-  scope: 'Scope Selection',
-  prompt: 'Prompt Template',
-  review: 'Review & Submit',
-};
-
-function calculateCursorPosition(textarea: HTMLTextAreaElement, cursorPos: number) {
-  const textareaRect = textarea.getBoundingClientRect();
-  const style = getComputedStyle(textarea);
-
-  const mirror = document.createElement('div');
-  mirror.style.position = 'absolute';
-  mirror.style.visibility = 'hidden';
-  mirror.style.whiteSpace = 'pre-wrap';
-  mirror.style.wordWrap = 'break-word';
-  // Safari sometimes returns an empty composite font string; copy individual props as a fallback
-  if (style.font && style.font.trim().length > 0) {
-    mirror.style.font = style.font;
-  } else {
-    mirror.style.fontFamily = style.fontFamily;
-    mirror.style.fontSize = style.fontSize;
-    mirror.style.fontWeight = style.fontWeight as string;
-    mirror.style.fontStyle = style.fontStyle;
-  }
-  mirror.style.lineHeight = style.lineHeight;
-  mirror.style.letterSpacing = style.letterSpacing;
-  mirror.style.padding = style.padding;
-  mirror.style.border = 'none';
-  mirror.style.boxSizing = style.boxSizing;
-  mirror.style.overflow = 'hidden';
-  mirror.style.width = `${textarea.clientWidth}px`;
-
-  const before = document.createTextNode(textarea.value.substring(0, cursorPos));
-  const marker = document.createElement('span');
-  // Use zero-width space so marker sits exactly at caret
-  marker.textContent = '\u200b';
-
-  mirror.appendChild(before);
-  mirror.appendChild(marker);
-  document.body.appendChild(mirror);
-
-  const markerTop = marker.offsetTop;
-  const markerLeft = marker.offsetLeft;
-
-  document.body.removeChild(mirror);
-
-  const top = textareaRect.top + markerTop - textarea.scrollTop + 4;
-  const left = textareaRect.left + markerLeft - textarea.scrollLeft + 4;
-
-  return { top, left };
-}
+import type { AIJobsOverlayProps, JobListResponse, PreviewResponse } from './types';
+import { MODEL_OPTIONS, DEFAULT_PROMPT, DEFAULT_LABEL, STEPPER_STEPS, STEP_TITLES, type StepperStep } from './constants';
+import {
+  calculateCursorPosition,
+  getReplacementRange,
+  parseIds,
+  idsToText,
+  serviceTierToPriority,
+  buildScope,
+  normalizeLexicalCode,
+  truncate,
+  isScopeTooLarge,
+  convertIdsToFilterScope,
+} from './utils';
+import { StatusPill } from './components';
+import { JobDetails } from './JobDetails';
+import { ScopeSelector } from './ScopeSelector';
 
 export function AIJobsOverlay({
   isOpen,
@@ -127,7 +44,7 @@ export function AIJobsOverlay({
   const [priority, setPriority] = useState<'flex' | 'normal' | 'priority'>('normal');
   const [reasoningEffort, setReasoningEffort] = useState<'low' | 'medium' | 'high'>('medium');
   const [label, setLabel] = useState(DEFAULT_LABEL);
-  const [scopeMode, setScopeMode] = useState<ScopeMode>('selection');
+  const [scopeMode, setScopeMode] = useState<'selection' | 'manual' | 'frames' | 'all' | 'filters'>('selection');
   const [filterGroup, setFilterGroup] = useState<BooleanFilterGroup>(createEmptyGroup());
   const [filterLimit, setFilterLimit] = useState<number>(50);
   const [filterValidateLoading, setFilterValidateLoading] = useState(false);
@@ -975,8 +892,8 @@ export function AIJobsOverlay({
     }
     
     try {
-      // Don't pass entityType - we removed that filtering for performance
-      const response = await api.get<JobListResponse>(`/api/llm-jobs?includeCompleted=true&limit=50`);
+      // Filter jobs by entity type to only show relevant jobs for the current table
+      const response = await api.get<JobListResponse>(`/api/llm-jobs?includeCompleted=true&limit=50&entityType=${mode}`);
       
       // Smart update: only update state if jobs actually changed
       setJobs(prevJobs => {
@@ -1268,6 +1185,7 @@ export function AIJobsOverlay({
       variable.key.toLowerCase().includes(query) || variable.label.toLowerCase().includes(query)
     );
   }, [variableQuery, availableVariables]);
+  
   const renderHighlighted = (text: string) => {
     // Only highlight well-formed {{variable_name}} tokens (no nested braces)
     const tokenRegex = /(\{\{[a-zA-Z0-9_]+\}\})/g;
@@ -1329,38 +1247,6 @@ export function AIJobsOverlay({
       setShowVariableMenu(false);
       setVariableActiveIndex(-1);
     }
-  };
-
-  const getReplacementRange = (text: string, caretStart: number, caretEnd: number) => {
-    // Find the earliest unmatched '{{' before the caret using a simple stack
-    const tokenRegex = /\{\{|\}\}/g;
-    let match: RegExpExecArray | null;
-    const stack: number[] = [];
-    while ((match = tokenRegex.exec(text)) && match.index < caretStart) {
-      if (match[0] === '{{') {
-        stack.push(match.index);
-      } else if (stack.length > 0) {
-        stack.pop();
-      }
-    }
-    // If not inside any unmatched token, fallback to last '{{'
-    if (stack.length === 0) {
-      const lastOpen = text.lastIndexOf('{{', caretStart);
-      if (lastOpen === -1) return { start: caretStart, end: caretEnd };
-      return { start: lastOpen, end: caretEnd };
-    }
-    const openIndex = stack[0]; // earliest unmatched open
-    // Find the closing that balances that earliest unmatched open
-    let depth = stack.length;
-    while ((match = tokenRegex.exec(text))) {
-      if (match[0] === '{{') depth += 1;
-      else depth -= 1;
-      if (depth === 0) {
-        return { start: openIndex, end: match.index + 2 };
-      }
-    }
-    // If no closing found, replace up to the caret
-    return { start: openIndex, end: caretEnd };
   };
 
   // Search for manual IDs
@@ -1680,7 +1566,16 @@ export function AIJobsOverlay({
     setSubmissionLoading(true);
     setSubmissionError(null);
     try {
-      const scope = buildScope(scopeMode, mode, selectedIds, manualIdsText, frameIdsText, filterGroup, filterLimit, frameIncludeVerbs, frameFlagTarget);
+      let scope: JobScope = buildScope(scopeMode, mode, selectedIds, manualIdsText, frameIdsText, filterGroup, filterLimit, frameIncludeVerbs, frameFlagTarget);
+      
+      // Check if scope is too large for HTTP body
+      let wasConverted = false;
+      if (scope.kind === 'ids' && isScopeTooLarge(scope)) {
+        const numIds = scope.ids.length;
+        scope = convertIdsToFilterScope(scope);
+        wasConverted = true;
+        console.log(`[AIJobsOverlay] Large scope detected (${numIds} IDs), converted to filter-based scope`);
+      }
       
       // Create job (fast, DB-only operation)
       const job = await api.post<SerializedJob>('/api/llm-jobs', {
@@ -1712,7 +1607,9 @@ export function AIJobsOverlay({
       showGlobalAlert({
         type: 'success',
         title: 'Job Created',
-        message: `Job ${job.id} created with ${job.total_items} item${job.total_items === 1 ? '' : 's'}. Lambda will submit items automatically.`,
+        message: `Job ${job.id} created with ${job.total_items} item${job.total_items === 1 ? '' : 's'}.${
+          wasConverted ? ' Large batch optimized for performance.' : ''
+        } Lambda will submit items automatically.`,
         durationMs: 5000,
       });
       
@@ -1722,12 +1619,23 @@ export function AIJobsOverlay({
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to submit job';
       setSubmissionError(message);
-      showGlobalAlert({
-        type: 'error',
-        title: 'Submission failed',
-        message,
-        durationMs: 7000,
-      });
+      
+      // Check if it's a payload size error
+      if (message.includes('405') || message.includes('413') || message.includes('too large') || message.includes('payload')) {
+        showGlobalAlert({
+          type: 'error',
+          title: 'Batch too large',
+          message: 'Selection exceeds maximum size. Please use Advanced Filters scope mode for very large batches, or reduce your selection size.',
+          durationMs: 10000,
+        });
+      } else {
+        showGlobalAlert({
+          type: 'error',
+          title: 'Submission failed',
+          message,
+          durationMs: 7000,
+        });
+      }
     } finally {
       setSubmissionLoading(false);
     }
@@ -2026,825 +1934,6 @@ export function AIJobsOverlay({
     </div>
   );
 }
-
-function parseIds(raw: string): string[] {
-  return raw
-    .split(/\s|,|;|\n/)
-    .map(value => value.trim())
-    .filter(Boolean);
-}
-
-function idsToText(ids: string[]): string {
-  return ids.join(', ');
-}
-
-function serviceTierToPriority(tier?: string | null): 'flex' | 'normal' | 'priority' {
-  if (tier === 'flex') return 'flex';
-  if (tier === 'priority') return 'priority';
-  return 'normal'; // default or null
-}
-
-function buildScope(
-  mode: ScopeMode,
-  pos: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames',
-  selectedIds: string[],
-  manualIdsText: string,
-  frameIdsText: string,
-  filterGroup?: BooleanFilterGroup,
-  filterLimit?: number,
-  frameIncludeVerbs?: boolean,
-  frameFlagTarget?: 'frame' | 'verb' | 'both'
-) {
-  switch (mode) {
-    case 'selection':
-      return {
-        kind: 'ids',
-        pos,
-        ids: selectedIds,
-      };
-    case 'all':
-      return {
-        kind: 'filters',
-        pos,
-        filters: { limit: 0 },
-      } as const;
-    case 'filters':
-      return {
-        kind: 'filters',
-        pos,
-        filters: {
-          limit: typeof filterLimit === 'number' ? filterLimit : 50,
-          where: filterGroup && filterGroup.children.length > 0 ? filterGroup : undefined,
-        },
-      } as const;
-    case 'manual':
-      return {
-        kind: 'ids',
-        pos,
-        ids: parseIds(manualIdsText).map(normalizeLexicalCode),
-      };
-    case 'frames':
-      return {
-        kind: 'frame_ids',
-        pos,
-        frameIds: parseIds(frameIdsText),
-        includeVerbs: frameIncludeVerbs,
-        flagTarget: frameFlagTarget,
-      };
-    default:
-      return {
-        kind: 'ids',
-        pos,
-        ids: selectedIds,
-      };
-  }
-}
-
-function normalizeLexicalCode(input: string): string {
-  const value = input.trim().toLowerCase();
-  const match = value.match(/^([a-z0-9_]+)\.([vnar])\.([0-9]{1,2})$/);
-  if (!match) return value;
-  const [, lemma, pos, sense] = match;
-  const padded = sense.padStart(2, '0');
-  return `${lemma}.${pos}.${padded}`;
-}
-
-function getManualIdPlaceholder(pos: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames'): string {
-  switch (pos) {
-    case 'verbs':
-      return 'e.g., say.v.01, run.v.02';
-    case 'nouns':
-      return 'e.g., dog.n.01, cat.n.02';
-    case 'adjectives':
-      return 'e.g., big.a.01, small.a.02';
-    case 'adverbs':
-      return 'e.g., quickly.r.01, slowly.r.02';
-    case 'frames':
-      return 'e.g., Communication, Motion';
-    default:
-      return 'e.g., word.pos.01';
-  }
-}
-
-function truncate(value: string, length: number) {
-  if (value.length <= length) return value;
-  return `${value.slice(0, length)}…`;
-}
-
-const StatusPill = memo(function StatusPill({ status }: { status: SerializedJob['status'] }) {
-  const { label, color } = useMemo(() => {
-    switch (status) {
-      case 'queued':
-        return { label: 'Queued', color: 'bg-yellow-100 text-yellow-800' };
-      case 'running':
-        return { label: 'Running', color: 'bg-blue-100 text-blue-800' };
-      case 'completed':
-        return { label: 'Completed', color: 'bg-green-100 text-green-800' };
-      case 'failed':
-        return { label: 'Failed', color: 'bg-red-100 text-red-800' };
-      case 'cancelled':
-        return { label: 'Cancelled', color: 'bg-gray-200 text-gray-700' };
-      case 'paused':
-        return { label: 'Paused', color: 'bg-orange-100 text-orange-700' };
-      default:
-        return { label: status, color: 'bg-gray-200 text-gray-700' };
-    }
-  }, [status]);
-
-  return (
-    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium ${color}`}>
-      {label}
-    </span>
-  );
-});
-
-const JobDetails = memo(function JobDetails({ 
-  job, 
-  onCancel, 
-  onDelete, 
-  onClose,
-  onCloneSettings,
-  submissionProgress,
-  mode,
-  onLoadMore
-}: { 
-  job: SerializedJob; 
-  onCancel: (jobId: string) => void; 
-  onDelete: (jobId: string) => void; 
-  onClose: () => void;
-  onCloneSettings: (job: SerializedJob) => void;
-  submissionProgress: {
-    jobId: string;
-    submitted: number;
-    total: number;
-    failed: number;
-    isSubmitting: boolean;
-  } | null;
-  mode: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames';
-  onLoadMore: (status: 'pending' | 'succeeded' | 'failed') => void;
-}) {
-  const router = useRouter();
-  
-  // Memoize filtered item lists to prevent re-computation
-  const pendingItems = useMemo(
-    () => job.items.filter(item => item.status === 'queued' || item.status === 'processing'),
-    [job.items]
-  );
-  const succeededItems = useMemo(
-    () => job.items.filter(item => item.status === 'succeeded'),
-    [job.items]
-  );
-  const failedItems = useMemo(
-    () => job.items.filter(item => item.status === 'failed'),
-    [job.items]
-  );
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-start justify-between">
-        <div>
-          <h3 className="text-base font-semibold text-gray-900">{job.label ?? `Job ${job.id}`}</h3>
-          <p className="text-xs text-gray-500">Created {new Date(job.created_at).toLocaleString()}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => onCloneSettings(job)}
-            className="cursor-pointer inline-flex items-center gap-2 rounded-md border border-blue-600 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100"
-            title="Clone job settings to create a new job"
-          >
-            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-            </svg>
-            Clone Job Settings
-          </button>
-          {job.status === 'completed' && (
-            <button
-              onClick={() => {
-                onClose();
-                // Navigate to the correct table page based on entity type
-                const baseUrl = mode === 'verbs' || mode === 'frames'
-                  ? `/table?flaggedByJobId=${encodeURIComponent(job.id)}&tab=${mode}`
-                  : `/table/${mode}?flaggedByJobId=${encodeURIComponent(job.id)}`;
-                router.push(baseUrl);
-              }}
-              className="cursor-pointer inline-flex items-center gap-2 rounded-md border border-blue-600 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100"
-            >
-              See all flagged {mode}
-            </button>
-          )}
-          {['queued', 'running'].includes(job.status) && (
-            <button
-              onClick={() => onCancel(job.id)}
-              className="cursor-pointer inline-flex items-center gap-2 rounded-md border border-red-600 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100"
-            >
-              Cancel Job
-            </button>
-          )}
-          <button
-            onClick={() => onDelete(job.id)}
-            className="cursor-pointer inline-flex items-center gap-2 rounded-md border border-red-600 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100"
-          >
-            Delete Job
-          </button>
-        </div>
-      </div>
-
-      {submissionProgress && submissionProgress.jobId === job.id && (
-        <div className="rounded-md border border-blue-200 bg-blue-50 p-3">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-semibold text-blue-800">
-              Submitting to OpenAI...
-            </span>
-            <span className="text-sm text-blue-700">
-              {submissionProgress.submitted} / {submissionProgress.total}
-            </span>
-          </div>
-          <div className="h-2 w-full rounded-full bg-blue-200">
-            <div 
-              className="h-full rounded-full bg-blue-600 transition-all duration-300"
-              style={{ 
-                width: `${(submissionProgress.submitted / submissionProgress.total) * 100}%` 
-              }}
-            />
-          </div>
-          {submissionProgress.failed > 0 && (
-            <p className="mt-2 text-xs text-red-600">
-              {submissionProgress.failed} items failed to submit
-            </p>
-          )}
-        </div>
-      )}
-
-      {/* Completion Progress - shown when items are being processed by OpenAI */}
-      {['queued', 'running'].includes(job.status) && 
-       job.submitted_items === job.total_items && 
-       (job.processed_items ?? 0) < job.total_items && (
-        <div className="rounded-md border border-green-200 bg-green-50 p-3">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-semibold text-green-800">
-              Processing with OpenAI...
-            </span>
-            <span className="text-sm text-green-700">
-              {job.processed_items ?? 0} / {job.total_items}
-            </span>
-          </div>
-          <div className="h-2 w-full rounded-full bg-green-200">
-            <div 
-              className="h-full rounded-full bg-green-600 transition-all duration-300"
-              style={{ 
-                width: `${((job.processed_items ?? 0) / job.total_items) * 100}%` 
-              }}
-            />
-          </div>
-          <div className="mt-2 flex gap-3 text-xs">
-            {(job.succeeded_items ?? 0) > 0 && (
-              <span className="text-green-700">
-                ✓ {job.succeeded_items} succeeded
-              </span>
-            )}
-            {(job.failed_items ?? 0) > 0 && (
-              <span className="text-red-600">
-                ✗ {job.failed_items} failed
-              </span>
-            )}
-            {(job.flagged_items ?? 0) > 0 && (
-              <span className="text-amber-600">
-                ⚠ {job.flagged_items} flagged
-              </span>
-            )}
-          </div>
-        </div>
-      )}
-
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Metric label="Status" value={<StatusPill status={job.status} />} />
-        <Metric label="Items" value={`${job.processed_items}/${job.total_items}`} helper="Processed" />
-        <Metric label="Succeeded" value={job.succeeded_items.toString()} helper="Items completed" />
-        <Metric label="Failed" value={job.failed_items.toString()} helper="Items errored" />
-        <Metric label="Flagged" value={job.flagged_items.toString()} helper="AI suggested flagged" />
-        <Metric
-          label="Runtime"
-          value={formatRuntime(job.started_at, job.completed_at ?? undefined)}
-          helper="Duration"
-        />
-      </div>
-
-      <section className="space-y-3">
-        <h4 className="text-sm font-semibold text-gray-800">Job Items</h4>
-        <ItemList 
-          title="Pending" 
-          items={pendingItems} 
-          emptyMessage="No items pending." 
-          totalCount={job.total_items - job.succeeded_items - job.failed_items}
-          onLoadMore={() => onLoadMore('pending')}
-        />
-        <ItemList 
-          title="Succeeded" 
-          items={succeededItems} 
-          emptyMessage="No successes yet." 
-          totalCount={job.succeeded_items}
-          onLoadMore={() => onLoadMore('succeeded')}
-        />
-        <ItemList 
-          title="Failed" 
-          items={failedItems} 
-          emptyMessage="No failures." 
-          totalCount={job.failed_items}
-          onLoadMore={() => onLoadMore('failed')}
-        />
-      </section>
-    </div>
-  );
-}, (prevProps, nextProps) => {
-  // Custom comparison to prevent re-renders when only counts change
-  // We compare key fields that should trigger re-render
-  return (
-    prevProps.job.id === nextProps.job.id &&
-    prevProps.job.status === nextProps.job.status &&
-    prevProps.job.processed_items === nextProps.job.processed_items &&
-    prevProps.job.succeeded_items === nextProps.job.succeeded_items &&
-    prevProps.job.failed_items === nextProps.job.failed_items &&
-    prevProps.job.flagged_items === nextProps.job.flagged_items &&
-    prevProps.job.items.length === nextProps.job.items.length &&
-    prevProps.submissionProgress?.jobId === nextProps.submissionProgress?.jobId &&
-    prevProps.submissionProgress?.submitted === nextProps.submissionProgress?.submitted &&
-    prevProps.onCancel === nextProps.onCancel &&
-    prevProps.onDelete === nextProps.onDelete &&
-    prevProps.onCloneSettings === nextProps.onCloneSettings
-  );
-});
-
-const Metric = memo(function Metric({ label, value, helper }: { label: string; value: string | JSX.Element; helper?: string }) {
-  return (
-    <div className="rounded-md border border-gray-200 bg-white p-3 shadow-sm">
-      <div className="text-xs font-medium text-gray-500">{label}</div>
-      <div className="mt-1 text-sm font-semibold text-gray-900">{value}</div>
-      {helper && <div className="text-[11px] text-gray-500">{helper}</div>}
-    </div>
-  );
-});
-
-const ItemList = memo(function ItemList({
-  title,
-  items,
-  emptyMessage,
-  totalCount,
-  onLoadMore,
-}: {
-  title: string;
-  items: SerializedJob['items'];
-  emptyMessage: string;
-  totalCount: number;
-  onLoadMore?: () => void;
-}) {
-  const hasMore = items.length < totalCount;
-  const remaining = totalCount - items.length;
-  
-  return (
-    <div>
-      <div className="mb-1 flex items-center justify-between">
-        <h5 className="text-xs font-semibold uppercase tracking-wide text-gray-600">{title}</h5>
-        {items.length > 0 && (
-          <span className="text-[11px] text-gray-500">Showing {items.length} of {totalCount}</span>
-        )}
-      </div>
-      {items.length === 0 ? (
-        <div className="rounded border border-dashed border-gray-200 p-3 text-[11px] text-gray-500">{emptyMessage}</div>
-      ) : (
-        <>
-          <ul className="space-y-2">
-            {items.map(item => {
-              const getItemColors = () => {
-                switch (item.status) {
-                  case 'queued':
-                  case 'submitting':
-                  case 'processing':
-                    return 'border-blue-200 bg-blue-50 text-blue-700';
-                  case 'succeeded':
-                    return 'border-green-200 bg-green-50 text-green-700';
-                  case 'failed':
-                    return 'border-red-200 bg-red-50 text-red-700';
-                  case 'skipped':
-                    return 'border-gray-200 bg-gray-50 text-gray-700';
-                  default:
-                    return 'border-gray-200 bg-gray-50 text-gray-700';
-                }
-              };
-              
-              return (
-                <li key={item.id} className={`rounded border px-3 py-2 text-[11px] ${getItemColors()}`}>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <span className="font-semibold">{item.entry.code ?? item.id}</span>
-                      <span className="ml-2 uppercase opacity-75">{item.entry.pos}</span>
-                    </div>
-                    <span className="opacity-75">{item.status}</span>
-                  </div>
-                  {item.last_error && <div className="mt-1 text-[10px] text-red-600">{item.last_error}</div>}
-                  {item.response_payload && item.status === 'succeeded' && (
-                    <div className="mt-1 text-[10px] opacity-75">
-                      Flagged: {item.flagged ? 'Yes' : 'No'}
-                    </div>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-          {hasMore && onLoadMore && (
-            <button
-              onClick={onLoadMore}
-              className="mt-2 w-full rounded border border-gray-300 bg-white px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer"
-            >
-              Load More ({remaining} remaining)
-            </button>
-          )}
-        </>
-      )}
-    </div>
-  );
-});
-
-function formatRuntime(start: string | null, end?: string) {
-  if (!start) return '—';
-  const startTime = new Date(start).getTime();
-  const endTime = end ? new Date(end).getTime() : Date.now();
-  const diff = endTime - startTime;
-  if (diff <= 0) return '—';
-  const minutes = Math.floor(diff / 60000);
-  const seconds = Math.floor((diff % 60000) / 1000);
-  if (minutes === 0) return `${seconds}s`;
-  return `${minutes}m ${seconds}s`;
-}
-
-const ScopeSelector = memo(function ScopeSelector({
-  mode,
-  setMode,
-  selectedCount,
-  manualIdsText,
-  frameIdsText,
-  selectionDisabled,
-  manualIdInputRef,
-  frameIdInputRef,
-  showManualIdMenu,
-  manualIdSuggestions,
-  manualIdMenuPosition,
-  insertManualId,
-  showFrameIdMenu,
-  frameIdSuggestions,
-  frameIdMenuPosition,
-  insertFrameId,
-  handleManualIdChange,
-  handleManualIdKeyDown,
-  handleFrameIdChange,
-  handleFrameIdKeyDown,
-  validatedManualIds,
-  validatedFrameIds,
-  manualIds,
-  frameIds,
-  pos,
-  manualIdActiveIndex,
-  frameIdActiveIndex,
-  filterGroup,
-  onFilterGroupChange,
-  filterLimit,
-  onFilterLimitChange,
-  filterValidateLoading,
-  filterValidateError,
-  filterValidateCount,
-  filterValidateSample,
-  onValidateFilters,
-  frameIncludeVerbs,
-  onFrameIncludeVerbsChange,
-  frameFlagTarget,
-  onFrameFlagTargetChange,
-}: {
-  mode: ScopeMode;
-  setMode: (mode: ScopeMode) => void;
-  selectedCount: number;
-  manualIdsText: string;
-  frameIdsText: string;
-  selectionDisabled: boolean;
-  manualIdInputRef: React.RefObject<HTMLTextAreaElement>;
-  frameIdInputRef: React.RefObject<HTMLTextAreaElement>;
-  showManualIdMenu: boolean;
-  manualIdSuggestions: Array<{ code: string; gloss: string }>;
-  manualIdMenuPosition: { top: number; left: number };
-  insertManualId: (code: string) => void;
-  showFrameIdMenu: boolean;
-  frameIdSuggestions: Array<{ id: string; frame_name: string }>;
-  frameIdMenuPosition: { top: number; left: number };
-  insertFrameId: (id: string) => void;
-  handleManualIdChange: (event: React.ChangeEvent<HTMLTextAreaElement>) => void;
-  handleManualIdKeyDown: (event: React.KeyboardEvent<HTMLTextAreaElement>) => void;
-  handleFrameIdChange: (event: React.ChangeEvent<HTMLTextAreaElement>) => void;
-  handleFrameIdKeyDown: (event: React.KeyboardEvent<HTMLTextAreaElement>) => void;
-  validatedManualIds: Set<string>;
-  validatedFrameIds: Set<string>;
-  manualIds: string[];
-  frameIds: string[];
-  pos: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames';
-  manualIdActiveIndex: number;
-  frameIdActiveIndex: number;
-  filterGroup: BooleanFilterGroup;
-  onFilterGroupChange: (g: BooleanFilterGroup) => void;
-  filterLimit: number;
-  onFilterLimitChange: (n: number) => void;
-  filterValidateLoading: boolean;
-  filterValidateError: string | null;
-  filterValidateCount: number | null;
-  filterValidateSample: Array<{ code: string; gloss: string }>;
-  onValidateFilters: () => void;
-  frameIncludeVerbs?: boolean;
-  onFrameIncludeVerbsChange?: (include: boolean) => void;
-  frameFlagTarget?: 'frame' | 'verb' | 'both';
-  onFrameFlagTargetChange?: (target: 'frame' | 'verb' | 'both') => void;
-}) {
-  return (
-    <div className="space-y-2 rounded-md border border-gray-200 bg-white p-3 shadow-sm">
-      <div className="text-xs font-semibold text-gray-700">Scope</div>
-      <div className="space-y-2">
-        <label className={`flex items-start gap-2 rounded-md border px-3 py-2 ${mode === 'selection' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
-          <input
-            type="radio"
-            name="scope"
-            value="selection"
-            disabled={selectionDisabled}
-            checked={mode === 'selection'}
-            onChange={() => setMode('selection')}
-            className="mt-1"
-          />
-          <div>
-            <div className="text-sm font-medium text-gray-800">Selected rows ({selectedCount})</div>
-            <p className="text-xs text-gray-500">Use the currently selected table entries.</p>
-            {selectionDisabled && <p className="text-xs text-red-500">Select rows in the table to enable this option.</p>}
-          </div>
-        </label>
-
-        <label className={`flex items-start gap-2 rounded-md border px-3 py-2 ${mode === 'all' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
-          <input
-            type="radio"
-            name="scope"
-            value="all"
-            checked={mode === 'all'}
-            onChange={() => setMode('all')}
-            className="mt-1"
-          />
-          <div>
-            <div className="text-sm font-medium text-gray-800">All {pos}</div>
-            <p className="text-xs text-gray-500">Target all {pos}. Preview shows the first entry.</p>
-          </div>
-        </label>
-
-        <label className={`flex items-start gap-2 rounded-md border px-3 py-2 ${mode === 'filters' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
-          <input
-            type="radio"
-            name="scope"
-            value="filters"
-            checked={mode === 'filters'}
-            onChange={() => setMode('filters')}
-            className="mt-1"
-          />
-          <div className="flex-1">
-            <div className="text-sm font-medium text-gray-800">Filters (advanced)</div>
-            <p className="text-xs text-gray-500">Build boolean conditions with AND/OR. Leave empty to target all.</p>
-            {mode === 'filters' && (
-              <div className="mt-2 space-y-2">
-                <BooleanFilterBuilder pos={pos} value={filterGroup} onChange={onFilterGroupChange} />
-                <div className="flex items-center gap-2">
-                  <label className="text-xs text-gray-600">Limit</label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={filterLimit}
-                    onChange={e => onFilterLimitChange(Number(e.target.value))}
-                    className="w-24 rounded border border-gray-300 px-2 py-1 text-xs text-gray-800"
-                  />
-                  <button
-                    onClick={onValidateFilters}
-                    className="cursor-pointer rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 hover:bg-gray-100"
-                    type="button"
-                  >
-                    {filterValidateLoading ? 'Validating…' : 'Validate filters'}
-                  </button>
-                </div>
-                {(filterValidateError || filterValidateCount !== null) && (
-                  <div className="rounded border border-gray-200 bg-gray-50 p-2">
-                    {filterValidateError && (
-                      <div className="text-xs text-red-600">{filterValidateError}</div>
-                    )}
-                    {filterValidateCount !== null && !filterValidateError && (
-                      <div className="text-xs text-gray-700">
-                        {filterValidateCount} {pos} will be examined.
-                        {filterValidateSample.length > 0 && (
-                          <div className="mt-1">
-                            <div className="font-medium">Preview (up to 5):</div>
-                            <ul className="list-disc pl-5">
-                              {filterValidateSample.map(s => (
-                                <li key={s.code} className="text-gray-700">
-                                  <span className="font-mono font-semibold">{s.code}</span>
-                                  <span className="ml-2 text-gray-600">{s.gloss}</span>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </label>
-
-        <label className={`flex items-start gap-2 rounded-md border px-3 py-2 ${mode === 'manual' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
-          <input
-            type="radio"
-            name="scope"
-            value="manual"
-            checked={mode === 'manual'}
-            onChange={() => setMode('manual')}
-            className="mt-1"
-          />
-          <div className="flex-1">
-            <div className="text-sm font-medium text-gray-800">Manual IDs</div>
-            <p className="text-xs text-gray-500">Paste lexical IDs separated by commas, spaces, or new lines.</p>
-            {mode === 'manual' && (
-              <div className="relative mt-2">
-                <textarea
-                  ref={manualIdInputRef}
-                  value={manualIdsText}
-                  onChange={handleManualIdChange}
-                  onKeyDown={handleManualIdKeyDown}
-                  rows={3}
-                  className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  placeholder={getManualIdPlaceholder(pos)}
-                />
-                {showManualIdMenu && manualIdSuggestions.length > 0 && (
-                  <div
-                    className="fixed z-10 max-h-48 w-60 overflow-y-auto rounded-md border border-gray-200 bg-white shadow-lg"
-                    style={{ top: `${manualIdMenuPosition.top}px`, left: `${manualIdMenuPosition.left}px` }}
-                  >
-                    <ul>
-                      {manualIdSuggestions.map((suggestion, idx) => (
-                        <li key={suggestion.code}>
-                          <button
-                            onClick={() => insertManualId(suggestion.code)}
-                            className={`cursor-pointer flex w-full flex-col items-start px-3 py-2 text-left text-xs hover:bg-blue-50 ${idx === manualIdActiveIndex ? 'bg-blue-50' : ''}`}
-                            type="button"
-                          >
-                            <span className="font-semibold text-gray-800">{suggestion.code}</span>
-                            <span className="text-[11px] text-gray-500">{suggestion.gloss}</span>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                {manualIds.length > 0 && (
-                  <div className="mt-1 space-y-1">
-                    {manualIds.map(id => (
-                      <div key={id} className="flex items-center gap-1 text-[11px]">
-                        <span className={validatedManualIds.has(id) ? 'text-green-600' : 'text-red-600'}>
-                          {validatedManualIds.has(id) ? '✓' : '✗'}
-                        </span>
-                        <span className={validatedManualIds.has(id) ? 'text-gray-700' : 'text-red-600'}>{id}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </label>
-
-        {/* Frame IDs scope - only for verbs and frames */}
-        {(pos === 'verbs' || pos === 'frames') && (
-          <label className={`flex items-start gap-2 rounded-md border px-3 py-2 ${mode === 'frames' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
-          <input
-            type="radio"
-            name="scope"
-            value="frames"
-            checked={mode === 'frames'}
-            onChange={() => setMode('frames')}
-            className="mt-1"
-          />
-          <div className="flex-1">
-            <div className="text-sm font-medium text-gray-800">Frame IDs</div>
-            <p className="text-xs text-gray-500">Enter frame names or numeric IDs only.</p>
-            {mode === 'frames' && (
-              <div className="relative mt-2 space-y-3">
-                <textarea
-                  ref={frameIdInputRef}
-                  value={frameIdsText}
-                  onChange={handleFrameIdChange}
-                  onKeyDown={handleFrameIdKeyDown}
-                  rows={2}
-                  className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  placeholder="e.g., Communication, 1023"
-                />
-                {showFrameIdMenu && frameIdSuggestions.length > 0 && (
-                  <div
-                    className="fixed z-10 max-h-48 w-60 overflow-y-auto rounded-md border border-gray-200 bg-white shadow-lg"
-                    style={{ top: `${frameIdMenuPosition.top}px`, left: `${frameIdMenuPosition.left}px` }}
-                  >
-                    <ul>
-                      {frameIdSuggestions.map((suggestion, idx) => (
-                        <li key={suggestion.id}>
-                          <button
-                            onClick={() => insertFrameId(suggestion.frame_name)}
-                            className={`cursor-pointer flex w-full flex-col items-start px-3 py-2 text-left text-xs hover:bg-blue-50 ${idx === frameIdActiveIndex ? 'bg-blue-50' : ''}`}
-                            type="button"
-                          >
-                            <span className="font-semibold text-gray-800">{suggestion.frame_name}</span>
-                            <span className="text-[11px] text-gray-500">ID: {suggestion.id}</span>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                {frameIds.length > 0 && (
-                  <div className="mt-1 space-y-1">
-                    {frameIds.map(id => (
-                      <div key={id} className="flex items-center gap-1 text-[11px]">
-                        <span className={validatedFrameIds.has(id) ? 'text-green-600' : 'text-red-600'}>
-                          {validatedFrameIds.has(id) ? '✓' : '✗'}
-                        </span>
-                        <span className={validatedFrameIds.has(id) ? 'text-gray-700' : 'text-red-600'}>{id}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                
-                {/* Frames-specific controls (only when pos='frames') */}
-                {pos === 'frames' && (
-                  <div className="space-y-2 rounded-md border border-blue-200 bg-blue-50 p-2">
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        id="frameIncludeVerbs"
-                        checked={frameIncludeVerbs ?? false}
-                        onChange={(e) => onFrameIncludeVerbsChange?.(e.target.checked)}
-                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                      />
-                      <label htmlFor="frameIncludeVerbs" className="text-xs font-medium text-gray-800">
-                        Include associated verbs in scope
-                      </label>
-                    </div>
-                    
-                    <div className="space-y-1">
-                      <div className="text-xs font-medium text-gray-800">What to flag:</div>
-                      <div className="space-y-1">
-                        <label className="flex items-center gap-2">
-                          <input
-                            type="radio"
-                            name="frameFlagTarget"
-                            value="verb"
-                            checked={frameFlagTarget === 'verb'}
-                            onChange={() => onFrameFlagTargetChange?.('verb')}
-                            className="text-blue-600 focus:ring-blue-500"
-                          />
-                          <span className="text-xs text-gray-700">Verbs only</span>
-                        </label>
-                        <label className="flex items-center gap-2">
-                          <input
-                            type="radio"
-                            name="frameFlagTarget"
-                            value="frame"
-                            checked={frameFlagTarget === 'frame'}
-                            onChange={() => onFrameFlagTargetChange?.('frame')}
-                            className="text-blue-600 focus:ring-blue-500"
-                            disabled={true}
-                          />
-                          <span className="text-xs text-gray-500">Frame only (not supported yet)</span>
-                        </label>
-                        <label className="flex items-center gap-2">
-                          <input
-                            type="radio"
-                            name="frameFlagTarget"
-                            value="both"
-                            checked={frameFlagTarget === 'both'}
-                            onChange={() => onFrameFlagTargetChange?.('both')}
-                            className="text-blue-600 focus:ring-blue-500"
-                            disabled={true}
-                          />
-                          <span className="text-xs text-gray-500">Both frame and verbs (not supported yet)</span>
-                        </label>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </label>
-        )}
-
-      </div>
-    </div>
-  );
-});
 
 export default AIJobsOverlay;
 

@@ -40,6 +40,18 @@ const VERB_VARIABLES: VariableDefinition[] = [
   { key: 'legal_constraints', label: 'Legal constraints', category: 'basic' },
   { key: 'roles_count', label: 'Number of roles', category: 'computed' },
   { key: 'recipes_count', label: 'Number of recipes', category: 'computed' },
+  // Frame fields (accessible via frame.* notation)
+  { key: 'frame.id', label: 'Frame ID', category: 'relation' },
+  { key: 'frame.code', label: 'Frame Code', category: 'relation' },
+  { key: 'frame.framebank_id', label: 'Frame FrameBank ID', category: 'relation' },
+  { key: 'frame.frame_name', label: 'Frame Name', category: 'relation' },
+  { key: 'frame.definition', label: 'Frame Definition', category: 'relation' },
+  { key: 'frame.short_definition', label: 'Frame Short Definition', category: 'relation' },
+  { key: 'frame.prototypical_synset', label: 'Frame Prototypical Synset', category: 'relation' },
+  { key: 'frame.prototypical_synset_definition', label: 'Frame Prototypical Synset Definition', category: 'relation' },
+  { key: 'frame.is_supporting_frame', label: 'Frame Is Supporting Frame', category: 'relation' },
+  { key: 'frame.communication', label: 'Frame Communication', category: 'relation' },
+  { key: 'frame.roles', label: 'Frame Roles (formatted list)', category: 'relation' },
 ];
 
 // Noun-specific variables

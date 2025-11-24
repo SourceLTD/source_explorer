@@ -20,6 +20,10 @@ const enumOps: FieldOperator[] = [
   { key: 'not_in', label: 'not in list', requiresArray: true },
 ];
 
+const codeOps: FieldOperator[] = [
+  { key: 'equals', label: 'equals' },
+];
+
 const booleanOps: FieldOperator[] = [{ key: 'is', label: 'is' }];
 
 const numberOps: FieldOperator[] = [
@@ -48,6 +52,7 @@ const computedNumberOps = numberOps;
 export function getFieldConfigsForPos(pos: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames'): FieldConfig[] {
   if (pos === 'verbs') {
     return [
+      { key: 'code', label: 'Code', type: 'enum', db: 'code', operators: codeOps },
       { key: 'gloss', label: 'Gloss', type: 'text', db: 'gloss', operators: textOps },
       { key: 'lemmas', label: 'Lemmas', type: 'string_array', db: 'lemmas', operators: arrayOps },
       { key: 'src_lemmas', label: 'Source Lemmas', type: 'string_array', db: 'src_lemmas', operators: arrayOps },
@@ -70,6 +75,7 @@ export function getFieldConfigsForPos(pos: 'verbs' | 'nouns' | 'adjectives' | 'a
 
   if (pos === 'nouns') {
     return [
+      { key: 'code', label: 'Code', type: 'enum', db: 'code', operators: codeOps },
       { key: 'gloss', label: 'Gloss', type: 'text', db: 'gloss', operators: textOps },
       { key: 'lemmas', label: 'Lemmas', type: 'string_array', db: 'lemmas', operators: arrayOps },
       { key: 'examples', label: 'Examples', type: 'string_array', db: 'examples', operators: arrayOps },
@@ -91,6 +97,7 @@ export function getFieldConfigsForPos(pos: 'verbs' | 'nouns' | 'adjectives' | 'a
 
   if (pos === 'adjectives') {
     return [
+      { key: 'code', label: 'Code', type: 'enum', db: 'code', operators: codeOps },
       { key: 'gloss', label: 'Gloss', type: 'text', db: 'gloss', operators: textOps },
       { key: 'lemmas', label: 'Lemmas', type: 'string_array', db: 'lemmas', operators: arrayOps },
       { key: 'examples', label: 'Examples', type: 'string_array', db: 'examples', operators: arrayOps },
@@ -113,6 +120,7 @@ export function getFieldConfigsForPos(pos: 'verbs' | 'nouns' | 'adjectives' | 'a
 
   if (pos === 'adverbs') {
     return [
+      { key: 'code', label: 'Code', type: 'enum', db: 'code', operators: codeOps },
       { key: 'gloss', label: 'Gloss', type: 'text', db: 'gloss', operators: textOps },
       { key: 'lemmas', label: 'Lemmas', type: 'string_array', db: 'lemmas', operators: arrayOps },
       { key: 'examples', label: 'Examples', type: 'string_array', db: 'examples', operators: arrayOps },
@@ -130,6 +138,7 @@ export function getFieldConfigsForPos(pos: 'verbs' | 'nouns' | 'adjectives' | 'a
 
   if (pos === 'frames') {
     return [
+      { key: 'code', label: 'Code', type: 'enum', db: 'code', operators: codeOps },
       { key: 'frame_name', label: 'Frame Name', type: 'text', db: 'frame_name', operators: textOps },
       { key: 'definition', label: 'Definition', type: 'text', db: 'definition', operators: textOps },
       { key: 'is_supporting_frame', label: 'Is Supporting Frame', type: 'boolean', db: 'is_supporting_frame', operators: booleanOps },

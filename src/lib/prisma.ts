@@ -2,6 +2,7 @@ import { PrismaClient } from '@prisma/client';
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
+  prismaListenersRegistered?: boolean;
 };
 
 // Debug database URL configuration
@@ -61,8 +62,10 @@ export const prisma = globalForPrisma.prisma ?? new PrismaClient({
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
 
-// Graceful shutdown
-if (typeof process !== 'undefined') {
+// Graceful shutdown - only register listeners once to avoid memory leaks with hot reloading
+if (typeof process !== 'undefined' && !globalForPrisma.prismaListenersRegistered) {
+  globalForPrisma.prismaListenersRegistered = true;
+  
   process.on('beforeExit', async () => {
     await prisma.$disconnect();
   });
