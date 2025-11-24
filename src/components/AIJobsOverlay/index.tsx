@@ -1581,8 +1581,8 @@ export function AIJobsOverlay({
         console.log(`[AIJobsOverlay] Large scope detected (${numIds} IDs, ${(originalSize / 1024 / 1024).toFixed(2)} MB) converted to filter-based scope (${(convertedSize / 1024 / 1024).toFixed(2)} MB)`);
       }
       
-      // Create job (fast, DB-only operation)
-      const job = await api.post<SerializedJob>('/api/llm-jobs', {
+      // Build the complete payload
+      const payload = {
         label,
         model,
         promptTemplate,
@@ -1592,7 +1592,21 @@ export function AIJobsOverlay({
         metadata: {
           source: 'table-mode',
         },
-      });
+      };
+      
+      // Check if TOTAL payload is still too large after conversion
+      // Vercel limit is 4.5MB, we use 4MB as safe threshold
+      const totalPayloadSize = estimatePayloadSize(payload);
+      const totalPayloadMB = totalPayloadSize / 1024 / 1024;
+      const maxSizeMB = 4.0;
+      console.log(`[AIJobsOverlay] Total payload size: ${totalPayloadMB.toFixed(2)} MB (limit: ${maxSizeMB} MB)`);
+      
+      if (totalPayloadSize > maxSizeMB * 1024 * 1024) {
+        throw new Error(`Payload too large (${totalPayloadMB.toFixed(2)} MB exceeds ${maxSizeMB} MB limit). Try: 1) Use Advanced Filters scope mode, 2) Reduce prompt size, or 3) Select fewer entries.`);
+      }
+      
+      // Create job (fast, DB-only operation)
+      const job = await api.post<SerializedJob>('/api/llm-jobs', payload);
       
       // Update UI immediately
       await loadJobs();

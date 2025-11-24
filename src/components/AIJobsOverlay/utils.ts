@@ -205,12 +205,12 @@ export function estimatePayloadSize(data: unknown): number {
 
 /**
  * Checks if a scope object is too large for HTTP body transmission
- * Uses 2MB threshold (well under Vercel's 4.5MB limit for safety margin)
+ * Uses 1MB threshold to trigger conversion (leaves room for prompt + other fields)
  */
 export function isScopeTooLarge(scope: unknown): boolean {
   const size = estimatePayloadSize(scope);
-  // Use 2MB threshold (well under Vercel's 4.5MB limit)
-  return size > 2 * 1024 * 1024;
+  // Use 1MB threshold to trigger conversion - leaves room for prompt and other fields
+  return size > 1 * 1024 * 1024;
 }
 
 /**
