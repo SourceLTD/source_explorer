@@ -240,3 +240,94 @@ export function convertIdsToFilterScope(scope: JobScopeIds): JobScopeFilters {
   };
 }
 
+/**
+ * Adds a limit to a scope (for batching large jobs)
+ */
+export function addLimitToScope(scope: JobScope, limit: number): JobScope {
+  if (scope.kind === 'filters') {
+    return {
+      ...scope,
+      filters: {
+        ...scope.filters,
+        limit,
+      },
+    };
+  }
+  // For 'ids' scope, slice the array
+  if (scope.kind === 'ids') {
+    return {
+      ...scope,
+      ids: scope.ids.slice(0, limit),
+    };
+  }
+  // For frame_ids, slice frameIds array
+  if (scope.kind === 'frame_ids') {
+    return {
+      ...scope,
+      frameIds: scope.frameIds.slice(0, limit),
+    };
+  }
+  return scope;
+}
+
+/**
+ * Adds offset and limit to a scope (for fetching remaining batches)
+ */
+export function addOffsetAndLimitToScope(
+  scope: JobScope,
+  offset: number,
+  limit: number
+): JobScope {
+  if (scope.kind === 'filters') {
+    // For filters, we can't easily add offset without modifying the backend
+    // Instead, we'll need to fetch all and slice client-side in the append-items endpoint
+    // For now, this is primarily for 'ids' and 'frame_ids' scopes
+    return {
+      ...scope,
+      filters: {
+        ...scope.filters,
+        limit,
+      },
+    };
+  }
+  // For 'ids' scope, slice the array
+  if (scope.kind === 'ids') {
+    return {
+      ...scope,
+      ids: scope.ids.slice(offset, offset + limit),
+    };
+  }
+  // For frame_ids, slice frameIds array
+  if (scope.kind === 'frame_ids') {
+    return {
+      ...scope,
+      frameIds: scope.frameIds.slice(offset, offset + limit),
+    };
+  }
+  return scope;
+}
+
+/**
+ * Estimates the total number of entries in a scope (without fetching)
+ * Returns null if can't be determined without a backend call
+ */
+export function estimateScopeSize(scope: JobScope): number | null {
+  if (scope.kind === 'ids') {
+    return scope.ids.length;
+  }
+  if (scope.kind === 'frame_ids') {
+    // Frame IDs might expand to multiple verbs if includeVerbs is true
+    // Can't accurately estimate without backend call
+    return null;
+  }
+  if (scope.kind === 'filters') {
+    // If limit is set and there's a where clause, we know the max
+    if (scope.filters.limit && scope.filters.limit > 0) {
+      return scope.filters.limit;
+    }
+    // Can't estimate without backend call
+    return null;
+  }
+  return null;
+}
+

@@ -114,14 +114,14 @@ export default function FramesTableMode() {
         {/* Data Table */}
         <div className="m-6 bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
           <Suspense fallback={<div className="p-8 text-center text-gray-500">Loading...</div>}>
-            <DataTable 
-              searchQuery={searchQuery}
-              mode="frames"
-              onEditClick={(entry) => {
-                console.log('[DataTable onEditClick wrapper] Received entry:', entry);
-                handleEditClick(entry);
-              }}
-            />
+          <DataTable 
+            searchQuery={searchQuery}
+            mode="frames"
+            onEditClick={(entry) => {
+              console.log('[DataTable onEditClick wrapper] Received entry:', entry);
+              handleEditClick(entry);
+            }}
+          />
           </Suspense>
         </div>
       </main>

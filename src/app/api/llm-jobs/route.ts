@@ -35,7 +35,10 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const payload = (await request.json()) as Partial<CreateLLMJobParams> & { previewOnly?: boolean };
+    const payload = (await request.json()) as Partial<CreateLLMJobParams> & { 
+      previewOnly?: boolean;
+      initialBatchSize?: number;
+    };
 
     if (!payload || typeof payload !== 'object') {
       return NextResponse.json({ error: 'Invalid request body.' }, { status: 400 });
@@ -62,7 +65,7 @@ export async function POST(request: NextRequest) {
       serviceTier: payload.serviceTier,
       reasoning: payload.reasoning,
       metadata: payload.metadata ?? {},
-    } as CreateLLMJobParams);
+    } as CreateLLMJobParams, payload.initialBatchSize);
 
     return NextResponse.json(job, { status: 201 });
   } catch (error) {

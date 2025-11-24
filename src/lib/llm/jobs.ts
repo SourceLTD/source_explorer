@@ -1089,12 +1089,35 @@ export async function previewLLMJob(params: CreateLLMJobParams) {
   return { previews, totalEntries: entries.length };
 }
 
-export async function createLLMJob(params: CreateLLMJobParams): Promise<SerializedJob> {
+export async function createLLMJob(
+  params: CreateLLMJobParams,
+  initialBatchSize?: number
+): Promise<SerializedJob> {
   // 1. Fetch entries BEFORE starting transaction
   const entries = await fetchEntriesForScope(params.scope);
 
   if (entries.length === 0) {
     throw new LLMJobError('No entries found for the provided scope.', 400);
+  }
+
+  // Determine how many items to create in this call
+  const totalEntries = entries.length;
+  const entriesToCreate = initialBatchSize && initialBatchSize < totalEntries
+    ? entries.slice(0, initialBatchSize)
+    : entries;
+
+  console.log(`[createLLMJob] Total entries: ${totalEntries}, Creating: ${entriesToCreate.length}, Batching: ${!!initialBatchSize}`);
+
+  // Validate batch size (if not batching, enforce old limit)
+  if (!initialBatchSize) {
+    const MAX_ENTRIES_PER_JOB = 5000;
+    if (totalEntries > MAX_ENTRIES_PER_JOB) {
+      throw new LLMJobError(
+        `Job scope contains ${totalEntries} entries, which exceeds the maximum of ${MAX_ENTRIES_PER_JOB}. ` +
+        `For large batches, frontend should use batching mode.`,
+        400
+      );
+    }
   }
 
   // 2. Prepare job config BEFORE transaction
@@ -1106,9 +1129,9 @@ export async function createLLMJob(params: CreateLLMJobParams): Promise<Serializ
     metadata: (params.metadata ?? {}) as Prisma.InputJsonObject,
   };
 
-  // 3. Prepare ALL job items data BEFORE transaction
+  // 3. Prepare job items data BEFORE transaction (only for the batch we're creating)
   // This is computationally expensive (rendering prompts), so do it outside the transaction
-  const preparedJobItemsData = entries.map(entry => {
+  const preparedJobItemsData = entriesToCreate.map(entry => {
     const { prompt, variables } = renderPrompt(params.promptTemplate, entry);
 
     const requestPayload = {
@@ -1151,7 +1174,7 @@ export async function createLLMJob(params: CreateLLMJobParams): Promise<Serializ
           provider: 'openai',
           llm_vendor: 'openai',
           status: 'queued',
-          total_items: entries.length,
+          total_items: totalEntries, // Use total scope size, not just this batch
         },
       });
 

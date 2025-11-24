@@ -22,6 +22,9 @@ import {
   isScopeTooLarge,
   convertIdsToFilterScope,
   estimatePayloadSize,
+  estimateScopeSize,
+  addLimitToScope,
+  addOffsetAndLimitToScope,
 } from './utils';
 import { StatusPill } from './components';
 import { JobDetails } from './JobDetails';
@@ -104,6 +107,8 @@ export function AIJobsOverlay({
     total: number;
     failed: number;
     isSubmitting: boolean;
+    phase?: 'preparing' | 'submitting';
+    current?: number;
   } | null>(null);
   const loadJobsInProgressRef = useRef(false);
   const pollingInProgressRef = useRef(false);
@@ -1580,33 +1585,110 @@ export function AIJobsOverlay({
         wasConverted = true;
         console.log(`[AIJobsOverlay] Large scope detected (${numIds} IDs, ${(originalSize / 1024 / 1024).toFixed(2)} MB) converted to filter-based scope (${(convertedSize / 1024 / 1024).toFixed(2)} MB)`);
       }
+
+      // Determine if we need to batch the job creation
+      const BATCH_SIZE = 3000;
+      let totalEntries = estimateScopeSize(scope);
       
-      // Build the complete payload
-      const payload = {
-        label,
-        model,
-        promptTemplate,
-        scope,
-        serviceTier: priority === 'normal' ? 'default' : priority,
-        reasoning: { effort: reasoningEffort },
-        metadata: {
-          source: 'table-mode',
-        },
-      };
-      
-      // Check if TOTAL payload is still too large after conversion
-      // Vercel limit is 4.5MB, we use 4MB as safe threshold
-      const totalPayloadSize = estimatePayloadSize(payload);
-      const totalPayloadMB = totalPayloadSize / 1024 / 1024;
-      const maxSizeMB = 4.0;
-      console.log(`[AIJobsOverlay] Total payload size: ${totalPayloadMB.toFixed(2)} MB (limit: ${maxSizeMB} MB)`);
-      
-      if (totalPayloadSize > maxSizeMB * 1024 * 1024) {
-        throw new Error(`Payload too large (${totalPayloadMB.toFixed(2)} MB exceeds ${maxSizeMB} MB limit). Try: 1) Use Advanced Filters scope mode, 2) Reduce prompt size, or 3) Select fewer entries.`);
+      // If we can't estimate, fetch the count from backend
+      if (totalEntries === null) {
+        console.log('[AIJobsOverlay] Fetching scope count from backend...');
+        const countResult = await api.post<{ count: number }>('/api/llm-jobs/count-scope', { scope });
+        totalEntries = countResult.count;
       }
-      
-      // Create job (fast, DB-only operation)
-      const job = await api.post<SerializedJob>('/api/llm-jobs', payload);
+
+      console.log(`[AIJobsOverlay] Total entries: ${totalEntries}, Batch size: ${BATCH_SIZE}, Needs batching: ${totalEntries > BATCH_SIZE}`);
+
+      const needsBatching = totalEntries > BATCH_SIZE;
+      let job: SerializedJob;
+
+      if (needsBatching) {
+        // Create job with first batch
+        setSubmissionProgress({
+          jobId: '',
+          submitted: 0,
+          total: totalEntries,
+          failed: 0,
+          isSubmitting: false,
+          phase: 'preparing',
+          current: 0,
+        });
+
+        const firstBatchScope = addLimitToScope(scope, BATCH_SIZE);
+        const payload = {
+          label,
+          model,
+          promptTemplate,
+          scope: firstBatchScope,
+          serviceTier: priority === 'normal' ? 'default' : priority,
+          reasoning: { effort: reasoningEffort },
+          metadata: {
+            source: 'table-mode',
+          },
+          initialBatchSize: BATCH_SIZE,
+        };
+
+        console.log(`[AIJobsOverlay] Creating job with first batch (${BATCH_SIZE} items)...`);
+        job = await api.post<SerializedJob>('/api/llm-jobs', payload);
+
+        // Append remaining batches with error handling
+        try {
+          for (let offset = BATCH_SIZE; offset < totalEntries; offset += BATCH_SIZE) {
+            const batchScope = addOffsetAndLimitToScope(scope, offset, BATCH_SIZE);
+            const remaining = totalEntries - offset;
+            const batchCount = Math.min(BATCH_SIZE, remaining);
+
+            console.log(`[AIJobsOverlay] Appending batch at offset ${offset}, count ${batchCount}...`);
+            
+            setSubmissionProgress({
+              jobId: job.id,
+              submitted: 0,
+              total: totalEntries,
+              failed: 0,
+              isSubmitting: false,
+              phase: 'preparing',
+              current: offset,
+            });
+
+            await api.post(`/api/llm-jobs/${job.id}/append-items`, {
+              scope: batchScope,
+            });
+          }
+
+          console.log('[AIJobsOverlay] All batches appended successfully');
+        } catch (batchError) {
+          console.error('[AIJobsOverlay] Batch append failed:', batchError);
+          
+          // Job was created but is incomplete
+          // Cancel the job to prevent incomplete processing
+          try {
+            await api.post(`/api/llm-jobs/${job.id}/cancel`, {});
+            console.log('[AIJobsOverlay] Incomplete job cancelled');
+          } catch (cancelError) {
+            console.error('[AIJobsOverlay] Failed to cancel incomplete job:', cancelError);
+          }
+
+          throw new Error(
+            `Failed to prepare all batches: ${batchError instanceof Error ? batchError.message : 'Unknown error'}. ` +
+            `The job has been cancelled. Please try again or use a smaller batch size.`
+          );
+        }
+      } else {
+        // No batching needed - create job normally
+        const payload = {
+          label,
+          model,
+          promptTemplate,
+          scope,
+          serviceTier: priority === 'normal' ? 'default' : priority,
+          reasoning: { effort: reasoningEffort },
+          metadata: {
+            source: 'table-mode',
+          },
+        };
+
+        job = await api.post<SerializedJob>('/api/llm-jobs', payload);
+      }
       
       // Update UI immediately
       await loadJobs();
@@ -1627,7 +1709,7 @@ export function AIJobsOverlay({
         title: 'Job Created',
         message: `Job ${job.id} created with ${job.total_items} item${job.total_items === 1 ? '' : 's'}.${
           wasConverted ? ' Large batch optimized for performance.' : ''
-        } Lambda will submit items automatically.`,
+        }${needsBatching ? ` Prepared in ${Math.ceil(totalEntries / BATCH_SIZE)} batches.` : ''} Lambda will submit items automatically.`,
         durationMs: 5000,
       });
       
@@ -1647,12 +1729,12 @@ export function AIJobsOverlay({
           durationMs: 10000,
         });
       } else {
-        showGlobalAlert({
-          type: 'error',
-          title: 'Submission failed',
-          message,
-          durationMs: 7000,
-        });
+      showGlobalAlert({
+        type: 'error',
+        title: 'Submission failed',
+        message,
+        durationMs: 7000,
+      });
       }
     } finally {
       setSubmissionLoading(false);
@@ -1729,6 +1811,40 @@ export function AIJobsOverlay({
         onClick={onClose}
       />
       <div className="relative z-10 flex h-[90vh] w-full max-w-7xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
+        
+        {/* Progress overlay during batch preparation */}
+        {submissionProgress?.phase === 'preparing' && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+            <div className="bg-white p-6 rounded-lg shadow-xl max-w-md w-full mx-4">
+              <div className="text-center">
+                <div className="flex justify-center mb-4">
+                  <svg className="h-12 w-12 animate-spin text-blue-600" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                </div>
+                <p className="text-lg font-semibold text-gray-900 mb-2">Preparing large job...</p>
+                <p className="text-sm text-gray-600 mb-4">
+                  Processing {submissionProgress.current?.toLocaleString() || 0} / {submissionProgress.total.toLocaleString()} entries
+                </p>
+                <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+                  <div 
+                    className="bg-gradient-to-r from-blue-500 to-blue-600 h-3 rounded-full transition-all duration-300 ease-out"
+                    style={{ 
+                      width: `${submissionProgress.current && submissionProgress.total > 0 
+                        ? Math.min(100, (submissionProgress.current / submissionProgress.total) * 100) 
+                        : 0}%` 
+                    }}
+                  />
+                </div>
+                <p className="text-xs text-gray-500 mt-3">
+                  Please wait while we prepare your job in batches...
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+        
         <header className="border-b border-gray-200 bg-gray-50 px-6 py-5">
           <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
