@@ -1,13 +1,14 @@
 import { useState, useCallback } from 'react';
-import { GraphNode, sortRolesByPrecedence } from '@/lib/types';
-import { EditableField, EditableRole, EditableRoleGroup, EditingState, Mode } from '@/components/editing/types';
+import { GraphNode, Frame, sortRolesByPrecedence } from '@/lib/types';
+import { EditableField, EditableRole, EditableRoleGroup, EditableFrameRole, EditingState, Mode } from '@/components/editing/types';
 
-export function useEntryEditor(node: GraphNode | null, mode: Mode) {
+export function useEntryEditor(node: GraphNode | Frame | null, mode: Mode) {
   const [editingField, setEditingField] = useState<EditableField | null>(null);
   const [editValue, setEditValue] = useState<string>('');
   const [editListItems, setEditListItems] = useState<string[]>([]);
   const [editRoles, setEditRoles] = useState<EditableRole[]>([]);
   const [editRoleGroups, setEditRoleGroups] = useState<EditableRoleGroup[]>([]);
+  const [editFrameRoles, setEditFrameRoles] = useState<EditableFrameRole[]>([]);
   const [codeValidationMessage, setCodeValidationMessage] = useState<string>('');
   const [selectedHyponymsToMove, setSelectedHyponymsToMove] = useState<Set<string>>(new Set());
   const [isSaving, setIsSaving] = useState(false);
@@ -18,34 +19,74 @@ export function useEntryEditor(node: GraphNode | null, mode: Mode) {
     setEditingField(field);
     setCodeValidationMessage('');
     
+    // Frame-specific fields
+    if (mode === 'frames' && 'frame_name' in node) {
+      const frameNode = node as Frame;
+      if (field === 'code') {
+        setEditValue(frameNode.code || '');
+      } else if (field === 'frame_name') {
+        setEditValue(frameNode.frame_name);
+      } else if (field === 'definition') {
+        setEditValue(frameNode.definition);
+      } else if (field === 'short_definition') {
+        setEditValue(frameNode.short_definition);
+      } else if (field === 'prototypical_synset') {
+        setEditValue(frameNode.prototypical_synset);
+      } else if (field === 'is_supporting_frame') {
+        setEditValue(frameNode.is_supporting_frame ? 'true' : 'false');
+      } else if (field === 'communication') {
+        const commValue = frameNode.communication === null || frameNode.communication === undefined 
+          ? 'null' 
+          : frameNode.communication ? 'true' : 'false';
+        setEditValue(commValue);
+      } else if (field === 'frame_roles') {
+        const preparedFrameRoles = sortRolesByPrecedence(frameNode.frame_roles || []).map((role, index) => {
+          const clientId = role.id && role.id.length > 0 ? role.id : `existing-role-${index}-${role.role_type.label}`;
+          return {
+            id: role.id,
+            clientId,
+            description: role.description || '',
+            notes: role.notes || '',
+            roleType: role.role_type.label,
+            main: role.main ?? false,
+            examples: Array.isArray(role.examples) ? role.examples : [],
+          };
+        });
+        setEditFrameRoles(preparedFrameRoles);
+      }
+      return;
+    }
+    
+    // GraphNode-specific fields
+    const graphNode = node as GraphNode;
     if (field === 'code') {
       // Extract lemma part from id (e.g., "communicate" from "communicate.v.01")
-      const lemmaMatch = node.id.match(/^(.+)\.[vnar]\.(\d+)$/);
+      const lemmaMatch = graphNode.id.match(/^(.+)\.[vnar]\.(\d+)$/);
       if (lemmaMatch) {
         setEditValue(lemmaMatch[1]); // Just the lemma part
       } else {
-        setEditValue(node.id);
+        setEditValue(graphNode.id);
       }
     } else if (field === 'hypernym') {
       // Set current hypernym and select all hyponyms to move by default
-      setEditValue(node.parents[0]?.id || '');
-      setSelectedHyponymsToMove(new Set(node.children.map(c => c.id)));
+      setEditValue(graphNode.parents[0]?.id || '');
+      setSelectedHyponymsToMove(new Set(graphNode.children.map(c => c.id)));
     } else if (field === 'src_lemmas') {
-      setEditListItems([...(node.src_lemmas || [])]);
+      setEditListItems([...(graphNode.src_lemmas || [])]);
     } else if (field === 'examples') {
-      setEditListItems([...node.examples]);
+      setEditListItems([...graphNode.examples]);
     } else if (field === 'legal_constraints') {
-      setEditListItems([...(node.legal_constraints || [])]);
+      setEditListItems([...(graphNode.legal_constraints || [])]);
     } else if (field === 'gloss') {
-      setEditValue(node.gloss);
+      setEditValue(graphNode.gloss);
     } else if (field === 'vendler_class') {
-      setEditValue(node.vendler_class || '');
+      setEditValue(graphNode.vendler_class || '');
     } else if (field === 'lexfile') {
-      setEditValue(node.lexfile || '');
+      setEditValue(graphNode.lexfile || '');
     } else if (field === 'frame') {
-      setEditValue(node.frame_id || '');
+      setEditValue(graphNode.frame_id || '');
     } else if (field === 'roles') {
-      const preparedRoles = sortRolesByPrecedence(node.roles || []).map((role, index) => {
+      const preparedRoles = sortRolesByPrecedence(graphNode.roles || []).map((role, index) => {
         const clientId = role.id && role.id.length > 0 ? role.id : `existing-role-${index}-${role.role_type.label}`;
         return {
           id: role.id,
@@ -66,14 +107,14 @@ export function useEntryEditor(node: GraphNode | null, mode: Mode) {
 
       setEditRoles(preparedRoles);
       setEditRoleGroups(
-        (node.role_groups || []).map(group => ({
+        (graphNode.role_groups || []).map(group => ({
           id: group.id,
           description: group.description || '',
           role_ids: group.role_ids.map(roleId => idToClientId.get(roleId) ?? roleId)
         }))
       );
     }
-  }, [node]);
+  }, [node, mode]);
 
   const cancelEditing = useCallback(() => {
     setEditingField(null);
@@ -81,6 +122,7 @@ export function useEntryEditor(node: GraphNode | null, mode: Mode) {
     setEditListItems([]);
     setEditRoles([]);
     setEditRoleGroups([]);
+    setEditFrameRoles([]);
     setCodeValidationMessage('');
     setSelectedHyponymsToMove(new Set());
   }, []);
@@ -175,12 +217,29 @@ export function useEntryEditor(node: GraphNode | null, mode: Mode) {
     });
   }, []);
 
+  // Frame role editing helpers
+  const updateFrameRole = useCallback((clientId: string, field: 'description' | 'notes' | 'roleType' | 'main' | 'examples', value: string | boolean | string[]) => {
+    setEditFrameRoles(prev => prev.map((role) => 
+      role.clientId === clientId ? { ...role, [field]: value } : role
+    ));
+  }, []);
+
+  const addFrameRole = useCallback((main: boolean) => {
+    const clientId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+    setEditFrameRoles(prev => [...prev, { id: '', clientId, description: '', notes: '', roleType: '', main, examples: [] }]);
+  }, []);
+
+  const removeFrameRole = useCallback((clientId: string) => {
+    setEditFrameRoles(prev => prev.filter(role => role.clientId !== clientId));
+  }, []);
+
   return {
     editingField,
     editValue,
     editListItems,
     editRoles,
     editRoleGroups,
+    editFrameRoles,
     codeValidationMessage,
     selectedHyponymsToMove,
     isSaving,
@@ -202,6 +261,9 @@ export function useEntryEditor(node: GraphNode | null, mode: Mode) {
     updateRoleGroup,
     toggleRoleInGroup,
     toggleHyponymSelection,
+    updateFrameRole,
+    addFrameRole,
+    removeFrameRole,
   };
 }
 

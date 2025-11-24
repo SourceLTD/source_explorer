@@ -135,6 +135,7 @@ const FRAMES_COLUMNS: ColumnConfig[] = [
   { key: 'frame_roles', label: 'Frame Roles', visible: true, sortable: false },
   { key: 'createdAt', label: 'Created', visible: false, sortable: true },
   { key: 'updatedAt', label: 'Updated', visible: false, sortable: true },
+  { key: 'actions', label: 'Actions', visible: true, sortable: false },
 ];
 
 // Default column widths in pixels
@@ -211,6 +212,7 @@ const sanitizeColumnVisibility = (visibility?: ColumnVisibilityState | null, mod
 };
 
 export default function DataTable({ onRowClick, onEditClick, searchQuery, className, mode = 'verbs' }: DataTableProps) {
+  console.log('DataTable initialized with onEditClick:', onEditClick, 'mode:', mode);
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -1267,13 +1269,13 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
         case 'definition':
           return (
             <div className="text-sm text-gray-900 break-words max-w-full">
-              {truncateText(entry.definition, 200)}
+              {entry.definition || '—'}
             </div>
           );
         case 'short_definition':
           return (
             <div className="text-sm text-gray-700 break-words max-w-full">
-              {truncateText(entry.short_definition, 100)}
+              {entry.short_definition || '—'}
             </div>
           );
         case 'prototypical_synset':
@@ -1315,21 +1317,52 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
           if (!entry.frame_roles || entry.frame_roles.length === 0) {
             return <EmptyCell />;
           }
-          const roleLabels = entry.frame_roles.map(fr => fr.role_type.label).join(', ');
           return (
-            <div className="flex flex-col gap-1 max-w-full" title={roleLabels}>
-              <span className="text-xs text-gray-700">
-                {entry.frame_roles.length} {entry.frame_roles.length === 1 ? 'role' : 'roles'}
-              </span>
-              <span className="text-xs text-gray-500 break-words">
-                ({roleLabels})
-              </span>
+            <div className="space-y-1 text-xs">
+              {entry.frame_roles.map((role, idx) => (
+                <div key={`role-${idx}`} className="flex items-start gap-1">
+                  <span className={`inline-block px-2 py-1 rounded font-medium ${
+                    role.main 
+                      ? 'bg-blue-100 text-blue-800' 
+                      : 'bg-gray-100 text-gray-700'
+                  }`}>
+                    {role.role_type.label}
+                  </span>
+                  {role.description && (
+                    <span className="text-gray-600 text-xs">
+                      {role.description}
+                    </span>
+                  )}
+                </div>
+              ))}
             </div>
           );
         case 'createdAt':
           return <span className="text-xs text-gray-500 break-words">{formatDate(entry.createdAt)}</span>;
         case 'updatedAt':
           return <span className="text-xs text-gray-500 break-words">{formatDate(entry.updatedAt)}</span>;
+        case 'actions':
+          return (
+            <div className="flex items-center justify-center">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  console.log('Edit button clicked for frame:', entry.id);
+                  if (onEditClick) {
+                    onEditClick(entry);
+                  } else {
+                    console.warn('onEditClick is not defined');
+                  }
+                }}
+                className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition-colors cursor-pointer"
+                title="Edit frame"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+              </button>
+            </div>
+          );
         default:
           return <span className="text-sm text-gray-900 break-words">{String((entry as unknown as Record<string, unknown>)[columnKey] || '')}</span>;
       }
@@ -1625,8 +1658,8 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
                   {role.role_type.label}
                 </span>
                 {role.description && (
-                  <span className="text-gray-600 text-xs" title={role.description}>
-                    {role.description.length > 30 ? role.description.substring(0, 30) + '...' : role.description}
+                  <span className="text-gray-600 text-xs">
+                    {role.description}
                   </span>
                 )}
               </div>

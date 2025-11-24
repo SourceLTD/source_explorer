@@ -173,6 +173,7 @@ export interface FrameRole {
   description?: string | null;
   notes?: string | null;
   main?: boolean | null;
+  examples?: string[];
   role_type: RoleType;
 }
 
@@ -187,6 +188,10 @@ export interface Frame {
   prototypical_synset_definition: string;
   is_supporting_frame: boolean;
   communication?: boolean | null;
+  flagged?: boolean;
+  flaggedReason?: string;
+  forbidden?: boolean;
+  forbiddenReason?: string;
   createdAt: Date;
   updatedAt: Date;
   frame_roles?: FrameRole[];
@@ -583,7 +588,7 @@ export const ROLE_PRECEDENCE: Record<string, number> = {
 };
 
 // Helper function to sort roles by precedence
-export function sortRolesByPrecedence<T extends { role_type: { label: string }; main?: boolean }>(roles: T[]): T[] {
+export function sortRolesByPrecedence<T extends { role_type: { label: string }; main?: boolean | null }>(roles: T[]): T[] {
   return [...roles].sort((a, b) => {
     // First, sort by main (main roles first)
     const mainA = a.main ?? false;

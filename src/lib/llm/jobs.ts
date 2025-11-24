@@ -1836,35 +1836,7 @@ export async function cancelLLMJob(jobId: number | string): Promise<CancelJobRes
     return { job, cancelledCount: 0 };
   }
 
-  const client = ensureOpenAIClient();
-  let cancelledCount = 0;
-
-  for (const item of job.items) {
-    if (TERMINAL_ITEM_STATUSES.has(item.status)) continue;
-    if (!item.provider_task_id) continue;
-
-    try {
-      await client.responses.cancel(item.provider_task_id);
-      cancelledCount += 1;
-      await prisma.llm_job_items.update({
-        where: { id: BigInt(item.id) },
-        data: {
-          status: 'failed',
-          last_error: 'Cancelled by user',
-          completed_at: new Date(),
-        },
-      });
-    } catch (error) {
-      console.error(`[LLM] Failed to cancel response ${item.provider_task_id}`, error);
-      await prisma.llm_job_items.update({
-        where: { id: BigInt(item.id) },
-        data: {
-          last_error: 'Failed to cancel provider job',
-        },
-      });
-    }
-  }
-
+  // Mark job as cancelled - lambda will handle item cleanup and OpenAI cancellation
   await getLLMJobsDelegate().update({
     where: { id: BigInt(job.id) },
     data: {
@@ -1875,7 +1847,7 @@ export async function cancelLLMJob(jobId: number | string): Promise<CancelJobRes
 
   const refreshed = await getLLMJob(jobId, { refresh: false });
   await updateJobAggregates(BigInt(refreshed.id));
-  return { job: refreshed, cancelledCount };
+  return { job: refreshed, cancelledCount: 0 };
 }
 
 export async function deleteLLMJob(jobId: number | string): Promise<void> {

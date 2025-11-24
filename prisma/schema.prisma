@@ -39,6 +39,10 @@ model frames {
   communication                                     Boolean?
   id                                                BigInt            @id @default(autoincrement())
   code                                              String            @unique(map: "frames_code_unique") @db.VarChar
+  flagged                                           Boolean?          @default(false)
+  flagged_reason                                    String?
+  forbidden                                         Boolean?          @default(false)
+  forbidden_reason                                  String?
   frame_relations_frame_relations_source_idToframes frame_relations[] @relation("frame_relations_source_idToframes")
   frame_relations_frame_relations_target_idToframes frame_relations[] @relation("frame_relations_target_idToframes")
   frame_roles                                       frame_roles[]
@@ -49,6 +53,8 @@ model frames {
   @@index([framebank_id], map: "idx_framebank_id")
   @@index([frame_name], map: "idx_frames_frame_name")
   @@index([is_supporting_frame], map: "idx_frames_is_supporting")
+  @@index([flagged], map: "idx_frames_flagged")
+  @@index([forbidden], map: "idx_frames_forbidden")
 }
 
 model instantiation_types {

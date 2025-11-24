@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { Mode, EditableRole, EditableRoleGroup } from '@/components/editing/types';
+import { Mode, EditableRole, EditableRoleGroup, EditableFrameRole } from '@/components/editing/types';
 
 function getApiPrefix(mode: Mode): string {
   switch (mode) {
@@ -7,6 +7,7 @@ function getApiPrefix(mode: Mode): string {
     case 'nouns': return '/api/nouns';
     case 'adjectives': return '/api/adjectives';
     case 'adverbs': return '/api/adverbs';
+    case 'frames': return '/api/frames';
   }
 }
 
@@ -196,11 +197,31 @@ export function useEntryMutations(mode: Mode) {
     }
   }, [apiPrefix]);
 
+  const updateFrameRoles = useCallback(async (
+    frameId: string,
+    frameRoles: EditableFrameRole[]
+  ): Promise<void> => {
+    const filteredRoles = frameRoles.filter(role => role.roleType.trim());
+
+    const response = await fetch(`${apiPrefix}/${frameId}/roles`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        roles: filteredRoles
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to update frame roles');
+    }
+  }, [apiPrefix]);
+
   return {
     updateCode,
     updateHypernym,
     updateField,
     updateRoles,
+    updateFrameRoles,
     deleteEntry,
     toggleFlag,
     toggleForbidden,

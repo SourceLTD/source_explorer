@@ -22,6 +22,7 @@ const enumOps: FieldOperator[] = [
 
 const codeOps: FieldOperator[] = [
   { key: 'equals', label: 'equals' },
+  { key: 'in', label: 'in list', requiresArray: true },
 ];
 
 const booleanOps: FieldOperator[] = [{ key: 'is', label: 'is' }];

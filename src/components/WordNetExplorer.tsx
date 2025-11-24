@@ -1201,7 +1201,18 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
                   <p className="text-gray-500">Loading graph...</p>
                 </div>
               ) : (
-                <RootNodesView onNodeClick={handleNodeClick} />
+                <div className="text-center text-gray-400">
+                  <svg className="h-24 w-24 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                  <p className="text-lg">
+                    {mode === 'nouns' ? 'No noun selected' : 
+                     mode === 'adjectives' ? 'No adjective selected' : 
+                     mode === 'adverbs' ? 'No adverb selected' : 
+                     'No verb selected'}
+                  </p>
+                  <p className="text-sm mt-2">Search for an entry to view its graph</p>
+                </div>
               )}
             </div>
           )}

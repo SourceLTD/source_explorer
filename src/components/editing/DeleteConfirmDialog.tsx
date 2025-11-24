@@ -1,8 +1,8 @@
 import React from 'react';
-import { GraphNode } from '@/lib/types';
+import { GraphNode, Frame } from '@/lib/types';
 
 interface DeleteConfirmDialogProps {
-  node: GraphNode;
+  node: GraphNode | Frame;
   isOpen: boolean;
   isDeleting: boolean;
   onConfirm: () => void;
@@ -23,7 +23,7 @@ export function DeleteConfirmDialog({ node, isOpen, isDeleting, onConfirm, onCan
         <p className="text-sm text-gray-600 mb-4">
           Are you sure you want to delete <strong>{node.id}</strong>?
         </p>
-        {node.children.length > 0 && (
+        {'children' in node && node.children.length > 0 && (
           <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded">
             <p className="text-sm text-blue-900 font-medium mb-1">
               This entry has {node.children.length} hyponym{node.children.length !== 1 ? 's' : ''}:
@@ -37,7 +37,7 @@ export function DeleteConfirmDialog({ node, isOpen, isDeleting, onConfirm, onCan
               )}
             </ul>
             <p className="text-xs text-blue-700 mt-2">
-              {node.parents.length > 0 ? (
+              {'parents' in node && node.parents.length > 0 ? (
                 <>They will be reassigned to <strong>{node.parents[0].id}</strong></>
               ) : (
                 <>They will become root nodes</>

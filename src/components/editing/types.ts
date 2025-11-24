@@ -1,6 +1,6 @@
 import { GraphNode, RoleType } from '@/lib/types';
 
-export type Mode = 'verbs' | 'nouns' | 'adjectives' | 'adverbs';
+export type Mode = 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames';
 
 export type EditableField =
   | 'code'
@@ -12,7 +12,14 @@ export type EditableField =
   | 'lexfile'
   | 'roles'
   | 'vendler_class'
-  | 'frame';
+  | 'frame'
+  | 'frame_name'
+  | 'definition'
+  | 'short_definition'
+  | 'prototypical_synset'
+  | 'is_supporting_frame'
+  | 'communication'
+  | 'frame_roles';
 
 export interface EditableRole {
   id: string;
@@ -27,6 +34,16 @@ export interface EditableRoleGroup {
   id: string;
   description: string;
   role_ids: string[];
+}
+
+export interface EditableFrameRole {
+  id: string;
+  clientId: string;
+  description: string;
+  notes: string;
+  roleType: string;
+  main: boolean;
+  examples: string[];
 }
 
 export interface FieldEditorProps {
@@ -52,6 +69,8 @@ export interface OverlaySectionsState {
   roles: boolean;
   legalConstraints: boolean;
   relations: boolean;
+  frameProperties: boolean;
+  frameRoles: boolean;
 }
 
 export interface FrameOption {

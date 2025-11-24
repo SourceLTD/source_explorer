@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { GraphNode, RoleType } from '@/lib/types';
+import { GraphNode, Frame, RoleType } from '@/lib/types';
 import { Mode, OverlaySectionsState, FrameOption } from './types';
 import { EditOverlayModal } from './EditOverlayModal';
 import { ModerationButtons } from './ModerationButtons';
@@ -11,11 +11,13 @@ import { VerbPropertiesSection } from './VerbPropertiesSection';
 import { RolesSection } from './RolesSection';
 import { LegalConstraintsSection } from './LegalConstraintsSection';
 import { RelationsSection } from './RelationsSection';
+import { FramePropertiesSection } from './FramePropertiesSection';
+import { FrameRolesSection } from './FrameRolesSection';
 import { useEntryEditor } from '@/hooks/useEntryEditor';
 import { useEntryMutations } from '@/hooks/useEntryMutations';
 
 interface EditOverlayProps {
-  node: GraphNode;
+  node: GraphNode | Frame;
   mode: Mode;
   isOpen: boolean;
   onClose: () => void;
@@ -35,6 +37,8 @@ export function EditOverlay({ node, mode, isOpen, onClose, onUpdate }: EditOverl
     roles: false,
     legalConstraints: false,
     relations: false,
+    frameProperties: mode === 'frames',
+    frameRoles: false,
   });
 
   // Use the custom hooks
@@ -113,12 +117,13 @@ export function EditOverlay({ node, mode, isOpen, onClose, onUpdate }: EditOverl
         }
 
         editor.setCodeValidationMessage('Updating relations...');
-        const oldHypernym = node.parents[0]?.id;
+        // Type guard: only GraphNode has parents property
+        const oldHypernym = 'parents' in node ? node.parents[0]?.id : undefined;
         const newHypernym = editor.editValue;
         const hyponymsToMove = Array.from(editor.selectedHyponymsToMove);
-        const hyponymsToStay = node.children
-          .map(c => c.id)
-          .filter(id => !editor.selectedHyponymsToMove.has(id));
+        const hyponymsToStay = 'children' in node 
+          ? node.children.map(c => c.id).filter(id => !editor.selectedHyponymsToMove.has(id))
+          : [];
 
         await mutations.updateHypernym(node.id, oldHypernym, newHypernym, hyponymsToMove, hyponymsToStay);
         
@@ -135,6 +140,18 @@ export function EditOverlay({ node, mode, isOpen, onClose, onUpdate }: EditOverl
       if (editor.editingField === 'roles') {
         await mutations.updateRoles(node.id, editor.editRoles, editor.editRoleGroups);
         editor.setCodeValidationMessage('✓ Roles updated successfully');
+        editor.cancelEditing();
+        setTimeout(async () => {
+          editor.setCodeValidationMessage('');
+          await onUpdate();
+        }, 1000);
+        return;
+      }
+
+      // Handle frame_roles
+      if (editor.editingField === 'frame_roles') {
+        await mutations.updateFrameRoles(node.id, editor.editFrameRoles);
+        editor.setCodeValidationMessage('✓ Frame roles updated successfully');
         editor.cancelEditing();
         setTimeout(async () => {
           editor.setCodeValidationMessage('');
@@ -170,6 +187,24 @@ export function EditOverlay({ node, mode, isOpen, onClose, onUpdate }: EditOverl
           // Map 'frame' to 'frame_id' for API
           fieldName = 'frame_id';
           value = editor.editValue || null;
+          break;
+        case 'frame_name':
+          value = editor.editValue.trim();
+          break;
+        case 'definition':
+          value = editor.editValue.trim();
+          break;
+        case 'short_definition':
+          value = editor.editValue.trim();
+          break;
+        case 'prototypical_synset':
+          value = editor.editValue.trim();
+          break;
+        case 'is_supporting_frame':
+          value = editor.editValue === 'true';
+          break;
+        case 'communication':
+          value = editor.editValue === 'null' ? null : editor.editValue === 'true';
           break;
         default:
           return;
@@ -245,30 +280,49 @@ export function EditOverlay({ node, mode, isOpen, onClose, onUpdate }: EditOverl
         onForbidToggle={handleForbidToggle}
       />
 
-      {/* Basic Info Section */}
-      <BasicInfoSection
-        node={node}
-        mode={mode}
-        editingField={editor.editingField}
-        editValue={editor.editValue}
-        editListItems={editor.editListItems}
-        codeValidationMessage={editor.codeValidationMessage}
-        isOpen={overlaySections.basicInfo}
-        onToggle={() => setOverlaySections(prev => ({ ...prev, basicInfo: !prev.basicInfo }))}
-        onStartEdit={editor.startEditing}
-        onValueChange={editor.setEditValue}
-        onListItemChange={editor.updateListItem}
-        onListItemAdd={editor.addListItem}
-        onListItemRemove={editor.removeListItem}
-        onSave={handleSave}
-        onCancel={editor.cancelEditing}
-        isSaving={editor.isSaving}
-      />
+      {/* Basic Info Section (for non-frame modes) */}
+      {mode !== 'frames' && 'gloss' in node && (
+        <BasicInfoSection
+          node={node as GraphNode}
+          mode={mode}
+          editingField={editor.editingField}
+          editValue={editor.editValue}
+          editListItems={editor.editListItems}
+          codeValidationMessage={editor.codeValidationMessage}
+          isOpen={overlaySections.basicInfo}
+          onToggle={() => setOverlaySections(prev => ({ ...prev, basicInfo: !prev.basicInfo }))}
+          onStartEdit={editor.startEditing}
+          onValueChange={editor.setEditValue}
+          onListItemChange={editor.updateListItem}
+          onListItemAdd={editor.addListItem}
+          onListItemRemove={editor.removeListItem}
+          onSave={handleSave}
+          onCancel={editor.cancelEditing}
+          isSaving={editor.isSaving}
+        />
+      )}
+
+      {/* Frame Properties Section (for frames mode) */}
+      {mode === 'frames' && 'frame_name' in node && (
+        <FramePropertiesSection
+          frame={node as Frame}
+          editingField={editor.editingField}
+          editValue={editor.editValue}
+          codeValidationMessage={editor.codeValidationMessage}
+          isOpen={overlaySections.frameProperties}
+          onToggle={() => setOverlaySections(prev => ({ ...prev, frameProperties: !prev.frameProperties }))}
+          onStartEdit={editor.startEditing}
+          onValueChange={editor.setEditValue}
+          onSave={handleSave}
+          onCancel={editor.cancelEditing}
+          isSaving={editor.isSaving}
+        />
+      )}
 
       {/* Verb Properties Section */}
-      {mode === 'verbs' && (
+      {mode === 'verbs' && 'gloss' in node && (
         <VerbPropertiesSection
-          node={node}
+          node={node as GraphNode}
           editingField={editor.editingField}
           editValue={editor.editValue}
           availableFrames={availableFrames}
@@ -283,9 +337,9 @@ export function EditOverlay({ node, mode, isOpen, onClose, onUpdate }: EditOverl
       )}
 
       {/* Roles Section (Verbs only) */}
-      {mode === 'verbs' && (
+      {mode === 'verbs' && 'gloss' in node && (
         <RolesSection
-          node={node}
+          node={node as GraphNode}
           editingField={editor.editingField}
           editRoles={editor.editRoles}
           editRoleGroups={editor.editRoleGroups}
@@ -306,39 +360,62 @@ export function EditOverlay({ node, mode, isOpen, onClose, onUpdate }: EditOverl
         />
       )}
 
-      {/* Legal Constraints Section */}
-      <LegalConstraintsSection
-        node={node}
-        editingField={editor.editingField}
-        editListItems={editor.editListItems}
-        isOpen={overlaySections.legalConstraints}
-        onToggle={() => setOverlaySections(prev => ({ ...prev, legalConstraints: !prev.legalConstraints }))}
-        onStartEdit={editor.startEditing}
-        onListItemChange={editor.updateListItem}
-        onListItemAdd={editor.addListItem}
-        onListItemRemove={editor.removeListItem}
-        onSave={handleSave}
-        onCancel={editor.cancelEditing}
-        isSaving={editor.isSaving}
-      />
+      {/* Frame Roles Section (Frames only) */}
+      {mode === 'frames' && 'frame_name' in node && (
+        <FrameRolesSection
+          frame={node as Frame}
+          editingField={editor.editingField}
+          editFrameRoles={editor.editFrameRoles}
+          roleTypes={roleTypes}
+          isOpen={overlaySections.frameRoles}
+          onToggle={() => setOverlaySections(prev => ({ ...prev, frameRoles: !prev.frameRoles }))}
+          onStartEdit={editor.startEditing}
+          onFrameRoleChange={editor.updateFrameRole}
+          onFrameRoleAdd={editor.addFrameRole}
+          onFrameRoleRemove={editor.removeFrameRole}
+          onSave={handleSave}
+          onCancel={editor.cancelEditing}
+          isSaving={editor.isSaving}
+        />
+      )}
 
-      {/* Relations Section */}
-      <RelationsSection
-        node={node}
-        mode={mode}
-        editingField={editor.editingField}
-        editValue={editor.editValue}
-        selectedHyponymsToMove={editor.selectedHyponymsToMove}
-        codeValidationMessage={editor.codeValidationMessage}
-        isOpen={overlaySections.relations}
-        onToggle={() => setOverlaySections(prev => ({ ...prev, relations: !prev.relations }))}
-        onStartEdit={editor.startEditing}
-        onValueChange={editor.setEditValue}
-        onHyponymToggle={editor.toggleHyponymSelection}
-        onSave={handleSave}
-        onCancel={editor.cancelEditing}
-        isSaving={editor.isSaving}
-      />
+      {/* Legal Constraints Section (non-frames only) */}
+      {mode !== 'frames' && 'gloss' in node && (
+        <LegalConstraintsSection
+          node={node as GraphNode}
+          editingField={editor.editingField}
+          editListItems={editor.editListItems}
+          isOpen={overlaySections.legalConstraints}
+          onToggle={() => setOverlaySections(prev => ({ ...prev, legalConstraints: !prev.legalConstraints }))}
+          onStartEdit={editor.startEditing}
+          onListItemChange={editor.updateListItem}
+          onListItemAdd={editor.addListItem}
+          onListItemRemove={editor.removeListItem}
+          onSave={handleSave}
+          onCancel={editor.cancelEditing}
+          isSaving={editor.isSaving}
+        />
+      )}
+
+      {/* Relations Section (non-frames only) */}
+      {mode !== 'frames' && 'gloss' in node && (
+        <RelationsSection
+          node={node as GraphNode}
+          mode={mode}
+          editingField={editor.editingField}
+          editValue={editor.editValue}
+          selectedHyponymsToMove={editor.selectedHyponymsToMove}
+          codeValidationMessage={editor.codeValidationMessage}
+          isOpen={overlaySections.relations}
+          onToggle={() => setOverlaySections(prev => ({ ...prev, relations: !prev.relations }))}
+          onStartEdit={editor.startEditing}
+          onValueChange={editor.setEditValue}
+          onHyponymToggle={editor.toggleHyponymSelection}
+          onSave={handleSave}
+          onCancel={editor.cancelEditing}
+          isSaving={editor.isSaving}
+        />
+      )}
 
       {/* Delete Confirmation Dialog */}
       <DeleteConfirmDialog

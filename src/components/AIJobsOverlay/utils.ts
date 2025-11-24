@@ -216,6 +216,7 @@ export function isScopeTooLarge(scope: unknown): boolean {
 /**
  * Converts an ID-based scope to a filter-based scope for large batches
  * This prevents HTTP body size limit errors by having the server resolve IDs
+ * Uses a single 'in' filter with all IDs as an array (much more compact than individual rules)
  */
 export function convertIdsToFilterScope(scope: JobScopeIds): JobScopeFilters {
   return {
@@ -225,13 +226,15 @@ export function convertIdsToFilterScope(scope: JobScopeIds): JobScopeFilters {
       limit: 0, // no limit - process all matching entries
       where: {
         kind: 'group',
-        op: 'or',
-        children: scope.ids.map(id => ({
-          kind: 'rule',
-          field: 'code',
-          operator: 'equals',
-          value: id,
-        })),
+        op: 'and',
+        children: [
+          {
+            kind: 'rule',
+            field: 'code',
+            operator: 'in',
+            value: scope.ids.join(','), // Join IDs as comma-separated string (filter system will parse)
+          },
+        ],
       },
     },
   };

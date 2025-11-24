@@ -21,6 +21,7 @@ import {
   truncate,
   isScopeTooLarge,
   convertIdsToFilterScope,
+  estimatePayloadSize,
 } from './utils';
 import { StatusPill } from './components';
 import { JobDetails } from './JobDetails';
@@ -86,6 +87,7 @@ export function AIJobsOverlay({
   const [estimateError, setEstimateError] = useState<string | null>(null);
   const [submissionLoading, setSubmissionLoading] = useState(false);
   const [, setSubmissionError] = useState<string | null>(null);
+  const [cancelLoading, setCancelLoading] = useState(false);
   const [showVariableMenu, setShowVariableMenu] = useState(false);
   const [variableQuery, setVariableQuery] = useState('');
   const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
@@ -1572,9 +1574,11 @@ export function AIJobsOverlay({
       let wasConverted = false;
       if (scope.kind === 'ids' && isScopeTooLarge(scope)) {
         const numIds = scope.ids.length;
+        const originalSize = estimatePayloadSize(scope);
         scope = convertIdsToFilterScope(scope);
+        const convertedSize = estimatePayloadSize(scope);
         wasConverted = true;
-        console.log(`[AIJobsOverlay] Large scope detected (${numIds} IDs), converted to filter-based scope`);
+        console.log(`[AIJobsOverlay] Large scope detected (${numIds} IDs, ${(originalSize / 1024 / 1024).toFixed(2)} MB) converted to filter-based scope (${(convertedSize / 1024 / 1024).toFixed(2)} MB)`);
       }
       
       // Create job (fast, DB-only operation)
@@ -1642,6 +1646,7 @@ export function AIJobsOverlay({
   };
 
   const handleCancelJob = useCallback(async (jobId: string) => {
+    setCancelLoading(true);
     try {
       await api.post(`/api/llm-jobs/${jobId}/cancel`, {});
       await loadJobs();
@@ -1649,8 +1654,22 @@ export function AIJobsOverlay({
       if (activeJobId === jobId) {
         await loadJobDetails(jobId);
       }
+      showGlobalAlert({
+        type: 'success',
+        title: 'Job Cancelled',
+        message: `Job ${jobId} has been cancelled successfully.`,
+        durationMs: 5000,
+      });
     } catch (error) {
       console.error('Failed to cancel job', error);
+      showGlobalAlert({
+        type: 'error',
+        title: 'Cancellation Failed',
+        message: error instanceof Error ? error.message : 'Failed to cancel job',
+        durationMs: 7000,
+      });
+    } finally {
+      setCancelLoading(false);
     }
   }, [loadJobs, loadJobDetails, activeJobId]);
 
@@ -1920,6 +1939,7 @@ export function AIJobsOverlay({
                     submissionProgress={submissionProgress}
                     mode={mode}
                     onLoadMore={loadMoreItems}
+                    cancelLoading={cancelLoading}
                   />
                 ) : (
                   <div className="flex h-full items-center justify-center text-sm text-gray-500">

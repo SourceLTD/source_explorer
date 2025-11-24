@@ -7,6 +7,7 @@ function getApiPrefix(mode: Mode): string {
     case 'nouns': return '/api/nouns';
     case 'adjectives': return '/api/adjectives';
     case 'adverbs': return '/api/adverbs';
+    case 'frames': return '/api/frames';
   }
 }
 

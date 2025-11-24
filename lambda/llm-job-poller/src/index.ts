@@ -750,6 +750,126 @@ async function pollJob(jobId: string, jobLabel: string | null): Promise<{ itemsP
 }
 
 /**
+ * Process recently cancelled jobs by cancelling their items at OpenAI
+ */
+async function processCancelledJobs(): Promise<{ jobsProcessed: number; itemsCancelled: number; errors: number }> {
+  if (!openai) {
+    console.warn('[Lambda] OpenAI client not available for cancellation');
+    return { jobsProcessed: 0, itemsCancelled: 0, errors: 0 };
+  }
+
+  console.log('[Lambda] Processing cancelled jobs');
+
+  // Find cancelled jobs that still have non-terminal items with provider task IDs
+  const cancelledJobs = await prisma.llm_jobs.findMany({
+    where: {
+      status: 'cancelled',
+      deleted: false,
+    },
+    select: {
+      id: true,
+      label: true,
+    },
+  });
+
+  if (cancelledJobs.length === 0) {
+    console.log('[Lambda] No cancelled jobs to process');
+    return { jobsProcessed: 0, itemsCancelled: 0, errors: 0 };
+  }
+
+  console.log(`[Lambda] Found ${cancelledJobs.length} cancelled job(s) to process`);
+
+  let totalItemsCancelled = 0;
+  let totalErrors = 0;
+  const CANCEL_BATCH_SIZE = 50;
+
+  for (const job of cancelledJobs) {
+    try {
+      // Find items that need cancellation at OpenAI
+      const itemsToCancel = await prisma.llm_job_items.findMany({
+        where: {
+          job_id: job.id,
+          status: {
+            notIn: ['succeeded', 'failed', 'skipped'],
+          },
+          provider_task_id: {
+            not: null,
+          },
+        },
+        select: {
+          id: true,
+          provider_task_id: true,
+        },
+      });
+
+      if (itemsToCancel.length === 0) {
+        console.log(`[Lambda] No items to cancel for job ${job.id}`);
+        continue;
+      }
+
+      console.log(`[Lambda] Cancelling ${itemsToCancel.length} items for job ${job.id}`);
+
+      // Cancel items at OpenAI in batches
+      for (let i = 0; i < itemsToCancel.length; i += CANCEL_BATCH_SIZE) {
+        const batch = itemsToCancel.slice(i, i + CANCEL_BATCH_SIZE);
+
+        const results = await Promise.allSettled(
+          batch.map(async (item) => {
+            try {
+              // Cancel at OpenAI
+              await openai!.responses.cancel(item.provider_task_id!);
+
+              // Update item in database
+              await prisma.llm_job_items.update({
+                where: { id: item.id },
+                data: {
+                  status: 'failed',
+                  last_error: 'Cancelled by user',
+                  completed_at: new Date(),
+                },
+              });
+
+              return { success: true };
+            } catch (error) {
+              console.error(`[Lambda] Failed to cancel item ${item.id}:`, error);
+              
+              // Still mark as failed in database even if OpenAI cancel fails
+              await prisma.llm_job_items.update({
+                where: { id: item.id },
+                data: {
+                  status: 'failed',
+                  last_error: `Cancellation failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                  completed_at: new Date(),
+                },
+              }).catch(e => console.error('[Lambda] Failed to update item:', e));
+
+              return { success: false };
+            }
+          })
+        );
+
+        // Count successes
+        const successCount = results.filter(
+          r => r.status === 'fulfilled' && r.value.success
+        ).length;
+        totalItemsCancelled += successCount;
+        totalErrors += results.length - successCount;
+      }
+
+      // Update job aggregates after cancelling items
+      await updateJobAggregates(job.id);
+
+    } catch (error) {
+      console.error(`[Lambda] Failed to process cancelled job ${job.id}:`, error);
+      totalErrors++;
+    }
+  }
+
+  console.log(`[Lambda] Cancelled ${totalItemsCancelled} items across ${cancelledJobs.length} job(s), ${totalErrors} errors`);
+  return { jobsProcessed: cancelledJobs.length, itemsCancelled: totalItemsCancelled, errors: totalErrors };
+}
+
+/**
  * Main Lambda handler
  */
 export const handler: Handler = async (event, context) => {
@@ -826,6 +946,21 @@ export const handler: Handler = async (event, context) => {
     
     if (stuckSubmittingResult.count > 0) {
       console.warn(`[Lambda] Reset ${stuckSubmittingResult.count} items stuck in 'submitting' status (likely from crashed Lambda)`);
+    }
+
+    // PRIORITY 0: Process cancelled jobs - cancel items at OpenAI
+    console.log('[Lambda] Phase 0: Processing cancelled jobs');
+    try {
+      const cancellationResult = await processCancelledJobs();
+      if (cancellationResult.itemsCancelled > 0) {
+        console.log(`[Lambda] Cancelled ${cancellationResult.itemsCancelled} items from ${cancellationResult.jobsProcessed} job(s)`);
+      }
+      if (cancellationResult.errors > 0) {
+        console.warn(`[Lambda] ${cancellationResult.errors} errors during cancellation`);
+      }
+    } catch (error) {
+      console.error('[Lambda] Error during cancellation phase:', error);
+      stats.errors++;
     }
 
     // PRIORITY 1: Submit queued items to OpenAI

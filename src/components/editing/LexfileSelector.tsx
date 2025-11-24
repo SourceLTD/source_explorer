@@ -23,7 +23,8 @@ const LEXFILE_OPTIONS: Record<Mode, string[]> = {
     'noun.shape', 'noun.state', 'noun.substance', 'noun.time'
   ],
   adjectives: ['adj.all', 'adj.pert', 'adj.ppl'],
-  adverbs: ['adv.all']
+  adverbs: ['adv.all'],
+  frames: [] // Frames don't have lexfiles
 };
 
 export function LexfileSelector({ value, onChange, mode, onSave, onCancel, isSaving }: LexfileSelectorProps) {
