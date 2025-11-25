@@ -30,6 +30,14 @@ export function RoleEditor({
   onCancel, 
   isSaving 
 }: RoleEditorProps) {
+  // Prevent keyboard shortcuts from interfering with textarea input
+  const handleTextareaKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Stop propagation for Enter and Escape to prevent parent handlers from interfering
+    if (e.key === 'Enter' || e.key === 'Escape') {
+      e.stopPropagation();
+    }
+  };
+
   return (
     <div className="space-y-3">
       {roles.map((role) => (
@@ -66,6 +74,7 @@ export function RoleEditor({
           <textarea
             value={role.description}
             onChange={(e) => onRoleChange(role.clientId, 'description', e.target.value)}
+            onKeyDown={handleTextareaKeyDown}
             className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-white text-gray-900 resize-vertical"
             rows={2}
             placeholder="Role description"
@@ -73,6 +82,7 @@ export function RoleEditor({
           <textarea
             value={role.exampleSentence}
             onChange={(e) => onRoleChange(role.clientId, 'exampleSentence', e.target.value)}
+            onKeyDown={handleTextareaKeyDown}
             className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-white text-gray-900 resize-vertical mt-2"
             rows={1}
             placeholder="Example sentence (optional)"

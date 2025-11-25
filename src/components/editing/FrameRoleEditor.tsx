@@ -20,6 +20,14 @@ export function FrameRoleEditor({
   onCancel, 
   isSaving 
 }: FrameRoleEditorProps) {
+  // Prevent keyboard shortcuts from interfering with textarea input
+  const handleTextareaKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Stop propagation for Enter and Escape to prevent parent handlers from interfering
+    if (e.key === 'Enter' || e.key === 'Escape') {
+      e.stopPropagation();
+    }
+  };
+
   return (
     <div className="space-y-3">
       {roles.map((role) => (
@@ -56,6 +64,7 @@ export function FrameRoleEditor({
           <textarea
             value={role.description}
             onChange={(e) => onRoleChange(role.clientId, 'description', e.target.value)}
+            onKeyDown={handleTextareaKeyDown}
             className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-white text-gray-900 resize-vertical"
             rows={2}
             placeholder="Role description"
@@ -63,6 +72,7 @@ export function FrameRoleEditor({
           <textarea
             value={role.notes}
             onChange={(e) => onRoleChange(role.clientId, 'notes', e.target.value)}
+            onKeyDown={handleTextareaKeyDown}
             className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-white text-gray-900 resize-vertical mt-2"
             rows={1}
             placeholder="Notes (optional)"
@@ -72,9 +82,11 @@ export function FrameRoleEditor({
             <textarea
               value={role.examples.join('\n')}
               onChange={(e) => {
-                const examples = e.target.value.split('\n').filter(ex => ex.trim());
+                // Split by newlines but don't filter yet - allow empty lines while typing
+                const examples = e.target.value.split('\n');
                 onRoleChange(role.clientId, 'examples', examples);
               }}
+              onKeyDown={handleTextareaKeyDown}
               className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-white text-gray-900 resize-vertical"
               rows={2}
               placeholder="Example sentences (optional, one per line)"

@@ -1,17 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
+import { parseURLToFilterAST } from '@/lib/filters/url';
+import { translateFilterASTToPrisma } from '@/lib/filters/translate';
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page') || '1', 10);
-    const limit = Math.min(parseInt(searchParams.get('limit') || '50', 10), 100);
+    const limitParam = parseInt(searchParams.get('limit') || '50', 10);
+    // Handle "show all" (-1) by setting a reasonable maximum, otherwise cap at 2000
+    const limit = limitParam === -1 ? 20000 : Math.min(limitParam, 2000);
     const search = searchParams.get('search');
     const rawSortBy = searchParams.get('sortBy') || 'frame_name';
     const sortOrder = searchParams.get('sortOrder') === 'desc' ? 'desc' : 'asc';
     
-    const skip = (page - 1) * limit;
+    const skip = limitParam === -1 ? 0 : (page - 1) * limit;
 
     // Map sortBy to valid frame column names
     // Frames don't have 'gloss', they have 'short_definition' instead
@@ -38,10 +42,31 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Build where clause
+    // Build where clause - combine search with advanced filters
     let where: Prisma.framesWhereInput = {};
     
-    if (search) {
+    // Parse advanced filters from URL
+    const filterAST = parseURLToFilterAST('frames', searchParams);
+    const { where: filterWhere } = await translateFilterASTToPrisma('frames', filterAST || undefined);
+    
+    // Combine basic search with advanced filters
+    if (search && Object.keys(filterWhere).length > 0) {
+      // Both search and filters are present - combine with AND
+      where = {
+        AND: [
+          {
+            OR: [
+              { frame_name: { contains: search, mode: 'insensitive' } },
+              { definition: { contains: search, mode: 'insensitive' } },
+              // Only allow numeric ID search, not code or framebank_id
+              ...(search.match(/^\d+$/) ? [{ id: BigInt(search) }] : []),
+            ],
+          },
+          filterWhere,
+        ],
+      };
+    } else if (search) {
+      // Only search, no filters
       where = {
         OR: [
           { frame_name: { contains: search, mode: 'insensitive' } },
@@ -50,6 +75,9 @@ export async function GET(request: NextRequest) {
           ...(search.match(/^\d+$/) ? [{ id: BigInt(search) }] : []),
         ],
       };
+    } else {
+      // Only filters or neither
+      where = filterWhere;
     }
 
     // Get total count

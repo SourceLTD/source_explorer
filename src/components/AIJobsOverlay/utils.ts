@@ -197,50 +197,6 @@ export function formatRuntime(start: string | null, end?: string) {
 }
 
 /**
- * Estimates the size of a JSON payload in bytes
- */
-export function estimatePayloadSize(data: unknown): number {
-  return JSON.stringify(data).length;
-}
-
-/**
- * Checks if a scope object is too large for HTTP body transmission
- * Uses 1MB threshold to trigger conversion (leaves room for prompt + other fields)
- */
-export function isScopeTooLarge(scope: unknown): boolean {
-  const size = estimatePayloadSize(scope);
-  // Use 1MB threshold to trigger conversion - leaves room for prompt and other fields
-  return size > 1 * 1024 * 1024;
-}
-
-/**
- * Converts an ID-based scope to a filter-based scope for large batches
- * This prevents HTTP body size limit errors by having the server resolve IDs
- * Uses a single 'in' filter with all IDs as an array (much more compact than individual rules)
- */
-export function convertIdsToFilterScope(scope: JobScopeIds): JobScopeFilters {
-  return {
-    kind: 'filters',
-    pos: scope.pos,
-    filters: {
-      limit: 0, // no limit - process all matching entries
-      where: {
-        kind: 'group',
-        op: 'and',
-        children: [
-          {
-            kind: 'rule',
-            field: 'code',
-            operator: 'in',
-            value: scope.ids.join(','), // Join IDs as comma-separated string (filter system will parse)
-          },
-        ],
-      },
-    },
-  };
-}
-
-/**
  * Adds a limit to a scope (for batching large jobs)
  */
 export function addLimitToScope(scope: JobScope, limit: number): JobScope {

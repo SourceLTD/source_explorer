@@ -201,7 +201,14 @@ export function useEntryMutations(mode: Mode) {
     frameId: string,
     frameRoles: EditableFrameRole[]
   ): Promise<void> => {
-    const filteredRoles = frameRoles.filter(role => role.roleType.trim());
+    // Filter out roles without a role type and clean up examples array
+    const filteredRoles = frameRoles
+      .filter(role => role.roleType.trim())
+      .map(role => ({
+        ...role,
+        // Remove empty/whitespace-only examples when saving
+        examples: role.examples.filter(ex => ex.trim())
+      }));
 
     const response = await fetch(`${apiPrefix}/${frameId}/roles`, {
       method: 'PATCH',

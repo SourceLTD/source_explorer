@@ -317,7 +317,11 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
 
     // Parse pagination
     const page = parseInt(params.get('page') || '1');
-    const limit = parseInt(params.get('limit') || '10');
+    const limitParam = parseInt(params.get('limit') || '10');
+    // Validate limit: must be a valid number, either -1 (show all) or between 1-100
+    const limit = (!isNaN(limitParam) && (limitParam === -1 || (limitParam >= 1 && limitParam <= 100))) 
+      ? limitParam 
+      : 10;
 
     return {
       filters,
@@ -556,7 +560,11 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
 
     // Parse pagination
     const page = parseInt(params.get('page') || '1');
-    const limit = parseInt(params.get('limit') || '10');
+    const limitParam = parseInt(params.get('limit') || '10');
+    // Validate limit: must be a valid number, either -1 (show all) or between 1-100
+    const limit = (!isNaN(limitParam) && (limitParam === -1 || (limitParam >= 1 && limitParam <= 100))) 
+      ? limitParam 
+      : 10;
     
     // Reset filters to URL state or empty
     setFilters(filters);
@@ -652,8 +660,12 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
     if (currentPage !== 1) {
       params.set('page', String(currentPage));
     }
-    if (pageSize !== 10) {
-      params.set('limit', String(pageSize));
+    // Validate pageSize before writing to URL
+    const validPageSize = (!isNaN(pageSize) && (pageSize === -1 || (pageSize >= 1 && pageSize <= 100))) 
+      ? pageSize 
+      : 10;
+    if (validPageSize !== 10) {
+      params.set('limit', String(validPageSize));
     }
 
     // Update URL without causing navigation

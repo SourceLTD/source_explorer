@@ -19,9 +19,6 @@ import {
   buildScope,
   normalizeLexicalCode,
   truncate,
-  isScopeTooLarge,
-  convertIdsToFilterScope,
-  estimatePayloadSize,
   estimateScopeSize,
   addLimitToScope,
   addOffsetAndLimitToScope,
@@ -1573,20 +1570,9 @@ export function AIJobsOverlay({
     setSubmissionLoading(true);
     setSubmissionError(null);
     try {
-      let scope: JobScope = buildScope(scopeMode, mode, selectedIds, manualIdsText, frameIdsText, filterGroup, filterLimit, frameIncludeVerbs, frameFlagTarget);
+      const scope: JobScope = buildScope(scopeMode, mode, selectedIds, manualIdsText, frameIdsText, filterGroup, filterLimit, frameIncludeVerbs, frameFlagTarget);
       
-      // Check if scope is too large for HTTP body
-      let wasConverted = false;
-      if (scope.kind === 'ids' && isScopeTooLarge(scope)) {
-        const numIds = scope.ids.length;
-        const originalSize = estimatePayloadSize(scope);
-        scope = convertIdsToFilterScope(scope);
-        const convertedSize = estimatePayloadSize(scope);
-        wasConverted = true;
-        console.log(`[AIJobsOverlay] Large scope detected (${numIds} IDs, ${(originalSize / 1024 / 1024).toFixed(2)} MB) converted to filter-based scope (${(convertedSize / 1024 / 1024).toFixed(2)} MB)`);
-      }
-
-      // Determine if we need to batch the job creation
+      // Determine if we need to batch the job creation FIRST (before any conversion)
       const BATCH_SIZE = 3000;
       let totalEntries = estimateScopeSize(scope);
       
@@ -1708,8 +1694,8 @@ export function AIJobsOverlay({
         type: 'success',
         title: 'Job Created',
         message: `Job ${job.id} created with ${job.total_items} item${job.total_items === 1 ? '' : 's'}.${
-          wasConverted ? ' Large batch optimized for performance.' : ''
-        }${needsBatching ? ` Prepared in ${Math.ceil(totalEntries / BATCH_SIZE)} batches.` : ''} Lambda will submit items automatically.`,
+          needsBatching ? ` Prepared in ${Math.ceil(totalEntries / BATCH_SIZE)} batches.` : ''
+        } Lambda will submit items automatically.`,
         durationMs: 5000,
       });
       

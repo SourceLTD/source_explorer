@@ -449,56 +449,105 @@ export default function FilterPanel({
               isOpen={openSections.has('text')}
               onToggle={() => toggleSection('text')}
             >
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Definition</label>
-                <input
-                  type="text"
-                  value={filters.gloss || ''}
-                  onChange={(e) => updateFilter('gloss', e.target.value)}
-                  placeholder="Search in definitions..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Lemmas</label>
-                <input
-                  type="text"
-                  value={filters.lemmas || ''}
-                  onChange={(e) => updateFilter('lemmas', e.target.value)}
-                  placeholder="Search in lemmas..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Examples</label>
-                <input
-                  type="text"
-                  value={filters.examples || ''}
-                  onChange={(e) => updateFilter('examples', e.target.value)}
-                  placeholder="Search in examples..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Particles</label>
-                <input
-                  type="text"
-                  value={filters.particles || ''}
-                  onChange={(e) => updateFilter('particles', e.target.value)}
-                  placeholder="Search in particles..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Frames</label>
-                <input
-                  type="text"
-                  value={filters.frames || ''}
-                  onChange={(e) => updateFilter('frames', e.target.value)}
-                  placeholder="Search in frames..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
-                />
-              </div>
+              {mode === 'frames' ? (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Frame Name</label>
+                    <input
+                      type="text"
+                      value={filters.frame_name || ''}
+                      onChange={(e) => updateFilter('frame_name', e.target.value)}
+                      placeholder="Search in frame names..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Definition</label>
+                    <input
+                      type="text"
+                      value={filters.definition || ''}
+                      onChange={(e) => updateFilter('definition', e.target.value)}
+                      placeholder="Search in definitions..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Short Definition</label>
+                    <input
+                      type="text"
+                      value={filters.short_definition || ''}
+                      onChange={(e) => updateFilter('short_definition', e.target.value)}
+                      placeholder="Search in short definitions..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Prototypical Synset</label>
+                    <input
+                      type="text"
+                      value={filters.prototypical_synset || ''}
+                      onChange={(e) => updateFilter('prototypical_synset', e.target.value)}
+                      placeholder="Search in prototypical synset..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Definition</label>
+                    <input
+                      type="text"
+                      value={filters.gloss || ''}
+                      onChange={(e) => updateFilter('gloss', e.target.value)}
+                      placeholder="Search in definitions..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Lemmas</label>
+                    <input
+                      type="text"
+                      value={filters.lemmas || ''}
+                      onChange={(e) => updateFilter('lemmas', e.target.value)}
+                      placeholder="Search in lemmas..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Examples</label>
+                    <input
+                      type="text"
+                      value={filters.examples || ''}
+                      onChange={(e) => updateFilter('examples', e.target.value)}
+                      placeholder="Search in examples..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+                    />
+                  </div>
+                  {mode === 'verbs' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Particles</label>
+                      <input
+                        type="text"
+                        value={filters.particles || ''}
+                        onChange={(e) => updateFilter('particles', e.target.value)}
+                        placeholder="Search in particles..."
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+                      />
+                    </div>
+                  )}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Frames</label>
+                    <input
+                      type="text"
+                      value={filters.frames || ''}
+                      onChange={(e) => updateFilter('frames', e.target.value)}
+                      placeholder="Search in frames..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+                    />
+                  </div>
+                </>
+              )}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Flagged Reason</label>
                 <input
@@ -560,145 +609,147 @@ export default function FilterPanel({
               </div>
             </FilterSection>
 
-            {/* Category Filters */}
-            <FilterSection
-              title="Categories"
-              icon={<HashtagIcon className="w-4 h-4 text-gray-600" />}
-              isOpen={openSections.has('categories')}
-              onToggle={() => toggleSection('categories')}
-            >
-              <div className="relative">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Part of Speech</label>
-                <input
-                  type="text"
-                  value={posSearchQuery}
-                  onChange={(e) => setPosSearchQuery(e.target.value)}
-                  onFocus={() => setPosDropdownOpen(true)}
-                  onBlur={() => setTimeout(() => setPosDropdownOpen(false), 200)}
-                  placeholder="Search parts of speech..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 mb-2"
-                />
-                {posDropdownOpen && (
-                  <div className="max-h-48 overflow-y-auto border border-gray-300 rounded-md bg-white">
-                    {filteredPosOptions.length === 0 ? (
-                      <div className="px-3 py-2 text-sm text-gray-500">No parts of speech found</div>
-                    ) : (
-                      filteredPosOptions.map(([pos, label]) => (
-                        <label
-                          key={pos}
-                          className="flex items-center px-3 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={selectedPos.includes(pos)}
-                            onChange={() => togglePos(pos)}
-                            className="mr-3 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                          />
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium text-gray-900">{label}</div>
-                          </div>
-                        </label>
-                      ))
-                    )}
-                  </div>
-                )}
-                {selectedPos.length > 0 && (
-                  <div className="mt-2 text-xs text-gray-600">
-                    {selectedPos.length} selected
-                  </div>
-                )}
-              </div>
-              <div className="relative">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Lexfile</label>
-                <input
-                  type="text"
-                  value={lexfileSearchQuery}
-                  onChange={(e) => setLexfileSearchQuery(e.target.value)}
-                  onFocus={() => setLexfileDropdownOpen(true)}
-                  onBlur={() => setTimeout(() => setLexfileDropdownOpen(false), 200)}
-                  placeholder="Search lexfiles..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 mb-2"
-                />
-                {lexfileDropdownOpen && (
-                  <div className="max-h-48 overflow-y-auto border border-gray-300 rounded-md bg-white">
-                    {filteredLexfiles.length === 0 ? (
-                      <div className="px-3 py-2 text-sm text-gray-500">No lexfiles found</div>
-                    ) : (
-                      filteredLexfiles.map((lexfile) => (
-                        <label
-                          key={lexfile}
-                          className="flex items-center px-3 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={selectedLexfiles.includes(lexfile)}
-                            onChange={() => toggleLexfile(lexfile)}
-                            className="mr-3 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                          />
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium text-gray-900">{lexfile}</div>
-                          </div>
-                        </label>
-                      ))
-                    )}
-                  </div>
-                )}
-                {selectedLexfiles.length > 0 && (
-                  <div className="mt-2 text-xs text-gray-600">
-                    {selectedLexfiles.length} lexfile{selectedLexfiles.length !== 1 ? 's' : ''} selected
-                  </div>
-                )}
-              </div>
-              <div className="relative" ref={frameDropdownContainerRef}>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Frame ID</label>
-                {loadingFrames ? (
-                  <div className="text-sm text-gray-500">Loading frames...</div>
-                ) : (
-                  <>
-                    <input
-                      type="text"
-                      value={frameSearchQuery}
-                      onChange={(e) => setFrameSearchQuery(e.target.value)}
-                      onFocus={() => setFrameDropdownOpen(true)}
-                      placeholder="Search frames..."
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 mb-2"
-                    />
-                    {frameDropdownOpen && (
-                      <div className="max-h-48 overflow-y-auto border border-gray-300 rounded-md bg-white">
-                        {filteredFrames.length === 0 ? (
-                          <div className="px-3 py-2 text-sm text-gray-500">No frames found</div>
-                        ) : (
-                          filteredFrames.map((frame) => (
-                            <label
-                              key={frame.id}
-                              className="flex items-start px-3 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={selectedFrameIds.includes(frame.id)}
-                                onChange={() => toggleFrameId(frame.id)}
-                                className="mt-0.5 mr-3 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                              />
-                              <div className="flex-1 min-w-0">
-                                <div className="text-sm font-medium text-gray-900 truncate">{frame.frame_name}</div>
-                                <div className="text-xs text-gray-500 font-mono truncate">
-                                  {frame.code ? `${frame.code} · ${frame.id}` : frame.id}
+            {/* Category Filters - only show for non-frames modes */}
+            {mode !== 'frames' && (
+              <FilterSection
+                title="Categories"
+                icon={<HashtagIcon className="w-4 h-4 text-gray-600" />}
+                isOpen={openSections.has('categories')}
+                onToggle={() => toggleSection('categories')}
+              >
+                <div className="relative">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Part of Speech</label>
+                  <input
+                    type="text"
+                    value={posSearchQuery}
+                    onChange={(e) => setPosSearchQuery(e.target.value)}
+                    onFocus={() => setPosDropdownOpen(true)}
+                    onBlur={() => setTimeout(() => setPosDropdownOpen(false), 200)}
+                    placeholder="Search parts of speech..."
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 mb-2"
+                  />
+                  {posDropdownOpen && (
+                    <div className="max-h-48 overflow-y-auto border border-gray-300 rounded-md bg-white">
+                      {filteredPosOptions.length === 0 ? (
+                        <div className="px-3 py-2 text-sm text-gray-500">No parts of speech found</div>
+                      ) : (
+                        filteredPosOptions.map(([pos, label]) => (
+                          <label
+                            key={pos}
+                            className="flex items-center px-3 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedPos.includes(pos)}
+                              onChange={() => togglePos(pos)}
+                              className="mr-3 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-medium text-gray-900">{label}</div>
+                            </div>
+                          </label>
+                        ))
+                      )}
+                    </div>
+                  )}
+                  {selectedPos.length > 0 && (
+                    <div className="mt-2 text-xs text-gray-600">
+                      {selectedPos.length} selected
+                    </div>
+                  )}
+                </div>
+                <div className="relative">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Lexfile</label>
+                  <input
+                    type="text"
+                    value={lexfileSearchQuery}
+                    onChange={(e) => setLexfileSearchQuery(e.target.value)}
+                    onFocus={() => setLexfileDropdownOpen(true)}
+                    onBlur={() => setTimeout(() => setLexfileDropdownOpen(false), 200)}
+                    placeholder="Search lexfiles..."
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 mb-2"
+                  />
+                  {lexfileDropdownOpen && (
+                    <div className="max-h-48 overflow-y-auto border border-gray-300 rounded-md bg-white">
+                      {filteredLexfiles.length === 0 ? (
+                        <div className="px-3 py-2 text-sm text-gray-500">No lexfiles found</div>
+                      ) : (
+                        filteredLexfiles.map((lexfile) => (
+                          <label
+                            key={lexfile}
+                            className="flex items-center px-3 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedLexfiles.includes(lexfile)}
+                              onChange={() => toggleLexfile(lexfile)}
+                              className="mr-3 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-medium text-gray-900">{lexfile}</div>
+                            </div>
+                          </label>
+                        ))
+                      )}
+                    </div>
+                  )}
+                  {selectedLexfiles.length > 0 && (
+                    <div className="mt-2 text-xs text-gray-600">
+                      {selectedLexfiles.length} lexfile{selectedLexfiles.length !== 1 ? 's' : ''} selected
+                    </div>
+                  )}
+                </div>
+                <div className="relative" ref={frameDropdownContainerRef}>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Frame ID</label>
+                  {loadingFrames ? (
+                    <div className="text-sm text-gray-500">Loading frames...</div>
+                  ) : (
+                    <>
+                      <input
+                        type="text"
+                        value={frameSearchQuery}
+                        onChange={(e) => setFrameSearchQuery(e.target.value)}
+                        onFocus={() => setFrameDropdownOpen(true)}
+                        placeholder="Search frames..."
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 mb-2"
+                      />
+                      {frameDropdownOpen && (
+                        <div className="max-h-48 overflow-y-auto border border-gray-300 rounded-md bg-white">
+                          {filteredFrames.length === 0 ? (
+                            <div className="px-3 py-2 text-sm text-gray-500">No frames found</div>
+                          ) : (
+                            filteredFrames.map((frame) => (
+                              <label
+                                key={frame.id}
+                                className="flex items-start px-3 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={selectedFrameIds.includes(frame.id)}
+                                  onChange={() => toggleFrameId(frame.id)}
+                                  className="mt-0.5 mr-3 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-sm font-medium text-gray-900 truncate">{frame.frame_name}</div>
+                                  <div className="text-xs text-gray-500 font-mono truncate">
+                                    {frame.code ? `${frame.code} · ${frame.id}` : frame.id}
+                                  </div>
                                 </div>
-                              </div>
-                            </label>
-                          ))
-                        )}
-                      </div>
-                    )}
-                    {selectedFrameIds.length > 0 && (
-                      <div className="mt-2 text-xs text-gray-600">
-                        {selectedFrameIds.length} frame{selectedFrameIds.length !== 1 ? 's' : ''} selected
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-            </FilterSection>
+                              </label>
+                            ))
+                          )}
+                        </div>
+                      )}
+                      {selectedFrameIds.length > 0 && (
+                        <div className="mt-2 text-xs text-gray-600">
+                          {selectedFrameIds.length} frame{selectedFrameIds.length !== 1 ? 's' : ''} selected
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </FilterSection>
+            )}
 
             {/* Boolean Filters */}
             <FilterSection
@@ -707,56 +758,117 @@ export default function FilterPanel({
               isOpen={openSections.has('properties')}
               onToggle={() => toggleSection('properties')}
             >
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Multi-word Expression</label>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => updateFilter('isMwe', filters.isMwe === true ? undefined : true)}
-                    className={`px-3 py-1 rounded-md text-sm font-medium transition-colors cursor-pointer ${
-                      filters.isMwe === true 
-                        ? 'bg-blue-100 text-blue-800 border border-blue-200' 
-                        : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
-                    }`}
-                  >
-                    Yes
-                  </button>
-                  <button
-                    onClick={() => updateFilter('isMwe', filters.isMwe === false ? undefined : false)}
-                    className={`px-3 py-1 rounded-md text-sm font-medium transition-colors cursor-pointer ${
-                      filters.isMwe === false 
-                        ? 'bg-blue-100 text-blue-800 border border-blue-200' 
-                        : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
-                    }`}
-                  >
-                    No
-                  </button>
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Transitive</label>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => updateFilter('transitive', filters.transitive === true ? undefined : true)}
-                    className={`px-3 py-1 rounded-md text-sm font-medium transition-colors cursor-pointer ${
-                      filters.transitive === true 
-                        ? 'bg-blue-100 text-blue-800 border border-blue-200' 
-                        : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
-                    }`}
-                  >
-                    Yes
-                  </button>
-                  <button
-                    onClick={() => updateFilter('transitive', filters.transitive === false ? undefined : false)}
-                    className={`px-3 py-1 rounded-md text-sm font-medium transition-colors cursor-pointer ${
-                      filters.transitive === false 
-                        ? 'bg-blue-100 text-blue-800 border border-blue-200' 
-                        : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
-                    }`}
-                  >
-                    No
-                  </button>
-                </div>
-              </div>
+              {mode === 'frames' ? (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Is Supporting Frame</label>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => updateFilter('is_supporting_frame', filters.is_supporting_frame === true ? undefined : true)}
+                        className={`px-3 py-1 rounded-md text-sm font-medium transition-colors cursor-pointer ${
+                          filters.is_supporting_frame === true 
+                            ? 'bg-blue-100 text-blue-800 border border-blue-200' 
+                            : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
+                        }`}
+                      >
+                        Yes
+                      </button>
+                      <button
+                        onClick={() => updateFilter('is_supporting_frame', filters.is_supporting_frame === false ? undefined : false)}
+                        className={`px-3 py-1 rounded-md text-sm font-medium transition-colors cursor-pointer ${
+                          filters.is_supporting_frame === false 
+                            ? 'bg-blue-100 text-blue-800 border border-blue-200' 
+                            : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
+                        }`}
+                      >
+                        No
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Communication</label>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => updateFilter('communication', filters.communication === true ? undefined : true)}
+                        className={`px-3 py-1 rounded-md text-sm font-medium transition-colors cursor-pointer ${
+                          filters.communication === true 
+                            ? 'bg-blue-100 text-blue-800 border border-blue-200' 
+                            : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
+                        }`}
+                      >
+                        Yes
+                      </button>
+                      <button
+                        onClick={() => updateFilter('communication', filters.communication === false ? undefined : false)}
+                        className={`px-3 py-1 rounded-md text-sm font-medium transition-colors cursor-pointer ${
+                          filters.communication === false 
+                            ? 'bg-blue-100 text-blue-800 border border-blue-200' 
+                            : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
+                        }`}
+                      >
+                        No
+                      </button>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {mode !== 'adverbs' && mode !== 'adjectives' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Multi-word Expression</label>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => updateFilter('isMwe', filters.isMwe === true ? undefined : true)}
+                          className={`px-3 py-1 rounded-md text-sm font-medium transition-colors cursor-pointer ${
+                            filters.isMwe === true 
+                              ? 'bg-blue-100 text-blue-800 border border-blue-200' 
+                              : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
+                          }`}
+                        >
+                          Yes
+                        </button>
+                        <button
+                          onClick={() => updateFilter('isMwe', filters.isMwe === false ? undefined : false)}
+                          className={`px-3 py-1 rounded-md text-sm font-medium transition-colors cursor-pointer ${
+                            filters.isMwe === false 
+                              ? 'bg-blue-100 text-blue-800 border border-blue-200' 
+                              : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
+                          }`}
+                        >
+                          No
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {mode === 'verbs' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Transitive</label>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => updateFilter('transitive', filters.transitive === true ? undefined : true)}
+                          className={`px-3 py-1 rounded-md text-sm font-medium transition-colors cursor-pointer ${
+                            filters.transitive === true 
+                              ? 'bg-blue-100 text-blue-800 border border-blue-200' 
+                              : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
+                          }`}
+                        >
+                          Yes
+                        </button>
+                        <button
+                          onClick={() => updateFilter('transitive', filters.transitive === false ? undefined : false)}
+                          className={`px-3 py-1 rounded-md text-sm font-medium transition-colors cursor-pointer ${
+                            filters.transitive === false 
+                              ? 'bg-blue-100 text-blue-800 border border-blue-200' 
+                              : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
+                          }`}
+                        >
+                          No
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Flagged</label>
                 <div className="flex gap-2">
@@ -809,56 +921,58 @@ export default function FilterPanel({
               </div>
             </FilterSection>
 
-            {/* Numeric Filters */}
-            <FilterSection
-              title="Relationships"
-              icon={<HashtagIcon className="w-4 h-4 text-gray-600" />}
-              isOpen={openSections.has('relationships')}
-              onToggle={() => toggleSection('relationships')}
-            >
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Parent Count</label>
-                <div className="flex gap-2">
-                  <input
-                    type="number"
-                    value={filters.parentsCountMin || ''}
-                    onChange={(e) => updateFilter('parentsCountMin', e.target.value ? parseInt(e.target.value) : undefined)}
-                    placeholder="Min"
-                    min="0"
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
-                  />
-                  <input
-                    type="number"
-                    value={filters.parentsCountMax || ''}
-                    onChange={(e) => updateFilter('parentsCountMax', e.target.value ? parseInt(e.target.value) : undefined)}
-                    placeholder="Max"
-                    min="0"
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
-                  />
+            {/* Numeric Filters - only show for non-frames modes */}
+            {mode !== 'frames' && (
+              <FilterSection
+                title="Relationships"
+                icon={<HashtagIcon className="w-4 h-4 text-gray-600" />}
+                isOpen={openSections.has('relationships')}
+                onToggle={() => toggleSection('relationships')}
+              >
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Parent Count</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      value={filters.parentsCountMin || ''}
+                      onChange={(e) => updateFilter('parentsCountMin', e.target.value ? parseInt(e.target.value) : undefined)}
+                      placeholder="Min"
+                      min="0"
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+                    />
+                    <input
+                      type="number"
+                      value={filters.parentsCountMax || ''}
+                      onChange={(e) => updateFilter('parentsCountMax', e.target.value ? parseInt(e.target.value) : undefined)}
+                      placeholder="Max"
+                      min="0"
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+                    />
+                  </div>
                 </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Children Count</label>
-                <div className="flex gap-2">
-                  <input
-                    type="number"
-                    value={filters.childrenCountMin || ''}
-                    onChange={(e) => updateFilter('childrenCountMin', e.target.value ? parseInt(e.target.value) : undefined)}
-                    placeholder="Min"
-                    min="0"
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
-                  />
-                  <input
-                    type="number"
-                    value={filters.childrenCountMax || ''}
-                    onChange={(e) => updateFilter('childrenCountMax', e.target.value ? parseInt(e.target.value) : undefined)}
-                    placeholder="Max"
-                    min="0"
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
-                  />
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Children Count</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      value={filters.childrenCountMin || ''}
+                      onChange={(e) => updateFilter('childrenCountMin', e.target.value ? parseInt(e.target.value) : undefined)}
+                      placeholder="Min"
+                      min="0"
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+                    />
+                    <input
+                      type="number"
+                      value={filters.childrenCountMax || ''}
+                      onChange={(e) => updateFilter('childrenCountMax', e.target.value ? parseInt(e.target.value) : undefined)}
+                      placeholder="Max"
+                      min="0"
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+                    />
+                  </div>
                 </div>
-              </div>
-            </FilterSection>
+              </FilterSection>
+            )}
 
             {/* Date Filters */}
             <FilterSection

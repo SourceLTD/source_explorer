@@ -71,8 +71,8 @@ export async function GET(request: NextRequest) {
   }
 
   // Allow -1 as special "show all" value, otherwise validate range
-  if (params.limit! !== -1 && (params.limit! < 1 || params.limit! > 100)) {
-    return NextResponse.json({ error: 'Limit must be between 1 and 100, or -1 for all' }, { status: 400 });
+  if (params.limit! !== -1 && (params.limit! < 1 || params.limit! > 2000)) {
+    return NextResponse.json({ error: 'Limit must be between 1 and 2000, or -1 for all' }, { status: 400 });
   }
 
   // Validate sort fields

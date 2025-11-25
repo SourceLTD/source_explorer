@@ -109,7 +109,7 @@ function TableModeContent() {
             </button>
             <div className="h-6 w-px bg-gray-300"></div>
             <h1 className="text-xl font-bold text-gray-900">
-              {activeTab === 'verbs' ? 'Verbs' : 'Frames'}
+              Verbs
             </h1>
           </div>
           

@@ -38,12 +38,11 @@ export default function PageSizeSelector({
     { value: 20, label: '20' },
     { value: 50, label: '50' },
     { value: 100, label: '100' },
-    { value: -1, label: totalItems > 20000 ? 'max (20,000)' : 'all' }
+    { value: 1000, label: '1000' },
+    { value: 2000, label: '2000' }
   ];
 
-  const currentLabel = pageSize === -1 
-    ? (totalItems > 20000 ? 'max (20,000)' : 'all')
-    : pageSize.toString();
+  const currentLabel = pageSize.toString();
 
   return (
     <div className="relative" ref={panelRef}>
