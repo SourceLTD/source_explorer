@@ -41,9 +41,24 @@ export async function updateSession(request: NextRequest) {
   // supabase.auth.getUser(). A simple mistake could make it very hard to debug
   // issues with users being randomly logged out.
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  let user = null
+  try {
+    const response = await supabase.auth.getUser()
+    user = response.data.user
+    
+    // If we got an error but no user, check if it's a refresh token error
+    if (!user && response.error) {
+      // Log the error for debugging but don't crash
+      if (response.error.message?.includes('refresh_token_not_found')) {
+        console.warn('Refresh token not found - likely a race condition. User will be prompted to re-login if needed.')
+      } else {
+        console.error('Auth error:', response.error)
+      }
+    }
+  } catch (error) {
+    // Catch any unexpected errors
+    console.error('Unexpected error in auth middleware:', error)
+  }
 
   // Define public routes that don't require authentication
   const publicRoutes = ['/login', '/auth/confirm', '/auth/check-email', '/error']

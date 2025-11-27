@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
   
   const params: PaginationParams = {
     page: searchParams.get('page') ? parseInt(searchParams.get('page')!, 10) : 1,
-    limit: searchParams.get('limit') ? parseInt(searchParams.get('limit')!, 10) : 20,
+    limit: searchParams.get('limit') ? parseInt(searchParams.get('limit')!, 10) : 10,
     sortBy: sortBy,
     sortOrder: (searchParams.get('sortOrder') as 'asc' | 'desc') || 'asc',
     search: searchParams.get('search') || undefined,
@@ -70,9 +70,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Page must be >= 1' }, { status: 400 });
   }
 
-  // Allow -1 as special "show all" value, otherwise validate range
-  if (params.limit! !== -1 && (params.limit! < 1 || params.limit! > 2000)) {
-    return NextResponse.json({ error: 'Limit must be between 1 and 2000, or -1 for all' }, { status: 400 });
+  // Validate limit range
+  if (params.limit! < 1 || params.limit! > 2000) {
+    return NextResponse.json({ error: 'Limit must be between 1 and 2000' }, { status: 400 });
   }
 
   // Validate sort fields

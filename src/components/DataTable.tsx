@@ -318,8 +318,8 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
     // Parse pagination
     const page = parseInt(params.get('page') || '1');
     const limitParam = parseInt(params.get('limit') || '10');
-    // Validate limit: must be a valid number, either -1 (show all) or between 1-100
-    const limit = (!isNaN(limitParam) && (limitParam === -1 || (limitParam >= 1 && limitParam <= 100))) 
+    // Validate limit: must be a valid number between 1-100
+    const limit = (!isNaN(limitParam) && limitParam >= 1 && limitParam <= 100) 
       ? limitParam 
       : 10;
 
@@ -561,8 +561,8 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
     // Parse pagination
     const page = parseInt(params.get('page') || '1');
     const limitParam = parseInt(params.get('limit') || '10');
-    // Validate limit: must be a valid number, either -1 (show all) or between 1-100
-    const limit = (!isNaN(limitParam) && (limitParam === -1 || (limitParam >= 1 && limitParam <= 100))) 
+    // Validate limit: must be a valid number between 1-100
+    const limit = (!isNaN(limitParam) && limitParam >= 1 && limitParam <= 100) 
       ? limitParam 
       : 10;
     

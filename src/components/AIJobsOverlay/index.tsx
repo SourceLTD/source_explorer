@@ -275,7 +275,19 @@ export function AIJobsOverlay({
       const pollUnseen = async () => {
         try {
           const response = await fetch(`/api/llm-jobs/unseen-count?pos=${mode}`);
-          const data = await response.json();
+          
+          if (!response.ok) {
+            console.error('Failed to fetch unseen count:', response.status, response.statusText);
+            return;
+          }
+          
+          const text = await response.text();
+          if (!text) {
+            console.error('Empty response from unseen-count endpoint');
+            return;
+          }
+          
+          const data = JSON.parse(text);
           setUnseenCount(data.count || 0);
         } catch (error) {
           console.error('Failed to fetch unseen count:', error);

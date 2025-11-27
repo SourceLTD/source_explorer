@@ -8,14 +8,14 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page') || '1', 10);
-    const limitParam = parseInt(searchParams.get('limit') || '50', 10);
-    // Handle "show all" (-1) by setting a reasonable maximum, otherwise cap at 2000
-    const limit = limitParam === -1 ? 20000 : Math.min(limitParam, 2000);
+    const limitParam = parseInt(searchParams.get('limit') || '10', 10);
+    // Cap limit at 2000, default to 10 if invalid
+    const limit = (limitParam >= 1 && limitParam <= 2000) ? limitParam : 10;
     const search = searchParams.get('search');
     const rawSortBy = searchParams.get('sortBy') || 'frame_name';
     const sortOrder = searchParams.get('sortOrder') === 'desc' ? 'desc' : 'asc';
     
-    const skip = limitParam === -1 ? 0 : (page - 1) * limit;
+    const skip = (page - 1) * limit;
 
     // Map sortBy to valid frame column names
     // Frames don't have 'gloss', they have 'short_definition' instead

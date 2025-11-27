@@ -2073,7 +2073,7 @@ export async function updateFramesForEntries(
 export async function getPaginatedEntries(params: PaginationParams = {}): Promise<PaginatedResult<TableEntry>> {
   const {
     page = 1,
-    limit: rawLimit = 20,
+    limit: rawLimit = 10,
     sortBy = 'id',
     sortOrder = 'asc',
     search,
@@ -2101,8 +2101,8 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
     flaggedByJobId
   } = params;
 
-  // Handle "show all" case where limit is -1
-  const limit = rawLimit === -1 ? 20000 : rawLimit;
+  // Use rawLimit directly, no special handling for -1
+  const limit = rawLimit;
   const skip = (page - 1) * limit;
 
   // Build where clause
@@ -2636,7 +2636,7 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
 export async function getPaginatedNouns(params: PaginationParams = {}): Promise<PaginatedResult<TableEntry>> {
   const {
     page = 1,
-    limit: rawLimit = 20,
+    limit: rawLimit = 10,
     sortBy = 'id',
     sortOrder = 'asc',
     search,
@@ -2659,8 +2659,8 @@ export async function getPaginatedNouns(params: PaginationParams = {}): Promise<
     updatedBefore,
   } = params;
 
-  // Handle "show all" case where limit is -1
-  const limit = rawLimit === -1 ? 20000 : rawLimit;
+  // Use rawLimit directly, no special handling for -1
+  const limit = rawLimit;
   const skip = (page - 1) * limit;
 
   // Build where clause
@@ -2940,7 +2940,7 @@ export async function getPaginatedNouns(params: PaginationParams = {}): Promise<
 export async function getPaginatedAdjectives(params: PaginationParams = {}): Promise<PaginatedResult<TableEntry>> {
   const {
     page = 1,
-    limit: rawLimit = 20,
+    limit: rawLimit = 10,
     sortBy = 'id',
     sortOrder = 'asc',
     search,
@@ -2963,8 +2963,8 @@ export async function getPaginatedAdjectives(params: PaginationParams = {}): Pro
     updatedBefore,
   } = params;
 
-  // Handle "show all" case where limit is -1
-  const limit = rawLimit === -1 ? 20000 : rawLimit;
+  // Use rawLimit directly, no special handling for -1
+  const limit = rawLimit;
   const skip = (page - 1) * limit;
 
   // Build where clause
@@ -3244,7 +3244,7 @@ export async function getPaginatedAdjectives(params: PaginationParams = {}): Pro
 export async function getPaginatedAdverbs(params: PaginationParams = {}): Promise<PaginatedResult<TableEntry>> {
   const {
     page = 1,
-    limit: rawLimit = 20,
+    limit: rawLimit = 10,
     sortBy = 'id',
     sortOrder = 'asc',
     search,
@@ -3267,8 +3267,8 @@ export async function getPaginatedAdverbs(params: PaginationParams = {}): Promis
     updatedBefore,
   } = params;
 
-  // Handle "show all" case where limit is -1
-  const limit = rawLimit === -1 ? 20000 : rawLimit;
+  // Use rawLimit directly, no special handling for -1
+  const limit = rawLimit;
   const skip = (page - 1) * limit;
 
   // Build where clause
@@ -3548,7 +3548,7 @@ export async function getPaginatedAdverbs(params: PaginationParams = {}): Promis
 export async function getPaginatedFrames(params: FramePaginationParams = {}): Promise<PaginatedResult<Frame>> {
   const {
     page = 1,
-    limit: rawLimit = 20,
+    limit: rawLimit = 10,
     sortBy = 'frame_name',
     sortOrder = 'asc',
     search,
@@ -3564,8 +3564,8 @@ export async function getPaginatedFrames(params: FramePaginationParams = {}): Pr
     updatedBefore,
   } = params;
 
-  // Handle "show all" case where limit is -1
-  const limit = rawLimit === -1 ? 20000 : rawLimit;
+  // Use rawLimit directly, no special handling for -1
+  const limit = rawLimit;
   const skip = (page - 1) * limit;
 
   // Build where clause
