@@ -1970,7 +1970,7 @@ export async function updateModerationStatus(
           code: {
             in: ids
           },
-          deleted: false
+          deleted: false // Only update non-deleted verbs
         } as Prisma.verbsWhereInput,
         data: prismaUpdates
       });
@@ -1982,6 +1982,7 @@ export async function updateModerationStatus(
           code: {
             in: ids
           }
+          // Note: Nouns table doesn't have a deleted field
         } as Prisma.nounsWhereInput,
         data: prismaUpdates
       });
@@ -1993,6 +1994,7 @@ export async function updateModerationStatus(
           code: {
             in: ids
           }
+          // Note: Adjectives table doesn't have a deleted field
         } as Prisma.adjectivesWhereInput,
         data: prismaUpdates
       });
@@ -2004,6 +2006,7 @@ export async function updateModerationStatus(
           code: {
             in: ids
           }
+          // Note: Adverbs table doesn't have a deleted field
         } as Prisma.adverbsWhereInput,
         data: prismaUpdates
       });

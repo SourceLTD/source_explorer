@@ -9,6 +9,7 @@ import PageSizeSelector from './PageSizeSelector';
 import { api } from '@/lib/api-client';
 import AIJobsOverlay from './AIJobsOverlay';
 import { SparklesIcon } from '@heroicons/react/24/outline';
+import { showGlobalAlert } from '@/lib/alerts';
 
 interface DataTableProps {
   onRowClick?: (entry: TableEntry | Frame) => void;
@@ -384,7 +385,10 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
   const [selectedFrameValue, setSelectedFrameValue] = useState<string>('');
   const [frameSearchQuery, setFrameSearchQuery] = useState('');
   const [isFrameUpdating, setIsFrameUpdating] = useState(false);
-  const selectedEntries = useMemo(() => {
+  // Note: This only contains selected entries from the CURRENT PAGE
+  // If users select entries across multiple pages, this will be incomplete
+  // Use selection.selectedIds for operations, and only use selectedEntries for UI hints
+  const selectedEntriesOnCurrentPage = useMemo(() => {
     if (!data || !data.data || selection.selectedIds.size === 0) {
       return [];
     }
@@ -938,6 +942,8 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
   }) => {
     if (selection.selectedIds.size === 0) return;
 
+    const selectedCount = selection.selectedIds.size;
+
     try {
       const response = await fetch(`${apiPrefix}/moderation`, {
         method: 'PATCH',
@@ -951,22 +957,16 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
       });
 
       if (!response.ok) {
-        throw new Error('Failed to update entries');
+        const errorData = await response.json().catch(() => ({ error: 'Failed to update entries' }));
+        throw new Error(errorData.error || 'Failed to update entries');
       }
 
-      // Update only the specific entries in local state
-      setData(prevData => {
-        if (!prevData) return prevData;
-        return {
-          ...prevData,
-          data: prevData.data.map(entry => {
-            if (selection.selectedIds.has(entry.id)) {
-              return { ...entry, ...updates };
-            }
-            return entry;
-          })
-        };
-      });
+      // Parse the response to get the actual count updated
+      const result = await response.json();
+      const actualCount = result.updatedCount || result.count || 0;
+
+      // Refresh the data to ensure UI is in sync with the database
+      await fetchData();
       
       // Clear selection
       setSelection({ selectedIds: new Set(), selectAll: false });
@@ -974,11 +974,47 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
       // Close modal and reset
       setModerationModal({ isOpen: false, action: null, reason: '' });
 
-      // Show success message (you could add a toast notification here)
-      console.log('Successfully updated entries');
+      // Determine the action for user feedback
+      const action = updates.forbidden === true ? 'forbidden' : 
+                    updates.forbidden === false ? 'allowed' :
+                    updates.flagged === true ? 'flagged' :
+                    updates.flagged === false ? 'unflagged' : 'updated';
+
+      // Show appropriate feedback based on whether all selected entries were updated
+      if (actualCount === selectedCount) {
+        showGlobalAlert({
+          type: 'success',
+          title: 'Success',
+          message: `Successfully ${action} ${actualCount} ${actualCount === 1 ? 'entry' : 'entries'}.`,
+          durationMs: 4000
+        });
+      } else if (actualCount > 0) {
+        showGlobalAlert({
+          type: 'warning',
+          title: 'Partial Update',
+          message: `Only ${actualCount} of ${selectedCount} selected ${selectedCount === 1 ? 'entry was' : 'entries were'} ${action}. Some entries may not exist or are no longer accessible.`,
+          durationMs: 6000
+        });
+      } else {
+        showGlobalAlert({
+          type: 'error',
+          title: 'Update Failed',
+          message: `No entries were ${action}. The selected entries may not exist or are no longer accessible.`,
+          durationMs: 6000
+        });
+      }
     } catch (error) {
       console.error('Error updating entries:', error);
-      // You could add error notification here
+      
+      showGlobalAlert({
+        type: 'error',
+        title: 'Error',
+        message: error instanceof Error ? error.message : 'An unexpected error occurred while updating entries.',
+        durationMs: 6000
+      });
+
+      // Close modal even on error
+      setModerationModal({ isOpen: false, action: null, reason: '' });
     }
   };
 
@@ -1019,6 +1055,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
       return;
     }
 
+    const selectedCount = selection.selectedIds.size;
     setIsFrameUpdating(true);
     setFrameOptionsError(null);
 
@@ -1039,28 +1076,16 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
         throw new Error(errorData?.error ?? 'Failed to update frames');
       }
 
+      // Parse the response to get the actual count updated
+      const result = await response.json();
+      const actualCount = result.updatedCount || result.count || 0;
+
       const chosenFrame =
         normalizedFrameValue === null
           ? null
           : frameOptions.find(frame => frame.id === normalizedFrameValue) ?? null;
 
-      setData(prevData => {
-        if (!prevData) return prevData;
-        return {
-          ...prevData,
-          data: prevData.data.map(entry => {
-            if (!selection.selectedIds.has(entry.id)) {
-              return entry;
-            }
-            return {
-              ...entry,
-              frame_id: normalizedFrameValue === null ? null : normalizedFrameValue,
-              frame: chosenFrame ? chosenFrame.frame_name : null,
-            };
-          }),
-        };
-      });
-
+      // Refresh the data to ensure UI is in sync with the database
       await fetchData();
 
       setSelection({ selectedIds: new Set(), selectAll: false });
@@ -1068,8 +1093,43 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
       setSelectedFrameValue('');
       setFrameSearchQuery('');
       setFrameOptionsError(null);
+
+      // Show appropriate feedback based on whether all selected entries were updated
+      const frameName = chosenFrame ? chosenFrame.frame_name : 'No frame';
+      const action = normalizedFrameValue === null ? 'cleared frames for' : `updated to ${frameName} for`;
+      
+      if (actualCount === selectedCount) {
+        showGlobalAlert({
+          type: 'success',
+          title: 'Success',
+          message: `Successfully ${action} ${actualCount} ${actualCount === 1 ? 'verb' : 'verbs'}.`,
+          durationMs: 4000
+        });
+      } else if (actualCount > 0) {
+        showGlobalAlert({
+          type: 'warning',
+          title: 'Partial Update',
+          message: `Only ${actualCount} of ${selectedCount} selected ${selectedCount === 1 ? 'verb was' : 'verbs were'} updated. Some verbs may not exist or are no longer accessible.`,
+          durationMs: 6000
+        });
+      } else {
+        showGlobalAlert({
+          type: 'error',
+          title: 'Update Failed',
+          message: `No verbs were updated. The selected verbs may not exist or are no longer accessible.`,
+          durationMs: 6000
+        });
+      }
     } catch (error) {
-      setFrameOptionsError(error instanceof Error ? error.message : 'Failed to update frames');
+      const errorMessage = error instanceof Error ? error.message : 'Failed to update frames';
+      setFrameOptionsError(errorMessage);
+      
+      showGlobalAlert({
+        type: 'error',
+        title: 'Error',
+        message: errorMessage,
+        durationMs: 6000
+      });
     } finally {
       setIsFrameUpdating(false);
     }
@@ -1205,13 +1265,18 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
   };
 
   // Calculate moderation states of selected entries
+  // WARNING: This only checks entries on the CURRENT PAGE
+  // For multi-page selections, this gives incomplete information
+  // The buttons will show based on current page only, but operations will affect all selected IDs
   const getSelectionModerationState = () => {
-    if (selectedEntries.length === 0) {
-      return { allFlagged: false, noneFlagged: true, allForbidden: false, noneForbidden: true };
+    if (selectedEntriesOnCurrentPage.length === 0) {
+      // No selected entries on current page, but there might be selections on other pages
+      // Default to showing all action buttons
+      return { allFlagged: false, noneFlagged: false, allForbidden: false, noneForbidden: false };
     }
 
     // Filter to only TableEntry items (frames don't have flagged/forbidden)
-    const moderatableEntries = selectedEntries.filter((entry): entry is TableEntry => 'flagged' in entry);
+    const moderatableEntries = selectedEntriesOnCurrentPage.filter((entry): entry is TableEntry => 'flagged' in entry);
     
     if (moderatableEntries.length === 0) {
       return { allFlagged: false, noneFlagged: true, allForbidden: false, noneForbidden: true };
@@ -2261,9 +2326,13 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
 
       {/* Moderation Modal */}
       {moderationModal.isOpen && (() => {
-        const selectedEntries = data?.data.filter(entry => selection.selectedIds.has(entry.id)) || [];
+        // Note: selectedEntriesOnPage only contains entries from the CURRENT PAGE
+        // If user has multi-page selection, we can't show all reasons without fetching them
+        const selectedEntriesOnPage = data?.data.filter(entry => selection.selectedIds.has(entry.id)) || [];
+        const hasMultiPageSelection = selection.selectedIds.size > selectedEntriesOnPage.length;
+        
         // Filter to only TableEntry items (frames don't have flagged/forbidden)
-        const moderatableEntries = selectedEntries.filter((e): e is TableEntry => 'flagged' in e);
+        const moderatableEntries = selectedEntriesOnPage.filter((e): e is TableEntry => 'flagged' in e);
         const existingReasons = {
           flagged: moderatableEntries
             .filter(e => e.flagged && e.flaggedReason)
@@ -2292,6 +2361,25 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
                 <p className="text-sm text-gray-600 mb-4">
                   You are about to {moderationModal.action} {selection.selectedIds.size} {selection.selectedIds.size === 1 ? 'entry' : 'entries'}.
                 </p>
+
+                {/* Warning for multi-page selections */}
+                {hasMultiPageSelection && (
+                  <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                    <div className="flex items-start gap-2">
+                      <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <div className="text-sm text-blue-800">
+                        <p className="font-medium">Multi-page selection detected</p>
+                        <p className="text-blue-700 mt-1">
+                          You have selected {selection.selectedIds.size} {selection.selectedIds.size === 1 ? 'entry' : 'entries'} across multiple pages. 
+                          Only {selectedEntriesOnPage.length} {selectedEntriesOnPage.length === 1 ? 'is' : 'are'} visible on the current page. 
+                          The operation will affect all {selection.selectedIds.size} selected {selection.selectedIds.size === 1 ? 'entry' : 'entries'}.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Show existing reasons */}
                 {moderationModal.action === 'unflag' && existingReasons.flagged.length > 0 && (
@@ -2377,11 +2465,14 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
       })()}
 
       {isFrameModalOpen && mode === 'verbs' && (() => {
+        const hasMultiPageSelection = selection.selectedIds.size > selectedEntriesOnCurrentPage.length;
+        
         const frameSummary = (() => {
-          if (selectedEntries.length === 0) return [];
+          if (selectedEntriesOnCurrentPage.length === 0) return [];
           const counts = new Map<string, { label: string; count: number }>();
           // Only verbs have frame property
-          const verbEntries = selectedEntries.filter((e): e is TableEntry => 'frame' in e);
+          // Note: This only shows frames for entries on the current page
+          const verbEntries = selectedEntriesOnCurrentPage.filter((e): e is TableEntry => 'frame' in e);
           verbEntries.forEach(entry => {
             const key = entry.frame ?? '__NONE__';
             const label = entry.frame ?? 'No frame assigned';
@@ -2412,6 +2503,25 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
                     {selection.selectedIds.size === 1 ? 'entry' : 'entries'}.
                   </p>
                 </div>
+
+                {/* Warning for multi-page selections */}
+                {hasMultiPageSelection && (
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
+                    <div className="flex items-start gap-2">
+                      <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <div className="text-sm text-blue-800">
+                        <p className="font-medium">Multi-page selection</p>
+                        <p className="text-blue-700 mt-1">
+                          You selected {selection.selectedIds.size} verbs across multiple pages. 
+                          The breakdown below shows only the {selectedEntriesOnCurrentPage.length} verbs on this page. 
+                          All {selection.selectedIds.size} verbs will be updated.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {frameSummary.length > 0 && (
                   <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
