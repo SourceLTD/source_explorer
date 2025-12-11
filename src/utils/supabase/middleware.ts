@@ -46,12 +46,18 @@ export async function updateSession(request: NextRequest) {
     const response = await supabase.auth.getUser()
     user = response.data.user
     
-    // If we got an error but no user, check if it's a refresh token error
+    // If we got an error but no user, check if it's a known/expected error
     if (!user && response.error) {
-      // Log the error for debugging but don't crash
-      if (response.error.message?.includes('refresh_token_not_found')) {
-        console.warn('Refresh token not found - likely a race condition. User will be prompted to re-login if needed.')
-      } else {
+      const errorName = response.error.name || ''
+      const errorMessage = response.error.message || ''
+      
+      // These are expected errors for unauthenticated users - don't log them
+      const isExpectedError = 
+        errorName === 'AuthSessionMissingError' ||
+        errorMessage.includes('Auth session missing') ||
+        errorMessage.includes('refresh_token_not_found')
+      
+      if (!isExpectedError) {
         console.error('Auth error:', response.error)
       }
     }
@@ -61,7 +67,7 @@ export async function updateSession(request: NextRequest) {
   }
 
   // Define public routes that don't require authentication
-  const publicRoutes = ['/login', '/auth/confirm', '/auth/check-email', '/error']
+  const publicRoutes = ['/login', '/auth/confirm', '/auth/verify', '/auth/check-email', '/error']
   const isPublicRoute = publicRoutes.some(route => request.nextUrl.pathname.startsWith(route))
   
   // Allow all API routes without authentication

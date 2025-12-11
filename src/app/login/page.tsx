@@ -1,19 +1,33 @@
 'use client'
 
-import { useTransition } from 'react'
+import { useState, useEffect, useTransition } from 'react'
 import { login } from './actions'
+
+const COOLDOWN_SECONDS = 15
 
 export default function LoginPage() {
   const [isPending, startTransition] = useTransition()
+  const [cooldown, setCooldown] = useState(0)
+
+  useEffect(() => {
+    if (cooldown > 0) {
+      const timer = setTimeout(() => setCooldown(cooldown - 1), 1000)
+      return () => clearTimeout(timer)
+    }
+  }, [cooldown])
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const formData = new FormData(event.currentTarget)
     
+    setCooldown(COOLDOWN_SECONDS)
+    
     startTransition(async () => {
       await login(formData)
     })
   }
+
+  const isDisabled = isPending || cooldown > 0
 
   return (
     <div className="h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
@@ -36,7 +50,7 @@ export default function LoginPage() {
                 type="email"
                 autoComplete="email"
                 required
-                disabled={isPending}
+                disabled={isDisabled}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 placeholder="Enter your email address"
               />
@@ -44,7 +58,7 @@ export default function LoginPage() {
 
             <button
               type="submit"
-              disabled={isPending}
+              disabled={isDisabled}
               className="w-full bg-indigo-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center"
             >
               {isPending ? (
@@ -55,15 +69,17 @@ export default function LoginPage() {
                   </svg>
                   Sending...
                 </>
+              ) : cooldown > 0 ? (
+                `Wait ${cooldown}s`
               ) : (
-                'Send Magic Link'
+                'Send Code'
               )}
             </button>
           </form>
           
           <div className="mt-6 text-center">
             <p className="text-sm text-gray-500">
-              We&apos;ll send you a secure link to sign in without a password
+              We&apos;ll send you a 6-digit code to sign in without a password
             </p>
           </div>
         </div>

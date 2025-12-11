@@ -17,19 +17,19 @@ export default function ErrorPage() {
             <div className="text-left bg-gray-50 rounded-lg p-4 mb-6">
               <h3 className="font-semibold text-gray-900 mb-2">Possible causes:</h3>
               <ul className="text-sm text-gray-600 space-y-1">
-                <li>• Magic link has expired (links expire after 1 hour)</li>
-                <li>• Magic link has already been used</li>
+                <li>• Verification code has expired (codes expire after 1 hour)</li>
+                <li>• Verification code was entered incorrectly</li>
+                <li>• Code has already been used</li>
                 <li>• Email address not found in the system</li>
-                <li>• Network connectivity issues</li>
               </ul>
             </div>
             <div className="text-left bg-blue-50 rounded-lg p-4 mb-6">
               <h3 className="font-semibold text-blue-900 mb-2">What to try:</h3>
               <ul className="text-sm text-blue-700 space-y-1">
-                <li>• Request a new magic link</li>
-                <li>• Check your email spam folder</li>
-                <li>• Make sure you&apos;re using the correct email address</li>
-                <li>• Try again in a few minutes</li>
+                <li>• Request a new verification code</li>
+                <li>• Double-check you&apos;re entering the code correctly</li>
+                <li>• Check your spam folder for the email</li>
+                <li>• Make sure you&apos;re using the most recent code sent</li>
               </ul>
             </div>
           </div>
