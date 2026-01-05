@@ -220,7 +220,6 @@ function buildVariableMap(entry: LexicalEntrySummary): Record<string, string> {
   };
 
   const base: Record<string, string> = {
-    id: entry.code,
     code: entry.code,
     pos: entry.pos,
     gloss: entry.gloss ?? '',
@@ -236,11 +235,9 @@ function buildVariableMap(entry: LexicalEntrySummary): Record<string, string> {
 
   // Frame-specific fields
   if (entry.pos === 'frames') {
-    base.framebank_id = entry.framebank_id ?? '';
     base.definition = entry.definition ?? '';
     base.short_definition = entry.short_definition ?? '';
     base.prototypical_synset = entry.prototypical_synset ?? '';
-    base.is_supporting_frame = entry.is_supporting_frame ? 'true' : 'false';
   }
 
   // Add additional fields (includes frame.* fields for verbs)
@@ -299,15 +296,10 @@ async function fetchEntriesByIds(pos: PartOfSpeech, ids: string[]): Promise<Lexi
         frames: {
           select: {
             id: true,
-            code: true,
-            framebank_id: true,
             frame_name: true,
             definition: true,
             short_definition: true,
             prototypical_synset: true,
-            prototypical_synset_definition: true,
-            is_supporting_frame: true,
-            communication: true,
             frame_roles: {
               select: {
                 id: true,
@@ -336,15 +328,10 @@ async function fetchEntriesByIds(pos: PartOfSpeech, ids: string[]): Promise<Lexi
       .map(record => {
         const frameData = record.frames ? {
           'frame.id': record.frames.id.toString(),
-          'frame.code': record.frames.code,
-          'frame.framebank_id': record.frames.framebank_id,
           'frame.frame_name': record.frames.frame_name,
           'frame.definition': record.frames.definition,
           'frame.short_definition': record.frames.short_definition,
           'frame.prototypical_synset': record.frames.prototypical_synset,
-          'frame.prototypical_synset_definition': record.frames.prototypical_synset_definition,
-          'frame.is_supporting_frame': record.frames.is_supporting_frame,
-          'frame.communication': record.frames.communication,
           'frame.roles': sortRolesByPrecedence(record.frames.frame_roles.map(fr => ({
             role_type: fr.role_types,
             main: fr.main ?? undefined,
@@ -463,34 +450,29 @@ async function fetchEntriesByIds(pos: PartOfSpeech, ids: string[]): Promise<Lexi
       }));
   } else if (pos === 'frames') {
     const records = await prisma.frames.findMany({
-      where: { code: { in: uniqueIds } },
+      where: { id: { in: uniqueIds.map(id => BigInt(id)) } },
       select: {
         id: true,
-        code: true,
-        framebank_id: true,
         frame_name: true,
         definition: true,
         short_definition: true,
         prototypical_synset: true,
-        is_supporting_frame: true,
       },
     });
-    const byCode = new Map(records.map(record => [record.code, record]));
+    const byId = new Map(records.map(record => [record.id.toString(), record]));
     entries = uniqueIds
-      .map(code => byCode.get(code))
+      .map(id => byId.get(id))
       .filter((record): record is (typeof records)[number] => Boolean(record))
       .map(record => ({
         dbId: record.id,
-        code: record.code,
+        code: record.id.toString(),
         pos,
         gloss: record.definition,
         lemmas: [], // Frames don't have lemmas
         examples: [], // Frames don't have examples
-        framebank_id: record.framebank_id,
         definition: record.definition,
         short_definition: record.short_definition,
         prototypical_synset: record.prototypical_synset,
-        is_supporting_frame: record.is_supporting_frame,
       }));
   }
 
@@ -502,23 +484,14 @@ async function fetchEntriesByFrameIds(frameIds: string[], pos?: PartOfSpeech, in
 
   const frames = await prisma.frames.findMany({
     where: {
-      OR: frameIds.map(code =>
-        code.match(/^\d+$/)
-          ? { id: BigInt(code) }
-          : { code: { equals: code, mode: 'insensitive' as Prisma.QueryMode } }
-      ),
+      id: { in: frameIds.filter(id => id.match(/^\d+$/)).map(id => BigInt(id)) }
     },
     select: {
       id: true,
-      code: true,
-      framebank_id: true,
       frame_name: true,
       definition: true,
       short_definition: true,
       prototypical_synset: true,
-      prototypical_synset_definition: true,
-      is_supporting_frame: true,
-      communication: true,
       frame_roles: {
         select: {
           id: true,
@@ -560,21 +533,15 @@ async function fetchEntriesByFrameIds(frameIds: string[], pos?: PartOfSpeech, in
     for (const frame of frames) {
       entries.push({
         dbId: frame.id,
-        code: frame.code,
+        code: frame.id.toString(),
         pos: 'frames',
         gloss: frame.definition,
         lemmas: [],
         examples: [],
-        framebank_id: frame.framebank_id,
         frame_name: frame.frame_name,
         definition: frame.definition,
         short_definition: frame.short_definition,
         prototypical_synset: frame.prototypical_synset,
-        is_supporting_frame: frame.is_supporting_frame,
-        additional: {
-          communication: frame.communication,
-          prototypical_synset_definition: frame.prototypical_synset_definition,
-        },
       });
     }
   }
@@ -607,15 +574,10 @@ async function fetchEntriesByFrameIds(frameIds: string[], pos?: PartOfSpeech, in
           lexfile: verb.lexfile,
           additional: {
             'frame.id': frame.id.toString(),
-            'frame.code': frame.code,
-            'frame.framebank_id': frame.framebank_id,
             'frame.frame_name': frame.frame_name,
             'frame.definition': frame.definition,
             'frame.short_definition': frame.short_definition,
             'frame.prototypical_synset': frame.prototypical_synset,
-            'frame.prototypical_synset_definition': frame.prototypical_synset_definition,
-            'frame.is_supporting_frame': frame.is_supporting_frame,
-            'frame.communication': frame.communication,
             'frame.roles': sortRolesByPrecedence(frame.frame_roles.map(fr => ({
               role_type: fr.role_types,
               main: fr.main ?? undefined,
@@ -674,15 +636,10 @@ async function fetchEntriesByFilters(pos: PartOfSpeech, filters: { limit?: numbe
         frames: {
           select: {
             id: true,
-            code: true,
-            framebank_id: true,
             frame_name: true,
             definition: true,
             short_definition: true,
             prototypical_synset: true,
-            prototypical_synset_definition: true,
-            is_supporting_frame: true,
-            communication: true,
             frame_roles: {
               select: {
                 id: true,
@@ -707,15 +664,10 @@ async function fetchEntriesByFilters(pos: PartOfSpeech, filters: { limit?: numbe
     let entries = records.map(record => {
       const frameData = record.frames ? {
         'frame.id': record.frames.id.toString(),
-        'frame.code': record.frames.code,
-        'frame.framebank_id': record.frames.framebank_id,
         'frame.frame_name': record.frames.frame_name,
         'frame.definition': record.frames.definition,
         'frame.short_definition': record.frames.short_definition,
         'frame.prototypical_synset': record.frames.prototypical_synset,
-        'frame.prototypical_synset_definition': record.frames.prototypical_synset_definition,
-        'frame.is_supporting_frame': record.frames.is_supporting_frame,
-        'frame.communication': record.frames.communication,
         'frame.roles': sortRolesByPrecedence(record.frames.frame_roles.map(fr => ({
           role_type: fr.role_types,
           main: fr.main ?? undefined,
@@ -866,28 +818,23 @@ async function fetchEntriesByFilters(pos: PartOfSpeech, filters: { limit?: numbe
       orderBy: { id: 'asc' }, // Ensure deterministic ordering for consistent previews
       select: {
         id: true,
-        code: true,
-        framebank_id: true,
         frame_name: true,
         definition: true,
         short_definition: true,
         prototypical_synset: true,
-        is_supporting_frame: true,
       },
     });
     return records.map(record => ({
       dbId: record.id,
-      code: record.code,
+      code: record.id.toString(),
       pos,
       gloss: record.definition,
       lemmas: [],
       examples: [],
-      framebank_id: record.framebank_id,
       frame_name: record.frame_name,
       definition: record.definition,
       short_definition: record.short_definition,
       prototypical_synset: record.prototypical_synset,
-      is_supporting_frame: record.is_supporting_frame,
     }));
   }
 
@@ -1718,29 +1665,24 @@ async function fetchEntryForItem(item: SerializedJob['items'][number]): Promise<
       where: { id: BigInt(item.frame_id) },
       select: {
         id: true,
-        code: true,
-        framebank_id: true,
         frame_name: true,
         definition: true,
         short_definition: true,
         prototypical_synset: true,
-        is_supporting_frame: true,
       },
     });
     if (!record) return null;
     return {
       dbId: record.id,
-      code: record.code,
+      code: record.id.toString(),
       pos: 'frames',
       gloss: record.definition,
       lemmas: [],
       examples: [],
-      framebank_id: record.framebank_id,
       frame_name: record.frame_name,
       definition: record.definition,
       short_definition: record.short_definition,
       prototypical_synset: record.prototypical_synset,
-      is_supporting_frame: record.is_supporting_frame,
     };
   }
 

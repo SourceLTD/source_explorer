@@ -42,15 +42,12 @@ export async function GET(request: NextRequest) {
     gloss: searchParams.get('gloss') || undefined,
     lemmas: searchParams.get('lemmas') || undefined,
     examples: searchParams.get('examples') || undefined,
-    particles: searchParams.get('particles') || undefined,
     flaggedReason: searchParams.get('flaggedReason') || undefined,
     forbiddenReason: searchParams.get('forbiddenReason') || undefined,
     // AI jobs filters
     flaggedByJobId: searchParams.get('flaggedByJobId') || undefined,
     
     // Boolean filters
-    isMwe: searchParams.get('isMwe') ? searchParams.get('isMwe') === 'true' : undefined,
-    transitive: searchParams.get('transitive') ? searchParams.get('transitive') === 'true' : undefined,
     flagged: searchParams.get('flagged') ? searchParams.get('flagged') === 'true' : undefined,
     forbidden: searchParams.get('forbidden') ? searchParams.get('forbidden') === 'true' : undefined,
     

@@ -319,8 +319,13 @@ async function applyModerationResult(
       },
     });
   } else if (item.frame_id) {
-    // Note: frames table doesn't have flagged/flagged_reason fields
-    // Only update the job item status
+    await prisma.frames.update({
+      where: { id: BigInt(item.frame_id) },
+      data: {
+        flagged: shouldFlag,
+        flagged_reason: flaggedReason,
+      },
+    });
     await prisma.llm_job_items.update({
       where: { id: BigInt(item.id) },
       data: {

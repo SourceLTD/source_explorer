@@ -22,9 +22,7 @@ export function useEntryEditor(node: GraphNode | Frame | null, mode: Mode) {
     // Frame-specific fields
     if (mode === 'frames' && 'frame_name' in node) {
       const frameNode = node as Frame;
-      if (field === 'code') {
-        setEditValue(frameNode.code || '');
-      } else if (field === 'frame_name') {
+      if (field === 'frame_name') {
         setEditValue(frameNode.frame_name);
       } else if (field === 'definition') {
         setEditValue(frameNode.definition);
@@ -32,13 +30,6 @@ export function useEntryEditor(node: GraphNode | Frame | null, mode: Mode) {
         setEditValue(frameNode.short_definition);
       } else if (field === 'prototypical_synset') {
         setEditValue(frameNode.prototypical_synset);
-      } else if (field === 'is_supporting_frame') {
-        setEditValue(frameNode.is_supporting_frame ? 'true' : 'false');
-      } else if (field === 'communication') {
-        const commValue = frameNode.communication === null || frameNode.communication === undefined 
-          ? 'null' 
-          : frameNode.communication ? 'true' : 'false';
-        setEditValue(commValue);
       } else if (field === 'frame_roles') {
         const preparedFrameRoles = sortRolesByPrecedence(frameNode.frame_roles || []).map((role, index) => {
           const clientId = role.id && role.id.length > 0 ? role.id : `existing-role-${index}-${role.role_type.label}`;

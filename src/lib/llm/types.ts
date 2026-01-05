@@ -56,11 +56,9 @@ export interface LexicalEntrySummary {
   lexfile?: string | null;
   additional?: Record<string, unknown>;
   // Frame-specific fields
-  framebank_id?: string | null;
   definition?: string | null;
   short_definition?: string | null;
   prototypical_synset?: string | null;
-  is_supporting_frame?: boolean | null;
 }
 
 export interface RenderedPrompt {

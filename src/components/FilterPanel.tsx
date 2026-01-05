@@ -25,7 +25,6 @@ export interface FilterState {
   gloss?: string;
   lemmas?: string;
   examples?: string;
-  particles?: string;
   frames?: string;
   flaggedReason?: string;
   forbiddenReason?: string;
@@ -39,7 +38,6 @@ export interface FilterState {
   
   // Boolean filters
   isMwe?: boolean;
-  transitive?: boolean;
   flagged?: boolean;
   forbidden?: boolean;
   
@@ -60,10 +58,6 @@ export interface FilterState {
   definition?: string;
   short_definition?: string;
   prototypical_synset?: string;
-  
-  // Frame-specific boolean filters
-  is_supporting_frame?: boolean;
-  communication?: boolean;
 }
 
 interface FilterPanelProps {
@@ -524,18 +518,6 @@ export default function FilterPanel({
                       className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
                     />
                   </div>
-                  {mode === 'verbs' && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Particles</label>
-                      <input
-                        type="text"
-                        value={filters.particles || ''}
-                        onChange={(e) => updateFilter('particles', e.target.value)}
-                        placeholder="Search in particles..."
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
-                      />
-                    </div>
-                  )}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Frames</label>
                     <input
@@ -759,58 +741,7 @@ export default function FilterPanel({
               onToggle={() => toggleSection('properties')}
             >
               {mode === 'frames' ? (
-                <>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Is Supporting Frame</label>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => updateFilter('is_supporting_frame', filters.is_supporting_frame === true ? undefined : true)}
-                        className={`px-3 py-1 rounded-md text-sm font-medium transition-colors cursor-pointer ${
-                          filters.is_supporting_frame === true 
-                            ? 'bg-blue-100 text-blue-800 border border-blue-200' 
-                            : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
-                        }`}
-                      >
-                        Yes
-                      </button>
-                      <button
-                        onClick={() => updateFilter('is_supporting_frame', filters.is_supporting_frame === false ? undefined : false)}
-                        className={`px-3 py-1 rounded-md text-sm font-medium transition-colors cursor-pointer ${
-                          filters.is_supporting_frame === false 
-                            ? 'bg-blue-100 text-blue-800 border border-blue-200' 
-                            : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
-                        }`}
-                      >
-                        No
-                      </button>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Communication</label>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => updateFilter('communication', filters.communication === true ? undefined : true)}
-                        className={`px-3 py-1 rounded-md text-sm font-medium transition-colors cursor-pointer ${
-                          filters.communication === true 
-                            ? 'bg-blue-100 text-blue-800 border border-blue-200' 
-                            : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
-                        }`}
-                      >
-                        Yes
-                      </button>
-                      <button
-                        onClick={() => updateFilter('communication', filters.communication === false ? undefined : false)}
-                        className={`px-3 py-1 rounded-md text-sm font-medium transition-colors cursor-pointer ${
-                          filters.communication === false 
-                            ? 'bg-blue-100 text-blue-800 border border-blue-200' 
-                            : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
-                        }`}
-                      >
-                        No
-                      </button>
-                    </div>
-                  </div>
-                </>
+                <div className="text-sm text-gray-500 italic">No frame properties to filter.</div>
               ) : (
                 <>
                   {mode !== 'adverbs' && mode !== 'adjectives' && (
@@ -831,33 +762,6 @@ export default function FilterPanel({
                           onClick={() => updateFilter('isMwe', filters.isMwe === false ? undefined : false)}
                           className={`px-3 py-1 rounded-md text-sm font-medium transition-colors cursor-pointer ${
                             filters.isMwe === false 
-                              ? 'bg-blue-100 text-blue-800 border border-blue-200' 
-                              : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
-                          }`}
-                        >
-                          No
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                  {mode === 'verbs' && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Transitive</label>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => updateFilter('transitive', filters.transitive === true ? undefined : true)}
-                          className={`px-3 py-1 rounded-md text-sm font-medium transition-colors cursor-pointer ${
-                            filters.transitive === true 
-                              ? 'bg-blue-100 text-blue-800 border border-blue-200' 
-                              : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
-                          }`}
-                        >
-                          Yes
-                        </button>
-                        <button
-                          onClick={() => updateFilter('transitive', filters.transitive === false ? undefined : false)}
-                          className={`px-3 py-1 rounded-md text-sm font-medium transition-colors cursor-pointer ${
-                            filters.transitive === false 
                               ? 'bg-blue-100 text-blue-800 border border-blue-200' 
                               : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
                           }`}

@@ -9,36 +9,32 @@ datasource db {
 }
 
 model frame_roles {
-  created_at   DateTime   @default(now())
-  updated_at   DateTime   @default(now())
-  id           BigInt     @id @default(autoincrement())
-  frame_id     BigInt
-  role_type_id BigInt
-  description  String?
-  notes        String?
-  main         Boolean?
-  examples     String[]   @default([])
-  nickname     String?
-  frames       frames     @relation(fields: [frame_id], references: [id], onDelete: Cascade)
-  role_types   role_types @relation(fields: [role_type_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  created_at         DateTime             @default(now())
+  updated_at         DateTime             @default(now())
+  id                 BigInt               @id @default(autoincrement())
+  frame_id           BigInt
+  role_type_id       BigInt
+  description        String?
+  notes              String?
+  main               Boolean?
+  examples           String[]             @default([])
+  nickname           String?
+  frames             frames               @relation(fields: [frame_id], references: [id], onDelete: Cascade)
+  role_types         role_types           @relation(fields: [role_type_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  role_group_members role_group_members[]
 
   @@unique([frame_id, role_type_id], map: "uq_frame_role")
   @@unique([id, frame_id], map: "uq_frame_roles_id_frame")
 }
 
 model frames {
-  framebank_id                                      String            @unique
   frame_name                                        String
   definition                                        String
   prototypical_synset                               String
-  prototypical_synset_definition                    String
   short_definition                                  String
-  is_supporting_frame                               Boolean           @default(false)
   created_at                                        DateTime          @default(now())
   updated_at                                        DateTime          @default(now())
-  communication                                     Boolean?
   id                                                BigInt            @id @default(autoincrement())
-  code                                              String            @unique(map: "frames_code_unique") @db.VarChar
   flagged                                           Boolean?          @default(false)
   flagged_reason                                    String?
   forbidden                                         Boolean?          @default(false)
@@ -48,11 +44,8 @@ model frames {
   frame_roles                                       frame_roles[]
   llm_job_items                                     llm_job_items[]
   verbs                                             verbs[]
-  verbs_verbs_secondary_frame_idToframes            verbs[]           @relation("verbs_secondary_frame_idToframes")
 
-  @@index([framebank_id], map: "idx_framebank_id")
   @@index([frame_name], map: "idx_frames_frame_name")
-  @@index([is_supporting_frame], map: "idx_frames_is_supporting")
   @@index([flagged], map: "idx_frames_flagged")
   @@index([forbidden], map: "idx_frames_forbidden")
 }
@@ -87,7 +80,6 @@ model roles {
   recipe_preconditions                                                                   recipe_preconditions[]
   recipe_predicate_role_bindings_recipe_predicate_role_bindings_predicate_role_idToroles recipe_predicate_role_bindings[] @relation("recipe_predicate_role_bindings_predicate_role_idToroles")
   recipe_predicate_role_bindings_recipe_predicate_role_bindings_verb_role_idToroles      recipe_predicate_role_bindings[] @relation("recipe_predicate_role_bindings_verb_role_idToroles")
-  role_group_members                                                                     role_group_members[]
   role_types                                                                             role_types                       @relation(fields: [role_type_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_roles_role_type")
   verbs                                                                                  verbs                            @relation(fields: [verb_id], references: [id], onDelete: Cascade, map: "fk_roles_verb")
 
@@ -217,8 +209,8 @@ model role_group_members {
   role_group_id BigInt
   role_id       BigInt
   created_at    DateTime    @default(now()) @db.Timestamp(6)
+  roles         frame_roles @relation(fields: [role_id], references: [id], onDelete: Cascade, map: "fk_role_group_members_role")
   role_groups   role_groups @relation(fields: [role_group_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_role_group_members_group")
-  roles         roles       @relation(fields: [role_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_role_group_members_role")
 
   @@unique([role_group_id, role_id], map: "uq_role_group_member")
   @@index([role_group_id], map: "idx_role_group_members_group")
@@ -378,48 +370,36 @@ model verbs {
   legacy_id                                      String
   gloss                                          String
   lexfile                                        String
-  is_mwe                                         Boolean                  @default(false)
-  transitive                                     Boolean?
-  lemmas                                         String[]                 @default([])
-  src_lemmas                                     String[]                 @default([])
-  particles                                      String[]                 @default([])
-  examples                                       String[]                 @default([])
-  gloss_tsv                                      Unsupported("tsvector")?
-  examples_tsv                                   Unsupported("tsvector")?
-  created_at                                     DateTime                 @default(now())
-  updated_at                                     DateTime                 @default(now())
-  flagged                                        Boolean?                 @default(false)
+  lemmas                                         String[]            @default([])
+  src_lemmas                                     String[]            @default([])
+  examples                                       String[]            @default([])
+  created_at                                     DateTime            @default(now())
+  updated_at                                     DateTime            @default(now())
+  flagged                                        Boolean?            @default(false)
   flagged_reason                                 String?
-  forbidden                                      Boolean?                 @default(false)
+  forbidden                                      Boolean?            @default(false)
   forbidden_reason                               String?
   vendler_class                                  vendler_class_type?
   legal_gloss                                    String?
-  legal_constraints                              String[]
-  concrete                                       Boolean?                 @default(false)
-  predicate                                      Boolean?                 @default(false)
-  id                                             BigInt                   @id(map: "lexical_entries_pkey") @default(autoincrement())
-  code                                           String                   @unique(map: "lexical_entries_code_unique") @db.VarChar
+  concrete                                       Boolean?            @default(false)
+  id                                             BigInt              @id(map: "lexical_entries_pkey") @default(autoincrement())
+  code                                           String              @unique(map: "lexical_entries_code_unique") @db.VarChar
   frame_id                                       BigInt?
-  secondary_frame_id                             BigInt?
-  created_from                                   String[]                 @default([])
-  deleted                                        Boolean                  @default(false)
+  created_from                                   String[]            @default([])
+  deleted                                        Boolean             @default(false)
   deleted_reason                                 String?
-  deleted_at                                     DateTime?                @db.Timestamp(6)
+  deleted_at                                     DateTime?           @db.Timestamp(6)
   llm_job_items                                  llm_job_items[]
   recipe_predicates                              recipe_predicates[]
   recipes                                        recipes[]
   role_groups                                    role_groups[]
   roles                                          roles[]
-  verb_relations_verb_relations_source_idToverbs verb_relations[]         @relation("verb_relations_source_idToverbs")
-  verb_relations_verb_relations_target_idToverbs verb_relations[]         @relation("verb_relations_target_idToverbs")
-  frames                                         frames?                  @relation(fields: [frame_id], references: [id], map: "lexical_entries_frame_id_fkey")
-  frames_verbs_secondary_frame_idToframes        frames?                  @relation("verbs_secondary_frame_idToframes", fields: [secondary_frame_id], references: [id])
+  verb_relations_verb_relations_source_idToverbs verb_relations[]    @relation("verb_relations_source_idToverbs")
+  verb_relations_verb_relations_target_idToverbs verb_relations[]    @relation("verb_relations_target_idToverbs")
+  frames                                         frames?             @relation(fields: [frame_id], references: [id], map: "lexical_entries_frame_id_fkey")
 
   @@unique([id, frame_id], map: "uq_lex_entry_id_frame")
-  @@index([examples_tsv], map: "idx_lex_examples_tsv", type: Gin)
-  @@index([gloss_tsv], map: "idx_lex_gloss_tsv", type: Gin)
   @@index([lemmas], map: "idx_lex_lemmas_gin", type: Gin)
-  @@index([particles], map: "idx_lex_particles_gin", type: Gin)
   @@index([vendler_class], map: "idx_lex_vendler_class")
   @@index([created_from], map: "idx_verbs_created_from_gin", type: Gin)
 }
@@ -749,6 +729,19 @@ enum llm_job_status {
 
 enum frame_relation_type {
   causes
+  inherits_from
+  inherited_by
+  uses
+  used_by
+  subframe_of
+  has_subframe
+  precedes
+  preceded_by
+  perspective_on
+  perspectivized_in
+  see_also
+  reframing_mapping
+  metaphor
 }
 
 enum adverb_relation_type {

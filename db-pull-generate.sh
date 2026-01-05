@@ -20,10 +20,11 @@ fi
 echo "✅ Main Prisma schema updated"
 
 # 2. Pull database schema and generate Prisma client for Lambda
+# Use direct connection (non-pooling) for introspection - pooler (port 6543) hangs
 echo ""
 echo "[2/2] Lambda Prisma schema..."
 cd lambda/llm-job-poller
-npx prisma db pull && npx prisma generate
+DATABASE_URL="$POSTGRES_URL_NON_POOLING" npx prisma db pull && DATABASE_URL="$POSTGRES_URL_NON_POOLING" npx prisma generate
 
 if [ $? -ne 0 ]; then
   echo "❌ Failed to update Lambda Prisma schema"

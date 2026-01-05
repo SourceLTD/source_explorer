@@ -90,9 +90,6 @@ export async function PATCH(
     if (body.definition !== undefined) updateData.definition = body.definition;
     if (body.short_definition !== undefined) updateData.short_definition = body.short_definition;
     if (body.prototypical_synset !== undefined) updateData.prototypical_synset = body.prototypical_synset;
-    if (body.is_supporting_frame !== undefined) updateData.is_supporting_frame = body.is_supporting_frame;
-    if (body.communication !== undefined) updateData.communication = body.communication;
-    if (body.code !== undefined) updateData.code = body.code;
     
     // Handle moderation fields
     if (body.flagged !== undefined) updateData.flagged = body.flagged;

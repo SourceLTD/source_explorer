@@ -36,9 +36,6 @@ export function parseURLToFilterAST(pos: PartOfSpeech, input: string | URLSearch
 
     const examples = get('examples');
     if (examples) addRule(group, { kind: 'rule', field: 'examples', operator: 'hasSome', value: splitList(examples) });
-
-    const particles = get('particles');
-    if (particles && pos === 'verbs') addRule(group, { kind: 'rule', field: 'particles', operator: 'hasSome', value: splitList(particles) });
   }
 
   // Common text filters
@@ -64,20 +61,10 @@ export function parseURLToFilterAST(pos: PartOfSpeech, input: string | URLSearch
   }
 
   // Booleans (URL uses camelCase for isMwe)
-  if (pos === 'frames') {
-    // Frame-specific boolean filters
-    const isSupportingFrame = get('is_supporting_frame');
-    if (isSupportingFrame !== null) addRule(group, { kind: 'rule', field: 'is_supporting_frame', operator: 'is', value: isSupportingFrame === 'true' });
-
-    const communication = get('communication');
-    if (communication !== null) addRule(group, { kind: 'rule', field: 'communication', operator: 'is', value: communication === 'true' });
-  } else {
+  if (pos !== 'frames') {
     // Entry-specific boolean filters
     const isMwe = get('isMwe');
-    if (isMwe !== null) addRule(group, { kind: 'rule', field: 'is_mwe', operator: 'is', value: isMwe === 'true' });
-
-    const transitive = get('transitive');
-    if (transitive !== null && pos === 'verbs') addRule(group, { kind: 'rule', field: 'transitive', operator: 'is', value: transitive === 'true' });
+    if (isMwe !== null && pos !== 'verbs') addRule(group, { kind: 'rule', field: 'is_mwe', operator: 'is', value: isMwe === 'true' });
   }
 
   // Common boolean filters

@@ -17,8 +17,6 @@ export type EditableField =
   | 'definition'
   | 'short_definition'
   | 'prototypical_synset'
-  | 'is_supporting_frame'
-  | 'communication'
   | 'frame_roles';
 
 export interface EditableRole {

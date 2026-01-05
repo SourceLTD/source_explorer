@@ -8,21 +8,16 @@ export interface Verb {
   gloss: string;
   pos: string;
   lexfile: string;
-  isMwe: boolean;
-  transitive?: boolean;
   lemmas: string[];
   src_lemmas: string[];
-  particles: string[];
   examples: string[];
   flagged?: boolean;
   flaggedReason?: string;
   forbidden?: boolean;
   forbiddenReason?: string;
   concrete?: boolean;
-  predicate?: boolean;
   frame_id?: string | null;
   vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null;
-  legal_constraints?: string[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -39,7 +34,6 @@ export interface Noun {
   proper?: boolean;
   collective?: boolean;
   concrete?: boolean;
-  predicate?: boolean;
   lemmas: string[];
   src_lemmas: string[];
   examples: string[];
@@ -179,15 +173,10 @@ export interface FrameRole {
 
 export interface Frame {
   id: string;
-  code?: string; // Human-readable code (e.g., "extend.vf")
-  framebank_id: string;
   frame_name: string;
   definition: string;
   short_definition: string;
   prototypical_synset: string;
-  prototypical_synset_definition: string;
-  is_supporting_frame: boolean;
-  communication?: boolean | null;
   flagged?: boolean;
   flaggedReason?: string;
   forbidden?: boolean;
@@ -228,7 +217,6 @@ export interface GraphNode {
   src_lemmas: string[];
   gloss: string;
   legal_gloss?: string | null;
-  legal_constraints: string[];
   pos: string;
   lexfile: string;
   examples: string[];
@@ -237,7 +225,6 @@ export interface GraphNode {
   forbidden?: boolean;
   forbiddenReason?: string;
   // Verb-specific fields
-  frame_id?: string | null;
   vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null;
   frame?: Frame | null;
   roles?: Role[];
@@ -247,7 +234,6 @@ export interface GraphNode {
   proper?: boolean;
   collective?: boolean;
   concrete?: boolean;
-  predicate?: boolean;
   // Adjective-specific fields
   isSatellite?: boolean;
   gradable?: boolean | null;
@@ -327,14 +313,12 @@ export interface PaginationParams {
   gloss?: string;
   lemmas?: string;
   examples?: string;
-  particles?: string;
   // Note: frames filter removed - verbs table only has frame_id (BigInt), not frames array
   flaggedReason?: string;
   forbiddenReason?: string;
   
   // Boolean filters
   isMwe?: boolean;
-  transitive?: boolean;
   flagged?: boolean;
   forbidden?: boolean;
   
@@ -364,10 +348,6 @@ export interface FramePaginationParams {
   short_definition?: string;
   prototypical_synset?: string;
   
-  // Boolean filters
-  is_supporting_frame?: boolean;
-  communication?: boolean;
-  
   // Date filters
   createdAfter?: string;
   createdBefore?: string;
@@ -393,21 +373,18 @@ export interface TableEntry {
   gloss: string;
   pos: string;
   lexfile: string;
-  isMwe: boolean;
   // Verb-specific fields
-  transitive?: boolean;
-  particles: string[];
   frame_id?: string | null;
   frame?: string | null; // Frame name (e.g., "SPEAK")
   vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null;
   roles?: Role[];
   role_groups?: RoleGroup[];
   // Noun-specific fields
+  isMwe?: boolean;
   countable?: boolean | null;
   proper?: boolean;
   collective?: boolean;
   concrete?: boolean;
-  predicate?: boolean;
   // Adjective-specific fields
   isSatellite?: boolean;
   gradable?: boolean | null;

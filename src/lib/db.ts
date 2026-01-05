@@ -23,11 +23,8 @@ type PrismaEntryWithRelations = {
   legal_gloss: string | null;
   pos: string;
   lexfile: string;
-  is_mwe: boolean;
-  transitive: boolean | null;
   lemmas: string[];
   src_lemmas: string[];
-  particles: string[];
   examples: string[];
   created_at: Date;
   updated_at: Date;
@@ -37,7 +34,6 @@ type PrismaEntryWithRelations = {
   forbidden_reason: string | null;
   frame_id: bigint | null;
   vendler_class: 'state' | 'activity' | 'accomplishment' | 'achievement' | null;
-  legal_constraints: string[];
   verb_relations_verb_relations_source_idToverbs: (PrismaVerbRelation & {
     verbs_verb_relations_target_idToverbs: PrismaVerb | null;
   })[];
@@ -56,10 +52,8 @@ type PrismaEntryWithCounts = {
   pos: string;
   lexfile: string;
   isMwe: boolean;
-  transitive: boolean | null;
   lemmas: string[];
   src_lemmas: string[];
-  particles: string[];
   examples: string[];
   createdAt: Date;
   updatedAt: Date;
@@ -70,7 +64,6 @@ type PrismaEntryWithCounts = {
   frame_id: bigint | null;
   frames: { id: bigint; code: string; frame_name: string } | null;
   vendler_class: 'state' | 'activity' | 'accomplishment' | 'achievement' | null;
-  legal_constraints: string[];
   roles?: Array<{
     id: string;
     description?: string | null;
@@ -126,11 +119,8 @@ export async function getEntryById(id: string): Promise<VerbWithRelations | null
     gloss: entry.gloss,
     pos: 'v',
     lexfile: entry.lexfile,
-    isMwe: entry.is_mwe,
-    transitive: entry.transitive || undefined,
     lemmas: entry.lemmas,
     src_lemmas: entry.src_lemmas,
-    particles: entry.particles,
     examples: entry.examples,
     frame_id: entry.frame_id?.toString() ?? null,
     flagged: entry.flagged ?? undefined,
@@ -138,7 +128,6 @@ export async function getEntryById(id: string): Promise<VerbWithRelations | null
     forbidden: entry.forbidden ?? undefined,
     forbiddenReason: (entry as any).forbidden_reason || undefined,
     vendler_class: entry.vendler_class || undefined,
-    legal_constraints: entry.legal_constraints || undefined,
     createdAt: entry.created_at,
     updatedAt: entry.updated_at,
     sourceRelations: verb_relations_verb_relations_source_idToverbs
@@ -151,7 +140,6 @@ export async function getEntryById(id: string): Promise<VerbWithRelations | null
           ...rel.verbs_verb_relations_target_idToverbs,
           id: (rel.verbs_verb_relations_target_idToverbs as { code?: string }).code || rel.verbs_verb_relations_target_idToverbs.id.toString(),
           frame_id: (rel.verbs_verb_relations_target_idToverbs as { frame_id?: bigint | null }).frame_id?.toString() ?? null,
-          transitive: rel.verbs_verb_relations_target_idToverbs.transitive || undefined,
           flagged: rel.verbs_verb_relations_target_idToverbs.flagged ?? undefined,
           flaggedReason: (rel.verbs_verb_relations_target_idToverbs as any).flagged_reason || undefined,
           forbidden: rel.verbs_verb_relations_target_idToverbs.forbidden ?? undefined,
@@ -168,7 +156,6 @@ export async function getEntryById(id: string): Promise<VerbWithRelations | null
           ...rel.verbs_verb_relations_source_idToverbs,
           id: (rel.verbs_verb_relations_source_idToverbs as { code?: string }).code || rel.verbs_verb_relations_source_idToverbs.id.toString(),
           frame_id: (rel.verbs_verb_relations_source_idToverbs as { frame_id?: bigint | null }).frame_id?.toString() ?? null,
-          transitive: rel.verbs_verb_relations_source_idToverbs.transitive || undefined,
           flagged: rel.verbs_verb_relations_source_idToverbs.flagged ?? undefined,
           flaggedReason: (rel.verbs_verb_relations_source_idToverbs as any).flagged_reason || undefined,
           forbidden: rel.verbs_verb_relations_source_idToverbs.forbidden ?? undefined,
@@ -232,8 +219,10 @@ export async function searchEntries(query: string, limit = 20, table: 'verbs' | 
       gloss,
       ${Prisma.raw(`'${pos}'`)} as pos,
       (
-        COALESCE(ts_rank(gloss_tsv, websearch_to_tsquery('english', ${query})), 0) +
-        COALESCE(ts_rank(examples_tsv, websearch_to_tsquery('english', ${query})), 0) +
+        ${table === 'verbs' ? Prisma.sql`0` : Prisma.sql`
+          COALESCE(ts_rank(gloss_tsv, websearch_to_tsquery('english', ${query})), 0) +
+          COALESCE(ts_rank(examples_tsv, websearch_to_tsquery('english', ${query})), 0)
+        `} +
         CASE 
           WHEN ${query} = ANY(lemmas) OR ${query} = ANY(src_lemmas) THEN 2
           ELSE 0
@@ -252,9 +241,10 @@ export async function searchEntries(query: string, limit = 20, table: 'verbs' | 
     FROM ${Prisma.raw(table)}
     WHERE 
       (
-      -- Full text search (handles natural language and phrases)
-      gloss_tsv @@ websearch_to_tsquery('english', ${query}) OR
-      examples_tsv @@ websearch_to_tsquery('english', ${query}) OR
+      ${table === 'verbs' ? Prisma.empty : Prisma.sql`
+        gloss_tsv @@ websearch_to_tsquery('english', ${query}) OR
+        examples_tsv @@ websearch_to_tsquery('english', ${query}) OR
+      `}
       -- Exact lemma matches
       ${query} = ANY(lemmas) OR
       ${query} = ANY(src_lemmas) OR
@@ -797,7 +787,7 @@ export const getRecipesForEntry = process.env.DISABLE_CACHE === 'true'
       { revalidate: 60, tags: ['entry-recipes'] }
     );
 
-export async function updateEntry(id: string, updates: Partial<Pick<Verb, 'gloss' | 'lemmas' | 'src_lemmas' | 'examples' | 'flagged' | 'flaggedReason' | 'forbidden' | 'forbiddenReason'> & { id?: string; roles?: unknown[]; role_groups?: unknown[]; vendler_class?: string | null; lexfile?: string; frame_id?: string | null; legal_constraints?: string[] }>): Promise<VerbWithRelations | null> {
+export async function updateEntry(id: string, updates: Partial<Pick<Verb, 'gloss' | 'lemmas' | 'src_lemmas' | 'examples' | 'flagged' | 'flaggedReason' | 'forbidden' | 'forbiddenReason'> & { id?: string; roles?: unknown[]; role_groups?: unknown[]; vendler_class?: string | null; lexfile?: string; frame_id?: string | null }>): Promise<VerbWithRelations | null> {
   // Handle roles and role_groups updates separately
   if (updates.roles) {
     await updateEntryRoles(id, updates.roles);
@@ -822,12 +812,10 @@ export async function updateEntry(id: string, updates: Partial<Pick<Verb, 'gloss
       prismaUpdates.forbidden_reason = value;
     } else if (key === 'src_lemmas') {
       prismaUpdates.src_lemmas = value;
-    } else if (key === 'legal_constraints') {
-      prismaUpdates.legal_constraints = value;
     } else if (key === 'vendler_class') {
       prismaUpdates.vendler_class = value;
     } else if (key === 'frame_id') {
-      // Handle frame_id: can be numeric ID or frame code
+      // Handle frame_id: can be numeric ID
       if (value === null || value === undefined || value === '') {
         prismaUpdates.frame_id = null;
       } else if (typeof value === 'number') {
@@ -835,18 +823,9 @@ export async function updateEntry(id: string, updates: Partial<Pick<Verb, 'gloss
       } else if (typeof value === 'string' && /^\d+$/.test(value)) {
         // Numeric string - use directly
         prismaUpdates.frame_id = BigInt(value);
-      } else if (typeof value === 'string') {
-        // Non-numeric string - look up frame by code
-        const frame = await prisma.frames.findUnique({
-          where: { code: value },
-          select: { id: true }
-        });
-        if (frame) {
-          prismaUpdates.frame_id = frame.id;
-        } else {
-          console.warn(`Frame not found for code: ${value}, setting to null`);
-          prismaUpdates.frame_id = null;
-        }
+      } else {
+        console.warn(`Invalid frame_id: ${value}, setting to null`);
+        prismaUpdates.frame_id = null;
       }
     } else {
       prismaUpdates[key] = value;
@@ -891,11 +870,8 @@ export async function updateEntry(id: string, updates: Partial<Pick<Verb, 'gloss
     gloss: updatedEntry.gloss,
     pos: 'v',
     lexfile: updatedEntry.lexfile,
-    isMwe: updatedEntry.is_mwe,
-    transitive: updatedEntry.transitive || undefined,
     lemmas: updatedEntry.lemmas,
     src_lemmas: updatedEntry.src_lemmas,
-    particles: updatedEntry.particles,
     examples: updatedEntry.examples,
     frame_id: updatedEntry.frame_id?.toString() ?? null,
     flagged: updatedEntry.flagged ?? undefined,
@@ -903,7 +879,6 @@ export async function updateEntry(id: string, updates: Partial<Pick<Verb, 'gloss
     forbidden: updatedEntry.forbidden ?? undefined,
     forbiddenReason: (updatedEntry as any).forbidden_reason || undefined,
     vendler_class: updatedEntry.vendler_class || undefined,
-    legal_constraints: updatedEntry.legal_constraints || undefined,
     createdAt: updatedEntry.created_at,
     updatedAt: updatedEntry.updated_at,
     sourceRelations: verb_relations_verb_relations_source_idToverbs
@@ -916,7 +891,6 @@ export async function updateEntry(id: string, updates: Partial<Pick<Verb, 'gloss
           ...rel.verbs_verb_relations_target_idToverbs,
           id: (rel.verbs_verb_relations_target_idToverbs as { code?: string }).code || rel.verbs_verb_relations_target_idToverbs.id.toString(),
           frame_id: (rel.verbs_verb_relations_target_idToverbs as { frame_id?: bigint | null }).frame_id?.toString() ?? null,
-          transitive: rel.verbs_verb_relations_target_idToverbs.transitive || undefined,
           flagged: rel.verbs_verb_relations_target_idToverbs.flagged ?? undefined,
           flaggedReason: (rel.verbs_verb_relations_target_idToverbs as any).flagged_reason || undefined,
           forbidden: rel.verbs_verb_relations_target_idToverbs.forbidden ?? undefined,
@@ -933,7 +907,6 @@ export async function updateEntry(id: string, updates: Partial<Pick<Verb, 'gloss
           ...rel.verbs_verb_relations_source_idToverbs,
           id: (rel.verbs_verb_relations_source_idToverbs as { code?: string }).code || rel.verbs_verb_relations_source_idToverbs.id.toString(),
           frame_id: (rel.verbs_verb_relations_source_idToverbs as { frame_id?: bigint | null }).frame_id?.toString() ?? null,
-          transitive: rel.verbs_verb_relations_source_idToverbs.transitive || undefined,
           flagged: rel.verbs_verb_relations_source_idToverbs.flagged ?? undefined,
           flaggedReason: (rel.verbs_verb_relations_source_idToverbs as any).flagged_reason || undefined,
           forbidden: rel.verbs_verb_relations_source_idToverbs.forbidden ?? undefined,
@@ -1100,14 +1073,10 @@ async function getVerbGraphNode(entryId: string): Promise<GraphNode | null> {
         frames: {
           select: {
             id: true,
-            code: true, // Add code field for human-readable IDs
-            framebank_id: true,
             frame_name: true,
             definition: true,
             short_definition: true,
             prototypical_synset: true,
-            prototypical_synset_definition: true,
-            is_supporting_frame: true,
             created_at: true,
             updated_at: true,
           } as Prisma.framesSelect
@@ -1431,11 +1400,11 @@ async function getVerbGraphNode(entryId: string): Promise<GraphNode | null> {
     console.log(`DEBUG say.v.04 role_groups:`, JSON.stringify(role_groups, null, 2));
     console.log(`DEBUG say.v.04 roles:`, roles.map(r => ({ id: r.id, label: r.role_type.label })));
   }
-  const frameData = (entry as { frames?: { id: bigint; code?: string; framebank_id: string; frame_name: string; definition: string; short_definition: string; is_supporting_frame: boolean } | null }).frames;
+  const frameData = (entry as { frames?: { id: bigint; frame_name: string; definition: string; short_definition: string } | null }).frames;
   
   // Debug logging for frame mismatch
   if (entryCode === 'say.v.04') {
-    console.log(`DEBUG getGraphNode say.v.04: frame_id=${entryTyped.frame_id?.toString()}, frame_name=${frameData?.frame_name}, frame_code=${frameData?.code}`);
+    console.log(`DEBUG getGraphNode say.v.04: frame_id=${entryTyped.frame_id?.toString()}, frame_name=${frameData?.frame_name}`);
   }
   
   return {
@@ -1445,7 +1414,6 @@ async function getVerbGraphNode(entryId: string): Promise<GraphNode | null> {
     src_lemmas: entry.src_lemmas,
     gloss: entry.gloss,
     legal_gloss: (entry as { legal_gloss?: string | null }).legal_gloss ?? null,
-    legal_constraints: (entry as { legal_constraints?: string[] }).legal_constraints ?? [],
     pos: 'v',
     lexfile: entry.lexfile,
     examples: entry.examples,
@@ -1457,15 +1425,11 @@ async function getVerbGraphNode(entryId: string): Promise<GraphNode | null> {
     vendler_class: (entry as { vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null }).vendler_class ?? null,
     frame: frameData 
       ? {
-          id: (frameData.code || frameData.id.toString()),
-          framebank_id: frameData.framebank_id,
+          id: frameData.id.toString(),
           frame_name: frameData.frame_name,
           definition: frameData.definition,
           short_definition: frameData.short_definition,
           prototypical_synset: (frameData as any).prototypical_synset,
-          prototypical_synset_definition: (frameData as any).prototypical_synset_definition,
-          is_supporting_frame: frameData.is_supporting_frame,
-          code: frameData.code || frameData.id.toString(),
           createdAt: (frameData as any).created_at,
           updatedAt: (frameData as any).updated_at,
         }
@@ -2086,11 +2050,9 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
     gloss,
     lemmas,
     examples,
-    particles,
     flaggedReason,
     forbiddenReason,
     isMwe,
-    transitive,
     flagged,
     forbidden,
     parentsCountMin,
@@ -2259,16 +2221,8 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
     });
   }
 
-  if (particles) {
-    andConditions.push({
-      particles: {
-        hasSome: particles.split(/[\s,]+/).filter(Boolean)
-      }
-    });
-  }
-
   // Note: 'frames' filter removed - verbs table doesn't have a frames array field
-  // It only has frame_id (BigInt) and secondary_frame_id (BigInt)
+  // It only has frame_id (BigInt)
 
   // Reason text filters
   if (flaggedReason) {
@@ -2290,14 +2244,6 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
   }
 
   // Boolean filters
-  if (isMwe !== undefined) {
-    andConditions.push({ isMwe });
-  }
-
-  if (transitive !== undefined) {
-    andConditions.push({ transitive });
-  }
-
   if (flagged !== undefined) {
     andConditions.push({ flagged });
   }
@@ -2575,9 +2521,6 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
       gloss: entry.gloss,
       pos: 'v',
       lexfile: entry.lexfile,
-      isMwe: entry.isMwe,
-      transitive: entry.transitive || undefined,
-      particles: entry.particles,
       examples: entry.examples,
       flagged: (entry as any).flagged ?? undefined,
       flaggedReason: (entry as any).flagged_reason || undefined,
@@ -2586,7 +2529,6 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
       frame_id: frameId ? frameId.toString() : null,
       frame: (entry as { frames?: { frame_name: string } } | undefined)?.frames?.frame_name || null,
       vendler_class: entry.vendler_class ?? null,
-      legal_constraints: entry.legal_constraints || [],
       roles: rolesByEntryId.get(numericId) || [],
       role_groups: roleGroupsByEntryId.get(numericId) || [],
       parentsCount: entry._count.verb_relations_verb_relations_source_idToverbs,
@@ -3728,15 +3670,10 @@ export async function getPaginatedFrames(params: FramePaginationParams = {}): Pr
   // Transform to Frame format
   const data: Frame[] = frames.map(frame => ({
     id: frame.id.toString(),
-    code: frame.code,
-    framebank_id: frame.framebank_id,
     frame_name: frame.frame_name,
     definition: frame.definition,
     short_definition: frame.short_definition,
     prototypical_synset: frame.prototypical_synset,
-    prototypical_synset_definition: frame.prototypical_synset_definition,
-    is_supporting_frame: frame.is_supporting_frame,
-    communication: frame.communication,
     createdAt: frame.created_at,
     updatedAt: frame.updated_at,
     frame_roles: frame.frame_roles.map(fr => ({

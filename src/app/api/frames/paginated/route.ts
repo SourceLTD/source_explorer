@@ -29,9 +29,8 @@ export async function GET(request: NextRequest) {
     
     // Valid columns for sorting in the frames table
     const validSortColumns = [
-      'id', 'code', 'framebank_id', 'frame_name', 'definition', 
-      'short_definition', 'prototypical_synset', 'prototypical_synset_definition',
-      'is_supporting_frame', 'communication', 'created_at', 'updated_at'
+      'id', 'frame_name', 'definition', 
+      'short_definition', 'prototypical_synset', 'created_at', 'updated_at'
     ];
     
     // Validate sortBy column
@@ -110,15 +109,10 @@ export async function GET(request: NextRequest) {
 
     const serializedFrames = frames.map(frame => ({
       id: frame.id.toString(),
-      code: frame.code,
-      framebank_id: frame.framebank_id,
       frame_name: frame.frame_name,
       definition: frame.definition,
       short_definition: frame.short_definition,
       prototypical_synset: frame.prototypical_synset,
-      prototypical_synset_definition: frame.prototypical_synset_definition,
-      is_supporting_frame: frame.is_supporting_frame,
-      communication: frame.communication,
       flagged: frame.flagged ?? false,
       flaggedReason: frame.flagged_reason ?? undefined,
       forbidden: frame.forbidden ?? false,

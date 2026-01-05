@@ -45,7 +45,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     const updates = await request.json();
     
     // Validate that only allowed fields are being updated
-    const allowedFields = ['id', 'gloss', 'lemmas', 'src_lemmas', 'examples', 'roles', 'role_groups', 'vendler_class', 'lexfile', 'frame_id', 'legal_constraints'];
+    const allowedFields = ['id', 'gloss', 'lemmas', 'src_lemmas', 'examples', 'roles', 'role_groups', 'vendler_class', 'lexfile', 'frame_id'];
     const updateData: Record<string, unknown> = {};
     
     for (const [key, value] of Object.entries(updates)) {
