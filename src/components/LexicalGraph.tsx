@@ -561,15 +561,6 @@ export default function LexicalGraph({ currentNode, onNodeClick, onEditClick, mo
                         <span style={{ fontWeight: '500', fontSize: '10px' }}>
                           {posNode.node.frame.frame_name}
                         </span>
-                        {posNode.node.frame.is_supporting_frame && (
-                          <span style={{ 
-                            fontSize: '9px',
-                            opacity: 0.8,
-                            fontStyle: 'italic'
-                          }}>
-                            (sup)
-                          </span>
-                        )}
                       </div>
                     </foreignObject>
                   )}

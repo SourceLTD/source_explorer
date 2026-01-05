@@ -62,7 +62,7 @@ type PrismaEntryWithCounts = {
   forbidden: boolean | null;
   forbiddenReason: string | null;
   frame_id: bigint | null;
-  frames: { id: bigint; code: string; frame_name: string } | null;
+  frames: { id: bigint; frame_name: string } | null;
   vendler_class: 'state' | 'activity' | 'accomplishment' | 'achievement' | null;
   roles?: Array<{
     id: string;
@@ -981,10 +981,10 @@ async function updateEntryRoles(entryId: string, roles?: unknown[]) {
 }
 
 async function updateEntryRoleGroups(entryId: string, roleGroups?: unknown[]) {
-  // First get the numeric ID from the code
+  // First get the numeric ID and frame_id from the code
   const entry = await prisma.verbs.findUnique({
     where: { code: entryId } as unknown as Prisma.verbsWhereUniqueInput,
-    select: { id: true }
+    select: { id: true, frame_id: true }
   });
   
   if (!entry) {
@@ -1001,8 +1001,15 @@ async function updateEntryRoleGroups(entryId: string, roleGroups?: unknown[]) {
     return;
   }
 
-  // Get the role ID mapping from updateEntryRoles
-  const roleIdMapping = (updateEntryRoles as { lastRoleIdMapping?: Map<string, bigint> }).lastRoleIdMapping || new Map();
+  // Get the frame roles for validation if a frame is associated
+  let existingFrameRoleIds: bigint[] = [];
+  if (entry.frame_id) {
+    const frameRoles = await prisma.frame_roles.findMany({
+      where: { frame_id: entry.frame_id },
+      select: { id: true }
+    });
+    existingFrameRoleIds = frameRoles.map(fr => fr.id);
+  }
 
   // Insert new role groups
   for (const group of roleGroups) {
@@ -1026,38 +1033,29 @@ async function updateEntryRoleGroups(entryId: string, roleGroups?: unknown[]) {
     if (result.length > 0) {
       const roleGroupId = result[0].id;
 
-      // Get the real role IDs for this entry
-      const existingRoles = await prisma.$queryRaw<Array<{ id: bigint }>>`
-        SELECT id FROM roles WHERE verb_id = ${entry.id}
-      `;
-      const existingRoleIds = existingRoles.map(r => r.id);
-
       // Insert role group members, mapping temp IDs to real IDs
       for (const tempRoleId of groupData.role_ids) {
-        // Try to find the real role ID from the mapping
-        let realRoleId = roleIdMapping.get(tempRoleId);
+        // Since role_group_members.role_id now points to frame_roles.id,
+        // we use the role ID directly if it's a valid frame role ID.
+        // We don't use roleIdMapping here because that maps to verb-specific roles.
         
-        // If not found in mapping and it's already a bigint-like string, use it directly
-        if (!realRoleId && tempRoleId.match(/^\d+$/)) {
-          realRoleId = BigInt(tempRoleId);
-        }
-        
-        // Only add if the role exists
-        if (realRoleId && existingRoleIds.some(id => id === realRoleId)) {
-          await prisma.$executeRaw`
-            INSERT INTO role_group_members (
-              role_group_id, role_id, created_at
-            ) VALUES (
-              ${roleGroupId}, ${realRoleId}, now()
-            )
-          `;
+        if (tempRoleId.match(/^\d+$/)) {
+          const realRoleId = BigInt(tempRoleId);
+          
+          // Only add if the role exists in the frame
+          if (existingFrameRoleIds.some(id => id === realRoleId)) {
+            await prisma.$executeRaw`
+              INSERT INTO role_group_members (
+                role_group_id, role_id, created_at
+              ) VALUES (
+                ${roleGroupId}, ${realRoleId}, now()
+              )
+            `;
+          }
         }
       }
     }
   }
-  
-  // Clear the mapping after use
-  delete (updateEntryRoles as { lastRoleIdMapping?: Map<string, bigint> }).lastRoleIdMapping;
 }
 
 // Internal implementation without caching
@@ -1079,6 +1077,11 @@ async function getVerbGraphNode(entryId: string): Promise<GraphNode | null> {
             prototypical_synset: true,
             created_at: true,
             updated_at: true,
+            frame_roles: {
+              include: {
+                role_types: true
+              }
+            }
           } as Prisma.framesSelect
         },
         verb_relations_verb_relations_source_idToverbs: {
@@ -1432,6 +1435,20 @@ async function getVerbGraphNode(entryId: string): Promise<GraphNode | null> {
           prototypical_synset: (frameData as any).prototypical_synset,
           createdAt: (frameData as any).created_at,
           updatedAt: (frameData as any).updated_at,
+          frame_roles: (frameData as any).frame_roles?.map((fr: any) => ({
+            id: fr.id.toString(),
+            description: fr.description,
+            notes: fr.notes,
+            main: fr.main,
+            examples: fr.examples,
+            role_type: {
+              id: fr.role_types.id.toString(),
+              code: fr.role_types.code,
+              label: fr.role_types.label,
+              generic_description: fr.role_types.generic_description,
+              explanation: fr.role_types.explanation
+            }
+          }))
         }
       : null,
     roles,
@@ -2167,7 +2184,7 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
 
         console.log(
           `Frame filter: input=${rawValues.join(',')}, resolved frames=`,
-          frames.map(f => ({ id: f.id.toString(), code: (f as { code?: string | null }).code }))
+          frames.map(f => ({ id: f.id.toString() }))
         );
 
         frames.forEach(frame => {
@@ -2503,12 +2520,12 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
   // Transform to TableEntry format
   let data: TableEntry[] = entries.map(entry => {
     const entryCode = (entry as { code?: string }).code || (typeof entry.id === 'bigint' ? entry.id.toString() : entry.id);
-    const frameData = (entry as { frames?: { frame_name: string; code: string } | null; frame_id?: bigint | null }).frames;
+    const frameData = (entry as { frames?: { frame_name: string } | null; frame_id?: bigint | null }).frames;
     const frameId = (entry as { frame_id?: bigint | null }).frame_id;
     
   // Debug logging for frame mismatch
   if (entryCode === 'say.v.04') {
-    console.log(`DEBUG say.v.04: frame_id=${frameId?.toString()}, frame_name=${frameData?.frame_name}, frame_code=${frameData?.code}`);
+    console.log(`DEBUG say.v.04: frame_id=${frameId?.toString()}, frame_name=${frameData?.frame_name}`);
   }
     
     const numericId = (entry as unknown as { id?: bigint }).id?.toString() || '';
@@ -2822,8 +2839,6 @@ export async function getPaginatedNouns(params: PaginationParams = {}): Promise<
       pos: 'n',
       lexfile: noun.lexfile,
       isMwe: noun.is_mwe,
-      transitive: undefined,
-      particles: [],
       examples: noun.examples,
       flagged: noun.flagged ?? undefined,
       flaggedReason: noun.flagged_reason || undefined,
@@ -3126,8 +3141,6 @@ export async function getPaginatedAdjectives(params: PaginationParams = {}): Pro
       pos: 'a',
       lexfile: adjective.lexfile,
       isMwe: adjective.is_mwe,
-      transitive: undefined,
-      particles: [],
       examples: adjective.examples,
       flagged: adjective.flagged ?? undefined,
       flaggedReason: adjective.flagged_reason || undefined,
@@ -3430,8 +3443,6 @@ export async function getPaginatedAdverbs(params: PaginationParams = {}): Promis
       pos: 'r',
       lexfile: adverb.lexfile,
       isMwe: adverb.is_mwe,
-      transitive: undefined,
-      particles: [],
       examples: adverb.examples,
       flagged: adverb.flagged ?? undefined,
       flaggedReason: adverb.flagged_reason || undefined,
@@ -3501,8 +3512,6 @@ export async function getPaginatedFrames(params: FramePaginationParams = {}): Pr
     definition,
     short_definition,
     prototypical_synset,
-    is_supporting_frame,
-    communication,
     createdAfter,
     createdBefore,
     updatedAfter,
@@ -3583,15 +3592,6 @@ export async function getPaginatedFrames(params: FramePaginationParams = {}): Pr
         mode: 'insensitive'
       }
     });
-  }
-
-  // Boolean filters
-  if (is_supporting_frame !== undefined) {
-    andConditions.push({ is_supporting_frame });
-  }
-
-  if (communication !== undefined) {
-    andConditions.push({ communication });
   }
 
   // Date filters

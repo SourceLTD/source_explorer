@@ -410,15 +410,6 @@ export default function GraphMainNode({
             <span style={{ fontWeight: '500', fontSize: '10px' }}>
               {node.frame.frame_name}
             </span>
-            {node.frame.is_supporting_frame && (
-              <span style={{ 
-                fontSize: '9px',
-                opacity: 0.8,
-                fontStyle: 'italic'
-              }}>
-                (sup)
-              </span>
-            )}
           </div>
         </foreignObject>
       )}

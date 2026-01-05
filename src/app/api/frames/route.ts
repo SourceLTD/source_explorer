@@ -10,7 +10,6 @@ export async function GET() {
       () => prisma.frames.findMany({
         select: {
           id: true,
-          code: true as const,
           frame_name: true,
         } as Prisma.framesSelect,
         orderBy: {
@@ -21,14 +20,13 @@ export async function GET() {
       'GET /api/frames'
     );
 
-    // Return frames with code as the ID for display
-    const framesWithCode = frames.map(f => ({
+    // Return frames for display
+    const formattedFrames = frames.map(f => ({
       id: f.id.toString(),
-      code: (f as { code?: string | null }).code ?? null,
       frame_name: f.frame_name,
     }));
 
-    return NextResponse.json(framesWithCode);
+    return NextResponse.json(formattedFrames);
   } catch (error) {
     console.error('Error fetching frames:', error);
     return NextResponse.json(

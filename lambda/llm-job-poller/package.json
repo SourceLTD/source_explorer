@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
-    "package": "npm run build && zip -r function.zip dist node_modules",
+    "package": "npm run build && rm -f function.zip && zip -q -r function.zip dist && zip -q -r function.zip node_modules -x \"node_modules/prisma/*\" \"node_modules/typescript/*\" \"node_modules/@types/*\" \"node_modules/tsx/*\" \"node_modules/.prisma/client/libquery_engine-darwin-arm64.dylib.node\"",
     "deploy": "npm run package && aws lambda update-function-code --function-name llm-job-poller --zip-file fileb://function.zip",
     "deploy:complete": "./deploy-complete.sh",
     "destroy": "./destroy.sh",

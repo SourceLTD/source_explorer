@@ -229,6 +229,8 @@ function buildVariableMap(entry: LexicalEntrySummary): Record<string, string> {
     examples_json: JSON.stringify(entry.examples ?? [], null, 2),
     flagged: entry.flagged ? 'true' : 'false',
     flagged_reason: entry.flagged_reason ?? '',
+    forbidden: entry.forbidden ? 'true' : 'false',
+    forbidden_reason: entry.forbidden_reason ?? '',
     frame_name: entry.frame_name ?? '',
     lexfile: entry.lexfile ?? '',
   };
@@ -238,6 +240,10 @@ function buildVariableMap(entry: LexicalEntrySummary): Record<string, string> {
     base.definition = entry.definition ?? '';
     base.short_definition = entry.short_definition ?? '';
     base.prototypical_synset = entry.prototypical_synset ?? '';
+    base.flagged = entry.flagged ? 'true' : 'false';
+    base.flagged_reason = entry.flagged_reason ?? '';
+    base.forbidden = entry.forbidden ? 'true' : 'false';
+    base.forbidden_reason = entry.forbidden_reason ?? '';
   }
 
   // Add additional fields (includes frame.* fields for verbs)
@@ -457,6 +463,10 @@ async function fetchEntriesByIds(pos: PartOfSpeech, ids: string[]): Promise<Lexi
         definition: true,
         short_definition: true,
         prototypical_synset: true,
+        flagged: true,
+        flagged_reason: true,
+        forbidden: true,
+        forbidden_reason: true,
       },
     });
     const byId = new Map(records.map(record => [record.id.toString(), record]));
@@ -473,6 +483,10 @@ async function fetchEntriesByIds(pos: PartOfSpeech, ids: string[]): Promise<Lexi
         definition: record.definition,
         short_definition: record.short_definition,
         prototypical_synset: record.prototypical_synset,
+        flagged: record.flagged,
+        flagged_reason: record.flagged_reason,
+        forbidden: record.forbidden,
+        forbidden_reason: record.forbidden_reason,
       }));
   }
 
@@ -492,6 +506,10 @@ async function fetchEntriesByFrameIds(frameIds: string[], pos?: PartOfSpeech, in
       definition: true,
       short_definition: true,
       prototypical_synset: true,
+      flagged: true,
+      flagged_reason: true,
+      forbidden: true,
+      forbidden_reason: true,
       frame_roles: {
         select: {
           id: true,
@@ -542,6 +560,10 @@ async function fetchEntriesByFrameIds(frameIds: string[], pos?: PartOfSpeech, in
         definition: frame.definition,
         short_definition: frame.short_definition,
         prototypical_synset: frame.prototypical_synset,
+        flagged: frame.flagged,
+        flagged_reason: frame.flagged_reason,
+        forbidden: frame.forbidden,
+        forbidden_reason: frame.forbidden_reason,
       });
     }
   }
@@ -822,6 +844,10 @@ async function fetchEntriesByFilters(pos: PartOfSpeech, filters: { limit?: numbe
         definition: true,
         short_definition: true,
         prototypical_synset: true,
+        flagged: true,
+        flagged_reason: true,
+        forbidden: true,
+        forbidden_reason: true,
       },
     });
     return records.map(record => ({
@@ -835,6 +861,10 @@ async function fetchEntriesByFilters(pos: PartOfSpeech, filters: { limit?: numbe
       definition: record.definition,
       short_definition: record.short_definition,
       prototypical_synset: record.prototypical_synset,
+      flagged: record.flagged,
+      flagged_reason: record.flagged_reason,
+      forbidden: record.forbidden,
+      forbidden_reason: record.forbidden_reason,
     }));
   }
 
@@ -921,8 +951,15 @@ async function applyModerationResult(
     const frameId = item.frame_id;
     
     // Flag the frame if target is 'frame' or 'both'
-    // Note: Frames don't have flagged fields in schema, so we skip this for now
-    // This would require a schema migration to add flagging support to frames
+    if (flagTarget === 'frame' || flagTarget === 'both') {
+      await prisma.frames.update({
+        where: { id: frameId },
+        data: {
+          flagged,
+          flagged_reason: prefixedReason,
+        },
+      });
+    }
     
     // Flag associated verbs if target is 'verb' or 'both'
     if (flagTarget === 'verb' || flagTarget === 'both') {

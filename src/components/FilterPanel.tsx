@@ -17,7 +17,6 @@ import { POS_LABELS } from '@/lib/types';
 interface Frame {
   id: string;
   frame_name: string;
-  code?: string | null;
 }
 
 export interface FilterState {
@@ -276,7 +275,7 @@ export default function FilterPanel({
     if (frames.length > 0) {
       nonNumericIds.forEach(code => {
         const match = frames.find(frame =>
-          frame.code && frame.code.toLowerCase() === code.toLowerCase()
+          frame.frame_name.toLowerCase() === code.toLowerCase()
         );
         if (match) {
           resolvedIds.add(match.id);
@@ -312,7 +311,7 @@ export default function FilterPanel({
     const resolved = rawValues.map(value => {
       if (/^\d+$/.test(value)) return value;
       const match = frames.find(frame =>
-        frame.code && frame.code.toLowerCase() === value.toLowerCase()
+        frame.frame_name.toLowerCase() === value.toLowerCase()
       );
       return match ? match.id : value;
     });
@@ -714,7 +713,7 @@ export default function FilterPanel({
                                 <div className="flex-1 min-w-0">
                                   <div className="text-sm font-medium text-gray-900 truncate">{frame.frame_name}</div>
                                   <div className="text-xs text-gray-500 font-mono truncate">
-                                    {frame.code ? `${frame.code} · ${frame.id}` : frame.id}
+                                    {frame.id}
                                   </div>
                                 </div>
                               </label>
@@ -744,7 +743,7 @@ export default function FilterPanel({
                 <div className="text-sm text-gray-500 italic">No frame properties to filter.</div>
               ) : (
                 <>
-                  {mode !== 'adverbs' && mode !== 'adjectives' && (
+                  {mode !== 'verbs' && (
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">Multi-word Expression</label>
                       <div className="flex gap-2">

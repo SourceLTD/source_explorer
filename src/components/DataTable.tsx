@@ -80,7 +80,7 @@ const VERBS_DEFAULT_COLUMNS: ColumnConfig[] = [
   { key: 'actions', label: 'Actions', visible: true, sortable: false },
 ];
 
-// Nouns and Adjectives default columns (no frame, transitive, vendler_class, roles)
+// Nouns and Adjectives default columns (no frame, vendler_class, roles)
 const NOUNS_ADJECTIVES_DEFAULT_COLUMNS: ColumnConfig[] = [
   { key: 'id', label: 'ID', visible: true, sortable: true },
   { key: 'legacy_id', label: 'Legacy ID', visible: false, sortable: true },
@@ -143,12 +143,10 @@ const DEFAULT_COLUMN_WIDTHS: ColumnWidthState = {
   pos: 120,
   lexfile: 120,
   isMwe: 100,
-  transitive: 100,
   flagged: 100,
   flaggedReason: 250,
   forbidden: 100,
   forbiddenReason: 250,
-  particles: 120,
   examples: 250,
   vendler_class: 150,
   legal_constraints: 200,
@@ -161,8 +159,6 @@ const DEFAULT_COLUMN_WIDTHS: ColumnWidthState = {
   definition: 350,
   short_definition: 250,
   prototypical_synset: 180,
-  is_supporting_frame: 150,
-  communication: 120,
   frame_roles: 250,
 };
 
@@ -236,10 +232,10 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
     const filters: FilterState = {};
     
     // Parse text filters
-    ['gloss', 'lemmas', 'examples', 'particles', 'frames', 'flaggedReason', 'forbiddenReason'].forEach(key => {
+    ['gloss', 'lemmas', 'examples', 'frames', 'flaggedReason', 'forbiddenReason'].forEach(key => {
       const value = params.get(key);
       if (value !== null) {
-        filters[key as 'gloss' | 'lemmas' | 'examples' | 'particles' | 'frames' | 'flaggedReason' | 'forbiddenReason'] = value;
+        filters[key as 'gloss' | 'lemmas' | 'examples' | 'frames' | 'flaggedReason' | 'forbiddenReason'] = value;
       }
     });
     
@@ -252,10 +248,10 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
     });
     
     // Parse boolean filters
-    ['isMwe', 'transitive', 'flagged', 'forbidden'].forEach(key => {
+    ['isMwe', 'flagged', 'forbidden'].forEach(key => {
       const value = params.get(key);
       if (value !== null) {
-        filters[key as 'isMwe' | 'transitive' | 'flagged' | 'forbidden'] = value === 'true';
+        filters[key as 'isMwe' | 'flagged' | 'forbidden'] = value === 'true';
       }
     });
     
@@ -477,10 +473,10 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
     const filters: FilterState = {};
     
     // Parse text filters
-    ['gloss', 'lemmas', 'examples', 'particles', 'frames', 'flaggedReason', 'forbiddenReason'].forEach(key => {
+    ['gloss', 'lemmas', 'examples', 'frames', 'flaggedReason', 'forbiddenReason'].forEach(key => {
       const value = params.get(key);
       if (value !== null) {
-        filters[key as 'gloss' | 'lemmas' | 'examples' | 'particles' | 'frames' | 'flaggedReason' | 'forbiddenReason'] = value;
+        filters[key as 'gloss' | 'lemmas' | 'examples' | 'frames' | 'flaggedReason' | 'forbiddenReason'] = value;
       }
     });
     
@@ -493,10 +489,10 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
     });
     
     // Parse boolean filters
-    ['isMwe', 'transitive', 'flagged', 'forbidden'].forEach(key => {
+    ['isMwe', 'flagged', 'forbidden'].forEach(key => {
       const value = params.get(key);
       if (value !== null) {
-        filters[key as 'isMwe' | 'transitive' | 'flagged' | 'forbidden'] = value === 'true';
+        filters[key as 'isMwe' | 'flagged' | 'forbidden'] = value === 'true';
       }
     });
     
@@ -606,7 +602,6 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
     params.delete('gloss');
     params.delete('lemmas');
     params.delete('examples');
-    params.delete('particles');
     params.delete('frames');
     params.delete('flaggedReason');
     params.delete('forbiddenReason');
@@ -615,7 +610,6 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
     params.delete('frame_id');
     params.delete('flaggedByJobId');
     params.delete('isMwe');
-    params.delete('transitive');
     params.delete('flagged');
     params.delete('forbidden');
     params.delete('parentsCountMin');
@@ -1361,29 +1355,6 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
               {entry.prototypical_synset}
             </span>
           );
-        case 'is_supporting_frame':
-          return (
-            <span className={`inline-block px-2 py-1 text-xs rounded font-medium ${
-              entry.is_supporting_frame 
-                ? 'bg-green-100 text-green-800' 
-                : 'bg-gray-100 text-gray-600'
-            }`}>
-              {entry.is_supporting_frame ? 'Yes' : 'No'}
-            </span>
-          );
-        case 'communication':
-          if (entry.communication === null || entry.communication === undefined) {
-            return <NACell />;
-          }
-          return (
-            <span className={`inline-block px-2 py-1 text-xs rounded font-medium ${
-              entry.communication 
-                ? 'bg-blue-100 text-blue-800' 
-                : 'bg-gray-100 text-gray-600'
-            }`}>
-              {entry.communication ? 'Yes' : 'No'}
-            </span>
-          );
         case 'frame_roles':
           if (!entry.frame_roles || entry.frame_roles.length === 0) {
             return <EmptyCell />;
@@ -1538,19 +1509,6 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
             {entry.isMwe ? 'Yes' : 'No'}
           </span>
         );
-      case 'transitive':
-        if (entry.transitive === null || entry.transitive === undefined) {
-          return <NACell />;
-        }
-        return (
-          <span className={`inline-block px-2 py-1 text-xs rounded font-medium ${
-            entry.transitive 
-              ? 'bg-blue-100 text-blue-800' 
-              : 'bg-gray-100 text-gray-600'
-          }`}>
-            {entry.transitive ? 'Yes' : 'No'}
-          </span>
-        );
       case 'flagged':
         if (isFrame(entry)) return <NACell />;
         if (entry.flagged === null || entry.flagged === undefined) {
@@ -1621,27 +1579,6 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
         return (
           <div className="text-xs text-gray-700 break-words">
             {entry.forbiddenReason}
-          </div>
-        );
-      case 'particles':
-        if (!entry.particles || entry.particles.length === 0) {
-          return <span className="text-gray-400 text-sm">None</span>;
-        }
-        return (
-          <div className="flex flex-wrap gap-1">
-            {entry.particles.slice(0, 2).map((particle, idx) => (
-              <span 
-                key={idx}
-                className="inline-block px-2 py-1 text-xs bg-orange-100 text-orange-800 rounded"
-              >
-                {particle}
-              </span>
-            ))}
-            {entry.particles.length > 2 && (
-              <span className="inline-block px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded">
-                +{entry.particles.length - 2}
-              </span>
-            )}
           </div>
         );
       case 'examples':
@@ -2117,7 +2054,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
                     </td>
                   )}
                   {visibleColumns.map((column) => {
-                    const isClickable = onRowClick && column.key !== 'isMwe' && column.key !== 'transitive' && column.key !== 'gloss' && column.key !== 'actions';
+                    const isClickable = onRowClick && column.key !== 'isMwe' && column.key !== 'gloss' && column.key !== 'actions';
                     const cellClassName = `px-4 py-4 break-words ${isClickable ? 'cursor-pointer' : ''} align-top border-r border-gray-200`;
                     
                     return (
@@ -2231,7 +2168,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
             <div className="px-4 py-2 border-b border-gray-200 bg-gray-50">
               {frameEntry ? (
                 <>
-                  <div className="text-xs font-mono text-blue-600">{frameEntry.code || frameEntry.id}</div>
+                  <div className="text-xs font-mono text-blue-600">{frameEntry.id}</div>
                   <div className="text-xs text-gray-600 mt-1 truncate max-w-xs">
                     {frameEntry.frame_name}
                   </div>

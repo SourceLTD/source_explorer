@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
             OR: scope.frameIds.map(id =>
               id.match(/^\d+$/)
                 ? { id: BigInt(id) }
-                : { code: { equals: id, mode: 'insensitive' as Prisma.QueryMode } }
+                : { frame_name: { equals: id, mode: 'insensitive' as Prisma.QueryMode } }
             ),
           },
           select: {

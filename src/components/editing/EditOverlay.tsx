@@ -200,12 +200,6 @@ export function EditOverlay({ node, mode, isOpen, onClose, onUpdate }: EditOverl
         case 'prototypical_synset':
           value = editor.editValue.trim();
           break;
-        case 'is_supporting_frame':
-          value = editor.editValue === 'true';
-          break;
-        case 'communication':
-          value = editor.editValue === 'null' ? null : editor.editValue === 'true';
-          break;
         default:
           return;
       }

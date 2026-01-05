@@ -40,7 +40,6 @@ export async function GET(
             frames_frame_relations_target_idToframes: {
               select: {
                 id: true,
-                code: true,
                 frame_name: true,
                 short_definition: true,
               },
@@ -52,7 +51,6 @@ export async function GET(
             frames_frame_relations_source_idToframes: {
               select: {
                 id: true,
-                code: true,
                 frame_name: true,
                 short_definition: true,
               },
@@ -72,16 +70,11 @@ export async function GET(
     // Build graph node structure
     const graphNode = {
       id: frame.id.toString(),
-      code: frame.code,
       pos: 'frames' as const,
       frame_name: frame.frame_name,
       gloss: frame.definition,
       short_definition: frame.short_definition,
-      framebank_id: frame.framebank_id,
       prototypical_synset: frame.prototypical_synset,
-      prototypical_synset_definition: frame.prototypical_synset_definition,
-      is_supporting_frame: frame.is_supporting_frame,
-      communication: frame.communication,
       roles: frame.frame_roles.map(role => ({
         id: role.id.toString(),
         frame_id: role.frame_id.toString(),
@@ -109,7 +102,6 @@ export async function GET(
           direction: 'outgoing' as const,
           target: {
             id: rel.frames_frame_relations_target_idToframes.id.toString(),
-            code: rel.frames_frame_relations_target_idToframes.code,
             frame_name: rel.frames_frame_relations_target_idToframes.frame_name,
             short_definition: rel.frames_frame_relations_target_idToframes.short_definition,
           },
@@ -119,7 +111,6 @@ export async function GET(
           direction: 'incoming' as const,
           source: {
             id: rel.frames_frame_relations_source_idToframes.id.toString(),
-            code: rel.frames_frame_relations_source_idToframes.code,
             frame_name: rel.frames_frame_relations_source_idToframes.frame_name,
             short_definition: rel.frames_frame_relations_source_idToframes.short_definition,
           },

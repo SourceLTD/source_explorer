@@ -145,7 +145,7 @@ async function resolveFrameIds(values: string[]): Promise<bigint[]> {
   const or = values.map(v =>
     v.match(/^\d+$/)
       ? { id: BigInt(v) }
-      : { code: { equals: v, mode: 'insensitive' as const } }
+      : { frame_name: { equals: v, mode: 'insensitive' as const } }
   );
   const frames = await prisma.frames.findMany({ where: { OR: or } as never, select: { id: true } });
   return frames.map(f => f.id);
