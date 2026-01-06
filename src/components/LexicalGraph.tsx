@@ -44,7 +44,6 @@ export default function LexicalGraph({ currentNode, onNodeClick, onEditClick, mo
   const [rolesExpanded, setRolesExpanded] = useState<boolean>(false);
   const [lemmasExpanded, setLemmasExpanded] = useState<boolean>(true);
   const [examplesExpanded, setExamplesExpanded] = useState<boolean>(true);
-  const [legalConstraintsExpanded, setLegalConstraintsExpanded] = useState<boolean>(false);
   const [causesExpanded, setCausesExpanded] = useState<boolean>(false);
   const [entailsExpanded, setEntailsExpanded] = useState<boolean>(false);
   const [alsoSeeExpanded, setAlsoSeeExpanded] = useState<boolean>(false);
@@ -140,17 +139,6 @@ export default function LexicalGraph({ currentNode, onNodeClick, onEditClick, mo
     }
     height += rolesHeight; // Include header even when no roles
     
-    let legalConstraintsHeight = 0;
-    if (node.legal_constraints && node.legal_constraints.length > 0) {
-      legalConstraintsHeight = 20; // Header height (always visible)
-      if (legalConstraintsExpanded) {
-        const constraintsText = `Legal Constraints: ${node.legal_constraints.join('; ')}`;
-        const estimatedHeight = estimateTextHeight(constraintsText, contentWidth);
-        legalConstraintsHeight += Math.max(25, estimatedHeight + 8); // Minimum 25px, or estimated + padding
-      }
-      height += legalConstraintsHeight;
-    }
-    
     let causesHeight = 0;
     if (node.causes && node.causes.length > 0) {
       causesHeight = 20; // Header height (always visible)
@@ -192,12 +180,11 @@ export default function LexicalGraph({ currentNode, onNodeClick, onEditClick, mo
       lemmasHeight,
       examplesHeight,
       rolesHeight,
-      legalConstraintsHeight,
       causesHeight,
       entailsHeight,
       alsoSeeHeight
     };
-  }, [rolesExpanded, lemmasExpanded, examplesExpanded, legalConstraintsExpanded, causesExpanded, entailsExpanded, alsoSeeExpanded]);
+  }, [rolesExpanded, lemmasExpanded, examplesExpanded, causesExpanded, entailsExpanded, alsoSeeExpanded]);
 
   // Helper function to calculate node width based on text length
   const calculateNodeWidth = (text: string, minWidth: number = 60, maxWidth: number = 150): number => {
@@ -403,9 +390,9 @@ export default function LexicalGraph({ currentNode, onNodeClick, onEditClick, mo
               const contentWidth = nodeWidth - 24; // Account for padding
               
               // Use pre-calculated heights from nodeHeights
-              const { glossHeight, lemmasHeight, examplesHeight, rolesHeight, legalConstraintsHeight } = nodeHeights;
+              const { glossHeight, lemmasHeight, examplesHeight, rolesHeight } = nodeHeights;
               
-              let sectionY = centerY + 55 + (posNode.node.vendler_class ? 20 : 0) + 22 + (posNode.node.frame ? 22 : 0) + glossHeight + lemmasHeight + examplesHeight + rolesHeight + legalConstraintsHeight; // Start after gloss, lemmas, examples, roles, and legal constraints
+              let sectionY = centerY + 55 + (posNode.node.vendler_class ? 20 : 0) + 22 + (posNode.node.frame ? 22 : 0) + glossHeight + lemmasHeight + examplesHeight + rolesHeight; // Start after gloss, lemmas, examples, and roles
               
               const causesY = sectionY;
               let causesHeight = 0;
@@ -927,72 +914,6 @@ export default function LexicalGraph({ currentNode, onNodeClick, onEditClick, mo
                           </div>
                         </foreignObject>
                         {roleElements}
-                      </>
-                    );
-                  })()}
-                  
-                  {/* Legal Constraints - after roles, before causes */}
-                  {posNode.node.legal_constraints && posNode.node.legal_constraints.length > 0 && (() => {
-                    const legalConstraintsStartY = centerY + 55 + (posNode.node.vendler_class ? 20 : 0) + 22 + (posNode.node.frame ? 22 : 0) + glossHeight + lemmasHeight + examplesHeight + rolesHeight;
-                    
-                    return (
-                      <>
-                        {/* Legal Constraints Header */}
-                        <foreignObject
-                          x={centerX + 12}
-                          y={legalConstraintsStartY}
-                          width={nodeWidth - 24}
-                          height={20}
-                        >
-                          <div 
-                            style={{
-                              fontSize: '13px',
-                              fontFamily: 'Arial',
-                              color: 'white',
-                              fontWeight: 'bold',
-                              padding: '2px 6px',
-                              backgroundColor: 'rgba(79, 70, 229, 0.6)',
-                              borderRadius: '3px 3px 0 0',
-                              cursor: 'pointer',
-                              userSelect: 'none',
-                            }}
-                            onClick={() => setLegalConstraintsExpanded(!legalConstraintsExpanded)}
-                          >
-                            Legal Constraints: {legalConstraintsExpanded ? '▼' : '▶'}
-                          </div>
-                        </foreignObject>
-                        
-                        {/* Legal Constraints Content */}
-                        {legalConstraintsExpanded && (
-                          <foreignObject
-                            x={centerX + 12}
-                            y={legalConstraintsStartY + 20}
-                            width={nodeWidth - 24}
-                            height={legalConstraintsHeight - 20}
-                          >
-                            <div
-                              style={{
-                                fontSize: '13px',
-                                fontFamily: 'Arial',
-                                color: 'white',
-                                lineHeight: '1.3',
-                                wordWrap: 'break-word',
-                                overflow: 'hidden',
-                                cursor: 'pointer',
-                                padding: '4px 6px',
-                                backgroundColor: 'rgba(79, 70, 229, 0.3)',
-                                borderRadius: '0 0 3px 3px',
-                              }}
-                            >
-                              {posNode.node.legal_constraints.map((constraint, idx) => (
-                                <span key={idx}>
-                                  <span style={{ fontWeight: '400' }}>{constraint}</span>
-                                  {idx < posNode.node.legal_constraints.length - 1 ? '; ' : ''}
-                                </span>
-                              ))}
-                            </div>
-                          </foreignObject>
-                        )}
                       </>
                     );
                   })()}

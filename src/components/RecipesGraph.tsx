@@ -24,7 +24,6 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
   const [rolesExpanded, setRolesExpanded] = useState<boolean>(true);
   const [lemmasExpanded, setLemmasExpanded] = useState<boolean>(true);
   const [examplesExpanded, setExamplesExpanded] = useState<boolean>(true);
-  const [legalConstraintsExpanded, setLegalConstraintsExpanded] = useState<boolean>(false);
   const [causesExpanded, setCausesExpanded] = useState<boolean>(false);
   const [entailsExpanded, setEntailsExpanded] = useState<boolean>(false);
   const [alsoSeeExpanded, setAlsoSeeExpanded] = useState<boolean>(false);
@@ -162,13 +161,12 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
       lemmasExpanded,
       examplesExpanded,
       rolesExpanded,
-      legalConstraintsExpanded,
       causesExpanded,
       entailsExpanded,
       alsoSeeExpanded
     );
     return { width, height, centerX: width / 2, centerY: 30 + height / 2 };
-  }, [currentNode, lemmasExpanded, examplesExpanded, rolesExpanded, legalConstraintsExpanded, causesExpanded, entailsExpanded, alsoSeeExpanded]);
+  }, [currentNode, lemmasExpanded, examplesExpanded, rolesExpanded, causesExpanded, entailsExpanded, alsoSeeExpanded]);
 
   const renderLeafBindings = (pred: RecipePredicateNode) => {
     if (!pred.roleMappings || pred.roleMappings.length === 0) {
@@ -457,14 +455,12 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
                 controlledRolesExpanded={rolesExpanded}
                 controlledLemmasExpanded={lemmasExpanded}
                 controlledExamplesExpanded={examplesExpanded}
-                controlledLegalConstraintsExpanded={legalConstraintsExpanded}
                 controlledCausesExpanded={causesExpanded}
                 controlledEntailsExpanded={entailsExpanded}
                 controlledAlsoSeeExpanded={alsoSeeExpanded}
                 onRolesExpandedChange={setRolesExpanded}
                 onLemmasExpandedChange={setLemmasExpanded}
                 onExamplesExpandedChange={setExamplesExpanded}
-                onLegalConstraintsExpandedChange={setLegalConstraintsExpanded}
                 onCausesExpandedChange={setCausesExpanded}
                 onEntailsExpandedChange={setEntailsExpanded}
                 onAlsoSeeExpandedChange={setAlsoSeeExpanded}

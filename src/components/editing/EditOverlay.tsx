@@ -9,7 +9,6 @@ import { DeleteConfirmDialog } from './DeleteConfirmDialog';
 import { BasicInfoSection } from './BasicInfoSection';
 import { VerbPropertiesSection } from './VerbPropertiesSection';
 import { RolesSection } from './RolesSection';
-import { LegalConstraintsSection } from './LegalConstraintsSection';
 import { RelationsSection } from './RelationsSection';
 import { FramePropertiesSection } from './FramePropertiesSection';
 import { FrameRolesSection } from './FrameRolesSection';
@@ -35,7 +34,6 @@ export function EditOverlay({ node, mode, isOpen, onClose, onUpdate }: EditOverl
     basicInfo: true,
     verbProperties: false,
     roles: false,
-    legalConstraints: false,
     relations: false,
     frameProperties: mode === 'frames',
     frameRoles: false,
@@ -172,9 +170,6 @@ export function EditOverlay({ node, mode, isOpen, onClose, onUpdate }: EditOverl
           value = editor.editValue.trim();
           break;
         case 'examples':
-          value = editor.editListItems.filter(s => s.trim());
-          break;
-        case 'legal_constraints':
           value = editor.editListItems.filter(s => s.trim());
           break;
         case 'vendler_class':
@@ -367,24 +362,6 @@ export function EditOverlay({ node, mode, isOpen, onClose, onUpdate }: EditOverl
           onFrameRoleChange={editor.updateFrameRole}
           onFrameRoleAdd={editor.addFrameRole}
           onFrameRoleRemove={editor.removeFrameRole}
-          onSave={handleSave}
-          onCancel={editor.cancelEditing}
-          isSaving={editor.isSaving}
-        />
-      )}
-
-      {/* Legal Constraints Section (non-frames only) */}
-      {mode !== 'frames' && 'gloss' in node && (
-        <LegalConstraintsSection
-          node={node as GraphNode}
-          editingField={editor.editingField}
-          editListItems={editor.editListItems}
-          isOpen={overlaySections.legalConstraints}
-          onToggle={() => setOverlaySections(prev => ({ ...prev, legalConstraints: !prev.legalConstraints }))}
-          onStartEdit={editor.startEditing}
-          onListItemChange={editor.updateListItem}
-          onListItemAdd={editor.addListItem}
-          onListItemRemove={editor.removeListItem}
           onSave={handleSave}
           onCancel={editor.cancelEditing}
           isSaving={editor.isSaving}

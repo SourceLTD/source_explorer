@@ -15,7 +15,7 @@ export default function AdjectiveTableMode() {
   const [currentNode, setCurrentNode] = useState<GraphNode | null>(null);
   
   // Editing state
-  const [editingField, setEditingField] = useState<'code' | 'hypernym' | 'src_lemmas' | 'gloss' | 'examples' | 'legal_constraints' | 'lexfile' | null>(null);
+  const [editingField, setEditingField] = useState<'code' | 'hypernym' | 'src_lemmas' | 'gloss' | 'examples' | 'lexfile' | null>(null);
   const [editValue, setEditValue] = useState<string>('');
   const [editListItems, setEditListItems] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
@@ -27,7 +27,6 @@ export default function AdjectiveTableMode() {
   // Overlay section expansion state
   const [overlaySections, setOverlaySections] = useState({
     basicInfo: true,
-    legalConstraints: false,
     relations: false,
   });
 
@@ -71,7 +70,7 @@ export default function AdjectiveTableMode() {
     return () => document.removeEventListener('keydown', handleEscape);
   }, [isEditOverlayOpen, editingField]);
 
-  const startEditing = (field: 'code' | 'hypernym' | 'src_lemmas' | 'gloss' | 'examples' | 'legal_constraints' | 'lexfile') => {
+  const startEditing = (field: 'code' | 'hypernym' | 'src_lemmas' | 'gloss' | 'examples' | 'lexfile') => {
     if (!currentNode) return;
     
     setEditingField(field);
@@ -93,8 +92,6 @@ export default function AdjectiveTableMode() {
       setEditListItems([...(currentNode.src_lemmas || [])]);
     } else if (field === 'examples') {
       setEditListItems([...currentNode.examples]);
-    } else if (field === 'legal_constraints') {
-      setEditListItems([...(currentNode.legal_constraints || [])]);
     } else if (field === 'gloss') {
       setEditValue(currentNode.gloss);
     } else if (field === 'lexfile') {
@@ -250,9 +247,6 @@ export default function AdjectiveTableMode() {
           break;
         case 'examples':
           updateData.examples = editListItems.filter(s => s.trim());
-          break;
-        case 'legal_constraints':
-          updateData.legal_constraints = editListItems.filter(s => s.trim());
           break;
         case 'lexfile':
           updateData.lexfile = editValue;
@@ -920,92 +914,6 @@ export default function AdjectiveTableMode() {
                   </div>
                 )}
               </div>
-
-              {/* Legal Constraints Section */}
-              <OverlaySection
-                title="Legal Constraints"
-                icon={
-                  <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                  </svg>
-                }
-                isOpen={overlaySections.legalConstraints}
-                onToggle={() => setOverlaySections(prev => ({ ...prev, legalConstraints: !prev.legalConstraints }))}
-              >
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-sm font-medium text-gray-700">Legal Constraints</h3>
-                    {editingField !== 'legal_constraints' && (
-                      <button
-                        onClick={() => startEditing('legal_constraints')}
-                        className="text-xs text-blue-600 hover:text-blue-700 font-medium"
-                      >
-                        Edit
-                      </button>
-                    )}
-                  </div>
-                  {editingField === 'legal_constraints' ? (
-                    <div className="space-y-2">
-                      <div className="space-y-2">
-                        {editListItems.map((item, index) => (
-                          <div key={index} className="flex items-center space-x-2">
-                            <input
-                              type="text"
-                              value={item}
-                              onChange={(e) => updateListItem(index, e.target.value)}
-                              className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                              placeholder="Enter legal constraint"
-                            />
-                            <button
-                              onClick={() => removeListItem(index)}
-                              className="p-2 text-red-500 hover:bg-red-50 rounded"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                              </svg>
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                      <button
-                        onClick={addListItem}
-                        className="text-sm text-blue-600 hover:text-blue-700 font-medium"
-                      >
-                        + Add Constraint
-                      </button>
-                      <div className="flex space-x-2 pt-2">
-                        <button
-                          onClick={saveEdit}
-                          disabled={isSaving}
-                          className="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50"
-                        >
-                          {isSaving ? 'Saving...' : 'Save'}
-                        </button>
-                        <button
-                          onClick={cancelEditing}
-                          className="px-4 py-2 bg-gray-200 text-gray-700 text-sm rounded hover:bg-gray-300"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div>
-                      {currentNode.legal_constraints && currentNode.legal_constraints.length > 0 ? (
-                        <div className="space-y-1">
-                          {currentNode.legal_constraints.map((constraint, index) => (
-                            <p key={index} className="text-gray-900 text-sm">
-                              {constraint}
-                            </p>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-gray-500 text-sm italic">No legal constraints</p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </OverlaySection>
 
               {/* Relations Section */}
               <OverlaySection

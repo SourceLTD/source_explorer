@@ -103,11 +103,6 @@ function EntryCard({ entry }: { entry: Verb }) {
           <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">
             {POS_LABELS[entry.pos as keyof typeof POS_LABELS] || entry.pos}
           </span>
-          {entry.isMwe && (
-            <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs rounded">
-              MWE
-            </span>
-          )}
         </div>
       </div>
       

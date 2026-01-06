@@ -94,7 +94,6 @@ const NOUNS_ADJECTIVES_DEFAULT_COLUMNS: ColumnConfig[] = [
   { key: 'forbidden', label: 'Forbidden', visible: false, sortable: true },
   { key: 'forbiddenReason', label: 'Forbidden Reason', visible: true, sortable: false },
   { key: 'examples', label: 'Examples', visible: true, sortable: false },
-  { key: 'legal_constraints', label: 'Legal Constraints', visible: false, sortable: false },
   { key: 'createdAt', label: 'Created', visible: false, sortable: true },
   { key: 'updatedAt', label: 'Updated', visible: false, sortable: true },
   { key: 'actions', label: 'Actions', visible: true, sortable: false },
@@ -115,7 +114,6 @@ const ADVERBS_COLUMNS: ColumnConfig[] = [
   { key: 'forbidden', label: 'Forbidden', visible: false, sortable: true },
   { key: 'forbiddenReason', label: 'Forbidden Reason', visible: true, sortable: false },
   { key: 'examples', label: 'Examples', visible: true, sortable: false },
-  { key: 'legal_constraints', label: 'Legal Constraints', visible: false, sortable: false },
   { key: 'createdAt', label: 'Created', visible: false, sortable: true },
   { key: 'updatedAt', label: 'Updated', visible: false, sortable: true },
   { key: 'actions', label: 'Actions', visible: true, sortable: false },
@@ -149,7 +147,6 @@ const DEFAULT_COLUMN_WIDTHS: ColumnWidthState = {
   forbiddenReason: 250,
   examples: 250,
   vendler_class: 150,
-  legal_constraints: 200,
   roles: 250,
   createdAt: 100,
   updatedAt: 100,
@@ -1615,28 +1612,6 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
           <span className={`inline-block px-2 py-1 text-xs rounded font-medium ${colorClass}`}>
             {entry.vendler_class}
           </span>
-        );
-      case 'legal_constraints':
-        if (!entry.legal_constraints || entry.legal_constraints.length === 0) {
-          return <NoneCell />;
-        }
-        return (
-          <div className="flex flex-wrap gap-1">
-            {entry.legal_constraints.slice(0, 3).map((constraint, idx) => (
-              <span 
-                key={idx}
-                className="inline-block px-2 py-1 text-xs bg-yellow-100 text-yellow-800 rounded"
-                title={constraint}
-              >
-                {constraint.length > 20 ? constraint.substring(0, 20) + '...' : constraint}
-              </span>
-            ))}
-            {entry.legal_constraints.length > 3 && (
-              <span className="inline-block px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded">
-                +{entry.legal_constraints.length - 3}
-              </span>
-            )}
-          </div>
         );
       case 'roles':
         if (!entry.roles || entry.roles.length === 0) {

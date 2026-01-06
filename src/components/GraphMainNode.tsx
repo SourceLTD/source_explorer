@@ -14,14 +14,12 @@ interface GraphMainNodeProps {
   controlledRolesExpanded?: boolean;
   controlledLemmasExpanded?: boolean;
   controlledExamplesExpanded?: boolean;
-  controlledLegalConstraintsExpanded?: boolean;
   controlledCausesExpanded?: boolean;
   controlledEntailsExpanded?: boolean;
   controlledAlsoSeeExpanded?: boolean;
   onRolesExpandedChange?: (expanded: boolean) => void;
   onLemmasExpandedChange?: (expanded: boolean) => void;
   onExamplesExpandedChange?: (expanded: boolean) => void;
-  onLegalConstraintsExpandedChange?: (expanded: boolean) => void;
   onCausesExpandedChange?: (expanded: boolean) => void;
   onEntailsExpandedChange?: (expanded: boolean) => void;
   onAlsoSeeExpandedChange?: (expanded: boolean) => void;
@@ -37,14 +35,12 @@ export default function GraphMainNode({
   controlledRolesExpanded,
   controlledLemmasExpanded,
   controlledExamplesExpanded,
-  controlledLegalConstraintsExpanded,
   controlledCausesExpanded,
   controlledEntailsExpanded,
   controlledAlsoSeeExpanded,
   onRolesExpandedChange,
   onLemmasExpandedChange,
   onExamplesExpandedChange,
-  onLegalConstraintsExpandedChange,
   onCausesExpandedChange,
   onEntailsExpandedChange,
   onAlsoSeeExpandedChange,
@@ -54,7 +50,6 @@ export default function GraphMainNode({
   const [internalRolesExpanded, setInternalRolesExpanded] = useState<boolean>(false);
   const [internalLemmasExpanded, setInternalLemmasExpanded] = useState<boolean>(true);
   const [internalExamplesExpanded, setInternalExamplesExpanded] = useState<boolean>(true);
-  const [internalLegalConstraintsExpanded, setInternalLegalConstraintsExpanded] = useState<boolean>(false);
   const [internalCausesExpanded, setInternalCausesExpanded] = useState<boolean>(false);
   const [internalEntailsExpanded, setInternalEntailsExpanded] = useState<boolean>(false);
   const [internalAlsoSeeExpanded, setInternalAlsoSeeExpanded] = useState<boolean>(false);
@@ -63,7 +58,6 @@ export default function GraphMainNode({
   const rolesExpanded = controlledRolesExpanded !== undefined ? controlledRolesExpanded : internalRolesExpanded;
   const lemmasExpanded = controlledLemmasExpanded !== undefined ? controlledLemmasExpanded : internalLemmasExpanded;
   const examplesExpanded = controlledExamplesExpanded !== undefined ? controlledExamplesExpanded : internalExamplesExpanded;
-  const legalConstraintsExpanded = controlledLegalConstraintsExpanded !== undefined ? controlledLegalConstraintsExpanded : internalLegalConstraintsExpanded;
   const causesExpanded = controlledCausesExpanded !== undefined ? controlledCausesExpanded : internalCausesExpanded;
   const entailsExpanded = controlledEntailsExpanded !== undefined ? controlledEntailsExpanded : internalEntailsExpanded;
   const alsoSeeExpanded = controlledAlsoSeeExpanded !== undefined ? controlledAlsoSeeExpanded : internalAlsoSeeExpanded;
@@ -79,10 +73,6 @@ export default function GraphMainNode({
   const setExamplesExpanded = (val: boolean) => {
     if (onExamplesExpandedChange) onExamplesExpandedChange(val);
     else setInternalExamplesExpanded(val);
-  };
-  const setLegalConstraintsExpanded = (val: boolean) => {
-    if (onLegalConstraintsExpandedChange) onLegalConstraintsExpandedChange(val);
-    else setInternalLegalConstraintsExpanded(val);
   };
   const setCausesExpanded = (val: boolean) => {
     if (onCausesExpandedChange) onCausesExpandedChange(val);
@@ -175,17 +165,6 @@ export default function GraphMainNode({
     }
     height += rolesHeight;
     
-    let legalConstraintsHeight = 0;
-    if (node.legal_constraints && node.legal_constraints.length > 0) {
-      legalConstraintsHeight = 20;
-      if (legalConstraintsExpanded) {
-        const constraintsText = `Legal Constraints: ${node.legal_constraints.join('; ')}`;
-        const estimatedHeight = estimateTextHeight(constraintsText, contentWidth);
-        legalConstraintsHeight += Math.max(25, estimatedHeight + 8);
-      }
-      height += legalConstraintsHeight;
-    }
-    
     let causesHeight = 0;
     if (node.causes && node.causes.length > 0) {
       causesHeight = 20;
@@ -227,12 +206,11 @@ export default function GraphMainNode({
       lemmasHeight,
       examplesHeight,
       rolesHeight,
-      legalConstraintsHeight,
       causesHeight,
       entailsHeight,
       alsoSeeHeight
     };
-  }, [node, rolesExpanded, lemmasExpanded, examplesExpanded, legalConstraintsExpanded, causesExpanded, entailsExpanded, alsoSeeExpanded]);
+  }, [node, rolesExpanded, lemmasExpanded, examplesExpanded, causesExpanded, entailsExpanded, alsoSeeExpanded]);
 
   const nodeWidth = 600;
   const nodeHeights = calculateNodeHeights();
@@ -243,9 +221,9 @@ export default function GraphMainNode({
   const isForbiddenNode = node.forbidden;
   const isSourceNode = node.legacy_id.startsWith('src');
   
-  const { glossHeight, lemmasHeight, examplesHeight, rolesHeight, legalConstraintsHeight } = nodeHeights;
+  const { glossHeight, lemmasHeight, examplesHeight, rolesHeight } = nodeHeights;
   
-  let sectionY = centerY + 55 + (node.vendler_class ? 20 : 0) + 22 + (node.frame ? 22 : 0) + glossHeight + lemmasHeight + examplesHeight + rolesHeight + legalConstraintsHeight;
+  let sectionY = centerY + 55 + (node.vendler_class ? 20 : 0) + 22 + (node.frame ? 22 : 0) + glossHeight + lemmasHeight + examplesHeight + rolesHeight;
   
   const causesY = sectionY;
   let causesHeight = 0;
@@ -782,70 +760,6 @@ export default function GraphMainNode({
         );
       })()}
       
-      {/* Legal Constraints */}
-      {node.legal_constraints && node.legal_constraints.length > 0 && (() => {
-        const legalConstraintsStartY = centerY + 55 + (node.vendler_class ? 20 : 0) + 22 + (node.frame ? 22 : 0) + glossHeight + lemmasHeight + examplesHeight + rolesHeight;
-        
-        return (
-          <>
-            <foreignObject
-              x={centerX + 12}
-              y={legalConstraintsStartY}
-              width={nodeWidth - 24}
-              height={20}
-            >
-              <div 
-                style={{
-                  fontSize: '13px',
-                  fontFamily: 'Arial',
-                  color: 'white',
-                  fontWeight: 'bold',
-                  padding: '2px 6px',
-                  backgroundColor: 'rgba(79, 70, 229, 0.6)',
-                  borderRadius: '3px 3px 0 0',
-                  cursor: 'pointer',
-                  userSelect: 'none',
-                }}
-                onClick={() => setLegalConstraintsExpanded(!legalConstraintsExpanded)}
-              >
-                Legal Constraints: {legalConstraintsExpanded ? '▼' : '▶'}
-              </div>
-            </foreignObject>
-            
-            {legalConstraintsExpanded && (
-              <foreignObject
-                x={centerX + 12}
-                y={legalConstraintsStartY + 20}
-                width={nodeWidth - 24}
-                height={legalConstraintsHeight - 20}
-              >
-                <div
-                  style={{
-                    fontSize: '13px',
-                    fontFamily: 'Arial',
-                    color: 'white',
-                    lineHeight: '1.3',
-                    wordWrap: 'break-word',
-                    overflow: 'hidden',
-                    cursor: 'pointer',
-                    padding: '4px 6px',
-                    backgroundColor: 'rgba(79, 70, 229, 0.3)',
-                    borderRadius: '0 0 3px 3px',
-                  }}
-                >
-                  {node.legal_constraints.map((constraint, idx) => (
-                    <span key={idx}>
-                      <span style={{ fontWeight: '400' }}>{constraint}</span>
-                      {idx < node.legal_constraints.length - 1 ? '; ' : ''}
-                    </span>
-                  ))}
-                </div>
-              </foreignObject>
-            )}
-          </>
-        );
-      })()}
-      
       {/* Causes */}
       {node.causes && node.causes.length > 0 && (
         <>
@@ -1123,7 +1037,6 @@ export function calculateMainNodeHeight(
   lemmasExpanded: boolean = true,
   examplesExpanded: boolean = true,
   rolesExpanded: boolean = false,
-  legalConstraintsExpanded: boolean = false,
   causesExpanded: boolean = false,
   entailsExpanded: boolean = false,
   alsoSeeExpanded: boolean = false
@@ -1180,15 +1093,6 @@ export function calculateMainNodeHeight(
       });
     }
     height += rolesHeight;
-  }
-  
-  if (node.legal_constraints && node.legal_constraints.length > 0) {
-    let legalConstraintsHeight = 20;
-    if (legalConstraintsExpanded) {
-      const constraintsText = `Legal Constraints: ${node.legal_constraints.join('; ')}`;
-      legalConstraintsHeight += Math.max(25, estimateTextHeight(constraintsText, contentWidth) + 8);
-    }
-    height += legalConstraintsHeight;
   }
   
   if (node.causes && node.causes.length > 0) {

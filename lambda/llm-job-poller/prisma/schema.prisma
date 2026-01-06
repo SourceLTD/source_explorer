@@ -277,7 +277,6 @@ model adjectives {
   forbidden                                                     Boolean?                 @default(false)
   forbidden_reason                                              String?
   legal_gloss                                                   String?
-  legal_constraints                                             String[]
   created_at                                                    DateTime                 @default(now()) @db.Timestamp(6)
   updated_at                                                    DateTime                 @default(now()) @db.Timestamp(6)
   adjective_relations_adjective_relations_source_idToadjectives adjective_relations[]    @relation("adjective_relations_source_idToadjectives")
@@ -344,7 +343,6 @@ model nouns {
   forbidden                                      Boolean?                 @default(false)
   forbidden_reason                               String?
   legal_gloss                                    String?
-  legal_constraints                              String[]
   created_at                                     DateTime                 @default(now()) @db.Timestamp(6)
   updated_at                                     DateTime                 @default(now()) @db.Timestamp(6)
   llm_job_items                                  llm_job_items[]
@@ -606,7 +604,6 @@ model adverbs {
   forbidden                                            Boolean?                 @default(false)
   forbidden_reason                                     String?
   legal_gloss                                          String?
-  legal_constraints                                    String[]
   created_at                                           DateTime                 @default(now()) @db.Timestamp(6)
   updated_at                                           DateTime                 @default(now()) @db.Timestamp(6)
   adverb_relations_adverb_relations_source_idToadverbs adverb_relations[]       @relation("adverb_relations_source_idToadverbs")

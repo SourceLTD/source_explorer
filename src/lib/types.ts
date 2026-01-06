@@ -34,6 +34,7 @@ export interface Noun {
   proper?: boolean;
   collective?: boolean;
   concrete?: boolean;
+  predicate?: boolean;
   lemmas: string[];
   src_lemmas: string[];
   examples: string[];
@@ -41,7 +42,6 @@ export interface Noun {
   flaggedReason?: string;
   forbidden?: boolean;
   forbiddenReason?: string;
-  legal_constraints?: string[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -67,7 +67,6 @@ export interface Adjective {
   flaggedReason?: string;
   forbidden?: boolean;
   forbiddenReason?: string;
-  legal_constraints?: string[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -226,6 +225,7 @@ export interface GraphNode {
   forbiddenReason?: string;
   // Verb-specific fields
   vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null;
+  frame_id?: string | null;
   frame?: Frame | null;
   roles?: Role[];
   role_groups?: RoleGroup[];
@@ -234,6 +234,7 @@ export interface GraphNode {
   proper?: boolean;
   collective?: boolean;
   concrete?: boolean;
+  predicate?: boolean;
   // Adjective-specific fields
   isSatellite?: boolean;
   gradable?: boolean | null;
@@ -385,6 +386,7 @@ export interface TableEntry {
   proper?: boolean;
   collective?: boolean;
   concrete?: boolean;
+  predicate?: boolean;
   // Adjective-specific fields
   isSatellite?: boolean;
   gradable?: boolean | null;
@@ -398,7 +400,6 @@ export interface TableEntry {
   flaggedReason?: string;
   forbidden?: boolean;
   forbiddenReason?: string;
-  legal_constraints?: string[];
   parentsCount: number;
   childrenCount: number;
   createdAt: Date;

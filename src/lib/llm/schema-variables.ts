@@ -52,7 +52,6 @@ const NOUN_VARIABLES: VariableDefinition[] = [
   { key: 'concrete', label: 'Concrete', category: 'basic' },
   { key: 'is_mwe', label: 'Is multi-word expression', category: 'basic' },
   { key: 'legal_gloss', label: 'Legal gloss', category: 'basic' },
-  { key: 'legal_constraints', label: 'Legal constraints', category: 'basic' },
   { key: 'hypernyms', label: 'Hypernyms (parent nouns)', category: 'relation' },
   { key: 'hyponyms', label: 'Hyponyms (child nouns)', category: 'relation' },
 ];
@@ -68,7 +67,6 @@ const ADJECTIVE_VARIABLES: VariableDefinition[] = [
   { key: 'is_satellite', label: 'Is satellite', category: 'basic' },
   { key: 'is_mwe', label: 'Is multi-word expression', category: 'basic' },
   { key: 'legal_gloss', label: 'Legal gloss', category: 'basic' },
-  { key: 'legal_constraints', label: 'Legal constraints', category: 'basic' },
   { key: 'similar_to', label: 'Similar adjectives', category: 'relation' },
   { key: 'antonyms', label: 'Antonyms', category: 'relation' },
 ];
@@ -79,7 +77,6 @@ const ADVERB_VARIABLES: VariableDefinition[] = [
   { key: 'gradable', label: 'Gradable', category: 'basic' },
   { key: 'is_mwe', label: 'Is multi-word expression', category: 'basic' },
   { key: 'legal_gloss', label: 'Legal gloss', category: 'basic' },
-  { key: 'legal_constraints', label: 'Legal constraints', category: 'basic' },
   { key: 'similar_to', label: 'Similar adverbs', category: 'relation' },
   { key: 'antonyms', label: 'Antonyms', category: 'relation' },
 ];

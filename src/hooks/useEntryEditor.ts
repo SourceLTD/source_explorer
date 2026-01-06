@@ -66,8 +66,6 @@ export function useEntryEditor(node: GraphNode | Frame | null, mode: Mode) {
       setEditListItems([...(graphNode.src_lemmas || [])]);
     } else if (field === 'examples') {
       setEditListItems([...graphNode.examples]);
-    } else if (field === 'legal_constraints') {
-      setEditListItems([...(graphNode.legal_constraints || [])]);
     } else if (field === 'gloss') {
       setEditValue(graphNode.gloss);
     } else if (field === 'vendler_class') {

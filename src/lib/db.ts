@@ -625,7 +625,6 @@ export async function getRecipesForEntryInternal(entryId: string): Promise<Entry
         lemmas: p.lex_lemmas,
         src_lemmas: p.lex_src_lemmas,
         gloss: p.lex_gloss,
-        legal_constraints: [],
         pos: p.lex_pos,
         lexfile: p.lex_lexfile,
         examples: p.lex_examples,
@@ -1217,7 +1216,6 @@ async function getVerbGraphNode(entryId: string): Promise<GraphNode | null> {
       lemmas: rel.verbs_verb_relations_target_idToverbs!.lemmas,
       src_lemmas: rel.verbs_verb_relations_target_idToverbs!.src_lemmas,
       gloss: rel.verbs_verb_relations_target_idToverbs!.gloss,
-      legal_constraints: [],
       pos: 'v',
       lexfile: rel.verbs_verb_relations_target_idToverbs!.lexfile,
       examples: rel.verbs_verb_relations_target_idToverbs!.examples,
@@ -1247,9 +1245,8 @@ async function getVerbGraphNode(entryId: string): Promise<GraphNode | null> {
         legacy_id: rel.verbs_verb_relations_source_idToverbs!.legacy_id,
         lemmas: rel.verbs_verb_relations_source_idToverbs!.lemmas,
         src_lemmas: rel.verbs_verb_relations_source_idToverbs!.src_lemmas,
-        gloss: rel.verbs_verb_relations_source_idToverbs!.gloss,
-        legal_constraints: [],
-        pos: 'v',
+      gloss: rel.verbs_verb_relations_source_idToverbs!.gloss,
+      pos: 'v',
         lexfile: rel.verbs_verb_relations_source_idToverbs!.lexfile,
         examples: rel.verbs_verb_relations_source_idToverbs!.examples,
         flagged: (rel.verbs_verb_relations_source_idToverbs as { flagged?: boolean | null }).flagged ?? undefined,
@@ -1279,7 +1276,6 @@ async function getVerbGraphNode(entryId: string): Promise<GraphNode | null> {
       lemmas: rel.verbs_verb_relations_target_idToverbs!.lemmas,
       src_lemmas: rel.verbs_verb_relations_target_idToverbs!.src_lemmas,
       gloss: rel.verbs_verb_relations_target_idToverbs!.gloss,
-      legal_constraints: [],
       pos: 'v',
       lexfile: rel.verbs_verb_relations_target_idToverbs!.lexfile,
       examples: rel.verbs_verb_relations_target_idToverbs!.examples,
@@ -1310,7 +1306,6 @@ async function getVerbGraphNode(entryId: string): Promise<GraphNode | null> {
       lemmas: rel.verbs_verb_relations_target_idToverbs!.lemmas,
       src_lemmas: rel.verbs_verb_relations_target_idToverbs!.src_lemmas,
       gloss: rel.verbs_verb_relations_target_idToverbs!.gloss,
-      legal_constraints: [],
       pos: 'v',
       lexfile: rel.verbs_verb_relations_target_idToverbs!.lexfile,
       examples: rel.verbs_verb_relations_target_idToverbs!.examples,
@@ -1341,7 +1336,6 @@ async function getVerbGraphNode(entryId: string): Promise<GraphNode | null> {
       lemmas: rel.verbs_verb_relations_target_idToverbs!.lemmas,
       src_lemmas: rel.verbs_verb_relations_target_idToverbs!.src_lemmas,
       gloss: rel.verbs_verb_relations_target_idToverbs!.gloss,
-      legal_constraints: [],
       pos: 'v',
       lexfile: rel.verbs_verb_relations_target_idToverbs!.lexfile,
       examples: rel.verbs_verb_relations_target_idToverbs!.examples,
@@ -1507,7 +1501,6 @@ function mapNounToGraphNode(noun: {
   src_lemmas: string[];
   gloss: string;
   legal_gloss?: string | null;
-  legal_constraints?: string[];
   lexfile: string;
   examples: string[];
   flagged?: boolean | null;
@@ -1528,7 +1521,6 @@ function mapNounToGraphNode(noun: {
     src_lemmas: string[];
     gloss: string;
     legal_gloss?: string | null;
-    legal_constraints?: string[];
     lexfile: string;
     examples: string[];
     flagged?: boolean | null;
@@ -1549,7 +1541,6 @@ function mapNounToGraphNode(noun: {
     src_lemmas: nounRecord.src_lemmas,
     gloss: nounRecord.gloss,
     legal_gloss: nounRecord.legal_gloss ?? null,
-    legal_constraints: nounRecord.legal_constraints ?? [],
     pos: 'n',
     lexfile: nounRecord.lexfile,
     examples: nounRecord.examples,
@@ -1578,7 +1569,6 @@ function mapAdjectiveToGraphNode(adjective: {
   src_lemmas: string[];
   gloss: string;
   legal_gloss?: string | null;
-  legal_constraints?: string[];
   lexfile: string;
   examples: string[];
   flagged?: boolean | null;
@@ -1600,7 +1590,6 @@ function mapAdjectiveToGraphNode(adjective: {
     src_lemmas: string[];
     gloss: string;
     legal_gloss?: string | null;
-    legal_constraints?: string[];
     lexfile: string;
     examples: string[];
     flagged?: boolean | null;
@@ -1622,7 +1611,6 @@ function mapAdjectiveToGraphNode(adjective: {
     src_lemmas: adjRecord.src_lemmas,
     gloss: adjRecord.gloss,
     legal_gloss: adjRecord.legal_gloss ?? null,
-    legal_constraints: adjRecord.legal_constraints ?? [],
     pos: 'a',
     lexfile: adjRecord.lexfile,
     examples: adjRecord.examples,
@@ -1897,7 +1885,6 @@ async function getAncestorPathInternal(entryId: string): Promise<GraphNode[]> {
     lemmas: result.lemmas,
     src_lemmas: result.src_lemmas,
     gloss: result.gloss,
-    legal_constraints: [],
     pos: 'v',
     lexfile: result.lexfile,
     examples: result.examples,
@@ -2847,7 +2834,6 @@ export async function getPaginatedNouns(params: PaginationParams = {}): Promise<
       frame_id: null,
       frame: null,
       vendler_class: null,
-      legal_constraints: noun.legal_constraints || [],
       roles: [],
       role_groups: [],
       parentsCount: noun._count.noun_relations_noun_relations_source_idTonouns,
@@ -3149,7 +3135,6 @@ export async function getPaginatedAdjectives(params: PaginationParams = {}): Pro
       frame_id: null,
       frame: null,
       vendler_class: null,
-      legal_constraints: adjective.legal_constraints || [],
       roles: [],
       role_groups: [],
       parentsCount: adjective._count.adjective_relations_adjective_relations_source_idToadjectives,
@@ -3451,7 +3436,6 @@ export async function getPaginatedAdverbs(params: PaginationParams = {}): Promis
       frame_id: null,
       frame: null,
       vendler_class: null,
-      legal_constraints: adverb.legal_constraints || [],
       roles: [],
       role_groups: [],
       parentsCount: adverb._count.adverb_relations_adverb_relations_source_idToadverbs,

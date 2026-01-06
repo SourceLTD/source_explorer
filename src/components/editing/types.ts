@@ -8,7 +8,6 @@ export type EditableField =
   | 'src_lemmas'
   | 'gloss'
   | 'examples'
-  | 'legal_constraints'
   | 'lexfile'
   | 'roles'
   | 'vendler_class'
@@ -65,7 +64,6 @@ export interface OverlaySectionsState {
   basicInfo: boolean;
   verbProperties: boolean;
   roles: boolean;
-  legalConstraints: boolean;
   relations: boolean;
   frameProperties: boolean;
   frameRoles: boolean;
