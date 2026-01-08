@@ -70,7 +70,7 @@ export default function FrameRecipeView({
       notes: r.notes,
       main: r.main,
       examples: r.examples,
-      nickname: r.nickname,
+      label: r.label,
       groups: [],
     })) || [];
     
@@ -93,11 +93,11 @@ export default function FrameRecipeView({
     <div className="w-full h-full flex gap-6 overflow-hidden">
       {/* Left Panel - Frame Details */}
       <div className="w-1/2 flex flex-col overflow-hidden">
-        <div className="bg-gradient-to-br from-purple-600 to-purple-800 rounded-xl shadow-lg p-6 overflow-auto">
+        <div className="bg-gradient-to-br from-purple-600 to-purple-800 rounded-xl p-6 overflow-auto">
           {/* Frame Header */}
           <div className="flex items-start justify-between mb-4">
             <div>
-              <h2 className="text-2xl font-bold text-white">{currentFrame.frame_name}</h2>
+              <h2 className="text-2xl font-bold text-white">{currentFrame.label}</h2>
               {currentFrame.short_definition && (
                 <p className="text-purple-200 mt-1">{currentFrame.short_definition}</p>
               )}
@@ -148,8 +148,8 @@ export default function FrameRecipeView({
                       <div key={role.id} className="p-3 bg-blue-500/30 rounded-lg border border-blue-400/30">
                         <div className="flex items-center gap-2">
                           <span className="font-semibold text-white">{role.role_type.label}</span>
-                          {role.nickname && (
-                            <span className="text-xs text-purple-300">({role.nickname})</span>
+                          {role.label && (
+                            <span className="text-xs text-purple-300">({role.label})</span>
                           )}
                         </div>
                         {role.description && (
@@ -171,8 +171,8 @@ export default function FrameRecipeView({
                       <div key={role.id} className="p-3 bg-white/10 rounded-lg">
                         <div className="flex items-center gap-2">
                           <span className="font-semibold text-white">{role.role_type.label}</span>
-                          {role.nickname && (
-                            <span className="text-xs text-purple-300">({role.nickname})</span>
+                          {role.label && (
+                            <span className="text-xs text-purple-300">({role.label})</span>
                           )}
                         </div>
                         {role.description && (
@@ -194,7 +194,7 @@ export default function FrameRecipeView({
 
       {/* Right Panel - Recipe View */}
       <div className="w-1/2 flex flex-col overflow-hidden">
-        <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6 overflow-auto flex-1">
+        <div className="bg-white rounded-xl border border-gray-200 p-6 overflow-auto flex-1">
           {/* Inheritance Section */}
           <div className="mb-6">
             <button
@@ -220,7 +220,7 @@ export default function FrameRecipeView({
                           onClick={() => onFrameClick(parent.id)}
                           className="p-3 bg-green-50 border border-green-200 rounded-lg cursor-pointer hover:bg-green-100 transition-colors"
                         >
-                          <div className="font-semibold text-green-800">{parent.frame_name}</div>
+                          <div className="font-semibold text-green-800">{parent.label}</div>
                           {parent.short_definition && (
                             <p className="text-sm text-green-700 mt-1">{parent.short_definition}</p>
                           )}
@@ -258,7 +258,7 @@ export default function FrameRecipeView({
                           onClick={() => onFrameClick(child.id)}
                           className="p-3 bg-amber-50 border border-amber-200 rounded-lg cursor-pointer hover:bg-amber-100 transition-colors"
                         >
-                          <div className="font-semibold text-amber-800">{child.frame_name}</div>
+                          <div className="font-semibold text-amber-800">{child.label}</div>
                           {child.short_definition && (
                             <p className="text-sm text-amber-700 mt-1">{child.short_definition}</p>
                           )}
@@ -363,7 +363,7 @@ export default function FrameRecipeView({
                             onClick={() => onFrameClick(frame.id)}
                             className="p-3 bg-indigo-50 border border-indigo-200 rounded-lg cursor-pointer hover:bg-indigo-100 transition-colors"
                           >
-                            <div className="font-semibold text-indigo-800">{frame.frame_name}</div>
+                            <div className="font-semibold text-indigo-800">{frame.label}</div>
                             {frame.short_definition && (
                               <p className="text-sm text-indigo-700 mt-1">{frame.short_definition}</p>
                             )}
@@ -383,7 +383,7 @@ export default function FrameRecipeView({
                             onClick={() => onFrameClick(frame.id)}
                             className="p-3 bg-teal-50 border border-teal-200 rounded-lg cursor-pointer hover:bg-teal-100 transition-colors"
                           >
-                            <div className="font-semibold text-teal-800">{frame.frame_name}</div>
+                            <div className="font-semibold text-teal-800">{frame.label}</div>
                             {frame.short_definition && (
                               <p className="text-sm text-teal-700 mt-1">{frame.short_definition}</p>
                             )}
@@ -424,7 +424,7 @@ export default function FrameRecipeView({
                           {RELATION_LABELS[rel.type] || rel.type}
                         </span>
                       </div>
-                      <div className="font-semibold text-gray-800">{rel.frame.frame_name}</div>
+                      <div className="font-semibold text-gray-800">{rel.frame.label}</div>
                       {rel.frame.short_definition && (
                         <p className="text-sm text-gray-600 mt-1">{rel.frame.short_definition}</p>
                       )}

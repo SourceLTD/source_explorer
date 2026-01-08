@@ -16,7 +16,7 @@ import { POS_LABELS } from '@/lib/types';
 
 interface Frame {
   id: string;
-  frame_name: string;
+  label: string;
 }
 
 export interface FilterState {
@@ -53,7 +53,7 @@ export interface FilterState {
   updatedBefore?: string;
   
   // Frame-specific text filters
-  frame_name?: string;
+  label?: string;
   definition?: string;
   short_definition?: string;
   prototypical_synset?: string;
@@ -275,7 +275,7 @@ export default function FilterPanel({
     if (frames.length > 0) {
       nonNumericIds.forEach(code => {
         const match = frames.find(frame =>
-          frame.frame_name.toLowerCase() === code.toLowerCase()
+          frame.label.toLowerCase() === code.toLowerCase()
         );
         if (match) {
           resolvedIds.add(match.id);
@@ -291,7 +291,7 @@ export default function FilterPanel({
   const filteredFrames = frameSearchQuery
     ? frames.filter(frame => {
         const query = frameSearchQuery.toLowerCase();
-        return frame.frame_name.toLowerCase().includes(query);
+        return frame.label.toLowerCase().includes(query);
       })
     : frames;
 
@@ -311,7 +311,7 @@ export default function FilterPanel({
     const resolved = rawValues.map(value => {
       if (/^\d+$/.test(value)) return value;
       const match = frames.find(frame =>
-        frame.frame_name.toLowerCase() === value.toLowerCase()
+        frame.label.toLowerCase() === value.toLowerCase()
       );
       return match ? match.id : value;
     });
@@ -390,7 +390,7 @@ export default function FilterPanel({
       <button
         ref={buttonRef}
         onClick={onToggle}
-        className={`inline-flex items-center gap-2 px-3 py-2 text-sm font-medium border border-gray-300 rounded-xl shadow-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors cursor-pointer ${
+        className={`inline-flex items-center gap-2 px-3 py-2 text-sm font-medium border border-gray-300 rounded-xl hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors cursor-pointer ${
           hasActiveFilters ? 'bg-blue-50 border-blue-300 text-blue-700' : 'bg-white text-gray-700'
         }`}
       >
@@ -407,7 +407,7 @@ export default function FilterPanel({
       {isOpen && (
         <div 
           ref={panelRef}
-          className={`absolute top-full left-0 mt-2 w-[32rem] bg-white border border-gray-200 rounded-xl shadow-lg z-50 ${className || ''}`}
+          className={`absolute top-full left-0 mt-2 w-[32rem] bg-white border border-gray-200 rounded-xl z-50 ${className || ''}`}
         >
           {/* Header */}
           <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
@@ -448,8 +448,8 @@ export default function FilterPanel({
                     <label className="block text-sm font-medium text-gray-700 mb-1">Frame Name</label>
                     <input
                       type="text"
-                      value={filters.frame_name || ''}
-                      onChange={(e) => updateFilter('frame_name', e.target.value)}
+                      value={filters.label || ''}
+                      onChange={(e) => updateFilter('label', e.target.value)}
                       placeholder="Search in frame names..."
                       className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
                     />
@@ -554,7 +554,7 @@ export default function FilterPanel({
             {/* AI Jobs Filters */}
             <FilterSection
               title="AI Jobs"
-              icon={<SparklesIcon className="w-4 h-4 text-gray-600" />}
+              icon={<SparklesIcon className="w-4 h-4 shrink-0 text-gray-600" />}
               isOpen={openSections.has('ai-jobs')}
               onToggle={() => toggleSection('ai-jobs')}
             >
@@ -711,7 +711,7 @@ export default function FilterPanel({
                                   className="mt-0.5 mr-3 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                                 />
                                 <div className="flex-1 min-w-0">
-                                  <div className="text-sm font-medium text-gray-900 truncate">{frame.frame_name}</div>
+                                  <div className="text-sm font-medium text-gray-900 truncate">{frame.label}</div>
                                   <div className="text-xs text-gray-500 font-mono truncate">
                                     {frame.id}
                                   </div>

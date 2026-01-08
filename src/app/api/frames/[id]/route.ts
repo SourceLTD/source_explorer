@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { updateModerationStatus } from '@/lib/db';
 import { stageUpdate, stageDelete } from '@/lib/version-control';
+import { getCurrentUserName } from '@/utils/supabase/server';
 
 export async function GET(
   request: NextRequest,
@@ -50,6 +52,7 @@ export async function GET(
         notes: role.notes,
         main: role.main,
         examples: role.examples,
+        label: role.label,
         role_type: {
           id: role.role_types.id.toString(),
           code: role.role_types.code,
@@ -86,26 +89,40 @@ export async function PATCH(
     const updateData: Record<string, unknown> = {};
     
     // Handle frame fields
-    if (body.frame_name !== undefined) updateData.frame_name = body.frame_name;
+    if (body.label !== undefined) updateData.label = body.label;
     if (body.definition !== undefined) updateData.definition = body.definition;
     if (body.short_definition !== undefined) updateData.short_definition = body.short_definition;
     if (body.prototypical_synset !== undefined) updateData.prototypical_synset = body.prototypical_synset;
     
     // Handle moderation fields
-    if (body.flagged !== undefined) updateData.flagged = body.flagged;
-    if (body.flaggedReason !== undefined) updateData.flagged_reason = body.flaggedReason;
+    const moderationUpdates: Record<string, any> = {};
+    if (body.flagged !== undefined) moderationUpdates.flagged = body.flagged;
+    if (body.flaggedReason !== undefined) moderationUpdates.flaggedReason = body.flaggedReason;
+    
     if (body.forbidden !== undefined) updateData.forbidden = body.forbidden;
     if (body.forbiddenReason !== undefined) updateData.forbidden_reason = body.forbiddenReason;
 
-    if (Object.keys(updateData).length === 0) {
+    if (Object.keys(updateData).length === 0 && Object.keys(moderationUpdates).length === 0) {
       return NextResponse.json(
         { error: 'No valid fields to update' },
         { status: 400 }
       );
     }
 
-    // TODO: Get actual user ID from auth context
-    const userId = 'current-user';
+    // Apply direct updates (flagged status) immediately
+    if (Object.keys(moderationUpdates).length > 0) {
+      await updateModerationStatus([idParam], moderationUpdates, 'frames');
+      
+      // If only flagged fields were updated, return early
+      if (Object.keys(updateData).length === 0) {
+        return NextResponse.json({ 
+          success: true, 
+          message: 'Flagging status updated successfully' 
+        });
+      }
+    }
+
+    const userId = await getCurrentUserName();
 
     const response = await stageUpdate('frame', idParam, updateData, userId);
 
@@ -131,8 +148,7 @@ export async function DELETE(
   try {
     const { id: idParam } = await params;
     
-    // TODO: Get actual user ID from auth context
-    const userId = 'current-user';
+    const userId = await getCurrentUserName();
 
     const response = await stageDelete('frame', idParam, userId);
 

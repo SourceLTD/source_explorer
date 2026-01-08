@@ -18,7 +18,7 @@ model frame_roles {
   notes              String?
   main               Boolean?
   examples           String[]             @default([])
-  nickname           String?
+  label              String?
   version            Int                  @default(1)
   frames             frames               @relation(fields: [frame_id], references: [id], onDelete: Cascade)
   role_types         role_types           @relation(fields: [role_type_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -29,7 +29,7 @@ model frame_roles {
 }
 
 model frames {
-  frame_name                                        String
+  label                                             String
   definition                                        String
   prototypical_synset                               String
   short_definition                                  String
@@ -42,16 +42,23 @@ model frames {
   forbidden_reason                                  String?
   version                                           Int                    @default(1)
   embedding                                         Unsupported("vector")?
+  deleted                                           Boolean                @default(false)
+  deleted_at                                        DateTime?              @db.Timestamp(6)
+  deleted_reason                                    String?
+  adjectives                                        adjectives[]
+  adverbs                                           adverbs[]
   frame_relations_frame_relations_source_idToframes frame_relations[]      @relation("frame_relations_source_idToframes")
   frame_relations_frame_relations_target_idToframes frame_relations[]      @relation("frame_relations_target_idToframes")
   frame_roles                                       frame_roles[]
   llm_job_items                                     llm_job_items[]
+  nouns                                             nouns[]
   verbs                                             verbs[]
 
-  @@index([frame_name], map: "idx_frames_frame_name")
+  @@index([label], map: "idx_frames_frame_name")
   @@index([flagged], map: "idx_frames_flagged")
   @@index([forbidden], map: "idx_frames_forbidden")
   @@index([embedding], map: "idx_frames_embedding")
+  @@index([deleted], map: "idx_frames_deleted")
 }
 
 model instantiation_types {
@@ -289,8 +296,13 @@ model adjectives {
   updated_at                                                    DateTime                 @default(now()) @db.Timestamp(6)
   version                                                       Int                      @default(1)
   embedding                                                     Unsupported("vector")?
+  deleted                                                       Boolean                  @default(false)
+  deleted_at                                                    DateTime?                @db.Timestamp(6)
+  deleted_reason                                                String?
+  frame_id                                                      BigInt?
   adjective_relations_adjective_relations_source_idToadjectives adjective_relations[]    @relation("adjective_relations_source_idToadjectives")
   adjective_relations_adjective_relations_target_idToadjectives adjective_relations[]    @relation("adjective_relations_target_idToadjectives")
+  frames                                                        frames?                  @relation(fields: [frame_id], references: [id], onUpdate: NoAction, map: "adjectives_frame_id_fkey")
   llm_job_items                                                 llm_job_items[]
 
   @@index([attributive], map: "idx_adjectives_attributive")
@@ -307,6 +319,8 @@ model adjectives {
   @@index([relational], map: "idx_adjectives_relational")
   @@index([subjective], map: "idx_adjectives_subjective")
   @@index([embedding], map: "idx_adjectives_embedding")
+  @@index([deleted], map: "idx_adjectives_deleted")
+  @@index([frame_id], map: "idx_adjectives_frame_id")
 }
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
@@ -360,9 +374,14 @@ model nouns {
   updated_at                                     DateTime                 @default(now()) @db.Timestamp(6)
   version                                        Int                      @default(1)
   embedding                                      Unsupported("vector")?
+  deleted                                        Boolean                  @default(false)
+  deleted_at                                     DateTime?                @db.Timestamp(6)
+  deleted_reason                                 String?
+  frame_id                                       BigInt?
   llm_job_items                                  llm_job_items[]
   noun_relations_noun_relations_source_idTonouns noun_relations[]         @relation("noun_relations_source_idTonouns")
   noun_relations_noun_relations_target_idTonouns noun_relations[]         @relation("noun_relations_target_idTonouns")
+  frames                                         frames?                  @relation(fields: [frame_id], references: [id], onUpdate: NoAction, map: "nouns_frame_id_fkey")
   recipe_variables                               recipe_variables[]
 
   @@index([collective], map: "idx_nouns_collective")
@@ -377,6 +396,8 @@ model nouns {
   @@index([lexfile], map: "idx_nouns_lexfile")
   @@index([proper], map: "idx_nouns_proper")
   @@index([embedding], map: "idx_nouns_embedding")
+  @@index([deleted], map: "idx_nouns_deleted")
+  @@index([frame_id], map: "idx_nouns_frame_id")
 }
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
@@ -523,6 +544,7 @@ model llm_job_items {
   updated_at       DateTime            @default(now()) @db.Timestamptz(6)
   adverb_id        BigInt?
   frame_id         BigInt?
+  has_edits        Boolean?            @default(false)
   adverbs          adverbs?            @relation(fields: [adverb_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_llm_job_items_adverb")
   adjectives       adjectives?         @relation(fields: [adjective_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   frames           frames?             @relation(fields: [frame_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -562,6 +584,7 @@ model llm_jobs {
   deleted         Boolean         @default(false)
   submitted_items Int             @default(0)
   unseen_change   Boolean         @default(false)
+  job_type        llm_job_type?   @default(moderation)
   changegroups    changegroups[]
   llm_job_items   llm_job_items[]
 }
@@ -632,8 +655,13 @@ model adverbs {
   updated_at                                           DateTime                 @default(now()) @db.Timestamp(6)
   version                                              Int                      @default(1)
   embedding                                            Unsupported("vector")?
+  deleted                                              Boolean                  @default(false)
+  deleted_at                                           DateTime?                @db.Timestamp(6)
+  deleted_reason                                       String?
+  frame_id                                             BigInt?
   adverb_relations_adverb_relations_source_idToadverbs adverb_relations[]       @relation("adverb_relations_source_idToadverbs")
   adverb_relations_adverb_relations_target_idToadverbs adverb_relations[]       @relation("adverb_relations_target_idToadverbs")
+  frames                                               frames?                  @relation(fields: [frame_id], references: [id], onUpdate: NoAction)
   llm_job_items                                        llm_job_items[]
 
   @@index([examples_tsv], map: "idx_adverbs_examples_tsv", type: Gin)
@@ -645,6 +673,8 @@ model adverbs {
   @@index([lemmas], map: "idx_adverbs_lemmas_gin", type: Gin)
   @@index([lexfile], map: "idx_adverbs_lexfile")
   @@index([embedding], map: "idx_adverbs_embedding")
+  @@index([deleted], map: "idx_adverbs_deleted")
+  @@index([frame_id], map: "idx_adverbs_frame_id")
 }
 
 model audit_log {
@@ -692,7 +722,7 @@ model changegroups {
 }
 
 model changesets {
-  id              BigInt           @id @default(autoincrement())
+  id              BigInt            @id @default(autoincrement())
   changegroup_id  BigInt?
   entity_type     entity_type
   entity_id       BigInt?
@@ -700,14 +730,15 @@ model changesets {
   entity_version  Int?
   before_snapshot Json?
   after_snapshot  Json?
-  status          changeset_status @default(pending)
+  status          changeset_status  @default(pending)
   created_by      String
-  created_at      DateTime         @default(now()) @db.Timestamptz(6)
+  created_at      DateTime          @default(now()) @db.Timestamptz(6)
   reviewed_by     String?
-  reviewed_at     DateTime?        @db.Timestamptz(6)
-  committed_at    DateTime?        @db.Timestamptz(6)
+  reviewed_at     DateTime?         @db.Timestamptz(6)
+  committed_at    DateTime?         @db.Timestamptz(6)
   audit_log       audit_log[]
-  changegroups    changegroups?    @relation(fields: [changegroup_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  change_comments change_comments[]
+  changegroups    changegroups?     @relation(fields: [changegroup_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   field_changes   field_changes[]
 
   @@index([changegroup_id], map: "idx_changesets_changegroup")
@@ -718,21 +749,36 @@ model changesets {
 }
 
 model field_changes {
-  id           BigInt              @id @default(autoincrement())
-  changeset_id BigInt
-  field_name   String
-  old_value    Json?
-  new_value    Json?
-  status       field_change_status @default(pending)
-  approved_by  String?
-  approved_at  DateTime?           @db.Timestamptz(6)
-  rejected_by  String?
-  rejected_at  DateTime?           @db.Timestamptz(6)
-  changesets   changesets          @relation(fields: [changeset_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id              BigInt              @id @default(autoincrement())
+  changeset_id    BigInt
+  field_name      String
+  old_value       Json?
+  new_value       Json?
+  status          field_change_status @default(pending)
+  approved_by     String?
+  approved_at     DateTime?           @db.Timestamptz(6)
+  rejected_by     String?
+  rejected_at     DateTime?           @db.Timestamptz(6)
+  change_comments change_comments[]
+  changesets      changesets          @relation(fields: [changeset_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([changeset_id, field_name])
   @@index([changeset_id], map: "idx_field_changes_changeset")
   @@index([status], map: "idx_field_changes_status")
+}
+
+model change_comments {
+  id              BigInt         @id @default(autoincrement())
+  changeset_id    BigInt?
+  field_change_id BigInt?
+  author          String
+  content         String
+  created_at      DateTime       @default(now()) @db.Timestamptz(6)
+  changesets      changesets?    @relation(fields: [changeset_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  field_changes   field_changes? @relation(fields: [field_change_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([changeset_id], map: "idx_change_comments_changeset")
+  @@index([field_change_id], map: "idx_change_comments_field_change")
 }
 
 enum RelationType {
@@ -909,4 +955,9 @@ enum field_change_status {
   pending
   approved
   rejected
+}
+
+enum llm_job_type {
+  moderation
+  editing
 }

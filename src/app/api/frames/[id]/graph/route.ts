@@ -41,7 +41,7 @@ export async function GET(
             frames_frame_relations_target_idToframes: {
               select: {
                 id: true,
-                frame_name: true,
+                label: true,
                 short_definition: true,
               },
             },
@@ -52,7 +52,7 @@ export async function GET(
             frames_frame_relations_source_idToframes: {
               select: {
                 id: true,
-                frame_name: true,
+                label: true,
                 short_definition: true,
               },
             },
@@ -73,7 +73,7 @@ export async function GET(
       id: frame.id.toString(),
       numericId: frame.id.toString(),
       pos: 'frames' as const,
-      frame_name: frame.frame_name,
+      label: frame.label,
       gloss: frame.definition,
       short_definition: frame.short_definition,
       prototypical_synset: frame.prototypical_synset,
@@ -87,7 +87,7 @@ export async function GET(
         notes: role.notes,
         main: role.main,
         examples: role.examples,
-        nickname: role.nickname,
+        label: role.label,
       })),
       verbs: frame.verbs.map(verb => ({
         id: verb.id.toString(),
@@ -104,7 +104,7 @@ export async function GET(
           direction: 'outgoing' as const,
           target: {
             id: rel.frames_frame_relations_target_idToframes.id.toString(),
-            frame_name: rel.frames_frame_relations_target_idToframes.frame_name,
+            label: rel.frames_frame_relations_target_idToframes.label,
             short_definition: rel.frames_frame_relations_target_idToframes.short_definition,
           },
         })),
@@ -113,7 +113,7 @@ export async function GET(
           direction: 'incoming' as const,
           source: {
             id: rel.frames_frame_relations_source_idToframes.id.toString(),
-            frame_name: rel.frames_frame_relations_source_idToframes.frame_name,
+            label: rel.frames_frame_relations_source_idToframes.label,
             short_definition: rel.frames_frame_relations_source_idToframes.short_definition,
           },
         })),

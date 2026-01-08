@@ -18,7 +18,7 @@ export function DeleteConfirmDialog({ node, isOpen, isDeleting, onConfirm, onCan
         className="absolute inset-0 bg-black bg-opacity-50"
         onClick={onCancel}
       ></div>
-      <div className="bg-white rounded-xl shadow-lg p-6 max-w-md mx-4 relative z-30">
+      <div className="bg-white rounded-xl p-6 max-w-md mx-4 relative z-30">
         <h3 className="text-lg font-semibold text-gray-900 mb-2">Delete Entry</h3>
         <p className="text-sm text-gray-600 mb-4">
           Are you sure you want to delete <strong>{node.id}</strong>?

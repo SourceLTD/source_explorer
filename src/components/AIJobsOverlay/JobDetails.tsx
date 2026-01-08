@@ -175,12 +175,17 @@ export const JobDetails = memo(function JobDetails({
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-7">
         <Metric label="Status" value={<StatusPill status={job.status} />} />
         <Metric label="Items" value={`${job.processed_items}/${job.total_items}`} helper="Processed" />
         <Metric label="Succeeded" value={job.succeeded_items.toString()} helper="Items completed" />
         <Metric label="Failed" value={job.failed_items.toString()} helper="Items errored" />
         <Metric label="Flagged" value={job.flagged_items.toString()} helper="AI suggested flagged" />
+        <Metric 
+          label="Edits" 
+          value={job.items.filter(i => i.has_edits).length.toString()} 
+          helper="AI suggested edits" 
+        />
         <Metric
           label="Runtime"
           value={formatRuntime(job.started_at, job.completed_at ?? undefined)}

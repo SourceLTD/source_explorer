@@ -77,6 +77,7 @@ export interface Changeset {
   reviewed_by: string | null;
   reviewed_at: Date | null;
   committed_at: Date | null;
+  comment: string | null;
 }
 
 /**
@@ -113,6 +114,9 @@ export interface AuditLogEntry {
   changed_at: Date;
   changeset_id: bigint | null;
   changegroup_id: bigint | null;
+  source: ChangegroupSource;
+  proposed_by: string | null;
+  comment: string | null;
 }
 
 // ============================================
@@ -136,6 +140,7 @@ export interface CreateChangesetInput {
   before_snapshot?: Record<string, unknown>;
   after_snapshot?: Record<string, unknown>;  // For CREATE operations
   created_by: string;
+  comment?: string;
 }
 
 export interface CreateFieldChangeInput {

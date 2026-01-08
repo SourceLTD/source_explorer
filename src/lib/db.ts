@@ -53,7 +53,7 @@ type PrismaEntryWithCounts = {
   forbidden: boolean | null;
   forbiddenReason: string | null;
   frame_id: bigint | null;
-  frames: { id: bigint; frame_name: string } | null;
+  frames: { id: bigint; label: string } | null;
   vendler_class: 'state' | 'activity' | 'accomplishment' | 'achievement' | null;
   roles?: Array<{
     id: string;
@@ -74,7 +74,241 @@ type PrismaEntryWithCounts = {
   };
 };
 
-export async function getEntryById(id: string): Promise<VerbWithRelations | null> {
+async function getNounById(id: string): Promise<NounWithRelations | null> {
+  const entry = await withRetry(
+    () => prisma.nouns.findFirst({
+      where: { 
+        code: id,
+        deleted: { not: true }
+      } as Prisma.nounsWhereInput,
+      include: {
+        noun_relations_noun_relations_source_idTonouns: {
+          include: {
+            nouns_noun_relations_target_idTonouns: true
+          },
+        },
+        noun_relations_noun_relations_target_idTonouns: {
+          include: {
+            nouns_noun_relations_source_idTonouns: true
+          },
+        },
+      },
+    }),
+    undefined,
+    `getNounById(${id})`
+  ) as any | null;
+
+  if (!entry) return null;
+
+  const { noun_relations_noun_relations_source_idTonouns, noun_relations_noun_relations_target_idTonouns, ...rest } = entry;
+  
+  return {
+    ...rest,
+    id: entry.code || entry.id.toString(),
+    pos: 'n',
+    lexfile: entry.lexfile,
+    isMwe: entry.is_mwe,
+    frame_id: entry.frame_id?.toString() ?? null,
+    flagged: entry.flagged ?? undefined,
+    flaggedReason: (entry as any).flagged_reason || undefined,
+    forbidden: entry.forbidden ?? undefined,
+    forbiddenReason: (entry as any).forbidden_reason || undefined,
+    createdAt: entry.created_at,
+    updatedAt: entry.updated_at,
+    sourceRelations: noun_relations_noun_relations_source_idTonouns
+      .filter((rel: any) => rel.nouns_noun_relations_target_idTonouns && !rel.nouns_noun_relations_target_idTonouns.deleted)
+      .map((rel: any) => ({
+        sourceId: rel.source_id.toString(),
+        targetId: rel.target_id.toString(),
+        type: rel.type as NounRelationType,
+        target: rel.nouns_noun_relations_target_idTonouns ? {
+          ...rel.nouns_noun_relations_target_idTonouns,
+          id: rel.nouns_noun_relations_target_idTonouns.code || rel.nouns_noun_relations_target_idTonouns.id.toString(),
+          pos: 'n',
+          frame_id: rel.nouns_noun_relations_target_idTonouns.frame_id?.toString() ?? null,
+          isMwe: rel.nouns_noun_relations_target_idTonouns.is_mwe
+        } as unknown as Noun : undefined,
+      })),
+    targetRelations: noun_relations_noun_relations_target_idTonouns
+      .filter((rel: any) => rel.nouns_noun_relations_source_idTonouns && !rel.nouns_noun_relations_source_idTonouns.deleted)
+      .map((rel: any) => ({
+        sourceId: rel.source_id.toString(),
+        targetId: rel.target_id.toString(),
+        type: rel.type as NounRelationType,
+        source: rel.nouns_noun_relations_source_idTonouns ? {
+          ...rel.nouns_noun_relations_source_idTonouns,
+          id: rel.nouns_noun_relations_source_idTonouns.code || rel.nouns_noun_relations_source_idTonouns.id.toString(),
+          pos: 'n',
+          frame_id: rel.nouns_noun_relations_source_idTonouns.frame_id?.toString() ?? null,
+          isMwe: rel.nouns_noun_relations_source_idTonouns.is_mwe
+        } as unknown as Noun : undefined,
+      })),
+  };
+}
+
+async function getAdjectiveById(id: string): Promise<AdjectiveWithRelations | null> {
+  const entry = await withRetry(
+    () => prisma.adjectives.findFirst({
+      where: { 
+        code: id,
+        deleted: { not: true }
+      } as Prisma.adjectivesWhereInput,
+      include: {
+        adjective_relations_adjective_relations_source_idToadjectives: {
+          include: {
+            adjectives_adjective_relations_target_idToadjectives: true
+          },
+        },
+        adjective_relations_adjective_relations_target_idToadjectives: {
+          include: {
+            adjectives_adjective_relations_source_idToadjectives: true
+          },
+        },
+      },
+    }),
+    undefined,
+    `getAdjectiveById(${id})`
+  ) as any | null;
+
+  if (!entry) return null;
+
+  const { adjective_relations_adjective_relations_source_idToadjectives, adjective_relations_adjective_relations_target_idToadjectives, ...rest } = entry;
+  
+  return {
+    ...rest,
+    id: entry.code || entry.id.toString(),
+    pos: 'a',
+    lexfile: entry.lexfile,
+    isMwe: entry.is_mwe,
+    isSatellite: entry.is_satellite,
+    frame_id: entry.frame_id?.toString() ?? null,
+    flagged: entry.flagged ?? undefined,
+    flaggedReason: (entry as any).flagged_reason || undefined,
+    forbidden: entry.forbidden ?? undefined,
+    forbiddenReason: (entry as any).forbidden_reason || undefined,
+    createdAt: entry.created_at,
+    updatedAt: entry.updated_at,
+    sourceRelations: adjective_relations_adjective_relations_source_idToadjectives
+      .filter((rel: any) => rel.adjectives_adjective_relations_target_idToadjectives && !rel.adjectives_adjective_relations_target_idToadjectives.deleted)
+      .map((rel: any) => ({
+        sourceId: rel.source_id.toString(),
+        targetId: rel.target_id.toString(),
+        type: rel.type as AdjectiveRelationType,
+        target: rel.adjectives_adjective_relations_target_idToadjectives ? {
+          ...rel.adjectives_adjective_relations_target_idToadjectives,
+          id: rel.adjectives_adjective_relations_target_idToadjectives.code || rel.adjectives_adjective_relations_target_idToadjectives.id.toString(),
+          pos: 'a',
+          frame_id: rel.adjectives_adjective_relations_target_idToadjectives.frame_id?.toString() ?? null,
+          isMwe: rel.adjectives_adjective_relations_target_idToadjectives.is_mwe
+        } as unknown as Adjective : undefined,
+      })),
+    targetRelations: adjective_relations_adjective_relations_target_idToadjectives
+      .filter((rel: any) => rel.adjectives_adjective_relations_source_idToadjectives && !rel.adjectives_adjective_relations_source_idToadjectives.deleted)
+      .map((rel: any) => ({
+        sourceId: rel.source_id.toString(),
+        targetId: rel.target_id.toString(),
+        type: rel.type as AdjectiveRelationType,
+        source: rel.adjectives_adjective_relations_source_idToadjectives ? {
+          ...rel.adjectives_adjective_relations_source_idToadjectives,
+          id: rel.adjectives_adjective_relations_source_idToadjectives.code || rel.adjectives_adjective_relations_source_idToadjectives.id.toString(),
+          pos: 'a',
+          frame_id: rel.adjectives_adjective_relations_source_idToadjectives.frame_id?.toString() ?? null,
+          isMwe: rel.adjectives_adjective_relations_source_idToadjectives.is_mwe
+        } as unknown as Adjective : undefined,
+      })),
+  };
+}
+
+async function getAdverbById(id: string): Promise<AdverbWithRelations | null> {
+  const entry = await withRetry(
+    () => prisma.adverbs.findFirst({
+      where: { 
+        code: id,
+        deleted: { not: true }
+      } as Prisma.adverbsWhereInput,
+      include: {
+        adverb_relations_adverb_relations_source_idToadverbs: {
+          include: {
+            adverbs_adverb_relations_target_idToadverbs: true
+          },
+        },
+        adverb_relations_adverb_relations_target_idToadverbs: {
+          include: {
+            adverbs_adverb_relations_source_idToadverbs: true
+          },
+        },
+        frames: {
+          select: { id: true, label: true }
+        },
+      },
+    }),
+    undefined,
+    `getAdverbById(${id})`
+  ) as any | null;
+
+  if (!entry) return null;
+
+  const { adverb_relations_adverb_relations_source_idToadverbs, adverb_relations_adverb_relations_target_idToadverbs, ...rest } = entry;
+  
+  return {
+    ...rest,
+    id: entry.code || entry.id.toString(),
+    pos: 'r',
+    lexfile: entry.lexfile,
+    isMwe: entry.is_mwe,
+    frame_id: entry.frame_id?.toString() ?? null,
+    frame: entry.frames ? {
+      id: entry.frames.id.toString(),
+      label: entry.frames.label,
+    } : null,
+    flagged: entry.flagged ?? undefined,
+    flaggedReason: (entry as any).flagged_reason || undefined,
+    forbidden: entry.forbidden ?? undefined,
+    forbiddenReason: (entry as any).forbidden_reason || undefined,
+    createdAt: entry.created_at,
+    updatedAt: entry.updated_at,
+    sourceRelations: adverb_relations_adverb_relations_source_idToadverbs
+      .filter((rel: any) => rel.adverbs_adverb_relations_target_idToadverbs && !rel.adverbs_adverb_relations_target_idToadverbs.deleted)
+      .map((rel: any) => ({
+        sourceId: rel.source_id.toString(),
+        targetId: rel.target_id.toString(),
+        type: rel.type,
+        target: rel.adverbs_adverb_relations_target_idToadverbs ? {
+          ...rel.adverbs_adverb_relations_target_idToadverbs,
+          id: rel.adverbs_adverb_relations_target_idToadverbs.code || rel.adverbs_adverb_relations_target_idToadverbs.id.toString(),
+          pos: 'r',
+          frame_id: rel.adverbs_adverb_relations_target_idToadverbs.frame_id?.toString() ?? null,
+        } as unknown as Adverb : undefined,
+      })),
+    targetRelations: adverb_relations_adverb_relations_target_idToadverbs
+      .filter((rel: any) => rel.adverbs_adverb_relations_source_idToadverbs && !rel.adverbs_adverb_relations_source_idToadverbs.deleted)
+      .map((rel: any) => ({
+        sourceId: rel.source_id.toString(),
+        targetId: rel.target_id.toString(),
+        type: rel.type,
+        source: rel.adverbs_adverb_relations_source_idToadverbs ? {
+          ...rel.adverbs_adverb_relations_source_idToadverbs,
+          id: rel.adverbs_adverb_relations_source_idToadverbs.code || rel.adverbs_adverb_relations_source_idToadverbs.id.toString(),
+          pos: 'r',
+          frame_id: rel.adverbs_adverb_relations_source_idToadverbs.frame_id?.toString() ?? null,
+        } as unknown as Adverb : undefined,
+      })),
+  };
+}
+
+export async function getEntryById(id: string): Promise<any | null> {
+  const pos = detectPosFromEntryId(id);
+  
+  if (pos === 'n') {
+    return getNounById(id);
+  }
+  if (pos === 'a' || pos === 's') {
+    return getAdjectiveById(id);
+  }
+  if (pos === 'r') {
+    return getAdverbById(id);
+  }
+
   const entry = await withRetry(
     () => prisma.verbs.findFirst({
       where: { 
@@ -161,8 +395,8 @@ export async function searchEntries(query: string, limit = 20, table: 'verbs' | 
   const posMap = { verbs: 'v', nouns: 'n', adjectives: 'a', adverbs: 'r' };
   const pos = posMap[table];
   
-  // Only verbs table has deleted column
-  const hasDeletedColumn = table === 'verbs';
+  // All tables now have deleted column
+  const hasDeletedColumn = true;
   
   // If query contains a dot, only search IDs
   const containsDot = query.includes('.');
@@ -174,6 +408,7 @@ export async function searchEntries(query: string, limit = 20, table: 'verbs' | 
       () => prisma.$queryRaw<SearchResult[]>`
       SELECT 
         code as id,
+        code as label,
         legacy_id,
         lemmas,
         src_lemmas,
@@ -1062,7 +1297,7 @@ async function getVerbGraphNode(entryId: string): Promise<GraphNode | null> {
         frames: {
           select: {
             id: true,
-            frame_name: true,
+            label: true,
             definition: true,
             short_definition: true,
             prototypical_synset: true,
@@ -1394,11 +1629,11 @@ async function getVerbGraphNode(entryId: string): Promise<GraphNode | null> {
     console.log(`DEBUG say.v.04 role_groups:`, JSON.stringify(role_groups, null, 2));
     console.log(`DEBUG say.v.04 roles:`, roles.map(r => ({ id: r.id, label: r.role_type.label })));
   }
-  const frameData = (entry as { frames?: { id: bigint; frame_name: string; definition: string; short_definition: string } | null }).frames;
+  const frameData = (entry as { frames?: { id: bigint; label: string; definition: string; short_definition: string } | null }).frames;
   
   // Debug logging for frame mismatch
   if (entryCode === 'say.v.04') {
-    console.log(`DEBUG getGraphNode say.v.04: frame_id=${entryTyped.frame_id?.toString()}, frame_name=${frameData?.frame_name}`);
+    console.log(`DEBUG getGraphNode say.v.04: frame_id=${entryTyped.frame_id?.toString()}, label=${frameData?.label}`);
   }
   
   return {
@@ -1421,7 +1656,7 @@ async function getVerbGraphNode(entryId: string): Promise<GraphNode | null> {
     frame: frameData 
       ? {
           id: frameData.id.toString(),
-          frame_name: frameData.frame_name,
+          label: frameData.label,
           definition: frameData.definition,
           short_definition: frameData.short_definition,
           prototypical_synset: (frameData as any).prototypical_synset,
@@ -1475,10 +1710,10 @@ type PrismaAdjectiveWithRelations = Prisma.adjectivesGetPayload<{
   };
 }>;
 
-function detectPosFromEntryId(entryId: string): 'v' | 'n' | 'a' | 's' | null {
+function detectPosFromEntryId(entryId: string): 'v' | 'n' | 'a' | 's' | 'r' | null {
   const match = entryId.match(/\.([a-z])\./i);
   if (!match) return null;
-  return match[1].toLowerCase() as 'v' | 'n' | 'a' | 's';
+  return match[1].toLowerCase() as 'v' | 'n' | 'a' | 's' | 'r';
 }
 
 function dedupeNodes(nodes: GraphNode[]): GraphNode[] {
@@ -1530,6 +1765,8 @@ function mapNounToGraphNode(noun: {
     collective?: boolean | null;
     concrete?: boolean | null;
     predicate?: boolean | null;
+    frame_id?: bigint | null;
+    frames?: { id: bigint; label: string } | null;
   };
 
   return {
@@ -1552,6 +1789,11 @@ function mapNounToGraphNode(noun: {
     collective: nounRecord.collective ?? undefined,
     concrete: nounRecord.concrete ?? undefined,
     predicate: nounRecord.predicate ?? undefined,
+    frame_id: nounRecord.frame_id?.toString() ?? null,
+    frame: nounRecord.frames ? {
+      id: nounRecord.frames.id.toString(),
+      label: nounRecord.frames.label,
+    } as any : null,
     parents: [],
     children: [],
     entails: [],
@@ -1601,6 +1843,8 @@ function mapAdjectiveToGraphNode(adjective: {
     attributive?: boolean | null;
     subjective?: boolean | null;
     relational?: boolean | null;
+    frame_id?: bigint | null;
+    frames?: { id: bigint; label: string } | null;
   };
 
   return {
@@ -1624,6 +1868,11 @@ function mapAdjectiveToGraphNode(adjective: {
     attributive: adjRecord.attributive ?? undefined,
     subjective: adjRecord.subjective ?? undefined,
     relational: adjRecord.relational ?? undefined,
+    frame_id: adjRecord.frame_id?.toString() ?? null,
+    frame: adjRecord.frames ? {
+      id: adjRecord.frames.id.toString(),
+      label: adjRecord.frames.label,
+    } as any : null,
     parents: [],
     children: [],
     entails: [],
@@ -1635,7 +1884,7 @@ function mapAdjectiveToGraphNode(adjective: {
 async function getNounGraphNode(entryId: string): Promise<GraphNode | null> {
   const entry = await withRetry(
     () => prisma.nouns.findUnique({
-      where: { code: entryId } as Prisma.nounsWhereUniqueInput,
+      where: { code: entryId, deleted: false } as Prisma.nounsWhereUniqueInput,
       include: {
         noun_relations_noun_relations_source_idTonouns: {
           include: {
@@ -1646,6 +1895,9 @@ async function getNounGraphNode(entryId: string): Promise<GraphNode | null> {
           include: {
             nouns_noun_relations_source_idTonouns: true,
           },
+        },
+        frames: {
+          select: { id: true, label: true },
         },
       },
     }),
@@ -1677,7 +1929,7 @@ async function getNounGraphNode(entryId: string): Promise<GraphNode | null> {
 
   for (const rel of entry.noun_relations_noun_relations_source_idTonouns) {
     const target = rel.nouns_noun_relations_target_idTonouns;
-    if (!target) continue;
+    if (!target || target.deleted) continue;
     if (relationTypesForParents.has(rel.type)) {
       parents.push(mapNounToGraphNode(target));
     } else if (relationTypesForAlsoSee.has(rel.type)) {
@@ -1687,7 +1939,7 @@ async function getNounGraphNode(entryId: string): Promise<GraphNode | null> {
 
   for (const rel of entry.noun_relations_noun_relations_target_idTonouns) {
     const source = rel.nouns_noun_relations_source_idTonouns;
-    if (!source) continue;
+    if (!source || source.deleted) continue;
     if (relationTypesForChildren.has(rel.type)) {
       children.push(mapNounToGraphNode(source));
     } else if (relationTypesForAlsoSee.has(rel.type)) {
@@ -1706,7 +1958,7 @@ async function getNounGraphNode(entryId: string): Promise<GraphNode | null> {
 async function getAdjectiveGraphNode(entryId: string): Promise<GraphNode | null> {
   const entry = await withRetry(
     () => prisma.adjectives.findUnique({
-      where: { code: entryId } as Prisma.adjectivesWhereUniqueInput,
+      where: { code: entryId, deleted: false } as Prisma.adjectivesWhereUniqueInput,
       include: {
         adjective_relations_adjective_relations_source_idToadjectives: {
           include: {
@@ -1717,6 +1969,9 @@ async function getAdjectiveGraphNode(entryId: string): Promise<GraphNode | null>
           include: {
             adjectives_adjective_relations_source_idToadjectives: true,
           },
+        },
+        frames: {
+          select: { id: true, label: true },
         },
       },
     }),
@@ -1749,7 +2004,7 @@ async function getAdjectiveGraphNode(entryId: string): Promise<GraphNode | null>
 
   for (const rel of entry.adjective_relations_adjective_relations_source_idToadjectives) {
     const target = rel.adjectives_adjective_relations_target_idToadjectives;
-    if (!target) continue;
+    if (!target || target.deleted) continue;
     if (rel.type === 'causes') {
       causes.push(mapAdjectiveToGraphNode(target));
     } else if (alsoSeeTypes.has(rel.type)) {
@@ -1759,7 +2014,7 @@ async function getAdjectiveGraphNode(entryId: string): Promise<GraphNode | null>
 
   for (const rel of entry.adjective_relations_adjective_relations_target_idToadjectives) {
     const source = rel.adjectives_adjective_relations_source_idToadjectives;
-    if (!source) continue;
+    if (!source || source.deleted) continue;
     if (rel.type === 'causes') {
       causes.push(mapAdjectiveToGraphNode(source));
     } else if (alsoSeeTypes.has(rel.type)) {
@@ -1774,6 +2029,119 @@ async function getAdjectiveGraphNode(entryId: string): Promise<GraphNode | null>
   return baseNode;
 }
 
+function mapAdverbToGraphNode(adverb: {
+  id: bigint;
+  code?: string | null;
+  legacy_id: string;
+  lemmas: string[];
+  src_lemmas: string[];
+  gloss: string;
+  legal_gloss?: string | null;
+  lexfile: string;
+  examples: string[];
+  flagged?: boolean | null;
+  flagged_reason?: string | null;
+  forbidden?: boolean | null;
+  forbidden_reason?: string | null;
+  gradable?: boolean | null;
+  frame_id?: bigint | null;
+  frames?: { id: bigint; label: string } | null;
+}): GraphNode {
+  const advRecord = adverb as any;
+
+  return {
+    id: advRecord.code || advRecord.id.toString(),
+    numericId: advRecord.id.toString(),
+    legacy_id: advRecord.legacy_id,
+    lemmas: advRecord.lemmas,
+    src_lemmas: advRecord.src_lemmas,
+    gloss: advRecord.gloss,
+    legal_gloss: advRecord.legal_gloss ?? null,
+    pos: 'r',
+    lexfile: advRecord.lexfile,
+    examples: advRecord.examples,
+    flagged: advRecord.flagged ?? undefined,
+    flaggedReason: advRecord.flagged_reason || undefined,
+    forbidden: advRecord.forbidden ?? undefined,
+    forbiddenReason: advRecord.forbidden_reason || undefined,
+    gradable: advRecord.gradable ?? null,
+    frame_id: advRecord.frame_id?.toString() ?? null,
+    frame: advRecord.frames ? {
+      id: advRecord.frames.id.toString(),
+      label: advRecord.frames.label,
+    } as any : null,
+    parents: [],
+    children: [],
+    entails: [],
+    causes: [],
+    alsoSee: [],
+  };
+}
+
+async function getAdverbGraphNode(entryId: string): Promise<GraphNode | null> {
+  const entry = await withRetry(
+    () => prisma.adverbs.findUnique({
+      where: { code: entryId, deleted: false } as Prisma.adverbsWhereUniqueInput,
+      include: {
+        adverb_relations_adverb_relations_source_idToadverbs: {
+          include: {
+            adverbs_adverb_relations_target_idToadverbs: true,
+          },
+        },
+        adverb_relations_adverb_relations_target_idToadverbs: {
+          include: {
+            adverb_relations_adverb_relations_source_idToadverbs: true,
+          },
+        },
+        frames: {
+          select: { id: true, label: true },
+        },
+      },
+    }),
+    undefined,
+    `getAdverbGraphNode(${entryId})`
+  ) as any | null;
+
+  if (!entry) return null;
+
+  const alsoSee: GraphNode[] = [];
+
+  const alsoSeeTypes = new Set([
+    'similar',
+    'also',
+    'antonym',
+    'derivationally_related',
+    'pertainym',
+    'domain_topic',
+    'domain_region',
+    'domain_usage',
+    'member_of_domain_topic',
+    'member_of_domain_region',
+    'member_of_domain_usage',
+  ]);
+
+  for (const rel of entry.adverb_relations_adverb_relations_source_idToadverbs) {
+    const target = rel.adverbs_adverb_relations_target_idToadverbs;
+    if (!target || target.deleted) continue;
+    if (alsoSeeTypes.has(rel.type)) {
+      alsoSee.push(mapAdverbToGraphNode(target));
+    }
+  }
+
+  for (const rel of entry.adverb_relations_adverb_relations_target_idToadverbs) {
+    const source = rel.adverb_relations_adverb_relations_source_idToadverbs;
+    if (!source || (source as any).deleted) continue;
+    if (alsoSeeTypes.has(rel.type)) {
+      alsoSee.push(mapAdverbToGraphNode(source as any));
+    }
+  }
+
+  const baseNode = mapAdverbToGraphNode(entry);
+  baseNode.alsoSee = dedupeNodes(alsoSee);
+
+  return baseNode;
+}
+
 async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> {
   const pos = detectPosFromEntryId(entryId);
   if (pos === 'n') {
@@ -1781,6 +2149,9 @@ async function getGraphNodeInternal(entryId: string): Promise<GraphNode | null> 
   }
   if (pos === 'a' || pos === 's') {
     return getAdjectiveGraphNode(entryId);
+  }
+  if (pos === 'r') {
+    return getAdverbGraphNode(entryId);
   }
   return getVerbGraphNode(entryId);
 }
@@ -1920,7 +2291,8 @@ export async function updateModerationStatus(
     forbidden?: boolean; 
     forbiddenReason?: string; 
   },
-  lexicalType: LexicalType = 'verbs'
+  lexicalType: LexicalType | 'frames' = 'verbs',
+  idType: 'code' | 'id' = 'code'
 ): Promise<number> {
   // Transform camelCase to snake_case for Prisma
   const prismaUpdates: Record<string, unknown> = {};
@@ -1931,52 +2303,57 @@ export async function updateModerationStatus(
 
   let result;
   
+  // Helper to build where clause based on idType
+  const buildWhere = (additional: Record<string, any> = {}) => {
+    if (idType === 'id') {
+      return {
+        id: { in: ids.map(id => BigInt(id)) },
+        ...additional
+      };
+    }
+    return {
+      code: { in: ids },
+      ...additional
+    };
+  };
+
   // Update the correct table based on lexical type
   switch (lexicalType) {
     case 'verbs':
       result = await prisma.verbs.updateMany({
-        where: {
-          code: {
-            in: ids
-          },
-          deleted: false // Only update non-deleted verbs
-        } as Prisma.verbsWhereInput,
+        where: buildWhere({ deleted: false }) as Prisma.verbsWhereInput,
         data: prismaUpdates
       });
       break;
     
     case 'nouns':
       result = await prisma.nouns.updateMany({
-        where: {
-          code: {
-            in: ids
-          }
-          // Note: Nouns table doesn't have a deleted field
-        } as Prisma.nounsWhereInput,
+        where: buildWhere() as Prisma.nounsWhereInput,
         data: prismaUpdates
       });
       break;
     
     case 'adjectives':
       result = await prisma.adjectives.updateMany({
-        where: {
-          code: {
-            in: ids
-          }
-          // Note: Adjectives table doesn't have a deleted field
-        } as Prisma.adjectivesWhereInput,
+        where: buildWhere() as Prisma.adjectivesWhereInput,
         data: prismaUpdates
       });
       break;
     
     case 'adverbs':
       result = await prisma.adverbs.updateMany({
+        where: buildWhere() as Prisma.adverbsWhereInput,
+        data: prismaUpdates
+      });
+      break;
+    
+    case 'frames':
+      result = await prisma.frames.updateMany({
         where: {
-          code: {
-            in: ids
+          id: {
+            in: ids.map(id => BigInt(id))
           }
-          // Note: Adverbs table doesn't have a deleted field
-        } as Prisma.adverbsWhereInput,
+        } as Prisma.framesWhereInput,
         data: prismaUpdates
       });
       break;
@@ -2013,6 +2390,7 @@ export async function updateFramesForEntries(
             equals: trimmed,
             mode: 'insensitive',
           },
+          deleted: false,
         } as Prisma.framesWhereInput,
         select: { id: true } as Prisma.framesSelect,
       });
@@ -2156,12 +2534,17 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
       if (codesToLookup.length > 0) {
         const frames = await prisma.frames.findMany({
           where: {
-            OR: codesToLookup.map(code => ({
-              frame_name: {
-                equals: code,
-                mode: 'insensitive'
-              }
-            })) as Prisma.framesWhereInput[]
+            AND: [
+              {
+                OR: codesToLookup.map(code => ({
+                  label: {
+                    equals: code,
+                    mode: 'insensitive'
+                  }
+                })) as Prisma.framesWhereInput[]
+              },
+              { deleted: false }
+            ]
           },
           select: {
             id: true,
@@ -2349,7 +2732,7 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
       frames: {
         select: {
           id: true,
-          frame_name: true,
+          label: true,
         } as Prisma.framesSelect
       },
       // roles and counts omitted for performance and Prisma include typing stability
@@ -2517,12 +2900,12 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
   // Transform to TableEntry format
   let data: TableEntry[] = entries.map(entry => {
     const entryCode = (entry as { code?: string }).code || (typeof entry.id === 'bigint' ? entry.id.toString() : entry.id);
-    const frameData = (entry as { frames?: { frame_name: string } | null; frame_id?: bigint | null }).frames;
+    const frameData = (entry as { frames?: { label: string } | null; frame_id?: bigint | null }).frames;
     const frameId = (entry as { frame_id?: bigint | null }).frame_id;
     
   // Debug logging for frame mismatch
   if (entryCode === 'say.v.04') {
-    console.log(`DEBUG say.v.04: frame_id=${frameId?.toString()}, frame_name=${frameData?.frame_name}`);
+    console.log(`DEBUG say.v.04: frame_id=${frameId?.toString()}, label=${frameData?.label}`);
   }
     
     const numericId = (entry as unknown as { id?: bigint }).id?.toString() || '';
@@ -2542,7 +2925,7 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
       forbidden: (entry as any).forbidden ?? undefined,
       forbiddenReason: (entry as any).forbidden_reason || undefined,
       frame_id: frameId ? frameId.toString() : null,
-      frame: (entry as { frames?: { frame_name: string } } | undefined)?.frames?.frame_name || null,
+      frame: (entry as { frames?: { label: string } } | undefined)?.frames?.label || null,
       vendler_class: entry.vendler_class ?? null,
       roles: rolesByEntryId.get(numericId) || [],
       role_groups: roleGroupsByEntryId.get(numericId) || [],
@@ -3503,10 +3886,10 @@ export async function getPaginatedFrames(params: FramePaginationParams = {}): Pr
   const {
     page = 1,
     limit: rawLimit = 10,
-    sortBy = 'frame_name',
+    sortBy = 'label',
     sortOrder = 'asc',
     search,
-    frame_name,
+    label,
     definition,
     short_definition,
     prototypical_synset,
@@ -3522,13 +3905,16 @@ export async function getPaginatedFrames(params: FramePaginationParams = {}): Pr
 
   // Build where clause
   const andConditions: Record<string, unknown>[] = [];
+  
+  // Exclude deleted frames
+  andConditions.push({ deleted: false });
 
   // Global search across multiple text fields
   if (search) {
     andConditions.push({
       OR: [
         {
-          frame_name: {
+          label: {
             contains: search,
             mode: 'insensitive'
           }
@@ -3556,10 +3942,10 @@ export async function getPaginatedFrames(params: FramePaginationParams = {}): Pr
   }
 
   // Text filters
-  if (frame_name) {
+  if (label) {
     andConditions.push({
-      frame_name: {
-        contains: frame_name,
+      label: {
+        contains: label,
         mode: 'insensitive'
       }
     });
@@ -3668,7 +4054,7 @@ export async function getPaginatedFrames(params: FramePaginationParams = {}): Pr
   // Transform to Frame format
   const data: Frame[] = frames.map(frame => ({
     id: frame.id.toString(),
-    frame_name: frame.frame_name,
+    label: frame.label,
     definition: frame.definition,
     short_definition: frame.short_definition,
     prototypical_synset: frame.prototypical_synset,

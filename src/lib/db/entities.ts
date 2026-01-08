@@ -30,6 +30,8 @@ function buildCommonWhereConditions(
     flagged,
     forbidden,
     isMwe,
+    frame_id,
+    flaggedByJobId,
     createdAfter,
     createdBefore,
     updatedAfter,
@@ -135,24 +137,25 @@ function buildCommonWhereConditions(
 }
 
 /**
- * Build verb-specific WHERE conditions
+ * Build advanced WHERE conditions (frames, jobs) common to multiple entity types
  */
-async function buildVerbWhereConditions(
-  params: PaginationParams
+async function buildAdvancedWhereConditions(
+  params: PaginationParams,
+  config: EntityConfig
 ): Promise<Record<string, unknown>[]> {
   const { pos, frame_id, flaggedByJobId } = params;
   const conditions: Record<string, unknown>[] = [];
 
-  // POS filter
-  if (pos) {
+  // POS filter (only if relevant to the entity)
+  if (pos && config.tableName === 'verbs') {
     const posValues = pos.split(',').map(p => p.trim()).filter(Boolean);
     if (posValues.length > 0) {
       conditions.push({ pos: { in: posValues } });
     }
   }
 
-  // Frame filter
-  if (frame_id) {
+  // Frame filter (if entity supports it)
+  if (frame_id && config.hasFrameId) {
     const rawValues = frame_id.split(',').map(id => id.trim()).filter(Boolean);
 
     if (rawValues.length > 0) {
@@ -171,7 +174,7 @@ async function buildVerbWhereConditions(
         const frames = await prisma.frames.findMany({
           where: {
             OR: codesToLookup.map(code => ({
-              frame_name: { equals: code, mode: 'insensitive' },
+              label: { equals: code, mode: 'insensitive' },
             })) as Prisma.framesWhereInput[],
           },
           select: { id: true } as Prisma.framesSelect,
@@ -453,11 +456,9 @@ export async function getPaginatedEntities(
   // Build where clause
   const andConditions = buildCommonWhereConditions(params, config);
 
-  // Add verb-specific conditions
-  if (lexicalType === 'verbs') {
-    const verbConditions = await buildVerbWhereConditions(params);
-    andConditions.push(...verbConditions);
-  }
+  // Add advanced conditions (frames, jobs, POS)
+  const advancedConditions = await buildAdvancedWhereConditions(params, config);
+  andConditions.push(...advancedConditions);
 
   const whereClause: Record<string, unknown> =
     andConditions.length > 0 ? { AND: andConditions } : {};
@@ -503,7 +504,7 @@ async function executeVerbQuery(
       orderBy,
       include: {
         frames: {
-          select: { id: true, frame_name: true } as Prisma.framesSelect,
+          select: { id: true, label: true } as Prisma.framesSelect,
         },
       },
     }),
@@ -524,7 +525,7 @@ async function executeVerbQuery(
   let data: TableEntry[] = entries.map(entry => {
     const entryCode = entry.code || entry.id.toString();
     const numericId = entry.id.toString();
-    const frameData = entry.frames as { frame_name: string } | null;
+    const frameData = entry.frames as { label: string } | null;
     const frameId = entry.frame_id;
 
     return {
@@ -542,7 +543,7 @@ async function executeVerbQuery(
       forbidden: entry.forbidden ?? undefined,
       forbiddenReason: entry.forbidden_reason ?? undefined,
       frame_id: frameId ? frameId.toString() : null,
-      frame: frameData?.frame_name || null,
+      frame: frameData?.label || null,
       vendler_class: entry.vendler_class ?? null,
       roles: rolesByEntryId.get(numericId) || [],
       role_groups: roleGroupsByEntryId.get(numericId) || [],
@@ -584,8 +585,8 @@ async function executeNonVerbQuery(
   params: PaginationParams,
   config: EntityConfig
 ): Promise<PaginatedResult<TableEntry>> {
-  // Build include clause for relation counts
-  const countInclude = {
+  // Build include clause for relations and frames
+  const include: Record<string, unknown> = {
     _count: {
       select: {
         [config.relationConfig.sourceRelation]: {
@@ -597,6 +598,13 @@ async function executeNonVerbQuery(
       },
     },
   };
+
+  // Include frames if supported
+  if (config.hasFrameId) {
+    include.frames = {
+      select: { id: true, label: true },
+    };
+  }
 
   // Execute type-specific query
   let total: number;
@@ -615,7 +623,7 @@ async function executeNonVerbQuery(
           skip,
           take: limit,
           orderBy,
-          include: countInclude,
+          include,
         }),
         undefined,
         'getPaginatedEntities:nounFindMany'
@@ -634,7 +642,7 @@ async function executeNonVerbQuery(
           skip,
           take: limit,
           orderBy,
-          include: countInclude,
+          include,
         }),
         undefined,
         'getPaginatedEntities:adjectiveFindMany'
@@ -653,7 +661,7 @@ async function executeNonVerbQuery(
           skip,
           take: limit,
           orderBy,
-          include: countInclude,
+          include,
         }),
         undefined,
         'getPaginatedEntities:adverbFindMany'
@@ -669,6 +677,8 @@ async function executeNonVerbQuery(
     const entryCode = (entry.code as string) || (entry.id as bigint).toString();
     const numericId = (entry.id as bigint).toString();
     const countData = entry._count as Record<string, number>;
+    const frameData = entry.frames as { label: string } | null;
+    const frameId = entry.frame_id as bigint | null;
 
     // Build base entry
     const tableEntry: TableEntry = {
@@ -685,8 +695,8 @@ async function executeNonVerbQuery(
       flaggedReason: (entry.flagged_reason as string) || undefined,
       forbidden: (entry.forbidden as boolean) ?? undefined,
       forbiddenReason: (entry.forbidden_reason as string) || undefined,
-      frame_id: null,
-      frame: null,
+      frame_id: frameId ? frameId.toString() : null,
+      frame: frameData?.label || null,
       vendler_class: null,
       roles: [],
       role_groups: [],

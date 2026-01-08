@@ -59,7 +59,7 @@ export const ScopeSelector = memo(function ScopeSelector({
   manualIdMenuPosition: { top: number; left: number };
   insertManualId: (code: string) => void;
   showFrameIdMenu: boolean;
-  frameIdSuggestions: Array<{ id: string; frame_name: string }>;
+  frameIdSuggestions: Array<{ id: string; label: string }>;
   frameIdMenuPosition: { top: number; left: number };
   insertFrameId: (id: string) => void;
   handleManualIdChange: (event: React.ChangeEvent<HTMLTextAreaElement>) => void;
@@ -88,7 +88,7 @@ export const ScopeSelector = memo(function ScopeSelector({
   onFrameFlagTargetChange?: (target: 'frame' | 'verb' | 'both') => void;
 }) {
   return (
-    <div className="space-y-2 rounded-xl border border-gray-200 bg-white p-3 shadow-lg">
+    <div className="space-y-2 rounded-xl border border-gray-200 bg-white p-3">
       <div className="text-xs font-semibold text-gray-700">Scope</div>
       <div className="space-y-2">
         <label className={`flex items-start gap-2 rounded-xl border px-3 py-2 ${mode === 'selection' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
@@ -210,7 +210,7 @@ export const ScopeSelector = memo(function ScopeSelector({
                 />
                 {showManualIdMenu && manualIdSuggestions.length > 0 && (
                   <div
-                    className="fixed z-10 max-h-48 w-60 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-lg"
+                    className="fixed z-10 max-h-48 w-60 overflow-y-auto rounded-xl border border-gray-200 bg-white"
                     style={{ top: `${manualIdMenuPosition.top}px`, left: `${manualIdMenuPosition.left}px` }}
                   >
                     <ul>
@@ -273,18 +273,18 @@ export const ScopeSelector = memo(function ScopeSelector({
                 />
                 {showFrameIdMenu && frameIdSuggestions.length > 0 && (
                   <div
-                    className="fixed z-10 max-h-48 w-60 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-lg"
+                    className="fixed z-10 max-h-48 w-60 overflow-y-auto rounded-xl border border-gray-200 bg-white"
                     style={{ top: `${frameIdMenuPosition.top}px`, left: `${frameIdMenuPosition.left}px` }}
                   >
                     <ul>
                       {frameIdSuggestions.map((suggestion, idx) => (
                         <li key={suggestion.id}>
                           <button
-                            onClick={() => insertFrameId(suggestion.frame_name)}
+                            onClick={() => insertFrameId(suggestion.label)}
                             className={`cursor-pointer flex w-full flex-col items-start px-3 py-2 text-left text-xs hover:bg-blue-50 ${idx === frameIdActiveIndex ? 'bg-blue-50' : ''}`}
                             type="button"
                           >
-                            <span className="font-semibold text-gray-800">{suggestion.frame_name}</span>
+                            <span className="font-semibold text-gray-800">{suggestion.label}</span>
                             <span className="text-[11px] text-gray-500">ID: {suggestion.id}</span>
                           </button>
                         </li>
@@ -343,9 +343,8 @@ export const ScopeSelector = memo(function ScopeSelector({
                             checked={frameFlagTarget === 'frame'}
                             onChange={() => onFrameFlagTargetChange?.('frame')}
                             className="text-blue-600 focus:ring-blue-500"
-                            disabled={true}
                           />
-                          <span className="text-xs text-gray-500">Frame only (not supported yet)</span>
+                          <span className="text-xs text-gray-700">Frame only</span>
                         </label>
                         <label className="flex items-center gap-2">
                           <input
@@ -355,9 +354,8 @@ export const ScopeSelector = memo(function ScopeSelector({
                             checked={frameFlagTarget === 'both'}
                             onChange={() => onFrameFlagTargetChange?.('both')}
                             className="text-blue-600 focus:ring-blue-500"
-                            disabled={true}
                           />
-                          <span className="text-xs text-gray-500">Both frame and verbs (not supported yet)</span>
+                          <span className="text-xs text-gray-700">Both frame and verbs</span>
                         </label>
                       </div>
                     </div>

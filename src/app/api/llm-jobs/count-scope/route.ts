@@ -23,30 +23,35 @@ export async function POST(request: NextRequest) {
       // For IDs, just return the array length
       count = scope.ids.length;
     } else if (scope.kind === 'frame_ids') {
-      // For frame IDs, we need to count verbs if includeVerbs is true
-      if (scope.includeVerbs && scope.pos === 'verbs') {
-        // Count verbs associated with these frames
-        const frames = await prisma.frames.findMany({
-          where: {
-            OR: scope.frameIds.map(id =>
-              id.match(/^\d+$/)
-                ? { id: BigInt(id) }
-                : { frame_name: { equals: id, mode: 'insensitive' as Prisma.QueryMode } }
-            ),
-          },
-          select: {
-            _count: {
-              select: {
-                verbs: {
-                  where: { deleted: false },
-                },
+      // For frame IDs, we need to count frames and potentially verbs
+      const frames = await prisma.frames.findMany({
+        where: {
+          OR: scope.frameIds.map(id =>
+            id.match(/^\d+$/)
+              ? { id: BigInt(id) }
+              : { label: { equals: id, mode: 'insensitive' as Prisma.QueryMode } }
+          ),
+        },
+        select: {
+          id: true,
+          _count: {
+            select: {
+              verbs: {
+                where: { deleted: false },
               },
             },
           },
-        });
+        },
+      });
+
+      if (scope.pos === 'verbs') {
+        // Only counting verbs
         count = frames.reduce((sum, frame) => sum + frame._count.verbs, 0);
+      } else if (scope.pos === 'frames') {
+        // Counting frames AND optionally verbs
+        count = frames.reduce((sum, frame) => sum + 1 + (scope.includeVerbs ? frame._count.verbs : 0), 0);
       } else {
-        // Just count frames
+        // Fallback for other POS (shouldn't happen with frame_ids scope)
         count = scope.frameIds.length;
       }
     } else if (scope.kind === 'filters') {

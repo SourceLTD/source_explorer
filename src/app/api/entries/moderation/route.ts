@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { stageModerationUpdates } from '@/lib/version-control';
+import { updateModerationStatus } from '@/lib/db';
+import { getCurrentUserName } from '@/utils/supabase/server';
 
 // Force dynamic rendering - no static optimization
 export const dynamic = 'force-dynamic';
@@ -19,8 +21,8 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Validate that at least one moderation field is being updated
-    const validFields = ['flagged', 'flaggedReason', 'forbidden', 'forbiddenReason'];
-    const hasValidUpdate = Object.keys(updates).some(key => validFields.includes(key));
+    const VALID_MODERATION_FIELDS = ['flagged', 'flaggedReason', 'forbidden', 'forbiddenReason'];
+    const hasValidUpdate = Object.keys(updates).some(key => VALID_MODERATION_FIELDS.includes(key));
     
     if (!hasValidUpdate) {
       return NextResponse.json({ 
@@ -28,17 +30,47 @@ export async function PATCH(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // TODO: Get actual user ID from auth context
-    const userId = 'current-user';
+    const userId = await getCurrentUserName();
 
-    // Default to 'verb' for entries (verbs are the main "entries" in this system)
-    const result = await stageModerationUpdates('verb', ids, updates, userId);
+    // Split updates into direct (flagged) and staged (others)
+    const directUpdates: Record<string, any> = {};
+    const stagedUpdates: Record<string, any> = {};
+    
+    for (const [key, value] of Object.entries(updates)) {
+      if (key === 'flagged' || key === 'flaggedReason') {
+        directUpdates[key] = value;
+      } else if (VALID_MODERATION_FIELDS.includes(key)) {
+        stagedUpdates[key] = value;
+      }
+    }
+
+    let stagedCount = 0;
+    let directCount = 0;
+    let changesetIds: string[] = [];
+    let message = '';
+
+    // Apply direct updates (flagged status) immediately
+    if (Object.keys(directUpdates).length > 0) {
+      // Default to 'verbs' for entries
+      directCount = await updateModerationStatus(ids, directUpdates, 'verbs');
+      message = `Updated flagging status for ${directCount} entries. `;
+    }
+
+    // Stage other moderation updates (e.g., forbidden)
+    if (Object.keys(stagedUpdates).length > 0) {
+      const result = await stageModerationUpdates('verb', ids, stagedUpdates, userId);
+      stagedCount = result.staged_count;
+      changesetIds = result.changeset_ids;
+      message += `Staged other moderation changes for ${result.staged_count} entries.`;
+    }
 
     return NextResponse.json({ 
-      staged: true, 
-      staged_count: result.staged_count,
-      changeset_ids: result.changeset_ids,
-      message: `Staged moderation changes for ${result.staged_count} entries` 
+      staged: Object.keys(stagedUpdates).length > 0, 
+      staged_count: stagedCount,
+      updated_count: directCount,
+      count: directCount,
+      changeset_ids: changesetIds,
+      message: message.trim() || 'No changes applied'
     }, {
       headers: {
         'Cache-Control': 'no-store, no-cache, must-revalidate',
@@ -46,7 +78,7 @@ export async function PATCH(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('Error staging moderation status:', error);
+    console.error('Error updating moderation status:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

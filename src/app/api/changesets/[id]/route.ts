@@ -14,8 +14,10 @@ import {
   approveAllFieldChanges,
   rejectAllFieldChanges,
   discardChangeset,
+  updateChangesetComment,
   FieldChangeStatus,
 } from '@/lib/version-control';
+import { getCurrentUserName } from '@/utils/supabase/server';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -63,7 +65,18 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     const changesetId = BigInt(id);
     const body = await request.json();
     
-    const { action, field_change_id, field_changes_updates, user_id } = body;
+    const { action, field_change_id, field_changes_updates, comment } = body;
+    const userId = await getCurrentUserName();
+
+    // Option 0: Update changeset comment
+    if (comment !== undefined) {
+      await updateChangesetComment(changesetId, comment);
+      
+      // If ONLY comment was provided, return early
+      if (!action && !field_change_id && !field_changes_updates) {
+        return NextResponse.json({ success: true, comment });
+      }
+    }
 
     // Option 1: Bulk action on all fields
     if (action) {
@@ -73,19 +86,12 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
           { status: 400 }
         );
       }
-      
-      if (!user_id) {
-        return NextResponse.json(
-          { error: 'user_id is required for approve/reject actions' },
-          { status: 400 }
-        );
-      }
 
       let count: number;
       if (action === 'approve_all') {
-        count = await approveAllFieldChanges(changesetId, user_id);
+        count = await approveAllFieldChanges(changesetId, userId);
       } else {
-        count = await rejectAllFieldChanges(changesetId, user_id);
+        count = await rejectAllFieldChanges(changesetId, userId);
       }
 
       return NextResponse.json({
@@ -103,19 +109,11 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
           { status: 400 }
         );
       }
-      
-      // user_id is required for approve/reject, optional for pending
-      if (status !== 'pending' && !user_id) {
-        return NextResponse.json(
-          { error: 'user_id is required for approve/reject actions' },
-          { status: 400 }
-        );
-      }
 
       const updated = await updateFieldChangeStatus(
         BigInt(field_change_id),
         status as FieldChangeStatus,
-        user_id
+        userId
       );
 
       return NextResponse.json({
@@ -131,18 +129,10 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       for (const update of field_changes_updates) {
         const { id: fcId, status } = update;
         if (fcId && status && ['pending', 'approved', 'rejected'].includes(status)) {
-          // user_id is required for approve/reject, optional for pending
-          if (status !== 'pending' && !user_id) {
-            return NextResponse.json(
-              { error: 'user_id is required for approve/reject actions' },
-              { status: 400 }
-            );
-          }
-          
           const updated = await updateFieldChangeStatus(
             BigInt(fcId),
             status as FieldChangeStatus,
-            user_id
+            userId
           );
           results.push({
             ...updated,

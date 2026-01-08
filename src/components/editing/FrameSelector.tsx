@@ -17,7 +17,7 @@ export function FrameSelector({ value, onChange, availableFrames, onSave, onCanc
       >
         <option value="">None</option>
         {availableFrames.map(frame => (
-          <option key={frame.id} value={frame.id}>{frame.frame_name}</option>
+          <option key={frame.id} value={frame.id}>{frame.label}</option>
         ))}
       </select>
       <div className="flex space-x-2">

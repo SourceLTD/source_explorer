@@ -285,7 +285,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
               onClick={() => router.push('/')}
               className="text-xl font-bold text-gray-900 hover:text-gray-700 cursor-pointer"
             >
-              SourceNet
+              Source Console
             </button>
             <div className="h-6 w-px bg-gray-300"></div>
             <CategoryDropdown currentCategory={mode} currentView="graph" />
@@ -424,7 +424,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
                             type="text"
                             value={item}
                             onChange={(e) => updateListItem(index, e.target.value)}
-                            className="flex-1 px-3 py-2 border-2 border-blue-400 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-600 text-sm bg-white text-gray-900 font-medium shadow-lg"
+                            className="flex-1 px-3 py-2 border-2 border-blue-400 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-600 text-sm bg-white text-gray-900 font-medium"
                             placeholder="Enter lemma"
                             autoFocus={index === editListItems.length - 1}
                           />
@@ -533,7 +533,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
                       value={editValue}
                       onChange={(e) => setEditValue(e.target.value)}
                       onKeyDown={handleKeyDown}
-                      className="w-full px-3 py-2 border-2 border-blue-400 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-600 text-sm resize-vertical bg-white text-gray-900 font-medium shadow-lg"
+                      className="w-full px-3 py-2 border-2 border-blue-400 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-600 text-sm resize-vertical bg-white text-gray-900 font-medium"
                       rows={3}
                       placeholder="Enter definition"
                       autoFocus
@@ -577,7 +577,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
                           <textarea
                             value={item}
                             onChange={(e) => updateListItem(index, e.target.value)}
-                            className="flex-1 px-3 py-2 border-2 border-blue-400 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-600 text-sm bg-white text-gray-900 font-medium shadow-lg resize-vertical"
+                            className="flex-1 px-3 py-2 border-2 border-blue-400 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-600 text-sm bg-white text-gray-900 font-medium resize-vertical"
                             rows={2}
                             placeholder="Enter example sentence"
                             autoFocus={index === editListItems.length - 1}
@@ -1195,7 +1195,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
               </div>
             </div>
           ) : (
-            <div className="h-full flex items-center justify-center bg-white rounded-xl shadow-lg">
+            <div className="h-full flex items-center justify-center bg-white rounded-xl">
               {isLoading ? (
                 <div className="text-center">
                   <div className="animate-spin h-12 w-12 border-2 border-gray-300 border-t-blue-600 rounded-full mx-auto mb-4"></div>
@@ -1220,10 +1220,11 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
         </div>
 
         {/* Edit Overlay */}
-        {currentNode && (
+        {isEditOverlayOpen && (
           <EditOverlay
             node={currentNode}
-                              mode={mode}
+            nodeId={currentNode?.id || ""}
+            mode={mode}
             isOpen={isEditOverlayOpen}
             onClose={() => setIsEditOverlayOpen(false)}
             onUpdate={handleUpdate}

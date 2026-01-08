@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { stageModerationUpdates } from '@/lib/version-control';
+import { getCurrentUserName } from '@/utils/supabase/server';
 
 export async function PATCH(request: NextRequest) {
   try {
@@ -20,8 +21,7 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    // TODO: Get actual user ID from auth context
-    const userId = 'current-user';
+    const userId = await getCurrentUserName();
 
     const result = await stageModerationUpdates('frame', ids, updates, userId);
 

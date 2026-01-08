@@ -78,7 +78,7 @@ export async function POST(request: NextRequest, context: Context) {
           pos: entry.pos,
           gloss: entry.gloss,
           lemmas: entry.lemmas,
-          frame_name: entry.frame_name ?? null,
+          label: entry.label ?? null,
         },
       } satisfies Record<string, unknown>;
 
@@ -102,15 +102,9 @@ export async function POST(request: NextRequest, context: Context) {
         skipDuplicates: false,
       });
 
-      // Update total_items count
-      await tx.llm_jobs.update({
-        where: { id: jobId },
-        data: {
-          total_items: {
-            increment: entries.length,
-          },
-        },
-      });
+      // No need to update total_items count as it's already set to the total
+      // expected count by the frontend when the job is first created.
+      // The frontend uses count-scope to get the accurate total.
     });
 
     // 6. Get updated count

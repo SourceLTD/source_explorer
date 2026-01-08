@@ -64,6 +64,8 @@ export async function POST(request: NextRequest) {
       scope: payload.scope,
       serviceTier: payload.serviceTier,
       reasoning: payload.reasoning,
+      jobType: payload.jobType,
+      targetFields: payload.targetFields,
       metadata: payload.metadata ?? {},
     } as CreateLLMJobParams, payload.initialBatchSize);
 

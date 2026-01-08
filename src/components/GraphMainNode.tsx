@@ -426,7 +426,7 @@ export default function GraphMainNode({
               FRAME
             </span>
             <span style={{ fontWeight: '500', fontSize: '10px' }}>
-              {node.frame.frame_name}
+              {node.frame.label}
             </span>
           </div>
         </foreignObject>

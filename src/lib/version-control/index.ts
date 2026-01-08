@@ -102,6 +102,7 @@ export {
   getChangeset,
   findPendingChangeset,
   getPendingChangesetsForEntities,
+  updateChangesetComment,
   // Field change operations
   createFieldChange,
   upsertFieldChange,

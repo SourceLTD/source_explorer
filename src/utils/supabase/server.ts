@@ -34,3 +34,15 @@ export async function createClient() {
     }
   )
 }
+
+export async function getCurrentUser() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  return user
+}
+
+export async function getCurrentUserName() {
+  const user = await getCurrentUser()
+  if (!user?.email) return 'system'
+  return user.email.split('@')[0]
+}

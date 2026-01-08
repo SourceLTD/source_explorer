@@ -43,16 +43,16 @@ export function FramePropertiesSection({
       <div>
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-sm font-medium text-gray-700">Frame Name</h3>
-          {editingField !== 'frame_name' && (
+          {editingField !== 'label' && (
             <button
-              onClick={() => onStartEdit('frame_name')}
+              onClick={() => onStartEdit('label')}
               className="text-xs text-blue-600 hover:text-blue-700 font-medium cursor-pointer"
             >
               Edit
             </button>
           )}
         </div>
-        {editingField === 'frame_name' ? (
+        {editingField === 'label' ? (
           <div className="space-y-2">
             <input
               type="text"
@@ -79,7 +79,7 @@ export function FramePropertiesSection({
             </div>
           </div>
         ) : (
-          <p className="text-gray-900 text-sm font-semibold">{frame.frame_name}</p>
+          <p className="text-gray-900 text-sm font-semibold">{frame.label}</p>
         )}
       </div>
 

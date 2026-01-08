@@ -1,6 +1,6 @@
 ================================================================================
   CODE DUPLICATION ANALYSIS - EXECUTIVE SUMMARY
-  SourceNet Application: Nouns, Adjectives, and Adverbs
+  Source Console Application: Nouns, Adjectives, and Adverbs
 ================================================================================
 
 📋 QUICK FINDINGS

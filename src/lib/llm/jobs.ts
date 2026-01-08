@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 import type { llm_job_items } from '@prisma/client';
 import type OpenAI from 'openai';
 import { prisma } from '@/lib/prisma';
-import { FLAGGING_RESPONSE_SCHEMA, type FlaggingResponse } from './schema';
+import { FLAGGING_RESPONSE_SCHEMA, EDIT_RESPONSE_SCHEMA, type FlaggingResponse, type EditResponse } from './schema';
 import {
   CancelJobResult,
   CreateLLMJobParams,
@@ -25,6 +25,7 @@ import {
   createChangesetFromUpdate,
   EntityType,
   Changegroup,
+  ENTITY_TYPE_TO_TABLE,
 } from '@/lib/version-control';
 
 // Cache for changegroups per LLM job to avoid creating duplicates
@@ -36,6 +37,7 @@ const jobChangegroupCache = new Map<string, bigint>();
  */
 async function getOrCreateJobChangegroup(
   jobId: bigint,
+  submittedBy: string,
   jobLabel?: string | null
 ): Promise<bigint> {
   const cacheKey = jobId.toString();
@@ -65,7 +67,7 @@ async function getOrCreateJobChangegroup(
     label: jobLabel || `LLM Job ${jobId}`,
     description: `Changes from LLM job processing`,
     llm_job_id: jobId,
-    created_by: 'system:llm-agent',
+    created_by: submittedBy,
   });
   
   jobChangegroupCache.set(cacheKey, changegroup.id);
@@ -271,7 +273,7 @@ function buildVariableMap(entry: LexicalEntrySummary): Record<string, string> {
     flagged_reason: entry.flagged_reason ?? '',
     forbidden: entry.forbidden ? 'true' : 'false',
     forbidden_reason: entry.forbidden_reason ?? '',
-    frame_name: entry.frame_name ?? '',
+    label: entry.label ?? '',
     lexfile: entry.lexfile ?? '',
   };
 
@@ -313,7 +315,7 @@ export async function fetchEntriesForScope(scope: JobScope): Promise<LexicalEntr
     case 'ids':
       return fetchEntriesByIds(scope.pos, scope.ids);
     case 'frame_ids':
-      return fetchEntriesByFrameIds(scope.frameIds, scope.pos, scope.includeVerbs);
+      return fetchEntriesByFrameIds(scope.frameIds, scope.pos, scope.includeVerbs, scope.offset, scope.limit);
     case 'filters':
       return fetchEntriesByFilters(scope.pos, scope.filters);
     default:
@@ -342,7 +344,7 @@ async function fetchEntriesByIds(pos: PartOfSpeech, ids: string[]): Promise<Lexi
         frames: {
           select: {
             id: true,
-            frame_name: true,
+            label: true,
             definition: true,
             short_definition: true,
             prototypical_synset: true,
@@ -353,7 +355,7 @@ async function fetchEntriesByIds(pos: PartOfSpeech, ids: string[]): Promise<Lexi
                 notes: true,
                 main: true,
                 examples: true,
-                nickname: true,
+                label: true,
                 role_types: {
                   select: {
                     label: true,
@@ -372,38 +374,39 @@ async function fetchEntriesByIds(pos: PartOfSpeech, ids: string[]): Promise<Lexi
       .map(code => byCode.get(code))
       .filter((record): record is (typeof records)[number] => Boolean(record))
       .map(record => {
-        const frameData = record.frames ? {
-          'frame.id': record.frames.id.toString(),
-          'frame.frame_name': record.frames.frame_name,
-          'frame.definition': record.frames.definition,
-          'frame.short_definition': record.frames.short_definition,
-          'frame.prototypical_synset': record.frames.prototypical_synset,
-          'frame.roles': sortRolesByPrecedence(record.frames.frame_roles.map(fr => ({
+        const rec = record as any;
+        const frameData = rec.frames ? {
+          'frame.id': rec.frames.id.toString(),
+          'frame.label': rec.frames.label || rec.frames.frame_name,
+          'frame.definition': rec.frames.definition,
+          'frame.short_definition': rec.frames.short_definition,
+          'frame.prototypical_synset': rec.frames.prototypical_synset,
+          'frame.roles': sortRolesByPrecedence((rec.frames.frame_roles as any[]).map(fr => ({
             role_type: fr.role_types,
             main: fr.main ?? undefined,
             description: fr.description,
             examples: fr.examples,
-            nickname: fr.nickname,
-          }))).map(fr => {
+            label: fr.label,
+          }))).map((fr: any) => {
             const roleType = fr.role_type.label;
             const description = fr.description || '';
             const examples = fr.examples && fr.examples.length > 0 ? fr.examples.join(', ') : '';
-            const nickname = fr.nickname || '';
-            return `**${roleType}**: ${description}${examples ? ` (e.g. ${examples})` : ''}${nickname ? `; ${nickname}` : ''}`;
+            const label = fr.label || '';
+            return `**${roleType}**: ${description}${examples ? ` (e.g. ${examples})` : ''}${label ? `; ${label}` : ''}`;
           }).join('\n'),
         } : {};
 
         return {
-          dbId: record.id,
-          code: record.code,
+          dbId: rec.id,
+          code: rec.code,
           pos,
-          gloss: record.gloss,
-          lemmas: record.lemmas,
-          examples: record.examples,
-          flagged: record.flagged,
-          flagged_reason: record.flagged_reason,
-          frame_name: record.frames?.frame_name ?? null,
-          lexfile: record.lexfile,
+          gloss: rec.gloss,
+          lemmas: rec.lemmas,
+          examples: rec.examples,
+          flagged: rec.flagged,
+          flagged_reason: rec.flagged_reason,
+          label: (rec.frames?.label || rec.frames?.frame_name) ?? null,
+          lexfile: rec.lexfile,
           additional: frameData,
         };
       });
@@ -499,7 +502,7 @@ async function fetchEntriesByIds(pos: PartOfSpeech, ids: string[]): Promise<Lexi
       where: { id: { in: uniqueIds.map(id => BigInt(id)) } },
       select: {
         id: true,
-        frame_name: true,
+        label: true,
         definition: true,
         short_definition: true,
         prototypical_synset: true,
@@ -533,7 +536,13 @@ async function fetchEntriesByIds(pos: PartOfSpeech, ids: string[]): Promise<Lexi
   return entries;
 }
 
-async function fetchEntriesByFrameIds(frameIds: string[], pos?: PartOfSpeech, includeVerbs?: boolean): Promise<LexicalEntrySummary[]> {
+async function fetchEntriesByFrameIds(
+  frameIds: string[], 
+  pos?: PartOfSpeech, 
+  includeVerbs?: boolean,
+  offset?: number,
+  limit?: number
+): Promise<LexicalEntrySummary[]> {
   if (frameIds.length === 0) return [];
 
   const frames = await prisma.frames.findMany({
@@ -542,7 +551,7 @@ async function fetchEntriesByFrameIds(frameIds: string[], pos?: PartOfSpeech, in
     },
     select: {
       id: true,
-      frame_name: true,
+      label: true,
       definition: true,
       short_definition: true,
       prototypical_synset: true,
@@ -557,7 +566,7 @@ async function fetchEntriesByFrameIds(frameIds: string[], pos?: PartOfSpeech, in
           notes: true,
           main: true,
           examples: true,
-          nickname: true,
+          label: true,
           role_types: {
             select: {
               label: true,
@@ -588,7 +597,7 @@ async function fetchEntriesByFrameIds(frameIds: string[], pos?: PartOfSpeech, in
   
   // If targeting frames directly
   if (!includeVerbs || pos === 'frames') {
-    for (const frame of frames) {
+    for (const frame of frames as any[]) {
       entries.push({
         dbId: frame.id,
         code: frame.id.toString(),
@@ -596,7 +605,7 @@ async function fetchEntriesByFrameIds(frameIds: string[], pos?: PartOfSpeech, in
         gloss: frame.definition,
         lemmas: [],
         examples: [],
-        frame_name: frame.frame_name,
+        label: frame.label || frame.frame_name,
         definition: frame.definition,
         short_definition: frame.short_definition,
         prototypical_synset: frame.prototypical_synset,
@@ -609,9 +618,9 @@ async function fetchEntriesByFrameIds(frameIds: string[], pos?: PartOfSpeech, in
   }
   
   // If including verbs
-  if (includeVerbs && frames.length > 0 && 'verbs' in frames[0]) {
-    for (const frame of frames) {
-      const frameVerbs = (frame as any).verbs as Array<{
+  if (includeVerbs && frames.length > 0 && ('verbs' in (frames[0] as any))) {
+    for (const frame of frames as any[]) {
+      const frameVerbs = frame.verbs as Array<{
         id: bigint;
         code: string;
         gloss: string;
@@ -632,26 +641,26 @@ async function fetchEntriesByFrameIds(frameIds: string[], pos?: PartOfSpeech, in
           examples: verb.examples,
           flagged: verb.flagged,
           flagged_reason: verb.flagged_reason,
-          frame_name: frame.frame_name,
+          label: frame.label || frame.frame_name,
           lexfile: verb.lexfile,
           additional: {
             'frame.id': frame.id.toString(),
-            'frame.frame_name': frame.frame_name,
+            'frame.label': frame.label || frame.frame_name,
             'frame.definition': frame.definition,
             'frame.short_definition': frame.short_definition,
             'frame.prototypical_synset': frame.prototypical_synset,
-            'frame.roles': sortRolesByPrecedence(frame.frame_roles.map(fr => ({
+            'frame.roles': sortRolesByPrecedence((frame.frame_roles as any[]).map(fr => ({
               role_type: fr.role_types,
               main: fr.main ?? undefined,
               description: fr.description,
               examples: fr.examples,
-              nickname: fr.nickname,
-            }))).map(fr => {
+              label: fr.label,
+            }))).map((fr: any) => {
               const roleType = fr.role_type.label;
               const description = fr.description || '';
               const examples = fr.examples && fr.examples.length > 0 ? fr.examples.join(', ') : '';
-              const nickname = fr.nickname || '';
-              return `**${roleType}**: ${description}${examples ? ` (e.g. ${examples})` : ''}${nickname ? `; ${nickname}` : ''}`;
+              const label = fr.label || '';
+              return `**${roleType}**: ${description}${examples ? ` (e.g. ${examples})` : ''}${label ? `; ${label}` : ''}`;
             }).join('\n'),
           },
         });
@@ -659,18 +668,27 @@ async function fetchEntriesByFrameIds(frameIds: string[], pos?: PartOfSpeech, in
     }
   }
 
+  // Apply offset and limit if provided
+  if (offset !== undefined || limit !== undefined) {
+    const start = offset ?? 0;
+    const end = limit !== undefined ? start + limit : entries.length;
+    return entries.slice(start, end);
+  }
+
   return entries;
 }
 
-async function fetchEntriesByFilters(pos: PartOfSpeech, filters: { limit?: number; where?: BooleanFilterGroup | undefined } | Record<string, unknown>): Promise<LexicalEntrySummary[]> {
+async function fetchEntriesByFilters(pos: PartOfSpeech, filters: { limit?: number; offset?: number; where?: BooleanFilterGroup | undefined } | Record<string, unknown>): Promise<LexicalEntrySummary[]> {
   // Backward compatibility: if filters is a plain object without 'where', try to use it as simple fields
   const limit = typeof (filters as { limit?: unknown }).limit === 'number' ? Number((filters as { limit?: number }).limit) : undefined;
+  const offset = typeof (filters as { offset?: unknown }).offset === 'number' ? Number((filters as { offset?: number }).offset) : undefined;
   const ast = (filters as { where?: BooleanFilterGroup }).where as BooleanFilterGroup | undefined;
   const { where, computedFilters } = await translateFilterASTToPrisma(pos, ast);
 
   if (pos === 'verbs') {
     // limit=0 means fetch all, undefined means use default of 50
     const takeArg = limit === 0 ? undefined : (limit ?? 50);
+    const skipArg = offset;
     
     // Ensure deleted filter is always applied
     const verbsWhere = where as Prisma.verbsWhereInput;
@@ -687,6 +705,7 @@ async function fetchEntriesByFilters(pos: PartOfSpeech, filters: { limit?: numbe
     const records = await prisma.verbs.findMany({
       where: finalWhere,
       take: takeArg,
+      skip: skipArg,
       orderBy: { id: 'asc' }, // Ensure deterministic ordering for consistent previews
       include: {
         _count: {
@@ -698,7 +717,7 @@ async function fetchEntriesByFilters(pos: PartOfSpeech, filters: { limit?: numbe
         frames: {
           select: {
             id: true,
-            frame_name: true,
+            label: true,
             definition: true,
             short_definition: true,
             prototypical_synset: true,
@@ -709,7 +728,7 @@ async function fetchEntriesByFilters(pos: PartOfSpeech, filters: { limit?: numbe
                 notes: true,
                 main: true,
                 examples: true,
-                nickname: true,
+                label: true,
                 role_types: {
                   select: {
                     label: true,
@@ -724,42 +743,43 @@ async function fetchEntriesByFilters(pos: PartOfSpeech, filters: { limit?: numbe
     });
 
     let entries = records.map(record => {
-      const frameData = record.frames ? {
-        'frame.id': record.frames.id.toString(),
-        'frame.frame_name': record.frames.frame_name,
-        'frame.definition': record.frames.definition,
-        'frame.short_definition': record.frames.short_definition,
-        'frame.prototypical_synset': record.frames.prototypical_synset,
-        'frame.roles': sortRolesByPrecedence(record.frames.frame_roles.map(fr => ({
+      const rec = record as any;
+      const frameData = rec.frames ? {
+        'frame.id': rec.frames.id.toString(),
+        'frame.label': rec.frames.label || rec.frames.frame_name,
+        'frame.definition': rec.frames.definition,
+        'frame.short_definition': rec.frames.short_definition,
+        'frame.prototypical_synset': rec.frames.prototypical_synset,
+        'frame.roles': sortRolesByPrecedence((rec.frames.frame_roles as any[]).map(fr => ({
           role_type: fr.role_types,
           main: fr.main ?? undefined,
           description: fr.description,
           examples: fr.examples,
-          nickname: fr.nickname,
-        }))).map(fr => {
+          label: fr.label,
+        }))).map((fr: any) => {
           const roleType = fr.role_type.label;
           const description = fr.description || '';
           const examples = fr.examples && fr.examples.length > 0 ? fr.examples.join(', ') : '';
-          const nickname = fr.nickname || '';
-          return `**${roleType}**: ${description}${examples ? ` (e.g. ${examples})` : ''}${nickname ? `; ${nickname}` : ''}`;
+          const label = fr.label || '';
+          return `**${roleType}**: ${description}${examples ? ` (e.g. ${examples})` : ''}${label ? `; ${label}` : ''}`;
         }).join('\n'),
       } : {};
 
       return {
-        dbId: record.id,
-        code: (record as { code: string }).code,
+        dbId: rec.id,
+        code: (rec as { code: string }).code,
         pos,
-        gloss: record.gloss,
-        lemmas: record.lemmas,
-        examples: record.examples,
-        flagged: record.flagged ?? undefined,
-        flagged_reason: (record as { flagged_reason?: string | null }).flagged_reason ?? null,
-        frame_name: (record as { frames?: { frame_name?: string } | null }).frames?.frame_name ?? null,
-        lexfile: record.lexfile,
+        gloss: rec.gloss,
+        lemmas: rec.lemmas,
+        examples: rec.examples,
+        flagged: rec.flagged ?? undefined,
+        flagged_reason: (rec as { flagged_reason?: string | null }).flagged_reason ?? null,
+        label: (rec as { frames?: { label?: string; frame_name?: string } | null }).frames?.label || (rec as any).frames?.frame_name || null,
+        lexfile: rec.lexfile,
         additional: frameData,
         // temporary attachment for filtering only
-        _parentsCount: (record as any)._count?.verb_relations_verb_relations_source_idToverbs ?? 0,
-        _childrenCount: (record as any)._count?.verb_relations_verb_relations_target_idToverbs ?? 0,
+        _parentsCount: (rec as any)._count?.verb_relations_verb_relations_source_idToverbs ?? 0,
+        _childrenCount: (rec as any)._count?.verb_relations_verb_relations_target_idToverbs ?? 0,
       };
     }) as Array<LexicalEntrySummary & { _parentsCount: number; _childrenCount: number }>;
 
@@ -781,9 +801,11 @@ async function fetchEntriesByFilters(pos: PartOfSpeech, filters: { limit?: numbe
   if (pos === 'nouns') {
     // limit=0 means fetch all, undefined means use default of 50
     const takeArg = limit === 0 ? undefined : (limit ?? 50);
+    const skipArg = offset;
     const records = await prisma.nouns.findMany({
       where: where as Prisma.nounsWhereInput,
       take: takeArg,
+      skip: skipArg,
       orderBy: { id: 'asc' }, // Ensure deterministic ordering for consistent previews
       select: {
         id: true,
@@ -812,9 +834,11 @@ async function fetchEntriesByFilters(pos: PartOfSpeech, filters: { limit?: numbe
   if (pos === 'adjectives') {
     // limit=0 means fetch all, undefined means use default of 50
     const takeArg = limit === 0 ? undefined : (limit ?? 50);
+    const skipArg = offset;
     const records = await prisma.adjectives.findMany({
       where: where as Prisma.adjectivesWhereInput,
       take: takeArg,
+      skip: skipArg,
       orderBy: { id: 'asc' }, // Ensure deterministic ordering for consistent previews
       select: {
         id: true,
@@ -843,9 +867,11 @@ async function fetchEntriesByFilters(pos: PartOfSpeech, filters: { limit?: numbe
   if (pos === 'adverbs') {
     // limit=0 means fetch all, undefined means use default of 50
     const takeArg = limit === 0 ? undefined : (limit ?? 50);
+    const skipArg = offset;
     const records = await prisma.adverbs.findMany({
       where: where as Prisma.adverbsWhereInput,
       take: takeArg,
+      skip: skipArg,
       orderBy: { id: 'asc' }, // Ensure deterministic ordering for consistent previews
       select: {
         id: true,
@@ -874,13 +900,15 @@ async function fetchEntriesByFilters(pos: PartOfSpeech, filters: { limit?: numbe
   if (pos === 'frames') {
     // limit=0 means fetch all, undefined means use default of 50
     const takeArg = limit === 0 ? undefined : (limit ?? 50);
+    const skipArg = offset;
     const records = await prisma.frames.findMany({
       where: where as Prisma.framesWhereInput,
       take: takeArg,
+      skip: skipArg,
       orderBy: { id: 'asc' }, // Ensure deterministic ordering for consistent previews
       select: {
         id: true,
-        frame_name: true,
+        label: true,
         definition: true,
         short_definition: true,
         prototypical_synset: true,
@@ -888,7 +916,7 @@ async function fetchEntriesByFilters(pos: PartOfSpeech, filters: { limit?: numbe
         flagged_reason: true,
         forbidden: true,
         forbidden_reason: true,
-      },
+      } as any,
     });
     return records.map(record => ({
       dbId: record.id,
@@ -897,7 +925,7 @@ async function fetchEntriesByFilters(pos: PartOfSpeech, filters: { limit?: numbe
       gloss: record.definition,
       lemmas: [],
       examples: [],
-      frame_name: record.frame_name,
+      label: record.label,
       definition: record.definition,
       short_definition: record.short_definition,
       prototypical_synset: record.prototypical_synset,
@@ -934,102 +962,192 @@ function compareNumber(actual: number, op: 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 
 }
 
 /**
- * Apply moderation result by creating changesets (version control).
+ * Apply job result by creating changesets (version control).
  * 
  * Instead of directly updating entities, this creates changesets that
  * must be reviewed and committed by an admin before they take effect.
  */
-async function applyModerationResult(
+async function applyJobResult(
   item: llm_job_items,
   entry: LexicalEntrySummary,
-  result: FlaggingResponse,
-  jobLabel?: string | null,
+  result: FlaggingResponse | EditResponse,
+  jobLabel: string | null,
+  submittedBy: string,
+  jobType: 'moderation' | 'editing',
   jobScope?: JobScope
 ): Promise<void> {
-  const flagged = Boolean(result.flagged);
-  const rawReason = (result.flagged_reason ?? '').trim();
-  const prefixedReason = rawReason
-    ? (jobLabel ? `Via ${jobLabel}: ${rawReason}` : rawReason)
-    : null;
-
-  // Determine the flagging target for frame jobs
-  let flagTarget: 'frame' | 'verb' | 'both' = 'frame';
-  if (jobScope?.kind === 'frame_ids') {
-    flagTarget = jobScope.flagTarget ?? 'frame';
-  }
-
   // Get or create the changegroup for this job
-  const changegroupId = await getOrCreateJobChangegroup(item.job_id, jobLabel);
+  const changegroupId = await getOrCreateJobChangegroup(item.job_id, submittedBy, jobLabel);
 
-  // Helper to create a changeset for an entity update
-  const createModerationChangeset = async (
-    entityType: EntityType,
-    entityId: bigint,
-    currentEntity: Record<string, unknown>
-  ) => {
-    const updates: Record<string, unknown> = {
-      flagged,
-      flagged_reason: prefixedReason,
-    };
+  if (jobType === 'editing') {
+    const editResult = result as EditResponse;
+    const { edits, frame_id, relations, confidence, notes } = editResult;
+    let hasEdits = false;
 
-    await createChangesetFromUpdate(
-      entityType,
-      entityId,
-      currentEntity,
-      updates,
-      'system:llm-agent',
-      changegroupId
-    );
-  };
+    const entityType = item.verb_id ? 'verb' : 
+                     item.noun_id ? 'noun' :
+                     item.adjective_id ? 'adjective' :
+                     item.adverb_id ? 'adverb' :
+                     item.frame_id ? 'frame' : null;
+    const entityId = item.verb_id || item.noun_id || item.adjective_id || item.adverb_id || item.frame_id;
 
-  if (item.verb_id) {
-    const verb = await prisma.verbs.findUnique({
-      where: { id: item.verb_id },
-    });
-    if (verb) {
-      await createModerationChangeset('verb', item.verb_id, verb as unknown as Record<string, unknown>);
-    }
-  } else if (item.noun_id) {
-    const noun = await prisma.nouns.findUnique({
-      where: { id: item.noun_id },
-    });
-    if (noun) {
-      await createModerationChangeset('noun', item.noun_id, noun as unknown as Record<string, unknown>);
-    }
-  } else if (item.adjective_id) {
-    const adjective = await prisma.adjectives.findUnique({
-      where: { id: item.adjective_id },
-    });
-    if (adjective) {
-      await createModerationChangeset('adjective', item.adjective_id, adjective as unknown as Record<string, unknown>);
-    }
-  } else if (item.adverb_id) {
-    const adverb = await prisma.adverbs.findUnique({
-      where: { id: item.adverb_id },
-    });
-    if (adverb) {
-      await createModerationChangeset('adverb', item.adverb_id, adverb as unknown as Record<string, unknown>);
-    }
-  } else if (item.frame_id) {
-    // For frames, we need to handle the flagTarget option
-    const frameId = item.frame_id;
-    
-    // Flag the frame if target is 'frame' or 'both'
-    if (flagTarget === 'frame' || flagTarget === 'both') {
-      const frame = await prisma.frames.findUnique({
-        where: { id: frameId },
+    if (entityType && entityId) {
+      const table = ENTITY_TYPE_TO_TABLE[entityType as EntityType];
+      const currentEntity = await (prisma[table as keyof typeof prisma] as any).findUnique({
+        where: { id: entityId },
       });
-      if (frame) {
-        await createModerationChangeset('frame', frameId, frame as unknown as Record<string, unknown>);
+
+      if (currentEntity) {
+        const validUpdates: Record<string, unknown> = {};
+
+        // 1. Handle field edits
+        if (edits && Object.keys(edits).length > 0) {
+          for (const [field, newValue] of Object.entries(edits)) {
+            if (field in currentEntity && JSON.stringify(currentEntity[field]) !== JSON.stringify(newValue)) {
+              validUpdates[field] = newValue;
+            }
+          }
+        }
+
+        // 2. Handle frame_id reallocation
+        if (frame_id !== undefined && frame_id !== null) {
+          // Validate the frame exists
+          const targetFrame = await prisma.frames.findUnique({
+            where: { id: BigInt(frame_id) },
+            select: { id: true },
+          });
+
+          if (targetFrame) {
+            // Check if it's different from current
+            const currentFrameId = (currentEntity as any).frame_id;
+            if (currentFrameId === null || BigInt(currentFrameId) !== BigInt(frame_id)) {
+              validUpdates['frame_id'] = BigInt(frame_id);
+            }
+          } else {
+            console.warn(`[LLM] Job ${item.job_id} suggested non-existent frame_id: ${frame_id}`);
+          }
+        }
+
+        if (Object.keys(validUpdates).length > 0) {
+          await createChangesetFromUpdate(
+            entityType as EntityType,
+            entityId,
+            currentEntity as Record<string, unknown>,
+            validUpdates,
+            submittedBy,
+            changegroupId,
+            notes
+          );
+          hasEdits = true;
+        }
+
+        // 3. Handle relations (simplified)
+        if (relations && Object.keys(relations).length > 0) {
+          console.log(`[LLM] Job ${item.job_id} suggested relations for ${entry.code}:`, relations);
+        }
       }
     }
-    
-    // Flag associated verbs if target is 'verb' or 'both'
-    if (flagTarget === 'verb' || flagTarget === 'both') {
-      if (entry.additional?.frame_id) {
+
+    await prisma.llm_job_items.update({
+      where: { id: item.id },
+      data: {
+        status: 'succeeded',
+        has_edits: hasEdits,
+        flags: {
+          confidence,
+          notes,
+          staged_at: new Date().toISOString(),
+          changegroup_id: changegroupId.toString(),
+          suggested_relations: relations,
+          suggested_frame_id: frame_id,
+        },
+        completed_at: new Date(),
+      },
+    });
+  } else {
+    // Moderation/Flagging logic
+    const flaggingResult = result as FlaggingResponse;
+    const flagged = Boolean(flaggingResult.flagged);
+    const rawReason = (flaggingResult.flagged_reason ?? '').trim();
+    const prefixedReason = rawReason
+      ? (jobLabel ? `Via ${jobLabel}: ${rawReason}` : rawReason)
+      : null;
+
+    // Determine the flagging target for frame jobs
+    let flagTarget: 'frame' | 'verb' | 'both' = 'frame';
+    if (jobScope?.kind === 'frame_ids') {
+      flagTarget = jobScope.flagTarget ?? 'frame';
+    }
+
+    // Helper to create a changeset for an entity update
+    const createModerationChangeset = async (
+      entityType: EntityType,
+      entityId: bigint,
+      currentEntity: Record<string, unknown>
+    ) => {
+      const updates: Record<string, unknown> = {
+        flagged,
+        flagged_reason: prefixedReason,
+      };
+
+      await createChangesetFromUpdate(
+        entityType,
+        entityId,
+        currentEntity,
+        updates,
+        submittedBy,
+        changegroupId,
+        flaggingResult.notes ?? undefined
+      );
+    };
+
+    if (item.verb_id) {
+      const verb = await prisma.verbs.findUnique({
+        where: { id: item.verb_id },
+      });
+      if (verb) {
+        await createModerationChangeset('verb', item.verb_id, verb as unknown as Record<string, unknown>);
+      }
+    } else if (item.noun_id) {
+      const noun = await prisma.nouns.findUnique({
+        where: { id: item.noun_id },
+      });
+      if (noun) {
+        await createModerationChangeset('noun', item.noun_id, noun as unknown as Record<string, unknown>);
+      }
+    } else if (item.adjective_id) {
+      const adjective = await prisma.adjectives.findUnique({
+        where: { id: item.adjective_id },
+      });
+      if (adjective) {
+        await createModerationChangeset('adjective', item.adjective_id, adjective as unknown as Record<string, unknown>);
+      }
+    } else if (item.adverb_id) {
+      const adverb = await prisma.adverbs.findUnique({
+        where: { id: item.adverb_id },
+      });
+      if (adverb) {
+        await createModerationChangeset('adverb', item.adverb_id, adverb as unknown as Record<string, unknown>);
+      }
+    } else if (item.frame_id) {
+      // For frames, we need to handle the flagTarget option
+      const frameId = item.frame_id;
+      
+      // Flag the frame if target is 'frame' or 'both'
+      if (flagTarget === 'frame' || flagTarget === 'both') {
+        const frame = await prisma.frames.findUnique({
+          where: { id: frameId },
+        }) as any;
+        if (frame) {
+          await createModerationChangeset('frame', frameId, frame as Record<string, unknown>);
+        }
+      }
+      
+      // Flag associated verbs if target is 'verb' or 'both'
+      if (flagTarget === 'verb' || flagTarget === 'both') {
         const verbs = await prisma.verbs.findMany({
           where: { 
-            frame_id: BigInt(entry.additional.frame_id as string),
+            frame_id: frameId,
             deleted: false,
           },
         });
@@ -1038,26 +1156,25 @@ async function applyModerationResult(
         }
       }
     }
-  }
 
-  // Update the job item status - this still happens immediately
-  // (the changeset creation is what's tracked for review)
-  await prisma.llm_job_items.update({
-    where: { id: item.id },
-    data: {
-      status: 'succeeded',
-      flagged,
-      flags: {
+    // Update the job item status
+    await prisma.llm_job_items.update({
+      where: { id: item.id },
+      data: {
+        status: 'succeeded',
         flagged,
-        flagged_reason: prefixedReason,
-        confidence: result.confidence ?? null,
-        notes: result.notes ?? null,
-        staged_at: new Date().toISOString(),  // Changed from applied_at to staged_at
-        changegroup_id: changegroupId.toString(),
+        flags: {
+          flagged,
+          flagged_reason: prefixedReason,
+          confidence: flaggingResult.confidence ?? null,
+          notes: flaggingResult.notes ?? null,
+          staged_at: new Date().toISOString(),
+          changegroup_id: changegroupId.toString(),
+        },
+        completed_at: new Date(),
       },
-      completed_at: new Date(),
-    },
-  });
+    });
+  }
 }
 
 async function updateJobAggregates(jobId: bigint) {
@@ -1174,6 +1291,7 @@ export async function createLLMJob(
     promptTemplate: params.promptTemplate,
     serviceTier: params.serviceTier ?? null,
     reasoning: params.reasoning ?? null,
+    targetFields: (params.targetFields ?? []) as Prisma.InputJsonValue,
     metadata: (params.metadata ?? {}) as Prisma.InputJsonObject,
   };
 
@@ -1191,7 +1309,7 @@ export async function createLLMJob(
         pos: entry.pos,
         gloss: entry.gloss,
         lemmas: entry.lemmas,
-        frame_name: entry.frame_name ?? null,
+        label: entry.label ?? null,
       },
     } satisfies Record<string, unknown>;
 
@@ -1216,6 +1334,7 @@ export async function createLLMJob(
         data: {
           label: params.label ?? null,
           submitted_by: params.submittedBy ?? null,
+          job_type: params.jobType ?? 'moderation',
           scope_kind: params.scope.kind,
           scope: params.scope as unknown as Prisma.JsonObject,
           config: jobConfig,
@@ -1580,14 +1699,16 @@ async function refreshSingleItem(item: SerializedJob['items'][number], jobId: st
 
       const jobRecord = await getLLMJobsDelegate().findUnique({
         where: { id: BigInt(jobId) },
-        select: { scope: true },
+        select: { scope: true, submitted_by: true, job_type: true },
       });
       
-      await applyModerationResult(
+      await applyJobResult(
         await prisma.llm_job_items.findUniqueOrThrow({ where: { id: BigInt(item.id) } }),
         entry,
-        parsed,
+        parsed as any,
         jobLabel,
+        jobRecord?.submitted_by ?? 'system:llm-agent',
+        (jobRecord?.job_type as any) ?? 'moderation',
         jobRecord?.scope as JobScope | undefined
       );
 
@@ -1658,7 +1779,7 @@ async function fetchEntryForItem(item: SerializedJob['items'][number]): Promise<
         flagged_reason: true,
         lexfile: true,
         frames: {
-          select: { frame_name: true },
+          select: { label: true },
         },
       },
     });
@@ -1672,7 +1793,7 @@ async function fetchEntryForItem(item: SerializedJob['items'][number]): Promise<
       examples: record.examples,
       flagged: record.flagged,
       flagged_reason: record.flagged_reason,
-      frame_name: record.frames?.frame_name ?? null,
+      label: record.frames?.label ?? null,
       lexfile: record.lexfile,
     };
   }
@@ -1766,7 +1887,7 @@ async function fetchEntryForItem(item: SerializedJob['items'][number]): Promise<
       where: { id: BigInt(item.frame_id) },
       select: {
         id: true,
-        frame_name: true,
+        label: true,
         definition: true,
         short_definition: true,
         prototypical_synset: true,
@@ -1780,7 +1901,7 @@ async function fetchEntryForItem(item: SerializedJob['items'][number]): Promise<
       gloss: record.definition,
       lemmas: [],
       examples: [],
-      frame_name: record.frame_name,
+      label: record.label,
       definition: record.definition,
       short_definition: record.short_definition,
       prototypical_synset: record.prototypical_synset,

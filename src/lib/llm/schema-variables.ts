@@ -27,7 +27,7 @@ const COMMON_VARIABLES: VariableDefinition[] = [
 // Verb-specific variables
 const VERB_VARIABLES: VariableDefinition[] = [
   ...COMMON_VARIABLES,
-  { key: 'frame_name', label: 'Frame name', category: 'relation' },
+  { key: 'label', label: 'Frame name', category: 'relation' },
   { key: 'frame_definition', label: 'Frame definition', category: 'relation' },
   { key: 'vendler_class', label: 'Vendler class', category: 'basic' },
   { key: 'concrete', label: 'Concrete', category: 'basic' },
@@ -36,7 +36,7 @@ const VERB_VARIABLES: VariableDefinition[] = [
   { key: 'recipes_count', label: 'Number of recipes', category: 'computed' },
   // Frame fields (accessible via frame.* notation)
   { key: 'frame.id', label: 'Frame ID', category: 'relation' },
-  { key: 'frame.frame_name', label: 'Frame Name', category: 'relation' },
+  { key: 'frame.label', label: 'Frame Name', category: 'relation' },
   { key: 'frame.definition', label: 'Frame Definition', category: 'relation' },
   { key: 'frame.short_definition', label: 'Frame Short Definition', category: 'relation' },
   { key: 'frame.prototypical_synset', label: 'Frame Prototypical Synset', category: 'relation' },
@@ -85,7 +85,7 @@ const ADVERB_VARIABLES: VariableDefinition[] = [
 const FRAME_VARIABLES: VariableDefinition[] = [
   { key: 'id', label: 'Frame ID', category: 'basic' },
   { key: 'pos', label: 'Part of Speech', category: 'computed' },
-  { key: 'frame_name', label: 'Frame Name', category: 'basic' },
+  { key: 'label', label: 'Frame Name', category: 'basic' },
   { key: 'definition', label: 'Definition', category: 'basic' },
   { key: 'short_definition', label: 'Short Definition', category: 'basic' },
   { key: 'prototypical_synset', label: 'Prototypical Synset', category: 'basic' },

@@ -134,7 +134,7 @@ export default function ChangeTooltip({
   return (
     <div
       ref={tooltipRef}
-      className={`fixed z-[9999] min-w-[200px] max-w-[400px] rounded-lg shadow-lg border-2 ${styles.borderColor} ${styles.bgColor} overflow-hidden`}
+      className={`fixed z-[9999] min-w-[200px] max-w-[400px] rounded-lg border-2 ${styles.borderColor} ${styles.bgColor} overflow-hidden`}
       style={{
         top: position.top,
         left: position.left,

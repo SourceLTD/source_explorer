@@ -89,7 +89,7 @@ export default function SearchExample() {
 
 function EntryCard({ entry }: { entry: Verb }) {
   return (
-    <div className="border border-gray-200 rounded-xl p-4 hover:shadow-lg transition-shadow">
+    <div className="border border-gray-200 rounded-xl p-4 transition-">
       <div className="flex items-start justify-between mb-2">
         <h3 className="font-semibold text-lg text-blue-600">
           {(() => {

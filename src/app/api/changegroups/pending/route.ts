@@ -49,6 +49,7 @@ export async function GET(request: NextRequest) {
             id: true,
             label: true,
             status: true,
+            submitted_by: true,
           },
         },
       },
@@ -95,6 +96,7 @@ export async function GET(request: NextRequest) {
           id: cg.llm_jobs.id.toString(),
           label: cg.llm_jobs.label,
           status: cg.llm_jobs.status,
+          submitted_by: cg.llm_jobs.submitted_by,
         } : null,
         status: cg.status,
         created_by: cg.created_by,
@@ -120,6 +122,7 @@ export async function GET(request: NextRequest) {
             created_at: cs.created_at,
             reviewed_by: cs.reviewed_by,
             reviewed_at: cs.reviewed_at,
+            comment: cs.comment,
             field_changes: cs.field_changes.map(fc => ({
               id: fc.id.toString(),
               changeset_id: fc.changeset_id.toString(),
@@ -162,6 +165,7 @@ export async function GET(request: NextRequest) {
         created_at: cs.created_at,
         reviewed_by: cs.reviewed_by,
         reviewed_at: cs.reviewed_at,
+        comment: cs.comment,
         field_changes: cs.field_changes.map(fc => ({
           id: fc.id.toString(),
           changeset_id: fc.changeset_id.toString(),

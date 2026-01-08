@@ -446,7 +446,7 @@ export default function AdjectiveTableMode() {
               onClick={() => router.push('/')}
               className="text-xl font-bold text-gray-900 hover:text-gray-700 cursor-pointer"
             >
-              SourceNet
+              Source Console
             </button>
             <div className="h-6 w-px bg-gray-300"></div>
             <h1 className="text-xl font-bold text-gray-900">
@@ -481,7 +481,7 @@ export default function AdjectiveTableMode() {
       {/* Main Content */}
       <main className="flex-1 flex flex-col bg-white">
         {/* Data Table */}
-        <div className="m-6 bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
+        <div className="m-6 bg-white rounded-xl border border-gray-200 overflow-hidden">
           <Suspense fallback={<div className="p-8 text-center text-gray-500">Loading...</div>}>
             <DataTable 
               searchQuery={searchQuery}
@@ -494,20 +494,17 @@ export default function AdjectiveTableMode() {
 
       {/* Edit Overlay */}
       {isEditOverlayOpen && currentNode && (
-        <div 
-          className="fixed inset-0 flex items-center justify-center z-50"
-          onClick={(e) => {
-            // Close only if clicking the backdrop directly
-            if (e.target === e.currentTarget && !editingField) {
-              setIsEditOverlayOpen(false);
-            }
-          }}
-        >
+        <div className="fixed inset-0 flex items-center justify-center z-50">
           <div 
             className="absolute inset-0"
             style={{ backgroundColor: 'rgba(0, 0, 0, 0.25)' }}
+            onClick={() => {
+              if (!editingField) {
+                setIsEditOverlayOpen(false);
+              }
+            }}
           ></div>
-          <div className="bg-white rounded-xl shadow-lg w-full max-w-5xl mx-4 max-h-[85vh] overflow-hidden relative z-10 flex flex-col">
+          <div className="bg-white rounded-xl w-full max-w-5xl mx-4 max-h-[85vh] overflow-hidden relative z-10 flex flex-col">
             {/* Header */}
             <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between shrink-0">
               <div className="flex-1">
@@ -1085,7 +1082,7 @@ export default function AdjectiveTableMode() {
                 className="absolute inset-0 bg-black bg-opacity-50"
                 onClick={() => setShowDeleteConfirm(false)}
               ></div>
-              <div className="bg-white rounded-xl shadow-lg p-6 max-w-md mx-4 relative z-30">
+              <div className="bg-white rounded-xl p-6 max-w-md mx-4 relative z-30">
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">Delete Entry</h3>
                 <p className="text-sm text-gray-600 mb-4">
                   Are you sure you want to delete <strong>{currentNode.id}</strong>?

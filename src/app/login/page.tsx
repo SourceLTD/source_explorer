@@ -53,7 +53,7 @@ export default function LoginPage() {
   return (
     <div className="h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
       <div className="max-w-md mx-auto px-6">
-        <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-8">
+        <div className="bg-white rounded-xl border border-gray-200 p-8">
           <div className="text-center mb-8">
             <h1 className="text-3xl font-bold text-gray-900 mb-2">
               Sign in

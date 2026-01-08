@@ -3,11 +3,13 @@ import {
   getEntryById, 
   searchEntries,
   getGraphNode,
+  updateModerationStatus,
 } from './db';
 import { getPaginatedEntities } from './db/entities';
 import { handleDatabaseError } from './db-utils';
 import { stageUpdate, stageDelete, stageModerationUpdates, stageRolesUpdate, EntityType, attachPendingInfoToEntities, getPendingInfoForEntity, applyPendingToEntity } from './version-control';
 import type { LexicalType, PaginationParams, TableEntry } from './types';
+import { getCurrentUserName } from '@/utils/supabase/server';
 
 /**
  * Helper to convert LexicalType to EntityType
@@ -233,17 +235,17 @@ export async function handleGetById(
  * Get allowed fields for each entity type
  */
 function getAllowedFieldsForType(lexicalType: LexicalType): string[] {
-  const commonFields = ['id', 'gloss', 'lemmas', 'src_lemmas', 'examples', 'lexfile'];
+  const commonFields = ['id', 'gloss', 'lemmas', 'src_lemmas', 'examples', 'lexfile', 'flagged', 'flaggedReason'];
   
   switch (lexicalType) {
     case 'verbs':
       return [...commonFields, 'roles', 'role_groups', 'vendler_class', 'frame_id'];
     case 'nouns':
-      return [...commonFields, 'countable', 'proper', 'collective', 'concrete', 'predicate'];
+      return [...commonFields, 'countable', 'proper', 'collective', 'concrete', 'predicate', 'frame_id'];
     case 'adjectives':
-      return [...commonFields, 'gradable', 'predicative', 'attributive', 'subjective', 'relational'];
+      return [...commonFields, 'gradable', 'predicative', 'attributive', 'subjective', 'relational', 'frame_id'];
     case 'adverbs':
-      return [...commonFields, 'gradable'];
+      return [...commonFields, 'gradable', 'frame_id'];
     default:
       return commonFields;
   }
@@ -262,8 +264,7 @@ export async function handleUpdateById(
 ): Promise<NextResponse> {
   try {
     const entityType = lexicalTypeToEntityType(lexicalType);
-    // TODO: Get actual user ID from auth context
-    const userId = 'current-user';
+    const userId = await getCurrentUserName();
     
     const updates = body as Record<string, unknown>;
     
@@ -279,6 +280,29 @@ export async function handleUpdateById(
 
     if (Object.keys(updateData).length === 0) {
       return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 });
+    }
+
+    // Handle direct updates (flagged status) immediately
+    if ('flagged' in updateData || 'flaggedReason' in updateData) {
+      const moderationUpdates: Record<string, any> = {};
+      if ('flagged' in updateData) {
+        moderationUpdates.flagged = updateData.flagged;
+        delete updateData.flagged;
+      }
+      if ('flaggedReason' in updateData) {
+        moderationUpdates.flaggedReason = updateData.flaggedReason;
+        delete updateData.flaggedReason;
+      }
+      
+      await updateModerationStatus([id], moderationUpdates, lexicalType as any);
+      
+      // If only flagged fields were updated, return early
+      if (Object.keys(updateData).length === 0) {
+        return NextResponse.json({ 
+          success: true, 
+          message: 'Flagging status updated successfully' 
+        });
+      }
     }
 
     // Handle verb-specific roles update
@@ -369,8 +393,7 @@ export async function handleDeleteById(
 ): Promise<NextResponse> {
   try {
     const entityType = lexicalTypeToEntityType(lexicalType);
-    // TODO: Get actual user ID from auth context
-    const userId = 'current-user';
+    const userId = await getCurrentUserName();
     
     const response = await stageDelete(entityType, id, userId);
     
@@ -576,16 +599,46 @@ export async function handleModerationRequest(
     }
 
     const entityType = lexicalTypeToEntityType(lexicalType);
-    // TODO: Get actual user ID from auth context
-    const userId = 'current-user';
+    const userId = await getCurrentUserName();
     
-    const result = await stageModerationUpdates(entityType, ids, updates, userId);
+    // Split updates into direct (flagged) and staged (others)
+    const directUpdates: Record<string, any> = {};
+    const stagedUpdates: Record<string, any> = {};
     
+    for (const [key, value] of Object.entries(updates)) {
+      if (key === 'flagged' || key === 'flaggedReason') {
+        directUpdates[key] = value;
+      } else if (VALID_MODERATION_FIELDS.includes(key)) {
+        stagedUpdates[key] = value;
+      }
+    }
+
+    let stagedCount = 0;
+    let directCount = 0;
+    let changesetIds: string[] = [];
+    let message = '';
+
+    // Apply direct updates (flagged status) immediately
+    if (Object.keys(directUpdates).length > 0) {
+      directCount = await updateModerationStatus(ids, directUpdates, lexicalType as any);
+      message = `Updated flagging status for ${directCount} ${lexicalType}. `;
+    }
+
+    // Stage other moderation updates (e.g., forbidden)
+    if (Object.keys(stagedUpdates).length > 0) {
+      const result = await stageModerationUpdates(entityType, ids, stagedUpdates, userId);
+      stagedCount = result.staged_count;
+      changesetIds = result.changeset_ids;
+      message += `Staged other moderation changes for ${result.staged_count} ${lexicalType}.`;
+    }
+
     return NextResponse.json({ 
-      staged: true,
-      staged_count: result.staged_count,
-      changeset_ids: result.changeset_ids,
-      message: `Staged moderation changes for ${result.staged_count} ${lexicalType}` 
+      staged: Object.keys(stagedUpdates).length > 0,
+      staged_count: stagedCount,
+      updated_count: directCount,
+      count: directCount, // Compatibility with some frontend parts
+      changeset_ids: changesetIds,
+      message: message.trim() || 'No changes applied'
     }, {
       headers: {
         'Cache-Control': 'no-store, no-cache, must-revalidate',

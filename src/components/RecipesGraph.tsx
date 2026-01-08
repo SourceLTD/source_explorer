@@ -478,7 +478,7 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
               type="button"
               onClick={handlePrevRecipe}
               disabled={recipes.length <= 1}
-              className={`h-7 w-7 flex items-center justify-center rounded-full border shadow-lg ${
+              className={`h-7 w-7 flex items-center justify-center rounded-full border ${
                 recipes.length <= 1
                   ? 'border-gray-200 bg-gray-50 text-gray-400 cursor-not-allowed'
                   : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-100'
@@ -497,7 +497,7 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
               type="button"
               onClick={handleNextRecipe}
               disabled={recipes.length <= 1}
-              className={`h-7 w-7 flex items-center justify-center rounded-full border shadow-lg ${
+              className={`h-7 w-7 flex items-center justify-center rounded-full border ${
                 recipes.length <= 1
                   ? 'border-gray-200 bg-gray-50 text-gray-400 cursor-not-allowed'
                   : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-100'
@@ -517,7 +517,7 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
           </div>
 
           {/* Logic text box */}
-          <div className="border border-gray-300 rounded-xl p-3 bg-white shadow-lg w-full overflow-auto min-w-0" style={{ height: mainNodeHeight - 36 - 10 }}>
+          <div className="border border-gray-300 rounded-xl p-3 bg-white w-full overflow-auto min-w-0" style={{ height: mainNodeHeight - 36 - 10 }}>
             {activeRecipe?.preconditions && activeRecipe.preconditions.length > 0 && (
               <>
                 <div className="text-sm font-bold text-gray-800 mb-2">
@@ -552,7 +552,7 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
       {/* Tooltip */}
       {argTooltip && (
         <div
-          className="fixed z-50 px-3 py-2 text-xs font-medium text-white bg-gray-900 rounded-xl shadow-lg pointer-events-none"
+          className="fixed z-50 px-3 py-2 text-xs font-medium text-white bg-gray-900 rounded-xl pointer-events-none"
           style={{ left: argTooltip.x, top: argTooltip.y, transform: 'translate(-50%, -100%)' }}
         >
           <div>{argTooltip.title}</div>

@@ -8,7 +8,7 @@ import ColumnVisibilityPanel, { ColumnConfig, ColumnVisibilityState } from './Co
 import PageSizeSelector from './PageSizeSelector';
 import { api } from '@/lib/api-client';
 import AIJobsOverlay from './AIJobsOverlay';
-import { SparklesIcon } from '@heroicons/react/24/outline';
+import { SparklesIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import { showGlobalAlert } from '@/lib/alerts';
 import { PendingFieldIndicator, getPendingRowClasses } from './PendingChangeIndicator';
 
@@ -56,7 +56,7 @@ interface ContextMenuState {
 interface FrameOption {
   id: string;
   code: string | null;
-  frame_name: string;
+  label: string;
 }
 
 // Define all available columns with their configurations
@@ -85,6 +85,7 @@ const VERBS_DEFAULT_COLUMNS: ColumnConfig[] = [
 const NOUNS_ADJECTIVES_DEFAULT_COLUMNS: ColumnConfig[] = [
   { key: 'id', label: 'ID', visible: true, sortable: true },
   { key: 'legacy_id', label: 'Legacy ID', visible: false, sortable: true },
+  { key: 'frame', label: 'Frame', visible: false, sortable: true },
   { key: 'lemmas', label: 'Lemmas', visible: true, sortable: true },
   { key: 'gloss', label: 'Definition', visible: true, sortable: true },
   { key: 'pos', label: 'Part of Speech', visible: false, sortable: true },
@@ -104,6 +105,7 @@ const NOUNS_ADJECTIVES_DEFAULT_COLUMNS: ColumnConfig[] = [
 const ADVERBS_COLUMNS: ColumnConfig[] = [
   { key: 'id', label: 'ID', visible: true, sortable: true },
   { key: 'legacy_id', label: 'Legacy ID', visible: false, sortable: true },
+  { key: 'frame', label: 'Frame', visible: false, sortable: true },
   { key: 'lemmas', label: 'Lemmas', visible: true, sortable: true },
   { key: 'gloss', label: 'Definition', visible: true, sortable: true },
   { key: 'pos', label: 'Part of Speech', visible: false, sortable: true },
@@ -122,7 +124,7 @@ const ADVERBS_COLUMNS: ColumnConfig[] = [
 
 // Frames-specific columns
 const FRAMES_COLUMNS: ColumnConfig[] = [
-  { key: 'frame_name', label: 'Frame Name', visible: true, sortable: true },
+  { key: 'label', label: 'Frame Name', visible: true, sortable: true },
   { key: 'definition', label: 'Definition', visible: true, sortable: false },
   { key: 'short_definition', label: 'Short Definition', visible: true, sortable: false },
   { key: 'prototypical_synset', label: 'Prototypical Synset', visible: true, sortable: true },
@@ -153,7 +155,7 @@ const DEFAULT_COLUMN_WIDTHS: ColumnWidthState = {
   updatedAt: 100,
   actions: 80,
   // Frame columns
-  frame_name: 200,
+  label: 200,
   definition: 350,
   short_definition: 250,
   prototypical_synset: 180,
@@ -296,12 +298,12 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
     
     // Map between mode-specific column names
     if (mode === 'frames' && rawSortBy === 'gloss') {
-      sortBy = 'frame_name';
+      sortBy = 'label';
     } else if (mode !== 'frames' && rawSortBy === 'short_definition') {
       sortBy = 'gloss';
     } else if (!validColumnKeys.includes(sortBy)) {
       // If column doesn't exist in current mode, use a safe default
-      sortBy = mode === 'frames' ? 'frame_name' : 'id';
+      sortBy = mode === 'frames' ? 'label' : 'id';
     }
 
     // Parse pagination
@@ -388,7 +390,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
     }
     const query = frameSearchQuery.trim().toLowerCase();
     return frameOptions.filter(frame => {
-      const nameMatch = frame.frame_name.toLowerCase().includes(query);
+      const nameMatch = frame.label.toLowerCase().includes(query);
       return nameMatch;
     });
   }, [frameOptions, frameSearchQuery]);
@@ -539,7 +541,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
     
     // If switching to frames and sortBy is 'gloss', map it to 'short_definition'
     if (mode === 'frames' && rawSortBy === 'gloss') {
-      sortBy = 'frame_name'; // Default to frame_name for frames when coming from gloss
+      sortBy = 'label'; // Default to label for frames when coming from gloss
     }
     // If switching from frames to other modes and sortBy is 'short_definition', map to 'gloss'
     else if (mode !== 'frames' && rawSortBy === 'short_definition') {
@@ -547,7 +549,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
     }
     // If the column doesn't exist in the new mode, reset to a safe default
     else if (!validColumnKeys.includes(sortBy)) {
-      sortBy = mode === 'frames' ? 'frame_name' : 'id';
+      sortBy = mode === 'frames' ? 'label' : 'id';
     }
 
     // Parse pagination
@@ -678,7 +680,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
       // Use a safe default if sortBy is invalid for current mode
       const safeSortBy = validColumnKeys.includes(sortState.field) 
         ? sortState.field 
-        : (mode === 'frames' ? 'frame_name' : 'id');
+        : (mode === 'frames' ? 'label' : 'id');
       
       const params: PaginationParams = {
         page: currentPage,
@@ -1081,7 +1083,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
       setFrameOptionsError(null);
 
       // Show appropriate feedback based on whether all selected entries were updated
-      const frameName = chosenFrame ? chosenFrame.frame_name : 'No frame';
+      const frameName = chosenFrame ? chosenFrame.label : 'No frame';
       const action = normalizedFrameValue === null ? 'cleared frames for' : `updated to ${frameName} for`;
       
       if (actualCount === selectedCount) {
@@ -1321,14 +1323,14 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
   const renderCellContent = (entry: TableEntry | Frame, columnKey: string) => {
     // Type guard to check if entry is a Frame
     const isFrame = (e: TableEntry | Frame): e is Frame => {
-      return mode === 'frames' && 'frame_name' in e;
+      return mode === 'frames' && 'label' in e;
     };
 
     // Handle frame-specific columns
     if (isFrame(entry)) {
       switch (columnKey) {
-        case 'frame_name':
-          return <span className="inline-block max-w-full text-sm font-semibold text-gray-900 break-words">{entry.frame_name}</span>;
+        case 'label':
+          return <span className="inline-block max-w-full text-sm font-semibold text-gray-900 break-words">{entry.label}</span>;
         case 'definition':
           return (
             <div className="text-sm text-gray-900 break-words max-w-full">
@@ -1526,7 +1528,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
                 <svg className="w-4 h-4 text-orange-600 cursor-help" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                <div className="absolute left-0 top-6 hidden group-hover:block z-50 w-64 p-2 bg-gray-900 text-white text-xs rounded shadow-lg">
+                <div className="absolute left-0 top-6 hidden group-hover:block z-50 w-64 p-2 bg-gray-900 text-white text-xs rounded">
                   {entry.flaggedReason}
                 </div>
               </div>
@@ -1552,7 +1554,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
                 <svg className="w-4 h-4 text-red-600 cursor-help" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                <div className="absolute left-0 top-6 hidden group-hover:block z-50 w-64 p-2 bg-gray-900 text-white text-xs rounded shadow-lg">
+                <div className="absolute left-0 top-6 hidden group-hover:block z-50 w-64 p-2 bg-gray-900 text-white text-xs rounded">
                   {entry.forbiddenReason}
                 </div>
               </div>
@@ -1774,7 +1776,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
 
   if (loading && !data) {
     return (
-      <div className={`bg-white rounded-xl shadow-lg border border-gray-200 ${className || ''}`}>
+      <div className={`bg-white rounded-xl border border-gray-200 ${className || ''}`}>
         <div className="p-8 text-center">
           <div className="animate-spin h-12 w-12 border-2 border-gray-300 border-t-blue-600 rounded-full mx-auto mb-4"></div>
           <p className="text-gray-500">Loading entries...</p>
@@ -1785,11 +1787,9 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
 
   if (error) {
     return (
-      <div className={`bg-white rounded-xl shadow-lg border border-gray-200 ${className || ''}`}>
+      <div className={`bg-white rounded-xl border border-gray-200 ${className || ''}`}>
         <div className="p-8 text-center text-red-600">
-          <svg className="h-12 w-12 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 15.5c-.77.833.192 2.5 1.732 2.5z" />
-          </svg>
+          <ExclamationTriangleIcon className="h-12 w-12 mx-auto mb-4" />
           <p>Error loading data: {error}</p>
           <button 
             onClick={fetchData}
@@ -1806,7 +1806,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
   const hasData = data && data.data && data.data.length > 0;
 
   return (
-    <div className={`bg-white rounded-xl shadow-lg border border-gray-200 ${className || ''} ${isResizing ? 'select-none' : ''}`}>
+    <div className={`bg-white rounded-xl border border-gray-200 ${className || ''} ${isResizing ? 'select-none' : ''}`}>
       {/* Filters and Controls */}
       <div className="p-4 border-b border-gray-200 bg-gray-50">
         {/* Row Status Legend */}
@@ -1858,18 +1858,13 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
               Reset Widths
             </button>
             <button
-              onClick={() => mode !== 'frames' && setIsAIOverlayOpen(true)}
-              disabled={mode === 'frames'}
-              className={`relative inline-flex items-center justify-center rounded-xl px-3 py-2 text-white shadow-lg transition-colors focus:outline-none focus:ring-2 ${
-                mode === 'frames'
-                  ? 'bg-gray-300 cursor-not-allowed opacity-50'
-                  : 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 focus:ring-blue-500 cursor-pointer'
-              }`}
-              title={mode === 'frames' ? 'AI batch moderation not available for frames' : 'Open AI batch moderation'}
+              onClick={() => setIsAIOverlayOpen(true)}
+              className="relative inline-flex items-center gap-2 rounded-xl px-3 py-2 text-white transition-colors hover:brightness-110 focus:outline-none focus:ring-2 bg-gradient-to-r from-blue-500 to-blue-600 focus:ring-blue-500 cursor-pointer"
+              title="Open AI batch moderation"
               aria-label="Open AI batch moderation"
               type="button"
             >
-              <SparklesIcon className="h-5 w-5" aria-hidden="true" />
+              <SparklesIcon className="h-5 w-5 flex-shrink-0" aria-hidden="true" />
               {pendingAIJobs > 0 && (
                 <span className="absolute -top-1 -right-1 inline-flex min-h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-600 px-1 text-[11px] font-bold text-white">
                   {pendingAIJobs > 99 ? '99+' : pendingAIJobs}
@@ -1878,7 +1873,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
             </button>
             
             {/* Moderation Actions */}
-            {mode !== 'frames' && selection.selectedIds.size > 0 && (() => {
+            {selection.selectedIds.size > 0 && (() => {
               const { allFlagged, noneFlagged, allForbidden, noneForbidden } = getSelectionModerationState();
               const mixedFlagged = !allFlagged && !noneFlagged;
               const mixedForbidden = !allForbidden && !noneForbidden;
@@ -1973,16 +1968,14 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
         <table className="w-full" style={{ tableLayout: 'fixed' }}>
           <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-20">
             <tr>
-              {mode !== 'frames' && (
-                <th className="px-4 py-3 text-left w-12 bg-gray-50" style={{ width: '48px' }}>
-                  <input
-                    type="checkbox"
-                    checked={selection.selectAll}
-                    onChange={handleSelectAll}
-                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
-                </th>
-              )}
+              <th className="px-4 py-3 text-left w-12 bg-gray-50" style={{ width: '48px' }}>
+                <input
+                  type="checkbox"
+                  checked={selection.selectAll}
+                  onChange={handleSelectAll}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+              </th>
               {visibleColumns.map((column) => (
                 <th 
                   key={column.key}
@@ -2022,19 +2015,17 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
                     handleSelectRow(entry.id);
                   }}
                 >
-                  {mode !== 'frames' && (
-                    <td className="px-4 py-4 whitespace-nowrap w-12" style={{ width: '48px' }}>
-                      <input
-                        type="checkbox"
-                        checked={selection.selectedIds.has(entry.id)}
-                        onChange={(e) => {
-                          e.stopPropagation();
-                          handleSelectRow(entry.id);
-                        }}
-                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                      />
-                    </td>
-                  )}
+                  <td className="px-4 py-4 whitespace-nowrap w-12" style={{ width: '48px' }}>
+                    <input
+                      type="checkbox"
+                      checked={selection.selectedIds.has(entry.id)}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        handleSelectRow(entry.id);
+                      }}
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                  </td>
                   {visibleColumns.map((column) => {
                     const isClickable = onRowClick && column.key !== 'isMwe' && column.key !== 'gloss' && column.key !== 'actions';
                     const cellClassName = `px-4 py-4 break-words ${isClickable ? 'cursor-pointer' : ''} align-top border-r border-gray-200`;
@@ -2043,7 +2034,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
                     // Map column keys to actual field names for pending check
                     const fieldNameMap: Record<string, string> = {
                       'frame': 'frame_id',
-                      'frame_name': 'frame_name',
+                      'label': 'label',
                       'gloss': 'gloss',
                       'lemmas': 'lemmas',
                       'examples': 'examples',
@@ -2086,7 +2077,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
               })
             ) : (
               <tr>
-                <td colSpan={visibleColumns.length + (mode !== 'frames' ? 1 : 0)} className="px-4 py-12 text-center">
+                <td colSpan={visibleColumns.length + 1} className="px-4 py-12 text-center">
                   <div className="text-gray-400">
                     <svg className="h-24 w-24 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -2133,10 +2124,10 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
                     key={pageNum}
                     onClick={() => handlePageChange(pageNum)}
                     disabled={loading}
-                    className={`px-4 py-2 text-sm font-semibold border-gray-300 rounded-xl min-w-[40px] ${
+                    className={`px-4 py-2 text-sm font-medium border border-gray-300 rounded-xl min-w-[40px] ${
                       pageNum === data.page
-                        ? 'bg-blue-600 text-white border-blue-600 shadow-lg'
-                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100 hover:border-gray-400'
                     } disabled:opacity-50 transition-colors cursor-pointer`}
                   >
                     {pageNum}
@@ -2162,13 +2153,13 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
         if (!entry) return null;
 
         // Check if entry is a Frame
-        const isFrameEntry = mode === 'frames' && 'frame_name' in entry;
+        const isFrameEntry = mode === 'frames' && 'label' in entry;
         const frameEntry = isFrameEntry ? entry as Frame : null;
         const tableEntry = !isFrameEntry ? entry as TableEntry : null;
 
         return (
           <div
-            className="fixed bg-white rounded-xl shadow-lg border border-gray-200 py-1 z-50 min-w-48"
+            className="fixed bg-white rounded-xl border border-gray-200 py-1 z-50 min-w-48"
             style={{
               left: `${contextMenu.x}px`,
               top: `${contextMenu.y}px`,
@@ -2181,7 +2172,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
                 <>
                   <div className="text-xs font-mono text-blue-600">{frameEntry.id}</div>
                   <div className="text-xs text-gray-600 mt-1 truncate max-w-xs">
-                    {frameEntry.frame_name}
+                    {frameEntry.label}
                   </div>
                 </>
               ) : tableEntry ? (
@@ -2291,7 +2282,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
               style={{ backgroundColor: 'rgba(0, 0, 0, 0.25)' }}
               onClick={handleCloseModerationModal}
             ></div>
-            <div className="bg-white rounded-xl shadow-lg max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto relative z-10">
+            <div className="bg-white rounded-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto relative z-10">
               <div className="p-6">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">
                   {moderationModal.action === 'flag' && 'Flag Entries'}
@@ -2435,7 +2426,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
               style={{ backgroundColor: 'rgba(0, 0, 0, 0.25)' }}
               onClick={isFrameUpdating ? undefined : handleCloseFrameModal}
             ></div>
-            <div className="bg-white rounded-xl shadow-lg max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto relative z-10">
+            <div className="bg-white rounded-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto relative z-10">
               <div className="p-6 space-y-5">
                 <div className="space-y-2">
                   <h3 className="text-lg font-semibold text-gray-900">Change Frame</h3>
@@ -2530,7 +2521,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
                         <option value="__CLEAR__">No frame (clear existing frame)</option>
                         {filteredFrameOptions.map(frame => (
                           <option key={frame.id} value={frame.id}>
-                            {frame.frame_name}
+                            {frame.label}
                           </option>
                         ))}
                       </select>

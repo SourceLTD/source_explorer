@@ -62,7 +62,7 @@ export default function PageSizeSelector({
       </button>
 
       {isOpen && (
-        <div className="absolute top-full right-0 mt-2 w-48 bg-white border border-gray-200 rounded-xl shadow-lg z-50">
+        <div className="absolute top-full right-0 mt-2 w-48 bg-white border border-gray-200 rounded-xl z-50">
           <div className="p-4">
             <h3 className="text-sm font-semibold text-gray-900 mb-3">Items per page</h3>
             

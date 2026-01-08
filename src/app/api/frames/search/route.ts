@@ -13,20 +13,24 @@ export async function GET(request: NextRequest) {
 
     const frames = await prisma.frames.findMany({
       where: {
-        frame_name: { contains: query, mode: 'insensitive' },
+        label: { contains: query, mode: 'insensitive' },
       },
       select: {
         id: true,
-        frame_name: true,
+        label: true,
         short_definition: true,
       },
       take: limit,
     });
 
     const results = frames.map(frame => ({
-      id: frame.id,
-      frame_name: frame.frame_name,
+      id: frame.id.toString(),
+      label: frame.label,
       gloss: frame.short_definition,
+      pos: 'f',
+      lemmas: [],
+      src_lemmas: [],
+      legacy_id: '',
     }));
 
     return NextResponse.json(results);

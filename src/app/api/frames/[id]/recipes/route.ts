@@ -93,7 +93,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const frameRecipeData = {
       frame: {
         id: frame.id.toString(),
-        frame_name: frame.frame_name,
+        label: frame.label,
         definition: frame.definition,
         short_definition: frame.short_definition,
         prototypical_synset: frame.prototypical_synset,
@@ -113,7 +113,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         notes: role.notes,
         main: role.main,
         examples: role.examples,
-        nickname: role.nickname,
+        label: role.label,
         // Groups this role belongs to
         groups: role.role_group_members.map(rgm => ({
           id: rgm.role_groups.id.toString(),
@@ -155,7 +155,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
           .filter(rel => rel.type === 'inherits_from')
           .map(rel => ({
             id: rel.frames_frame_relations_target_idToframes.id.toString(),
-            frame_name: rel.frames_frame_relations_target_idToframes.frame_name,
+            label: rel.frames_frame_relations_target_idToframes.label,
             short_definition: rel.frames_frame_relations_target_idToframes.short_definition,
             roles: rel.frames_frame_relations_target_idToframes.frame_roles.map(r => ({
               id: r.id.toString(),
@@ -169,7 +169,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
           .filter(rel => rel.type === 'inherits_from')
           .map(rel => ({
             id: rel.frames_frame_relations_source_idToframes.id.toString(),
-            frame_name: rel.frames_frame_relations_source_idToframes.frame_name,
+            label: rel.frames_frame_relations_source_idToframes.label,
             short_definition: rel.frames_frame_relations_source_idToframes.short_definition,
           })),
         // Frames this frame uses
@@ -177,7 +177,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
           .filter(rel => rel.type === 'uses')
           .map(rel => ({
             id: rel.frames_frame_relations_target_idToframes.id.toString(),
-            frame_name: rel.frames_frame_relations_target_idToframes.frame_name,
+            label: rel.frames_frame_relations_target_idToframes.label,
             short_definition: rel.frames_frame_relations_target_idToframes.short_definition,
           })),
         // Frames that use this frame
@@ -185,7 +185,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
           .filter(rel => rel.type === 'uses')
           .map(rel => ({
             id: rel.frames_frame_relations_source_idToframes.id.toString(),
-            frame_name: rel.frames_frame_relations_source_idToframes.frame_name,
+            label: rel.frames_frame_relations_source_idToframes.label,
             short_definition: rel.frames_frame_relations_source_idToframes.short_definition,
           })),
         // Other relations (causes, precedes, see_also, etc.)
@@ -197,7 +197,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
               direction: 'outgoing' as const,
               frame: {
                 id: rel.frames_frame_relations_target_idToframes.id.toString(),
-                frame_name: rel.frames_frame_relations_target_idToframes.frame_name,
+                label: rel.frames_frame_relations_target_idToframes.label,
                 short_definition: rel.frames_frame_relations_target_idToframes.short_definition,
               },
             })),
@@ -208,7 +208,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
               direction: 'incoming' as const,
               frame: {
                 id: rel.frames_frame_relations_source_idToframes.id.toString(),
-                frame_name: rel.frames_frame_relations_source_idToframes.frame_name,
+                label: rel.frames_frame_relations_source_idToframes.label,
                 short_definition: rel.frames_frame_relations_source_idToframes.short_definition,
               },
             })),

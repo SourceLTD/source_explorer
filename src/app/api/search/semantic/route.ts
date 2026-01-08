@@ -20,7 +20,7 @@ interface SemanticSearchResult {
 
 interface FrameSearchResult {
   id: number;
-  frame_name: string;
+  label: string;
   short_definition: string;
   similarity: number;
 }
@@ -80,15 +80,16 @@ export async function GET(request: NextRequest) {
 
     // Transform results to match the existing search result format
     const results = (data as (SemanticSearchResult | FrameSearchResult)[]).map((item) => {
-      if ('frame_name' in item) {
+      if ('label' in item) {
         // Frame result
         return {
-          id: `frame-${item.id}`,
-          code: item.frame_name,
+          id: item.id.toString(),
+          label: item.label,
           gloss: item.short_definition,
-          pos: 'frame',
+          pos: 'f',
           lemmas: [],
           src_lemmas: [],
+          legacy_id: '',
           similarity: item.similarity,
         };
       } else {
@@ -101,11 +102,12 @@ export async function GET(request: NextRequest) {
         };
         return {
           id: item.code,
-          code: item.code,
+          label: item.code,
           gloss: item.gloss,
           pos: posMap[table] || 'v',
           lemmas: item.lemmas || [],
           src_lemmas: [],
+          legacy_id: '',
           similarity: item.similarity,
         };
       }

@@ -9,6 +9,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { commitChangeset } from '@/lib/version-control';
+import { getCurrentUserName } from '@/utils/supabase/server';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -19,19 +20,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params;
     const changesetId = BigInt(id);
-    const body = await request.json();
     
-    const { committed_by } = body;
-
-    if (!committed_by) {
-      return NextResponse.json(
-        { error: 'committed_by is required' },
-        { status: 400 }
-      );
-    }
+    const userId = await getCurrentUserName();
 
     // TODO: Add admin check here
-    // const isAdmin = await checkIsAdmin(committed_by);
+    // const isAdmin = await checkIsAdmin(userId);
     // if (!isAdmin) {
     //   return NextResponse.json(
     //     { error: 'Only admin users can commit changes' },
@@ -39,7 +32,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     //   );
     // }
 
-    const result = await commitChangeset(changesetId, committed_by);
+    const result = await commitChangeset(changesetId, userId);
 
     if (!result.success) {
       return NextResponse.json({

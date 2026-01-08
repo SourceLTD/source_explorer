@@ -8,10 +8,10 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center py-20">
       <div className="max-w-4xl mx-auto text-center px-6">
-        {/* SourceNet Header */}
+        {/* Source Console Header */}
         <div className="mb-12">
           <h1 className="text-6xl font-bold text-gray-900 mb-4">
-            SourceNet
+            Source Console
           </h1>
         </div>
 
@@ -20,7 +20,7 @@ export default function Home() {
           {/* Frames - Full Width */}
           <div 
             onClick={() => router.push('/table/frames')}
-            className="md:col-span-2 bg-white rounded-xl shadow-lg hover:shadow-lg transition-all duration-300 cursor-pointer border border-gray-200 hover:border-blue-300 p-8 group"
+            className="md:col-span-2 bg-white rounded-xl transition-all duration-300 cursor-pointer border border-gray-200 hover:border-blue-300 p-8 group"
           >
             <div className="mb-6">
               <h2 className="text-2xl font-bold text-gray-900 mb-3">Frames</h2>
@@ -36,7 +36,7 @@ export default function Home() {
           {/* Verbs */}
           <div 
             onClick={() => router.push('/graph')}
-            className="bg-white rounded-xl shadow-lg hover:shadow-lg transition-all duration-300 cursor-pointer border border-gray-200 hover:border-blue-300 p-8 group"
+            className="bg-white rounded-xl transition-all duration-300 cursor-pointer border border-gray-200 hover:border-blue-300 p-8 group"
           >
             <div className="mb-6">
               <h2 className="text-2xl font-bold text-gray-900 mb-3">Verbs</h2>
@@ -52,7 +52,7 @@ export default function Home() {
           {/* Adverbs */}
           <div 
             onClick={() => router.push('/table/adverbs')}
-            className="bg-white rounded-xl shadow-lg hover:shadow-lg transition-all duration-300 cursor-pointer border border-gray-200 hover:border-blue-300 p-8 group"
+            className="bg-white rounded-xl transition-all duration-300 cursor-pointer border border-gray-200 hover:border-blue-300 p-8 group"
           >
             <div className="mb-6">
               <h2 className="text-2xl font-bold text-gray-900 mb-3">Adverbs</h2>
@@ -68,7 +68,7 @@ export default function Home() {
           {/* Nouns */}
           <div 
             onClick={() => router.push('/graph/nouns')}
-            className="bg-white rounded-xl shadow-lg hover:shadow-lg transition-all duration-300 cursor-pointer border border-gray-200 hover:border-blue-300 p-8 group"
+            className="bg-white rounded-xl transition-all duration-300 cursor-pointer border border-gray-200 hover:border-blue-300 p-8 group"
           >
             <div className="mb-6">
               <h2 className="text-2xl font-bold text-gray-900 mb-3">Nouns</h2>
@@ -84,7 +84,7 @@ export default function Home() {
           {/* Adjectives */}
           <div 
             onClick={() => router.push('/graph/adjectives')}
-            className="bg-white rounded-xl shadow-lg hover:shadow-lg transition-all duration-300 cursor-pointer border border-gray-200 hover:border-blue-300 p-8 group"
+            className="bg-white rounded-xl transition-all duration-300 cursor-pointer border border-gray-200 hover:border-blue-300 p-8 group"
           >
             <div className="mb-6">
               <h2 className="text-2xl font-bold text-gray-900 mb-3">Adjectives</h2>

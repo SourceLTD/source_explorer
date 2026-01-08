@@ -7,7 +7,7 @@ import { EditOverlayModal } from './EditOverlayModal';
 import { ModerationButtons } from './ModerationButtons';
 import { DeleteConfirmDialog } from './DeleteConfirmDialog';
 import { BasicInfoSection } from './BasicInfoSection';
-import { VerbPropertiesSection } from './VerbPropertiesSection';
+import { LexicalPropertiesSection } from './LexicalPropertiesSection';
 import { RolesSection } from './RolesSection';
 import { RelationsSection } from './RelationsSection';
 import { FramePropertiesSection } from './FramePropertiesSection';
@@ -17,23 +17,25 @@ import { useEntryMutations } from '@/hooks/useEntryMutations';
 import { PendingEntityBadge } from '@/components/PendingChangeIndicator';
 
 interface EditOverlayProps {
-  node: GraphNode | Frame;
+  node: GraphNode | Frame | null;
+  nodeId: string;
   mode: Mode;
   isOpen: boolean;
   onClose: () => void;
   onUpdate: () => Promise<void>;
 }
 
-export function EditOverlay({ node, mode, isOpen, onClose, onUpdate }: EditOverlayProps) {
+export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: EditOverlayProps) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
   const [roleTypes, setRoleTypes] = useState<RoleType[]>([]);
   const [availableFrames, setAvailableFrames] = useState<FrameOption[]>([]);
   
   // Overlay section expansion state
   const [overlaySections, setOverlaySections] = useState<OverlaySectionsState>({
     basicInfo: true,
-    verbProperties: false,
+    lexicalProperties: false,
     roles: false,
     relations: false,
     frameProperties: mode === 'frames',
@@ -61,9 +63,9 @@ export function EditOverlay({ node, mode, isOpen, onClose, onUpdate }: EditOverl
     fetchRoleTypes();
   }, []);
 
-  // Fetch frames when overlay opens (verbs only)
+  // Fetch frames when overlay opens (verbs, nouns, adjectives, adverbs)
   useEffect(() => {
-    if (isOpen && mode === 'verbs') {
+    if (isOpen && (mode === 'verbs' || mode === 'nouns' || mode === 'adjectives' || mode === 'adverbs')) {
       const fetchFrames = async () => {
         try {
           const response = await fetch('/api/frames');
@@ -92,7 +94,7 @@ export function EditOverlay({ node, mode, isOpen, onClose, onUpdate }: EditOverl
   }, [isOpen, editor.editingField, onClose]);
 
   const handleSave = async () => {
-    if (!editor.editingField) return;
+    if (!editor.editingField || !node) return;
     
     editor.setIsSaving(true);
     try {
@@ -101,11 +103,9 @@ export function EditOverlay({ node, mode, isOpen, onClose, onUpdate }: EditOverl
         editor.setCodeValidationMessage('Finding unique code...');
         const newId = await mutations.updateCode(node.id, editor.editValue);
         editor.setCodeValidationMessage(`✓ Code updated to ${newId}`);
+        await onUpdate();
         editor.cancelEditing();
-        setTimeout(async () => {
-          editor.setCodeValidationMessage('');
-          await onUpdate();
-        }, 1000);
+        editor.setCodeValidationMessage('');
         return;
       }
 
@@ -127,11 +127,9 @@ export function EditOverlay({ node, mode, isOpen, onClose, onUpdate }: EditOverl
         await mutations.updateHypernym(node.id, oldHypernym, newHypernym, hyponymsToMove, hyponymsToStay);
         
         editor.setCodeValidationMessage('✓ Hypernym updated successfully');
+        await onUpdate();
         editor.cancelEditing();
-        setTimeout(async () => {
-          editor.setCodeValidationMessage('');
-          await onUpdate();
-        }, 1000);
+        editor.setCodeValidationMessage('');
         return;
       }
 
@@ -139,11 +137,9 @@ export function EditOverlay({ node, mode, isOpen, onClose, onUpdate }: EditOverl
       if (editor.editingField === 'roles') {
         await mutations.updateRoles(node.id, editor.editRoles, editor.editRoleGroups);
         editor.setCodeValidationMessage('✓ Roles updated successfully');
+        await onUpdate();
         editor.cancelEditing();
-        setTimeout(async () => {
-          editor.setCodeValidationMessage('');
-          await onUpdate();
-        }, 1000);
+        editor.setCodeValidationMessage('');
         return;
       }
 
@@ -151,11 +147,9 @@ export function EditOverlay({ node, mode, isOpen, onClose, onUpdate }: EditOverl
       if (editor.editingField === 'frame_roles') {
         await mutations.updateFrameRoles(node.id, editor.editFrameRoles);
         editor.setCodeValidationMessage('✓ Frame roles updated successfully');
+        await onUpdate();
         editor.cancelEditing();
-        setTimeout(async () => {
-          editor.setCodeValidationMessage('');
-          await onUpdate();
-        }, 1000);
+        editor.setCodeValidationMessage('');
         return;
       }
 
@@ -184,7 +178,7 @@ export function EditOverlay({ node, mode, isOpen, onClose, onUpdate }: EditOverl
           fieldName = 'frame_id';
           value = editor.editValue || null;
           break;
-        case 'frame_name':
+        case 'label':
           value = editor.editValue.trim();
           break;
         case 'definition':
@@ -203,11 +197,9 @@ export function EditOverlay({ node, mode, isOpen, onClose, onUpdate }: EditOverl
       await mutations.updateField(node.id, fieldName, value);
       
       editor.setCodeValidationMessage('✓ Changes saved successfully');
+      await onUpdate();
       editor.cancelEditing();
-      setTimeout(async () => {
-        editor.setCodeValidationMessage('');
-        await onUpdate();
-      }, 1000);
+      editor.setCodeValidationMessage('');
     } catch (err) {
       console.error('Error saving changes:', err);
       editor.setCodeValidationMessage('');
@@ -217,24 +209,33 @@ export function EditOverlay({ node, mode, isOpen, onClose, onUpdate }: EditOverl
   };
 
   const handleFlagToggle = async () => {
+    if (!node) return;
+    setIsUpdating(true);
     try {
       await mutations.toggleFlag(node.id, node.flagged ?? false);
       await onUpdate();
     } catch (err) {
       console.error('Error toggling flag:', err);
+    } finally {
+      setIsUpdating(false);
     }
   };
 
   const handleForbidToggle = async () => {
+    if (!node) return;
+    setIsUpdating(true);
     try {
       await mutations.toggleForbidden(node.id, node.forbidden ?? false);
       await onUpdate();
     } catch (err) {
       console.error('Error toggling forbidden:', err);
+    } finally {
+      setIsUpdating(false);
     }
   };
 
   const handleDelete = async () => {
+    if (!node) return;
     setIsDeleting(true);
     try {
       await mutations.deleteEntry(node.id);
@@ -248,172 +249,185 @@ export function EditOverlay({ node, mode, isOpen, onClose, onUpdate }: EditOverl
     }
   };
 
+  const showSpinner = !node || editor.isSaving || isUpdating;
+  const loadingLabel = !node ? 'Loading details...' : (editor.isSaving ? 'Saving changes...' : 'Updating...');
+
   if (!isOpen) return null;
 
   return (
     <EditOverlayModal
       isOpen={isOpen}
       onClose={() => {
-        if (!editor.editingField) {
+        if (!editor.editingField && !editor.isSaving && !isUpdating) {
           onClose();
         }
       }}
-      nodeId={node.id}
+      nodeId={node?.id || nodeId}
       validationMessage={editor.codeValidationMessage && !editor.isSaving ? editor.codeValidationMessage : ''}
       onDelete={() => setShowDeleteConfirm(true)}
     >
-      {/* Pending Changes Indicator */}
-      {node.pending && (
-        <div className="mb-4 p-3 rounded-lg bg-gradient-to-r from-green-50 to-green-100 border border-green-200">
-          <div className="flex items-center gap-3">
-            <PendingEntityBadge pending={node.pending} size="md" />
-            <div className="text-sm text-green-800">
-              <span className="font-medium">
-                {Object.keys(node.pending.pending_fields).length} field{Object.keys(node.pending.pending_fields).length !== 1 ? 's' : ''} pending
-              </span>
-              <span className="text-green-600 ml-2">
-                ({Object.keys(node.pending.pending_fields).join(', ')})
-              </span>
-            </div>
-          </div>
+      {showSpinner ? (
+        <div className="p-12 flex flex-col items-center justify-center">
+          <div className="animate-spin h-8 w-8 border-4 border-blue-600 border-t-transparent rounded-full mb-4"></div>
+          <p className="text-gray-700 font-medium">{loadingLabel}</p>
         </div>
+      ) : (
+        <>
+          {/* Pending Changes Indicator */}
+          {node.pending && (
+            <div className="mb-4 p-3 rounded-lg bg-gradient-to-r from-green-50 to-green-100 border border-green-200">
+              <div className="flex items-center gap-3">
+                <PendingEntityBadge pending={node.pending} size="md" />
+                <div className="text-sm text-green-800">
+                  <span className="font-medium">
+                    {Object.keys(node.pending.pending_fields).length} field{Object.keys(node.pending.pending_fields).length !== 1 ? 's' : ''} pending
+                  </span>
+                  <span className="text-green-600 ml-2">
+                    ({Object.keys(node.pending.pending_fields).join(', ')})
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Moderation Section */}
+          <ModerationButtons
+            flagged={node.flagged ?? false}
+            forbidden={node.forbidden ?? false}
+            onFlagToggle={handleFlagToggle}
+            onForbidToggle={handleForbidToggle}
+          />
+
+          {/* Basic Info Section (for non-frame modes) */}
+          {mode !== 'frames' && 'gloss' in node && (
+            <BasicInfoSection
+              node={node as GraphNode}
+              mode={mode}
+              editingField={editor.editingField}
+              editValue={editor.editValue}
+              editListItems={editor.editListItems}
+              codeValidationMessage={editor.codeValidationMessage}
+              isOpen={overlaySections.basicInfo}
+              onToggle={() => setOverlaySections(prev => ({ ...prev, basicInfo: !prev.basicInfo }))}
+              onStartEdit={editor.startEditing}
+              onValueChange={editor.setEditValue}
+              onListItemChange={editor.updateListItem}
+              onListItemAdd={editor.addListItem}
+              onListItemRemove={editor.removeListItem}
+              onSave={handleSave}
+              onCancel={editor.cancelEditing}
+              isSaving={editor.isSaving}
+              pending={node.pending}
+            />
+          )}
+
+          {/* Frame Properties Section (for frames mode) */}
+          {mode === 'frames' && 'label' in node && (
+            <FramePropertiesSection
+              frame={node as Frame}
+              editingField={editor.editingField}
+              editValue={editor.editValue}
+              isOpen={overlaySections.frameProperties}
+              onToggle={() => setOverlaySections(prev => ({ ...prev, frameProperties: !prev.frameProperties }))}
+              onStartEdit={editor.startEditing}
+              onValueChange={editor.setEditValue}
+              onSave={handleSave}
+              onCancel={editor.cancelEditing}
+              isSaving={editor.isSaving}
+            />
+          )}
+
+          {/* Lexical Properties Section (for non-frame modes) */}
+          {mode !== 'frames' && 'gloss' in node && (
+            <LexicalPropertiesSection
+              node={node as GraphNode}
+              mode={mode}
+              editingField={editor.editingField}
+              editValue={editor.editValue}
+              availableFrames={availableFrames}
+              isOpen={overlaySections.lexicalProperties}
+              onToggle={() => setOverlaySections(prev => ({ ...prev, lexicalProperties: !prev.lexicalProperties }))}
+              onStartEdit={editor.startEditing}
+              onValueChange={editor.setEditValue}
+              onSave={handleSave}
+              onCancel={editor.cancelEditing}
+              isSaving={editor.isSaving}
+            />
+          )}
+
+          {/* Roles Section (Verbs only) */}
+          {mode === 'verbs' && 'gloss' in node && (
+            <RolesSection
+              node={node as GraphNode}
+              editingField={editor.editingField}
+              editRoles={editor.editRoles}
+              editRoleGroups={editor.editRoleGroups}
+              roleTypes={roleTypes}
+              isOpen={overlaySections.roles}
+              onToggle={() => setOverlaySections(prev => ({ ...prev, roles: !prev.roles }))}
+              onStartEdit={editor.startEditing}
+              onRoleChange={editor.updateRole}
+              onRoleAdd={editor.addRole}
+              onRoleRemove={editor.removeRole}
+              onRoleGroupAdd={editor.addRoleGroup}
+              onRoleGroupRemove={editor.removeRoleGroup}
+              onRoleGroupChange={editor.updateRoleGroup}
+              onToggleRoleInGroup={editor.toggleRoleInGroup}
+              onSave={handleSave}
+              onCancel={editor.cancelEditing}
+              isSaving={editor.isSaving}
+            />
+          )}
+
+          {/* Frame Roles Section (Frames only) */}
+          {mode === 'frames' && 'label' in node && (
+            <FrameRolesSection
+              frame={node as Frame}
+              editingField={editor.editingField}
+              editFrameRoles={editor.editFrameRoles}
+              roleTypes={roleTypes}
+              isOpen={overlaySections.frameRoles}
+              onToggle={() => setOverlaySections(prev => ({ ...prev, frameRoles: !prev.frameRoles }))}
+              onStartEdit={editor.startEditing}
+              onFrameRoleChange={editor.updateFrameRole}
+              onFrameRoleAdd={editor.addFrameRole}
+              onFrameRoleRemove={editor.removeFrameRole}
+              onSave={handleSave}
+              onCancel={editor.cancelEditing}
+              isSaving={editor.isSaving}
+            />
+          )}
+
+          {/* Relations Section (non-frames only) */}
+          {mode !== 'frames' && 'gloss' in node && (
+            <RelationsSection
+              node={node as GraphNode}
+              mode={mode}
+              editingField={editor.editingField}
+              editValue={editor.editValue}
+              selectedHyponymsToMove={editor.selectedHyponymsToMove}
+              codeValidationMessage={editor.codeValidationMessage}
+              isOpen={overlaySections.relations}
+              onToggle={() => setOverlaySections(prev => ({ ...prev, relations: !prev.relations }))}
+              onStartEdit={editor.startEditing}
+              onValueChange={editor.setEditValue}
+              onHyponymToggle={editor.toggleHyponymSelection}
+              onSave={handleSave}
+              onCancel={editor.cancelEditing}
+              isSaving={editor.isSaving}
+            />
+          )}
+
+          {/* Delete Confirmation Dialog */}
+          <DeleteConfirmDialog
+            node={node}
+            isOpen={showDeleteConfirm}
+            isDeleting={isDeleting}
+            onConfirm={handleDelete}
+            onCancel={() => setShowDeleteConfirm(false)}
+          />
+        </>
       )}
-
-      {/* Moderation Section */}
-      <ModerationButtons
-        flagged={node.flagged ?? false}
-        forbidden={node.forbidden ?? false}
-        onFlagToggle={handleFlagToggle}
-        onForbidToggle={handleForbidToggle}
-      />
-
-      {/* Basic Info Section (for non-frame modes) */}
-      {mode !== 'frames' && 'gloss' in node && (
-        <BasicInfoSection
-          node={node as GraphNode}
-          mode={mode}
-          editingField={editor.editingField}
-          editValue={editor.editValue}
-          editListItems={editor.editListItems}
-          codeValidationMessage={editor.codeValidationMessage}
-          isOpen={overlaySections.basicInfo}
-          onToggle={() => setOverlaySections(prev => ({ ...prev, basicInfo: !prev.basicInfo }))}
-          onStartEdit={editor.startEditing}
-          onValueChange={editor.setEditValue}
-          onListItemChange={editor.updateListItem}
-          onListItemAdd={editor.addListItem}
-          onListItemRemove={editor.removeListItem}
-          onSave={handleSave}
-          onCancel={editor.cancelEditing}
-          isSaving={editor.isSaving}
-          pending={node.pending}
-        />
-      )}
-
-      {/* Frame Properties Section (for frames mode) */}
-      {mode === 'frames' && 'frame_name' in node && (
-        <FramePropertiesSection
-          frame={node as Frame}
-          editingField={editor.editingField}
-          editValue={editor.editValue}
-          isOpen={overlaySections.frameProperties}
-          onToggle={() => setOverlaySections(prev => ({ ...prev, frameProperties: !prev.frameProperties }))}
-          onStartEdit={editor.startEditing}
-          onValueChange={editor.setEditValue}
-          onSave={handleSave}
-          onCancel={editor.cancelEditing}
-          isSaving={editor.isSaving}
-        />
-      )}
-
-      {/* Verb Properties Section */}
-      {mode === 'verbs' && 'gloss' in node && (
-        <VerbPropertiesSection
-          node={node as GraphNode}
-          editingField={editor.editingField}
-          editValue={editor.editValue}
-          availableFrames={availableFrames}
-          isOpen={overlaySections.verbProperties}
-          onToggle={() => setOverlaySections(prev => ({ ...prev, verbProperties: !prev.verbProperties }))}
-          onStartEdit={editor.startEditing}
-          onValueChange={editor.setEditValue}
-          onSave={handleSave}
-          onCancel={editor.cancelEditing}
-          isSaving={editor.isSaving}
-        />
-      )}
-
-      {/* Roles Section (Verbs only) */}
-      {mode === 'verbs' && 'gloss' in node && (
-        <RolesSection
-          node={node as GraphNode}
-          editingField={editor.editingField}
-          editRoles={editor.editRoles}
-          editRoleGroups={editor.editRoleGroups}
-          roleTypes={roleTypes}
-          isOpen={overlaySections.roles}
-          onToggle={() => setOverlaySections(prev => ({ ...prev, roles: !prev.roles }))}
-          onStartEdit={editor.startEditing}
-          onRoleChange={editor.updateRole}
-          onRoleAdd={editor.addRole}
-          onRoleRemove={editor.removeRole}
-          onRoleGroupAdd={editor.addRoleGroup}
-          onRoleGroupRemove={editor.removeRoleGroup}
-          onRoleGroupChange={editor.updateRoleGroup}
-          onToggleRoleInGroup={editor.toggleRoleInGroup}
-          onSave={handleSave}
-          onCancel={editor.cancelEditing}
-          isSaving={editor.isSaving}
-        />
-      )}
-
-      {/* Frame Roles Section (Frames only) */}
-      {mode === 'frames' && 'frame_name' in node && (
-        <FrameRolesSection
-          frame={node as Frame}
-          editingField={editor.editingField}
-          editFrameRoles={editor.editFrameRoles}
-          roleTypes={roleTypes}
-          isOpen={overlaySections.frameRoles}
-          onToggle={() => setOverlaySections(prev => ({ ...prev, frameRoles: !prev.frameRoles }))}
-          onStartEdit={editor.startEditing}
-          onFrameRoleChange={editor.updateFrameRole}
-          onFrameRoleAdd={editor.addFrameRole}
-          onFrameRoleRemove={editor.removeFrameRole}
-          onSave={handleSave}
-          onCancel={editor.cancelEditing}
-          isSaving={editor.isSaving}
-        />
-      )}
-
-      {/* Relations Section (non-frames only) */}
-      {mode !== 'frames' && 'gloss' in node && (
-        <RelationsSection
-          node={node as GraphNode}
-          mode={mode}
-          editingField={editor.editingField}
-          editValue={editor.editValue}
-          selectedHyponymsToMove={editor.selectedHyponymsToMove}
-          codeValidationMessage={editor.codeValidationMessage}
-          isOpen={overlaySections.relations}
-          onToggle={() => setOverlaySections(prev => ({ ...prev, relations: !prev.relations }))}
-          onStartEdit={editor.startEditing}
-          onValueChange={editor.setEditValue}
-          onHyponymToggle={editor.toggleHyponymSelection}
-          onSave={handleSave}
-          onCancel={editor.cancelEditing}
-          isSaving={editor.isSaving}
-        />
-      )}
-
-      {/* Delete Confirmation Dialog */}
-      <DeleteConfirmDialog
-        node={node}
-        isOpen={showDeleteConfirm}
-        isDeleting={isDeleting}
-        onConfirm={handleDelete}
-        onCancel={() => setShowDeleteConfirm(false)}
-      />
     </EditOverlayModal>
   );
 }

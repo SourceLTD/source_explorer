@@ -547,7 +547,7 @@ export default function LexicalGraph({ currentNode, onNodeClick, onEditClick, mo
                           FRAME
                         </span>
                         <span style={{ fontWeight: '500', fontSize: '10px' }}>
-                          {posNode.node.frame.frame_name}
+                          {posNode.node.frame.label}
                         </span>
                       </div>
                     </foreignObject>

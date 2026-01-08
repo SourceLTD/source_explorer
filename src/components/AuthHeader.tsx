@@ -53,10 +53,10 @@ export default function AuthHeader() {
     return null
   }
 
-  // For graph and table modes, don't render here - they handle it in their own headers
-  const isGraphOrTable = pathname?.startsWith('/graph') || pathname?.startsWith('/table')
+  // For graph, table, and frames modes, don't render here - they handle it in their own headers
+  const isCustomHeader = pathname?.startsWith('/graph') || pathname?.startsWith('/table') || pathname?.startsWith('/frames')
   
-  if (isGraphOrTable) {
+  if (isCustomHeader) {
     return null
   }
 

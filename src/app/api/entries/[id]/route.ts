@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getEntryById } from '@/lib/db';
 import { handleDatabaseError } from '@/lib/db-utils';
 import { stageUpdate, stageDelete, stageRolesUpdate } from '@/lib/version-control';
+import { getCurrentUserName } from '@/utils/supabase/server';
 
 // Force dynamic rendering - no static optimization
 export const dynamic = 'force-dynamic';
@@ -65,8 +66,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     // Separate roles from other fields
     const { roles, role_groups, ...otherFields } = updateData;
 
-    // TODO: Get actual user ID from auth context
-    const userId = 'current-user';
+    const userId = await getCurrentUserName();
 
     // Stage roles update if present
     if (hasRoles || hasRoleGroups) {
@@ -130,8 +130,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   const { id } = await params;
 
   try {
-    // TODO: Get actual user ID from auth context
-    const userId = 'current-user';
+    const userId = await getCurrentUserName();
     
     const response = await stageDelete('verb', id, userId);
 

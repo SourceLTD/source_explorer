@@ -11,7 +11,7 @@ Part of Speech: {{pos}}
 Gloss: {{gloss}}
 Lemmas: {{lemmas}}
 Examples:\n{{examples}}
-Frame: {{frame_name}}
+Frame: {{label}}
 Currently Flagged: {{flagged}}
 Flagged Reason: {{flagged_reason}}
 

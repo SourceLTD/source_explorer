@@ -15,8 +15,8 @@ export function parseURLToFilterAST(pos: PartOfSpeech, input: string | URLSearch
   // Text filters
   if (pos === 'frames') {
     // Frame-specific text filters
-    const frameName = get('frame_name');
-    if (frameName) addRule(group, { kind: 'rule', field: 'frame_name', operator: 'contains', value: frameName });
+    const frameName = get('label');
+    if (frameName) addRule(group, { kind: 'rule', field: 'label', operator: 'contains', value: frameName });
 
     const definition = get('definition');
     if (definition) addRule(group, { kind: 'rule', field: 'definition', operator: 'contains', value: definition });

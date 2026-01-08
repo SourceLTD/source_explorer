@@ -175,7 +175,7 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
   // Convert FrameGraphNode to Frame for EditOverlay
   const frameForEdit = currentFrame ? {
     id: currentFrame.id,
-    frame_name: currentFrame.frame_name,
+    label: currentFrame.label,
     definition: currentFrame.gloss,
     short_definition: currentFrame.short_definition,
     prototypical_synset: currentFrame.prototypical_synset,
@@ -211,7 +211,7 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
               onClick={() => router.push('/')}
               className="text-xl font-bold text-gray-900 hover:text-gray-700 cursor-pointer"
             >
-              SourceNet
+              Source Console
             </button>
             <div className="h-6 w-px bg-gray-300"></div>
             <CategoryDropdown currentCategory="frames" currentView="graph" />
@@ -274,7 +274,7 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
                     </svg>
                   </button>
                   <span className="text-lg font-semibold text-gray-900">
-                    {currentFrame.frame_name}
+                    {currentFrame.label}
                   </span>
                   {currentFrame.flagged && (
                     <span className="px-2 py-0.5 text-xs font-medium bg-orange-100 text-orange-800 rounded-full">
@@ -317,6 +317,7 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
                   <FrameGraph 
                     currentFrame={currentFrame}
                     onFrameClick={handleFrameClick}
+                    onVerbClick={(verbId) => router.push(`/graph?entry=${verbId}`)}
                     onEditClick={() => setIsEditOverlayOpen(true)}
                   />
                 ) : (
@@ -331,7 +332,7 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
               </div>
             </div>
           ) : (
-            <div className="h-full flex items-center justify-center bg-white rounded-xl shadow-lg">
+            <div className="h-full flex items-center justify-center bg-white rounded-xl">
               {isLoading ? (
                 <div className="text-center">
                   <div className="animate-spin h-12 w-12 border-2 border-gray-300 border-t-blue-600 rounded-full mx-auto mb-4"></div>
@@ -356,9 +357,10 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
         </div>
 
         {/* Edit Overlay */}
-        {frameForEdit && (
+        {isEditOverlayOpen && (
           <EditOverlay
             node={frameForEdit}
+            nodeId={currentFrame?.id || ""}
             mode="frames"
             isOpen={isEditOverlayOpen}
             onClose={() => setIsEditOverlayOpen(false)}

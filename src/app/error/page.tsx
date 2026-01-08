@@ -4,7 +4,7 @@ export default function ErrorPage() {
   return (
     <div className="h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
       <div className="max-w-lg mx-auto px-6">
-        <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-8 text-center">
+        <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
           <div className="mb-6">
             <div className="w-16 h-16 bg-red-100 rounded-xl flex items-center justify-center mx-auto mb-4">
               <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">

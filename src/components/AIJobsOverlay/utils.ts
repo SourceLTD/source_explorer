@@ -200,30 +200,7 @@ export function formatRuntime(start: string | null, end?: string) {
  * Adds a limit to a scope (for batching large jobs)
  */
 export function addLimitToScope(scope: JobScope, limit: number): JobScope {
-  if (scope.kind === 'filters') {
-    return {
-      ...scope,
-      filters: {
-        ...scope.filters,
-        limit,
-      },
-    };
-  }
-  // For 'ids' scope, slice the array
-  if (scope.kind === 'ids') {
-    return {
-      ...scope,
-      ids: scope.ids.slice(0, limit),
-    };
-  }
-  // For frame_ids, slice frameIds array
-  if (scope.kind === 'frame_ids') {
-    return {
-      ...scope,
-      frameIds: scope.frameIds.slice(0, limit),
-    };
-  }
-  return scope;
+  return addOffsetAndLimitToScope(scope, 0, limit);
 }
 
 /**
@@ -235,13 +212,11 @@ export function addOffsetAndLimitToScope(
   limit: number
 ): JobScope {
   if (scope.kind === 'filters') {
-    // For filters, we can't easily add offset without modifying the backend
-    // Instead, we'll need to fetch all and slice client-side in the append-items endpoint
-    // For now, this is primarily for 'ids' and 'frame_ids' scopes
     return {
       ...scope,
       filters: {
         ...scope.filters,
+        offset,
         limit,
       },
     };
@@ -253,11 +228,12 @@ export function addOffsetAndLimitToScope(
       ids: scope.ids.slice(offset, offset + limit),
     };
   }
-  // For frame_ids, slice frameIds array
+  // For frame_ids, use offset and limit fields
   if (scope.kind === 'frame_ids') {
     return {
       ...scope,
-      frameIds: scope.frameIds.slice(offset, offset + limit),
+      offset,
+      limit,
     };
   }
   return scope;

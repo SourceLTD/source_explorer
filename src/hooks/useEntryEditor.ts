@@ -20,10 +20,10 @@ export function useEntryEditor(node: GraphNode | Frame | null, mode: Mode) {
     setCodeValidationMessage('');
     
     // Frame-specific fields
-    if (mode === 'frames' && 'frame_name' in node) {
+    if (mode === 'frames' && 'label' in node) {
       const frameNode = node as Frame;
-      if (field === 'frame_name') {
-        setEditValue(frameNode.frame_name);
+      if (field === 'label') {
+        setEditValue(frameNode.label);
       } else if (field === 'definition') {
         setEditValue(frameNode.definition);
       } else if (field === 'short_definition') {

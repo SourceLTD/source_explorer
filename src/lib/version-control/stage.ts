@@ -64,22 +64,22 @@ async function fetchEntityByCode(
   switch (table) {
     case 'verbs':
       entity = await prisma.verbs.findUnique({
-        where: { code } as any,
+        where: { code, deleted: false } as any,
       }) as Record<string, unknown> | null;
       break;
     case 'nouns':
       entity = await prisma.nouns.findUnique({
-        where: { code } as any,
+        where: { code, deleted: false } as any,
       }) as Record<string, unknown> | null;
       break;
     case 'adjectives':
       entity = await prisma.adjectives.findUnique({
-        where: { code } as any,
+        where: { code, deleted: false } as any,
       }) as Record<string, unknown> | null;
       break;
     case 'adverbs':
       entity = await prisma.adverbs.findUnique({
-        where: { code } as any,
+        where: { code, deleted: false } as any,
       }) as Record<string, unknown> | null;
       break;
     case 'frames':
@@ -87,7 +87,7 @@ async function fetchEntityByCode(
       try {
         const frameId = BigInt(code);
         entity = await prisma.frames.findUnique({
-          where: { id: frameId },
+          where: { id: frameId, deleted: false },
         }) as Record<string, unknown> | null;
       } catch {
         // Invalid BigInt conversion - frame not found
@@ -115,13 +115,15 @@ async function fetchEntityByCode(
  * @param entityCode - The code/ID of the entity (e.g., "run.v.01" or "123")
  * @param updates - The proposed updates (field name -> new value)
  * @param userId - The user making the change
+ * @param comment - Optional justification for the change
  * @returns StagedResponse with changeset info
  */
 export async function stageUpdate(
   entityType: EntityType,
   entityCode: string,
   updates: Record<string, unknown>,
-  userId: string
+  userId: string,
+  comment?: string
 ): Promise<StagedResponse> {
   // Fetch current entity state
   const result = await fetchEntityByCode(entityType, entityCode);
@@ -141,8 +143,8 @@ export async function stageUpdate(
     }
   }
 
-  // If nothing actually changed, return early
-  if (Object.keys(actualChanges).length === 0) {
+  // If nothing actually changed, and no comment was provided, return early
+  if (Object.keys(actualChanges).length === 0 && !comment) {
     return {
       staged: true,
       changeset_id: '',
@@ -157,7 +159,9 @@ export async function stageUpdate(
     numericId,
     entity,
     actualChanges,
-    userId
+    userId,
+    undefined,
+    comment
   );
 
   return {
@@ -174,12 +178,14 @@ export async function stageUpdate(
  * @param entityType - The type of entity (verb, noun, etc.)
  * @param entityCode - The code/ID of the entity
  * @param userId - The user requesting deletion
+ * @param comment - Optional justification for the deletion
  * @returns StagedResponse with changeset info
  */
 export async function stageDelete(
   entityType: EntityType,
   entityCode: string,
-  userId: string
+  userId: string,
+  comment?: string
 ): Promise<StagedResponse> {
   // Fetch current entity state
   const result = await fetchEntityByCode(entityType, entityCode);
@@ -194,7 +200,9 @@ export async function stageDelete(
     entityType,
     numericId,
     entity,
-    userId
+    userId,
+    undefined,
+    comment
   );
 
   return {
@@ -246,12 +254,14 @@ export async function stageModerationUpdates(
  * @param newRoles - The new roles array
  * @param newRoleGroups - The new role groups array (optional)
  * @param userId - The user making the changes
+ * @param comment - Optional justification for the changes
  */
 export async function stageRolesUpdate(
   entityCode: string,
   newRoles: unknown[],
   newRoleGroups: unknown[] | undefined,
-  userId: string
+  userId: string,
+  comment?: string
 ): Promise<StagedResponse> {
   const result = await fetchEntityByCode('verb', entityCode);
   if (!result) {
@@ -293,6 +303,14 @@ export async function stageRolesUpdate(
       );
     }
 
+    // Update comment if provided
+    if (comment) {
+      await prisma.changesets.update({
+        where: { id: changeset.id },
+        data: { comment },
+      });
+    }
+
     changeset = await getChangeset(changeset.id);
     
     return {
@@ -323,7 +341,9 @@ export async function stageRolesUpdate(
     numericId,
     entityWithRoles,
     updates,
-    userId
+    userId,
+    undefined,
+    comment
   );
 
   return {
@@ -340,11 +360,13 @@ export async function stageRolesUpdate(
  * @param frameId - The frame ID
  * @param newFrameRoles - The new frame roles array
  * @param userId - The user making the changes
+ * @param comment - Optional justification for the changes
  */
 export async function stageFrameRolesUpdate(
   frameId: string,
   newFrameRoles: unknown[],
-  userId: string
+  userId: string,
+  comment?: string
 ): Promise<StagedResponse> {
   const numericId = BigInt(frameId);
   
@@ -375,6 +397,14 @@ export async function stageFrameRolesUpdate(
       newFrameRoles
     );
 
+    // Update comment if provided
+    if (comment) {
+      await prisma.changesets.update({
+        where: { id: changeset.id },
+        data: { comment },
+      });
+    }
+
     changeset = await getChangeset(changeset.id);
     
     return {
@@ -396,7 +426,9 @@ export async function stageFrameRolesUpdate(
     numericId,
     entityWithRoles as Record<string, unknown>,
     { frame_roles: newFrameRoles },
-    userId
+    userId,
+    undefined,
+    comment
   );
 
   return {

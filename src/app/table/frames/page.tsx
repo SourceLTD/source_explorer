@@ -4,6 +4,8 @@ import { useState, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
 import DataTable from '@/components/DataTable';
 import SearchBox from '@/components/SearchBox';
+import ViewToggle, { ViewMode } from '@/components/ViewToggle';
+import PendingChangesButton from '@/components/PendingChangesButton';
 import SignOutButton from '@/components/SignOutButton';
 import CategoryDropdown from '@/components/CategoryDropdown';
 import { SearchResult, Frame } from '@/lib/types';
@@ -13,6 +15,7 @@ export default function FramesTableMode() {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedFrame, setSelectedFrame] = useState<Frame | null>(null);
+  const [selectedFrameId, setSelectedFrameId] = useState<string>('');
   const [isEditOverlayOpen, setIsEditOverlayOpen] = useState(false);
   const [isLoadingFrame, setIsLoadingFrame] = useState(false);
   const [, setRefreshTrigger] = useState(0);
@@ -30,7 +33,11 @@ export default function FramesTableMode() {
     console.log('[FramesTableMode] handleEditClick called with:', entry);
     const frame = entry as Frame;
     
+    setSelectedFrame(null);
+    setSelectedFrameId(frame.id);
+    setIsEditOverlayOpen(true);
     setIsLoadingFrame(true);
+    
     try {
       console.log('Fetching frame data for ID:', frame.id);
       // Fetch the full frame data with frame_roles
@@ -41,15 +48,16 @@ export default function FramesTableMode() {
         const fullFrame = await response.json();
         console.log('Full frame loaded:', fullFrame);
         setSelectedFrame(fullFrame);
-        setIsEditOverlayOpen(true);
       } else {
         const errorText = await response.text();
         console.error('Failed to fetch frame:', response.status, errorText);
         alert(`Failed to load frame: ${response.status}`);
+        setIsEditOverlayOpen(false);
       }
     } catch (error) {
       console.error('Error loading frame for editing:', error);
       alert('Error loading frame for editing. Check console for details.');
+      setIsEditOverlayOpen(false);
     } finally {
       setIsLoadingFrame(false);
     }
@@ -58,6 +66,7 @@ export default function FramesTableMode() {
   const handleCloseOverlay = () => {
     setIsEditOverlayOpen(false);
     setSelectedFrame(null);
+    setSelectedFrameId('');
   };
 
   const handleUpdate = async () => {
@@ -87,7 +96,7 @@ export default function FramesTableMode() {
               onClick={() => router.push('/')}
               className="text-xl font-bold text-gray-900 hover:text-gray-700 cursor-pointer"
             >
-              SourceNet
+              Source Console
             </button>
             <div className="h-6 w-px bg-gray-300"></div>
             <CategoryDropdown currentCategory="frames" currentView="table" />
@@ -99,9 +108,20 @@ export default function FramesTableMode() {
                 onSelectResult={handleSearchResult}
                 onSearchChange={handleSearchQueryChange}
                 placeholder="Search frames..."
-                mode="verbs"
+                mode="frames"
               />
             </div>
+            <ViewToggle 
+              currentView="table"
+              onViewChange={(view: ViewMode) => {
+                if (view === 'graph') {
+                  router.push('/graph/frames?view=graph');
+                } else if (view === 'recipes') {
+                  router.push('/graph/frames?view=recipes');
+                }
+              }}
+            />
+            <PendingChangesButton />
             <SignOutButton />
           </div>
 
@@ -111,7 +131,7 @@ export default function FramesTableMode() {
       {/* Main Content */}
       <main className="flex-1 flex flex-col bg-white">
         {/* Data Table */}
-        <div className="m-6 bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
+        <div className="m-6 bg-white rounded-xl border border-gray-200 overflow-hidden">
           <Suspense fallback={<div className="p-8 text-center text-gray-500">Loading...</div>}>
           <DataTable 
             searchQuery={searchQuery}
@@ -125,20 +145,11 @@ export default function FramesTableMode() {
         </div>
       </main>
 
-      {/* Loading indicator */}
-      {isLoadingFrame && (
-        <div className="fixed inset-0 bg-black bg-opacity-25 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 shadow-lg">
-            <div className="animate-spin h-8 w-8 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-4"></div>
-            <p className="text-gray-700">Loading frame...</p>
-          </div>
-        </div>
-      )}
-
       {/* Edit Overlay */}
-      {selectedFrame && isEditOverlayOpen && (
+      {isEditOverlayOpen && (
         <EditOverlay
           node={selectedFrame}
+          nodeId={selectedFrameId}
           mode="frames"
           isOpen={isEditOverlayOpen}
           onClose={handleCloseOverlay}

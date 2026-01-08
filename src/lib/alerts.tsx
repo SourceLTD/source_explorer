@@ -42,7 +42,7 @@ export function showGlobalAlert(detail: GlobalAlertDetail) {
       <div
         role="alert"
         aria-live={type === "error" ? "assertive" : "polite"}
-        className={`pointer-events-auto w-full max-w-md rounded-xl border border-white/15 bg-gradient-to-r from-blue-500 to-blue-600 px-5 py-4 text-white shadow-2xl shadow-blue-900/30 backdrop-blur-sm transition-all ${
+        className={`pointer-events-auto w-full max-w-md rounded-xl border border-white/15 bg-gradient-to-r from-blue-500 to-blue-600 px-5 py-4 text-white backdrop-blur-sm transition-all ${
           t.visible ? "animate-toast-in" : "animate-toast-out"
         }`}
         data-toast-type={type}

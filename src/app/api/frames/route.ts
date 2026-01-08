@@ -10,10 +10,10 @@ export async function GET() {
       () => prisma.frames.findMany({
         select: {
           id: true,
-          frame_name: true,
+          label: true,
         } as Prisma.framesSelect,
         orderBy: {
-          frame_name: 'asc'
+          label: 'asc'
         }
       }),
       undefined,
@@ -23,7 +23,7 @@ export async function GET() {
     // Return frames for display
     const formattedFrames = frames.map(f => ({
       id: f.id.toString(),
-      frame_name: f.frame_name,
+      label: f.label,
     }));
 
     return NextResponse.json(formattedFrames);

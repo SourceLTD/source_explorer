@@ -38,7 +38,7 @@ export default function RootNodesView({ onNodeClick }: RootNodesViewProps) {
             <button
               key={node.id}
               onClick={() => onNodeClick(node.id)}
-              className="group relative bg-white p-8 rounded-xl shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 border-2 border-gray-200 hover:border-blue-400 cursor-pointer"
+              className="group relative bg-white p-8 rounded-xl transition-all duration-300 transform hover:-translate-y-1 border-2 border-gray-200 hover:border-blue-400 cursor-pointer"
             >
               <div className="flex flex-col items-start text-left">
                 <div className="w-full mb-4">

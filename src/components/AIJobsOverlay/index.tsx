@@ -61,7 +61,7 @@ export function AIJobsOverlay({
   const [showFrameIdMenu, setShowFrameIdMenu] = useState(false);
   const [, setFrameIdQuery] = useState('');
   const [frameIdMenuPosition, setFrameIdMenuPosition] = useState({ top: 0, left: 0 });
-  const [frameIdSuggestions, setFrameIdSuggestions] = useState<Array<{ id: string; frame_name: string }>>([]);
+  const [frameIdSuggestions, setFrameIdSuggestions] = useState<Array<{ id: string; label: string }>>([]);
   const [validatedManualIds, setValidatedManualIds] = useState<Set<string>>(new Set());
   const [validatedFrameIds, setValidatedFrameIds] = useState<Set<string>>(new Set());
   const [frameIncludeVerbs, setFrameIncludeVerbs] = useState(false);
@@ -96,6 +96,8 @@ export function AIJobsOverlay({
   const previewTimerRef = useRef<number | null>(null);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [jobType, setJobType] = useState<'moderation' | 'editing'>('moderation');
+  const [targetFields, setTargetFields] = useState<string[]>([]);
   const [currentStep, setCurrentStep] = useState<StepperStep>('details');
   const [variableActiveIndex, setVariableActiveIndex] = useState<number>(-1);
   const [submissionProgress, setSubmissionProgress] = useState<{
@@ -122,6 +124,8 @@ export function AIJobsOverlay({
   const resetCreationFields = useCallback(() => {
     setLabel(DEFAULT_LABEL);
     setModel(MODEL_OPTIONS[0].value);
+    setJobType('moderation');
+    setTargetFields([]);
     setPriority('normal');
     setReasoningEffort('medium');
     setScopeMode('selection');
@@ -159,6 +163,8 @@ export function AIJobsOverlay({
       model?: string; 
       promptTemplate?: string; 
       serviceTier?: string | null;
+      jobType?: 'moderation' | 'editing';
+      targetFields?: string[];
       reasoning?: { effort?: 'low' | 'medium' | 'high' } | null;
     } | null;
     
@@ -167,6 +173,8 @@ export function AIJobsOverlay({
     // Load basic settings
     setLabel(job.label ?? DEFAULT_LABEL);
     setModel(config?.model ?? MODEL_OPTIONS[0].value);
+    setJobType(config?.jobType ?? (job.job_type as any) ?? 'moderation');
+    setTargetFields(config?.targetFields ?? []);
     setPriority(serviceTierToPriority(config?.serviceTier));
     setReasoningEffort(config?.reasoning?.effort ?? 'medium');
     setPromptTemplate(config?.promptTemplate ?? DEFAULT_PROMPT);
@@ -364,10 +372,11 @@ export function AIJobsOverlay({
   const isLastStep = stepIndex === STEPPER_STEPS.length - 1;
 
   const nextDisabled = useMemo(() => {
+    if (currentStep === 'details') return jobType === 'editing' && targetFields.length === 0;
     if (currentStep === 'scope') return !isScopeValid;
     if (currentStep === 'prompt') return !promptIsValid;
     return false;
-  }, [currentStep, isScopeValid, promptIsValid]);
+  }, [currentStep, isScopeValid, promptIsValid, jobType, targetFields]);
 
     const handlePreview = useCallback(async () => {
     setPreviewLoading(true);
@@ -541,53 +550,120 @@ export function AIJobsOverlay({
                 value={label}
                 onChange={event => setLabel(event.target.value)}
                 placeholder="Optional job label"
-                className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-lg focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               <p className="mt-2 text-xs text-gray-500">Give the batch a short name to identify it later in the jobs list.</p>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600">Model</label>
-              <select
-                value={model}
-                onChange={event => setModel(event.target.value)}
-                className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-lg focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                {MODEL_OPTIONS.map(option => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-              <p className="mt-2 text-xs text-gray-500">Higher accuracy models cost more tokens but produce better moderation decisions.</p>
-            </div>
-            <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600">Model</label>
+                <select
+                  value={model}
+                  onChange={event => setModel(event.target.value)}
+                  className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {MODEL_OPTIONS.map(option => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600">Priority</label>
                 <select
                   value={priority}
                   onChange={event => setPriority(event.target.value as 'flex' | 'normal' | 'priority')}
-                  className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-lg focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="flex">flex</option>
                   <option value="normal">normal</option>
                   <option value="priority">priority</option>
                 </select>
-                <p className="mt-2 text-xs text-gray-500">Maps to OpenAI service tiers: flex, default, or priority.</p>
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600">Reasoning Effort</label>
                 <select
                   value={reasoningEffort}
                   onChange={event => setReasoningEffort(event.target.value as 'low' | 'medium' | 'high')}
-                  className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-lg focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="low">low</option>
                   <option value="medium">medium</option>
                   <option value="high">high</option>
                 </select>
-                <p className="mt-2 text-xs text-gray-500">Controls model's internal reasoning effort where supported.</p>
               </div>
             </div>
+
+            <div className="space-y-3">
+              <label className="block text-xs font-medium text-gray-600">Job Type</label>
+              <div className="flex gap-4">
+                <label className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border p-3 transition-colors ${jobType === 'moderation' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 hover:bg-gray-50'}`}>
+                  <input
+                    type="radio"
+                    name="jobType"
+                    value="moderation"
+                    checked={jobType === 'moderation'}
+                    onChange={() => {
+                      setJobType('moderation');
+                      setTargetFields([]);
+                    }}
+                    className="sr-only"
+                  />
+                  <div className="text-center">
+                    <div className="text-sm font-semibold">Moderate</div>
+                    <div className="text-[10px] opacity-70">Flag issues</div>
+                  </div>
+                </label>
+                <label className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border p-3 transition-colors ${jobType === 'editing' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 hover:bg-gray-50'}`}>
+                  <input
+                    type="radio"
+                    name="jobType"
+                    value="editing"
+                    checked={jobType === 'editing'}
+                    onChange={() => setJobType('editing')}
+                    className="sr-only"
+                  />
+                  <div className="text-center">
+                    <div className="text-sm font-semibold">Edit</div>
+                    <div className="text-[10px] opacity-70">Improve data quality</div>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            {jobType === 'editing' && (
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-2">Target Fields for Editing</label>
+                <div className="flex flex-wrap gap-2">
+                  {availableVariables
+                    .filter(v => v.category === 'basic' && !['id', 'code', 'pos', 'flagged', 'flagged_reason'].includes(v.key))
+                    .map(variable => (
+                      <button
+                        key={variable.key}
+                        onClick={() => {
+                          setTargetFields(prev => 
+                            prev.includes(variable.key) 
+                              ? prev.filter(f => f !== variable.key)
+                              : [...prev, variable.key]
+                          );
+                        }}
+                        type="button"
+                        className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                          targetFields.includes(variable.key)
+                            ? 'bg-blue-600 text-white shadow-sm'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                      >
+                        {variable.label}
+                      </button>
+                    ))}
+                </div>
+                {targetFields.length === 0 && (
+                  <p className="mt-2 text-[10px] text-amber-600 font-medium">Select at least one field the AI should be allowed to suggest changes for.</p>
+                )}
+              </div>
+            )}
           </div>
         );
       case 'scope':
@@ -682,14 +758,14 @@ export function AIJobsOverlay({
                     }
                   }}
                   rows={12}
-                  className="w-full rounded-xl border border-gray-300 bg-transparent px-3 py-2 text-sm shadow-lg focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-xl border border-gray-300 bg-transparent px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   style={{ color: 'transparent', caretColor: '#111827' }}
                   placeholder="Write instructions for the AI..."
                 />
               </div>
               {showVariableMenu && (
                 <div
-                  className="fixed z-10 max-h-48 w-60 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-lg"
+                  className="fixed z-10 max-h-48 w-60 overflow-y-auto rounded-xl border border-gray-200 bg-white"
                   style={{ top: `${menuPosition.top}px`, left: `${menuPosition.left}px` }}
                 >
                   {filteredVariables.length === 0 ? (
@@ -1293,7 +1369,7 @@ export function AIJobsOverlay({
       return;
     }
     try {
-      const response = await api.get<{ results: Array<{ id: string; frame_name: string }> }>(
+      const response = await api.get<{ results: Array<{ id: string; label: string }> }>(
         `/api/llm-jobs/search-frames?q=${encodeURIComponent(query)}&limit=10`
       );
       setFrameIdSuggestions(response.results);
@@ -1342,12 +1418,12 @@ export function AIJobsOverlay({
       const validIds = new Set<string>();
       for (const id of frameIds) {
         try {
-          const response = await api.get<{ results: Array<{ id: string; frame_name: string }> }>(
+          const response = await api.get<{ results: Array<{ id: string; label: string }> }>(
             `/api/llm-jobs/search-frames?q=${encodeURIComponent(id)}&limit=1`
           );
-          // Match by numeric id or frame_name (case-insensitive)
+          // Match by numeric id or label (case-insensitive)
           const frameResult = response.results.find(r => 
-            r.id === id || r.frame_name.toLowerCase() === id.toLowerCase()
+            r.id === id || r.label.toLowerCase() === id.toLowerCase()
           );
           
           if (frameResult) {
@@ -1356,7 +1432,7 @@ export function AIJobsOverlay({
               try {
                 // Check if frame has verbs using the paginated endpoint which includes counts
                 // Use the numeric ID for the search
-                const frameDetailsResponse = await api.get(`/api/frames/paginated?search=${encodeURIComponent(frameResult.frame_name)}&limit=1`);
+                const frameDetailsResponse = await api.get(`/api/frames/paginated?search=${encodeURIComponent(frameResult.label)}&limit=1`);
                 const frameData = frameDetailsResponse as { data?: Array<{ verbs_count?: number }> };
                 // Only mark as valid if frame has verbs
                 if (frameData.data && frameData.data.length > 0 && frameData.data[0].verbs_count && frameData.data[0].verbs_count > 0) {
@@ -1484,7 +1560,7 @@ export function AIJobsOverlay({
       event.preventDefault();
       const idx = frameIdActiveIndex >= 0 ? frameIdActiveIndex : 0;
       const choice = frameIdSuggestions[idx];
-      if (choice) insertFrameId(choice.frame_name);
+      if (choice) insertFrameId(choice.label);
     } else if (event.key === 'Escape') {
       setShowFrameIdMenu(false);
       setFrameIdActiveIndex(-1);
@@ -1618,6 +1694,8 @@ export function AIJobsOverlay({
           model,
           promptTemplate,
           scope: firstBatchScope,
+          jobType,
+          targetFields,
           serviceTier: priority === 'normal' ? 'default' : priority,
           reasoning: { effort: reasoningEffort },
           metadata: {
@@ -1678,6 +1756,8 @@ export function AIJobsOverlay({
           model,
           promptTemplate,
           scope,
+          jobType,
+          targetFields,
           serviceTier: priority === 'normal' ? 'default' : priority,
           reasoning: { effort: reasoningEffort },
           metadata: {
@@ -1808,12 +1888,12 @@ export function AIJobsOverlay({
         style={{ backgroundColor: 'rgba(0, 0, 0, 0.25)' }}
         onClick={onClose}
       />
-      <div className="relative z-10 flex h-[90vh] w-full max-w-7xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
+      <div className="relative z-10 flex h-[90vh] w-full max-w-7xl flex-col overflow-hidden rounded-xl bg-white">
         
         {/* Progress overlay during batch preparation */}
         {submissionProgress?.phase === 'preparing' && (
           <div className="absolute inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-            <div className="bg-white p-6 rounded-xl shadow-lg max-w-md w-full mx-4">
+            <div className="bg-white p-6 rounded-xl max-w-md w-full mx-4">
               <div className="text-center">
                 <div className="flex justify-center mb-4">
                   <svg className="h-12 w-12 animate-spin text-blue-600" fill="none" viewBox="0 0 24 24">
@@ -1858,7 +1938,7 @@ export function AIJobsOverlay({
             <button
               onClick={() => loadJobs()}
               disabled={jobsLoading}
-              className={`inline-flex items-center gap-1 rounded-xl border px-3 py-1.5 text-sm font-medium transition focus:outline-none focus:ring-2 ${
+              className={`inline-flex items-center gap-1 rounded-xl border px-3 py-1.5 text-sm font-medium transition-colors focus:outline-none focus:ring-2 ${
                 jobsLoading
                   ? 'cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400 focus:ring-gray-300'
                   : 'cursor-pointer border-gray-300 bg-white text-gray-700 hover:bg-gray-100 focus:ring-blue-500'
@@ -1872,7 +1952,7 @@ export function AIJobsOverlay({
             </button>
             <button
               onClick={onClose}
-                className="cursor-pointer inline-flex items-center gap-1 rounded-xl bg-gray-200 px-3 py-1.5 text-sm font-medium text-gray-700 transition hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400"
+                className="cursor-pointer inline-flex items-center gap-1 rounded-xl bg-gray-200 px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400"
                 type="button"
             >
               Close
@@ -1892,7 +1972,7 @@ export function AIJobsOverlay({
                 </div>
                 <button
                   onClick={closeCreateFlow}
-                  className="cursor-pointer inline-flex items-center gap-1 rounded-xl border border-gray-300 bg-white px-3 py-1 text-sm font-medium text-gray-700 transition hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="cursor-pointer inline-flex items-center gap-1 rounded-xl border border-gray-300 bg-white px-3 py-1 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   type="button"
                 >
                   Cancel
@@ -1930,7 +2010,7 @@ export function AIJobsOverlay({
                 <button
                   onClick={goToPreviousStep}
                   disabled={stepIndex === 0}
-                  className="cursor-pointer inline-flex items-center gap-2 rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="cursor-pointer inline-flex items-center gap-2 rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
                   type="button"
                 >
                   Back
@@ -1940,7 +2020,7 @@ export function AIJobsOverlay({
                     <button
                       onClick={goToNextStep}
                       disabled={nextDisabled}
-                      className="cursor-pointer inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:from-blue-600 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60 disabled:pointer-events-none"
+                      className="cursor-pointer inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60 disabled:pointer-events-none"
                       type="button"
                     >
                       {nextButtonLabel}
@@ -1949,12 +2029,12 @@ export function AIJobsOverlay({
                     <button
                       onClick={handleSubmit}
                       disabled={isSubmitDisabled}
-                      className="cursor-pointer inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:from-blue-600 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60 disabled:pointer-events-none"
+                      className="cursor-pointer inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60 disabled:pointer-events-none"
                       type="button"
                     >
                       {submissionLoading ? (
                         <>
-                          <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <svg className="h-4 w-4 shrink-0 animate-spin" fill="none" viewBox="0 0 24 24">
                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                           </svg>
@@ -1979,7 +2059,7 @@ export function AIJobsOverlay({
                 <button
                   onClick={startCreateFlow}
                   disabled={isCreating}
-                  className="cursor-pointer inline-flex items-center justify-center rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 px-3 py-1.5 text-sm font-semibold text-white shadow-lg transition hover:from-blue-600 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60 disabled:pointer-events-none"
+                  className="cursor-pointer inline-flex items-center gap-1 rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 px-3 py-1.5 text-sm font-semibold text-white transition-colors hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60 disabled:pointer-events-none"
                   type="button"
                 >
                   Create New Job
@@ -2001,8 +2081,8 @@ export function AIJobsOverlay({
                       <li key={job.id} className="relative">
                         <button
                           onClick={() => setActiveJobId(job.id)}
-                          className={`cursor-pointer flex w-full flex-col items-start gap-1 rounded-xl px-4 py-3 text-left transition ${
-                            job.id === selectedJob?.id ? 'bg-white shadow-inner' : 'hover:bg-white'
+                          className={`cursor-pointer flex w-full flex-col items-start gap-1 rounded-xl px-4 py-3 text-left transition-colors ${
+                            job.id === selectedJob?.id ? 'bg-white' : 'hover:bg-white'
                           }`}
                           type="button"
                         >

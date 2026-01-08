@@ -10,21 +10,21 @@ Added new variables to `VERB_VARIABLES` array:
 - `frame.id` - Frame ID
 - `frame.code` - Frame Code  
 - `frame.framebank_id` - Frame FrameBank ID
-- `frame.frame_name` - Frame Name
+- `frame.label` - Frame Name
 - `frame.definition` - Frame Definition
 - `frame.short_definition` - Frame Short Definition
 - `frame.prototypical_synset` - Frame Prototypical Synset
 - `frame.prototypical_synset_definition` - Frame Prototypical Synset Definition
 - `frame.is_supporting_frame` - Frame Is Supporting Frame
 - `frame.communication` - Frame Communication
-- `frame.roles` - Frame Roles (formatted list with role type, description, examples, and nickname)
+- `frame.roles` - Frame Roles (formatted list with role type, description, examples, and label)
 
 ### 2. Backend - Database Queries (`src/lib/llm/jobs.ts`)
 
 #### Updated `fetchEntriesByIds` function
 - Enhanced the Prisma query to fetch full frame data including frame_roles when fetching verbs
 - Added frame field data to the `additional` property using the `frame.*` naming convention
-- Includes role details: role_type, role_code, description, notes, main, examples, nickname
+- Includes role details: role_type, role_code, description, notes, main, examples, label
 
 #### Updated `fetchEntriesByFilters` function  
 - Enhanced the Prisma query to include full frame data with frame_roles
@@ -44,14 +44,14 @@ Added new variables to `VERB_VARIABLES` array:
 - Enables proper highlighting of frame field variables in the prompt editor
 
 ### 4. Updated Default Prompt (`src/components/AIJobsOverlay/constants.ts`)
-- Added `Frame: {{frame_name}}` to the default prompt template
+- Added `Frame: {{label}}` to the default prompt template
 - Provides users with an example of frame field usage
 
 ## Usage Examples
 
 ### Basic Frame Fields
 ```
-Frame Name: {{frame.frame_name}}
+Frame Name: {{frame.label}}
 Frame Definition: {{frame.definition}}
 Frame Short Definition: {{frame.short_definition}}
 ```
@@ -69,7 +69,7 @@ Output:
 ```
 
 Each role is formatted as:
-**{ROLE_TYPE}**: {description} (e.g. {examples}); {nickname}
+**{ROLE_TYPE}**: {description} (e.g. {examples}); {label}
 
 ### Complex Example Prompt
 ```
@@ -80,7 +80,7 @@ Gloss: {{gloss}}
 Lemmas: {{lemmas}}
 
 Frame Information:
-- Frame: {{frame.frame_name}} ({{frame.framebank_id}})
+- Frame: {{frame.label}} ({{frame.framebank_id}})
 - Definition: {{frame.definition}}
 - Short Definition: {{frame.short_definition}}
 
@@ -99,7 +99,7 @@ Evaluate whether this verb's gloss and examples properly reflect its frame seman
 The `frame.roles` variable provides a newline-separated list where each role is formatted as:
 
 ```
-**{ROLE_TYPE}**: {description} (e.g. {examples}); {nickname}
+**{ROLE_TYPE}**: {description} (e.g. {examples}); {label}
 ```
 
 For example:
@@ -113,7 +113,7 @@ Each role includes:
 - `ROLE_TYPE`: The role type label (e.g., "Agent", "CONTENT.ENTITY")
 - `description`: Specific description for this role in this frame
 - `examples`: Comma-separated list of example phrases (optional)
-- `nickname`: Alternative name for the role (optional)
+- `label`: Alternative name for the role (optional)
 
 #### Role Ordering
 Roles are ordered using the same precedence system used in graph mode:
@@ -130,7 +130,7 @@ The precedence hierarchy (from highest to lowest):
 - ...and more (see `ROLE_PRECEDENCE` in `src/lib/types.ts`)
 
 ### Backward Compatibility
-- Existing variables like `frame_name`, `frame_code`, and `frame_definition` continue to work
+- Existing variables like `label`, `frame_code`, and `frame_definition` continue to work
 - New `frame.*` variables provide access to the complete frame data structure
 - No breaking changes to existing prompts or jobs
 

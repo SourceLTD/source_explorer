@@ -10,9 +10,10 @@ interface ViewToggleProps {
   onViewChange: (view: ViewMode) => void;
   className?: string;
   hideRecipes?: boolean;
+  grayscale?: boolean;
 }
 
-export default function ViewToggle({ currentView, onViewChange, className, hideRecipes = false }: ViewToggleProps) {
+export default function ViewToggle({ currentView, onViewChange, className, hideRecipes = false, grayscale = false }: ViewToggleProps) {
   // Calculate the transform position for the sliding background
   const getTransformClass = () => {
     if (hideRecipes) {
@@ -41,19 +42,27 @@ export default function ViewToggle({ currentView, onViewChange, className, hideR
   };
 
   return (
-    <div className={`relative inline-flex items-center bg-gray-100 rounded-xl border border-gray-300 ${className || ''}`}>
+    <div className={`relative inline-flex items-center rounded-xl border transition-colors ${
+      grayscale 
+        ? 'bg-gray-200 border-gray-400 focus-within:ring-gray-400' 
+        : 'bg-gray-100 border-gray-300 hover:bg-blue-50 hover:border-blue-300 focus-within:ring-blue-500'
+    } focus-within:ring-2 focus-within:ring-offset-2 ${className || ''}`}>
       {/* Sliding background indicator */}
       <div
-        className={`absolute top-0.5 bottom-0.5 left-0.5 w-9 bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg shadow-lg transform transition-transform duration-300 ease-out ${getTransformClass()}`}
+        className={`absolute top-0.5 bottom-0.5 left-0.5 w-9 rounded-lg transform transition-transform duration-300 ease-out ${getTransformClass()} ${
+          grayscale 
+            ? 'bg-gradient-to-r from-gray-400 to-gray-500' 
+            : 'bg-gradient-to-r from-blue-500 to-blue-600'
+        }`}
       />
       
       {/* Table button */}
       <button
         onClick={() => onViewChange('table')}
-        className={`relative z-10 flex items-center justify-center w-10 py-2.5 rounded-xl transition-colors duration-300 ease-out cursor-pointer ${
+        className={`relative z-10 flex items-center justify-center w-10 py-2.5 rounded-xl transition-colors duration-300 ease-out cursor-pointer focus:outline-none ${
           currentView === 'table'
             ? 'text-white'
-            : 'text-gray-500 hover:text-gray-700'
+            : grayscale ? 'text-gray-500 hover:text-gray-700' : 'text-gray-700 hover:text-blue-700'
         }`}
         title="Table View"
       >
@@ -63,10 +72,10 @@ export default function ViewToggle({ currentView, onViewChange, className, hideR
       {/* Graph button */}
       <button
         onClick={() => onViewChange('graph')}
-        className={`relative z-10 flex items-center justify-center w-10 py-2.5 rounded-xl transition-colors duration-300 ease-out cursor-pointer ${
+        className={`relative z-10 flex items-center justify-center w-10 py-2.5 rounded-xl transition-colors duration-300 ease-out cursor-pointer focus:outline-none ${
           currentView === 'graph'
             ? 'text-white'
-            : 'text-gray-500 hover:text-gray-700'
+            : grayscale ? 'text-gray-500 hover:text-gray-700' : 'text-gray-700 hover:text-blue-700'
         }`}
         title="Graph View"
       >
@@ -81,10 +90,10 @@ export default function ViewToggle({ currentView, onViewChange, className, hideR
       {!hideRecipes && (
         <button
           onClick={() => onViewChange('recipes')}
-          className={`relative z-10 flex items-center justify-center w-10 py-2.5 rounded-xl transition-colors duration-300 ease-out cursor-pointer ${
+          className={`relative z-10 flex items-center justify-center w-10 py-2.5 rounded-xl transition-colors duration-300 ease-out cursor-pointer focus:outline-none ${
             currentView === 'recipes'
               ? 'text-white'
-              : 'text-gray-500 hover:text-gray-700'
+              : grayscale ? 'text-gray-500 hover:text-gray-700' : 'text-gray-700 hover:text-blue-700'
           }`}
           title="Recipes View"
         >

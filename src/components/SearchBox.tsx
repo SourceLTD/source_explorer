@@ -76,7 +76,7 @@ export default function SearchBox({ onSelectResult, onSearchChange, placeholder 
   };
 
   const handleSelectResult = (result: SearchResult) => {
-    setQuery(result.id);
+    setQuery(result.label || result.id);
     setIsOpen(false);
     onSelectResult(result);
   };
@@ -134,7 +134,7 @@ export default function SearchBox({ onSelectResult, onSearchChange, placeholder 
       </div>
 
       {isOpen && results.length > 0 && (
-        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-[600px] overflow-y-auto">
+        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-xl max-h-[600px] overflow-y-auto">
                       {results.map((result) => (
             <button
               key={result.id}
@@ -143,7 +143,7 @@ export default function SearchBox({ onSelectResult, onSearchChange, placeholder 
             >
               <div className="w-full">
                 <div className="font-medium text-gray-900 truncate mb-1">
-                  {result.id}
+                  {result.label || result.id}
                   <span className="ml-2 text-xs text-gray-500 font-normal">
                     ({result.pos})
                   </span>
@@ -178,7 +178,7 @@ export default function SearchBox({ onSelectResult, onSearchChange, placeholder 
       )}
 
       {isOpen && results.length === 0 && query && !isLoading && (
-        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg">
+        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-xl">
           <div className="px-4 py-3 text-gray-500 text-sm">
             No results found for &quot;{query}&quot;
           </div>

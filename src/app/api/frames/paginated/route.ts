@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
     // Cap limit at 2000, default to 10 if invalid
     const limit = (limitParam >= 1 && limitParam <= 2000) ? limitParam : 10;
     const search = searchParams.get('search');
-    const rawSortBy = searchParams.get('sortBy') || 'frame_name';
+    const rawSortBy = searchParams.get('sortBy') || 'label';
     const sortOrder = searchParams.get('sortOrder') === 'desc' ? 'desc' : 'asc';
     
     const skip = (page - 1) * limit;
@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
     
     // Valid columns for sorting in the frames table
     const validSortColumns = [
-      'id', 'frame_name', 'definition', 
+      'id', 'label', 'definition', 
       'short_definition', 'prototypical_synset', 'created_at', 'updated_at'
     ];
     
@@ -49,36 +49,24 @@ export async function GET(request: NextRequest) {
     const filterAST = parseURLToFilterAST('frames', searchParams);
     const { where: filterWhere } = await translateFilterASTToPrisma('frames', filterAST || undefined);
     
-    // Combine basic search with advanced filters
-    if (search && Object.keys(filterWhere).length > 0) {
-      // Both search and filters are present - combine with AND
-      where = {
-        AND: [
-          {
-            OR: [
-              { frame_name: { contains: search, mode: 'insensitive' } },
-              { definition: { contains: search, mode: 'insensitive' } },
-              // Only allow numeric ID search, not code or framebank_id
-              ...(search.match(/^\d+$/) ? [{ id: BigInt(search) }] : []),
-            ],
-          },
-          filterWhere,
-        ],
-      };
-    } else if (search) {
-      // Only search, no filters
-      where = {
+    // Combine basic search with advanced filters and soft delete
+    const baseConditions: Prisma.framesWhereInput[] = [{ deleted: false }];
+    
+    if (search) {
+      baseConditions.push({
         OR: [
-          { frame_name: { contains: search, mode: 'insensitive' } },
+          { label: { contains: search, mode: 'insensitive' } },
           { definition: { contains: search, mode: 'insensitive' } },
-          // Only allow numeric ID search, not code or framebank_id
           ...(search.match(/^\d+$/) ? [{ id: BigInt(search) }] : []),
         ],
-      };
-    } else {
-      // Only filters or neither
-      where = filterWhere;
+      });
     }
+
+    if (Object.keys(filterWhere).length > 0) {
+      baseConditions.push(filterWhere);
+    }
+
+    where = { AND: baseConditions };
 
     // Get total count
     const totalCount = await prisma.frames.count({ where });
@@ -110,7 +98,7 @@ export async function GET(request: NextRequest) {
 
     const serializedFrames = frames.map(frame => ({
       id: frame.id.toString(),
-      frame_name: frame.frame_name,
+      label: frame.label,
       definition: frame.definition,
       short_definition: frame.short_definition,
       prototypical_synset: frame.prototypical_synset,
@@ -128,6 +116,7 @@ export async function GET(request: NextRequest) {
         notes: fr.notes,
         main: fr.main,
         examples: fr.examples,
+        label: fr.label,
         role_type: {
           id: fr.role_types.id.toString(),
           code: fr.role_types.code,

@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "SourceNet",
+  title: "Source Console",
   description: "Explore lexical relationships through interactive graphs",
 };
 

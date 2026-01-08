@@ -30,7 +30,7 @@ export const StatusPill = memo(function StatusPill({ status }: { status: Seriali
 
 export const Metric = memo(function Metric({ label, value, helper }: { label: string; value: string | JSX.Element; helper?: string }) {
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-lg">
+    <div className="rounded-xl border border-gray-200 bg-white p-3">
       <div className="text-xs font-medium text-gray-500">{label}</div>
       <div className="mt-1 text-sm font-semibold text-gray-900">{value}</div>
       {helper && <div className="text-[11px] text-gray-500">{helper}</div>}
@@ -96,8 +96,13 @@ export const ItemList = memo(function ItemList({
                   </div>
                   {item.last_error && <div className="mt-1 text-[10px] text-red-600">{item.last_error}</div>}
                   {item.response_payload && item.status === 'succeeded' && (
-                    <div className="mt-1 text-[10px] opacity-75">
-                      Flagged: {item.flagged ? 'Yes' : 'No'}
+                    <div className="mt-1 flex items-center gap-2 text-[10px] opacity-75">
+                      <span>Flagged: {item.flagged ? 'Yes' : 'No'}</span>
+                      {item.has_edits && (
+                        <span className="rounded bg-blue-100 px-1.5 py-0.5 font-semibold text-blue-800">
+                          AI Edits Staged
+                        </span>
+                      )}
                     </div>
                   )}
                 </li>

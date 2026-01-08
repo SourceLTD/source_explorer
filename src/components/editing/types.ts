@@ -10,7 +10,7 @@ export type EditableField =
   | 'roles'
   | 'vendler_class'
   | 'frame'
-  | 'frame_name'
+  | 'label'
   | 'definition'
   | 'short_definition'
   | 'prototypical_synset'
@@ -60,7 +60,7 @@ export interface EditingState {
 
 export interface OverlaySectionsState {
   basicInfo: boolean;
-  verbProperties: boolean;
+  lexicalProperties: boolean;
   roles: boolean;
   relations: boolean;
   frameProperties: boolean;
@@ -69,5 +69,5 @@ export interface OverlaySectionsState {
 
 export interface FrameOption {
   id: string;
-  frame_name: string;
+  label: string;
 }

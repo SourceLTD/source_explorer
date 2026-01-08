@@ -200,6 +200,13 @@ async function commitCreate(
       },
     });
 
+    // Fetch changegroup to get source info
+    const changegroup = changeset.changegroup_id
+      ? await tx.changegroups.findUnique({ where: { id: changeset.changegroup_id } })
+      : null;
+    const source = changegroup?.source ?? 'manual';
+    const proposedBy = changeset.created_by;
+
     // Create audit log entry
     await tx.audit_log.create({
       data: {
@@ -210,8 +217,11 @@ async function commitCreate(
         old_value: Prisma.DbNull,
         new_value: entityData as Prisma.InputJsonValue,
         changed_by: committedBy,
-        changeset_id: changeset.id,
-        changegroup_id: changeset.changegroup_id,
+        changesets: changeset.id ? { connect: { id: changeset.id } } : undefined,
+        changegroups: changeset.changegroup_id ? { connect: { id: changeset.changegroup_id } } : undefined,
+        source: source,
+        proposed_by: proposedBy,
+        comment: changeset.comment,
       },
     });
 
@@ -365,6 +375,13 @@ async function commitUpdate(
       },
     });
 
+    // Fetch changegroup to get source info
+    const changegroup = changeset.changegroup_id
+      ? await tx.changegroups.findUnique({ where: { id: changeset.changegroup_id } })
+      : null;
+    const source = changegroup?.source ?? 'manual';
+    const proposedBy = changeset.created_by;
+
     // Create audit log entries for each field change
     for (const fc of approvedChanges) {
       await tx.audit_log.create({
@@ -376,8 +393,11 @@ async function commitUpdate(
           old_value: fc.old_value === null ? Prisma.DbNull : fc.old_value as Prisma.InputJsonValue,
           new_value: fc.new_value === null ? Prisma.DbNull : fc.new_value as Prisma.InputJsonValue,
           changed_by: committedBy,
-          changeset_id: changeset.id,
-          changegroup_id: changeset.changegroup_id,
+          changesets: changeset.id ? { connect: { id: changeset.id } } : undefined,
+          changegroups: changeset.changegroup_id ? { connect: { id: changeset.changegroup_id } } : undefined,
+          source: source,
+          proposed_by: proposedBy,
+          comment: changeset.comment,
         },
       });
     }
@@ -497,6 +517,7 @@ async function commitComplexFieldChange(
               notes: (frameRole.notes as string | undefined) ?? null,
               main: (frameRole.main as boolean | undefined) ?? false,
               examples: (frameRole.examples as string[] | undefined) ?? [],
+              label: (frameRole.label as string | undefined) ?? null,
             },
           });
         }
@@ -584,6 +605,13 @@ async function commitDelete(
       },
     });
 
+    // Fetch changegroup to get source info
+    const changegroup = changeset.changegroup_id
+      ? await tx.changegroups.findUnique({ where: { id: changeset.changegroup_id } })
+      : null;
+    const source = changegroup?.source ?? 'manual';
+    const proposedBy = changeset.created_by;
+
     // Create audit log entry
     await tx.audit_log.create({
       data: {
@@ -594,8 +622,11 @@ async function commitDelete(
         old_value: changeset.before_snapshot === null ? Prisma.DbNull : changeset.before_snapshot as Prisma.InputJsonValue,
         new_value: Prisma.DbNull,
         changed_by: committedBy,
-        changeset_id: changeset.id,
-        changegroup_id: changeset.changegroup_id,
+        changesets: changeset.id ? { connect: { id: changeset.id } } : undefined,
+        changegroups: changeset.changegroup_id ? { connect: { id: changeset.changegroup_id } } : undefined,
+        source: source,
+        proposed_by: proposedBy,
+        comment: changeset.comment,
       },
     });
   });

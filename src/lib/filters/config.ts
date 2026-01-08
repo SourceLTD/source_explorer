@@ -136,7 +136,7 @@ export function getFieldConfigsForPos(pos: 'verbs' | 'nouns' | 'adjectives' | 'a
 
   if (pos === 'frames') {
     return [
-      { key: 'frame_name', label: 'Frame Name', type: 'text', db: 'frame_name', operators: textOps },
+      { key: 'label', label: 'Frame Name', type: 'text', db: 'label', operators: textOps },
       { key: 'definition', label: 'Definition', type: 'text', db: 'definition', operators: textOps },
       { key: 'short_definition', label: 'Short Definition', type: 'text', db: 'short_definition', operators: textOps },
       { key: 'prototypical_synset', label: 'Prototypical Synset', type: 'text', db: 'prototypical_synset', operators: textOps },

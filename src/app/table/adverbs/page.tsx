@@ -14,6 +14,7 @@ export default function AdverbTableMode() {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [isEditOverlayOpen, setIsEditOverlayOpen] = useState(false);
   const [currentNode, setCurrentNode] = useState<GraphNode | null>(null);
+  const [selectedEntryId, setSelectedEntryId] = useState<string>('');
 
   const handleSearchResult = (result: SearchResult) => {
     // Navigate to the graph mode with this entry
@@ -26,6 +27,8 @@ export default function AdverbTableMode() {
 
   const handleEditClick = async (entry: TableEntry | import('@/lib/types').Frame) => {
     setIsEditOverlayOpen(true);
+    setSelectedEntryId(entry.id);
+    setCurrentNode(null);
     
     // Load full entry data
     try {
@@ -64,7 +67,7 @@ export default function AdverbTableMode() {
               onClick={() => router.push('/')}
               className="text-xl font-bold text-gray-900 hover:text-gray-700 cursor-pointer"
             >
-              SourceNet
+              Source Console
             </button>
             <div className="h-6 w-px bg-gray-300"></div>
             <CategoryDropdown currentCategory="adverbs" currentView="table" />
@@ -88,7 +91,7 @@ export default function AdverbTableMode() {
       {/* Main Content */}
       <main className="flex-1 flex flex-col bg-white">
         {/* Data Table */}
-        <div className="m-6 bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
+        <div className="m-6 bg-white rounded-xl border border-gray-200 overflow-hidden">
           <Suspense fallback={<div className="p-8 text-center text-gray-500">Loading...</div>}>
             <DataTable 
               searchQuery={searchQuery}
@@ -100,12 +103,17 @@ export default function AdverbTableMode() {
       </main>
 
       {/* Edit Overlay */}
-      {currentNode && (
+      {isEditOverlayOpen && (
         <EditOverlay
           node={currentNode}
+          nodeId={selectedEntryId}
           mode="adverbs"
           isOpen={isEditOverlayOpen}
-          onClose={() => setIsEditOverlayOpen(false)}
+          onClose={() => {
+            setIsEditOverlayOpen(false);
+            setCurrentNode(null);
+            setSelectedEntryId('');
+          }}
           onUpdate={handleUpdate}
         />
       )}

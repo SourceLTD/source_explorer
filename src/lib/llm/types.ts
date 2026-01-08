@@ -15,6 +15,8 @@ export interface JobScopeFrameIds {
   pos?: PartOfSpeech;
   includeVerbs?: boolean;
   flagTarget?: 'frame' | 'verb' | 'both';
+  offset?: number;
+  limit?: number;
 }
 
 export interface JobScopeFilters {
@@ -22,6 +24,7 @@ export interface JobScopeFilters {
   pos: PartOfSpeech;
   filters: {
     limit?: number;
+    offset?: number;
     // Boolean filter AST group (optional if targeting all)
     where?: BooleanFilterGroup;
   };
@@ -38,6 +41,8 @@ export interface CreateLLMJobParams {
   previewOnly?: boolean;
   metadata?: Record<string, unknown>;
   serviceTier?: 'flex' | 'default' | 'priority';
+  jobType?: 'moderation' | 'editing';
+  targetFields?: string[];
   reasoning?: {
     effort?: 'low' | 'medium' | 'high';
   };
@@ -54,7 +59,7 @@ export interface LexicalEntrySummary {
   flagged_reason?: string | null;
   forbidden?: boolean | null;
   forbidden_reason?: string | null;
-  frame_name?: string | null;
+  label?: string | null;
   lexfile?: string | null;
   additional?: Record<string, unknown>;
   // Frame-specific fields

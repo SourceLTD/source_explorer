@@ -96,8 +96,8 @@ export const ENTITY_CONFIGS: Record<LexicalType, EntityConfig> = {
   nouns: {
     tableName: 'nouns',
     posCode: 'n',
-    hasDeleted: false,
-    hasFrameId: false,
+    hasDeleted: true,
+    hasFrameId: true,
     hasRoles: false,
     hasVendlerClass: false,
     hasIsMwe: true,
@@ -121,8 +121,8 @@ export const ENTITY_CONFIGS: Record<LexicalType, EntityConfig> = {
   adjectives: {
     tableName: 'adjectives',
     posCode: 'a',
-    hasDeleted: false,
-    hasFrameId: false,
+    hasDeleted: true,
+    hasFrameId: true,
     hasRoles: false,
     hasVendlerClass: false,
     hasIsMwe: true,
@@ -147,8 +147,8 @@ export const ENTITY_CONFIGS: Record<LexicalType, EntityConfig> = {
   adverbs: {
     tableName: 'adverbs',
     posCode: 'r',
-    hasDeleted: false,
-    hasFrameId: false,
+    hasDeleted: true,
+    hasFrameId: true,
     hasRoles: false,
     hasVendlerClass: false,
     hasIsMwe: true,

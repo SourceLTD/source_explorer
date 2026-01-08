@@ -42,6 +42,7 @@ export interface Noun {
   flaggedReason?: string;
   forbidden?: boolean;
   forbiddenReason?: string;
+  frame_id?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -67,6 +68,7 @@ export interface Adjective {
   flaggedReason?: string;
   forbidden?: boolean;
   forbiddenReason?: string;
+  frame_id?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -161,18 +163,53 @@ export interface AdjectiveWithRelations extends Adjective {
   targetRelations: AdjectiveRelation[];
 }
 
+export interface Adverb {
+  id: string;
+  code?: string;
+  legacy_id: string;
+  gloss: string;
+  pos: string;
+  lexfile: string;
+  isMwe: boolean;
+  gradable?: boolean | null;
+  lemmas: string[];
+  src_lemmas: string[];
+  examples: string[];
+  flagged?: boolean;
+  flaggedReason?: string;
+  forbidden?: boolean;
+  forbiddenReason?: string;
+  frame_id?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface AdverbRelation {
+  sourceId: string;
+  targetId: string;
+  type: string;
+  source?: Adverb;
+  target?: Adverb;
+}
+
+export interface AdverbWithRelations extends Adverb {
+  sourceRelations: AdverbRelation[];
+  targetRelations: AdverbRelation[];
+}
+
 export interface FrameRole {
   id: string;
   description?: string | null;
   notes?: string | null;
   main?: boolean | null;
   examples?: string[];
+  label?: string | null;
   role_type: RoleType;
 }
 
 export interface Frame {
   id: string;
-  frame_name: string;
+  label: string;
   definition: string;
   short_definition: string;
   prototypical_synset: string;
@@ -257,6 +294,8 @@ export interface GraphNode {
 
 export interface SearchResult {
   id: string;
+  label?: string;
+  numericId?: string;
   legacy_id: string;
   lemmas: string[];
   src_lemmas: string[];
@@ -349,7 +388,7 @@ export interface FramePaginationParams {
   search?: string;
   
   // Frame-specific text filters
-  frame_name?: string;
+  label?: string;
   definition?: string;
   short_definition?: string;
   prototypical_synset?: string;
@@ -432,7 +471,8 @@ export const POS_LABELS = {
   'v': 'Verb',
   'a': 'Adjective',
   'r': 'Adverb',
-  's': 'Satellite Adjective'
+  's': 'Satellite Adjective',
+  'f': 'Frame'
 } as const;
 
 export const RELATION_LABELS = {
@@ -657,7 +697,7 @@ export interface FrameGraphRole {
   notes: string | null;
   main: boolean | null;
   examples: string[];
-  nickname: string | null;
+  label: string | null;
 }
 
 export interface FrameGraphVerb {
@@ -675,12 +715,12 @@ export interface FrameGraphRelation {
   direction: 'incoming' | 'outgoing';
   target?: {
     id: string;
-    frame_name: string;
+    label: string;
     short_definition: string;
   };
   source?: {
     id: string;
-    frame_name: string;
+    label: string;
     short_definition: string;
   };
 }
@@ -689,7 +729,7 @@ export interface FrameGraphNode {
   id: string;
   numericId: string;
   pos: 'frames';
-  frame_name: string;
+  label: string;
   gloss: string; // definition
   short_definition: string;
   prototypical_synset: string;
@@ -715,7 +755,7 @@ export interface FrameRecipeRole {
   notes: string | null;
   main: boolean | null;
   examples: string[];
-  nickname: string | null;
+  label: string | null;
   groups: Array<{
     id: string;
     description: string | null;
@@ -750,7 +790,7 @@ export interface FrameRecipeVerb {
 
 export interface FrameRecipeRelatedFrame {
   id: string;
-  frame_name: string;
+  label: string;
   short_definition: string;
   roles?: Array<{
     id: string;
@@ -763,7 +803,7 @@ export interface FrameRecipeRelatedFrame {
 export interface FrameRecipeData {
   frame: {
     id: string;
-    frame_name: string;
+    label: string;
     definition: string;
     short_definition: string;
     prototypical_synset: string;

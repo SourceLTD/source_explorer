@@ -90,6 +90,7 @@ export async function POST(request: NextRequest) {
       current_entity,
       created_by,
       changegroup_id,
+      comment,
     } = body;
 
     if (!entity_type || !operation || !created_by) {
@@ -115,7 +116,8 @@ export async function POST(request: NextRequest) {
           current_entity,
           updates,
           created_by,
-          changegroup_id ? BigInt(changegroup_id) : undefined
+          changegroup_id ? BigInt(changegroup_id) : undefined,
+          comment
         );
         break;
 
@@ -130,7 +132,8 @@ export async function POST(request: NextRequest) {
           entity_type,
           entity_data,
           created_by,
-          changegroup_id ? BigInt(changegroup_id) : undefined
+          changegroup_id ? BigInt(changegroup_id) : undefined,
+          comment
         );
         break;
 
@@ -146,7 +149,8 @@ export async function POST(request: NextRequest) {
           BigInt(entity_id),
           current_entity,
           created_by,
-          changegroup_id ? BigInt(changegroup_id) : undefined
+          changegroup_id ? BigInt(changegroup_id) : undefined,
+          comment
         );
         break;
 

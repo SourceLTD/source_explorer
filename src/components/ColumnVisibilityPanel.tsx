@@ -92,7 +92,7 @@ export default function ColumnVisibilityPanel({
       </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 mt-2 w-80 bg-white border border-gray-200 rounded-xl shadow-lg z-50">
+        <div className="absolute top-full left-0 mt-2 w-80 bg-white border border-gray-200 rounded-xl z-50">
           <div className="p-4">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-semibold text-gray-900">Column Visibility</h3>

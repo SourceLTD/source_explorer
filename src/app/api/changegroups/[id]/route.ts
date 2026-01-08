@@ -13,6 +13,7 @@ import {
   rejectAllFieldChanges,
   discardChangegroup,
 } from '@/lib/version-control';
+import { getCurrentUserName } from '@/utils/supabase/server';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -83,18 +84,12 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     const changegroupId = BigInt(id);
     const body = await request.json();
     
-    const { action, user_id } = body;
+    const { action } = body;
+    const userId = await getCurrentUserName();
 
     if (!action || !['approve_all', 'reject_all'].includes(action)) {
       return NextResponse.json(
         { error: 'action must be "approve_all" or "reject_all"' },
-        { status: 400 }
-      );
-    }
-
-    if (!user_id) {
-      return NextResponse.json(
-        { error: 'user_id is required for approve/reject actions' },
         { status: 400 }
       );
     }
@@ -112,9 +107,9 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     let totalAffected = 0;
     for (const cs of changesets) {
       if (action === 'approve_all') {
-        totalAffected += await approveAllFieldChanges(cs.id, user_id);
+        totalAffected += await approveAllFieldChanges(cs.id, userId);
       } else {
-        totalAffected += await rejectAllFieldChanges(cs.id, user_id);
+        totalAffected += await rejectAllFieldChanges(cs.id, userId);
       }
     }
 

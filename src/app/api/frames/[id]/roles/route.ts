@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { stageFrameRolesUpdate } from '@/lib/version-control';
+import { getCurrentUserName } from '@/utils/supabase/server';
 
 export async function PATCH(
   request: NextRequest,
@@ -32,8 +33,7 @@ export async function PATCH(
       );
     }
 
-    // TODO: Get actual user ID from auth context
-    const userId = 'current-user';
+    const userId = await getCurrentUserName();
 
     const response = await stageFrameRolesUpdate(idParam, roles, userId);
 
