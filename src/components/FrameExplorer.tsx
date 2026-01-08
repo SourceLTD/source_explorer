@@ -11,6 +11,7 @@ import PendingChangesButton from './PendingChangesButton';
 import SignOutButton from './SignOutButton';
 import CategoryDropdown from './CategoryDropdown';
 import { EditOverlay } from './editing/EditOverlay';
+import LoadingSpinner from './LoadingSpinner';
 
 interface FrameExplorerProps {
   initialFrameId?: string;
@@ -334,10 +335,7 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
           ) : (
             <div className="h-full flex items-center justify-center bg-white rounded-xl">
               {isLoading ? (
-                <div className="text-center">
-                  <div className="animate-spin h-12 w-12 border-2 border-gray-300 border-t-blue-600 rounded-full mx-auto mb-4"></div>
-                  <p className="text-gray-500">Loading frame...</p>
-                </div>
+                <LoadingSpinner size="page" label="Loading frame..." className="py-12" />
               ) : error ? (
                 <div className="text-center text-red-500">
                   <p className="text-lg font-medium">Error</p>

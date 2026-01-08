@@ -1,13 +1,17 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   XMarkIcon,
   CheckIcon,
   TrashIcon,
   ArrowPathIcon,
+  CheckCircleIcon,
+  ChatBubbleLeftIcon,
 } from '@heroicons/react/24/outline';
-import { CheckCircleIcon } from '@heroicons/react/24/solid';
+import LoadingSpinner from './LoadingSpinner';
+import UnreadCommentsPanel from './comments/UnreadCommentsPanel';
+import ChangeCommentsBoard from './comments/ChangeCommentsBoard';
 
 // --- Types ---
 
@@ -110,6 +114,7 @@ interface PendingChangesListProps {
 function formatValue(value: unknown): string {
   if (value === null || value === undefined) return 'null';
   if (typeof value === 'boolean') return value ? 'true' : 'false';
+  if (Array.isArray(value) && value.length === 0) return 'empty list';
   if (typeof value === 'object') return JSON.stringify(value);
   return String(value);
 }
@@ -149,8 +154,11 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<ViewGranularity>('fields');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [expandedComments, setExpandedComments] = useState<string | null>(null);
+  const [unreadChangesetIds, setUnreadChangesetIds] = useState<Set<string>>(new Set());
+  const [unreadKey, setUnreadKey] = useState(0); // To force refresh of unread panel
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
@@ -163,11 +171,52 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
+
+  // Fetch unread status for changesets
+  const fetchUnreadStatus = useCallback(async (changesetIds: string[]) => {
+    if (changesetIds.length === 0) return;
+    try {
+      const response = await fetch(`/api/comments/unread?changeset_ids=${changesetIds.join(',')}`);
+      if (response.ok) {
+        const data = await response.json();
+        setUnreadChangesetIds(new Set(data.unread_changeset_ids || []));
+      }
+    } catch (err) {
+      console.error('Failed to fetch unread status:', err);
+    }
+  }, []);
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [fetchData]);
+
+  // Fetch unread status when data changes
+  useEffect(() => {
+    if (data) {
+      const allChangesetIds: string[] = [];
+      data.changegroups.forEach(cg => {
+        cg.changesets_by_type.forEach(et => {
+          et.changesets.forEach(cs => allChangesetIds.push(cs.id));
+        });
+      });
+      data.ungrouped_changesets_by_type.forEach(et => {
+        et.changesets.forEach(cs => allChangesetIds.push(cs.id));
+      });
+      fetchUnreadStatus(allChangesetIds);
+    }
+  }, [data, fetchUnreadStatus]);
+
+  // Handle click on unread comment notification
+  const handleUnreadChangesetClick = (changesetId: string) => {
+    setExpandedComments(changesetId);
+    // Remove from unread set locally
+    setUnreadChangesetIds(prev => {
+      const next = new Set(prev);
+      next.delete(changesetId);
+      return next;
+    });
+  };
 
   // --- Flattening Logic ---
 
@@ -347,11 +396,7 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
   // --- Render ---
 
   if (isLoading && !data) {
-    return (
-      <div className="flex items-center justify-center py-24">
-        <ArrowPathIcon className="w-12 h-12 text-blue-500 animate-spin" />
-      </div>
-    );
+    return <LoadingSpinner fullPage size="page" />;
   }
 
   if (error) {
@@ -370,39 +415,82 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
 
   return (
     <div className="space-y-6">
-      {/* Header & Controls */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Pending Changes</h1>
-          <p className="text-gray-500 text-sm mt-1">
-            {data?.total_pending_changesets || 0} changesets across {data?.total_changegroups || 0} groups
-          </p>
-        </div>
+      {/* Unread Messages Panel */}
+      <UnreadCommentsPanel 
+        key={unreadKey}
+        onChangesetClick={handleUnreadChangesetClick}
+        onRefresh={() => setUnreadKey(k => k + 1)}
+      />
 
-        <div className="flex items-center gap-3">
-          <div className="inline-flex bg-gray-100 p-1 rounded-xl border border-gray-200">
-            <button
-              onClick={() => { setView('fields'); setSelectedIds(new Set()); }}
-              className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${view === 'fields' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+      {/* Comments Modal/Drawer */}
+      {expandedComments && (() => {
+        const changeset = flatChangesets.find(cs => cs.id === expandedComments);
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setExpandedComments(null)}>
+            <div 
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl mx-4 max-h-[90vh] overflow-hidden flex flex-col"
+              onClick={e => e.stopPropagation()}
             >
-              Field Changes
-            </button>
-            <button
-              onClick={() => { setView('changesets'); setSelectedIds(new Set()); }}
-              className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${view === 'changesets' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
-            >
-              Changesets
-            </button>
+              {/* Header */}
+              <div className="p-5 border-b border-gray-200 flex items-center justify-between flex-shrink-0">
+                <h3 className="text-lg font-semibold text-gray-900">Discussion</h3>
+                <button 
+                  onClick={() => setExpandedComments(null)}
+                  className="p-1 text-gray-400 hover:text-gray-600 rounded-lg transition-colors"
+                >
+                  <XMarkIcon className="w-5 h-5" />
+                </button>
+              </div>
+              
+              {/* Change Summary */}
+              {changeset && (
+                <div className="px-5 py-4 bg-gray-50 border-b border-gray-200 flex-shrink-0">
+                  <div className="flex items-center gap-3 mb-3">
+                    <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">{changeset.entity_type}</span>
+                    <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase ${getOperationColor(changeset.operation)}`}>
+                      {changeset.operation}
+                    </span>
+                    <span className="text-sm font-medium text-gray-900">{changeset.entity_display}</span>
+                  </div>
+                  
+                  {/* Field changes summary */}
+                  {changeset.field_changes.length > 0 && (
+                    <div className="space-y-2">
+                      {changeset.field_changes.slice(0, 4).map(fc => (
+                        <div key={fc.id} className="flex items-start gap-3 text-sm">
+                          <span className="font-mono text-blue-600 font-medium min-w-[120px] flex-shrink-0">{fc.field_name}</span>
+                          <span className="text-gray-400 line-through break-all">
+                            {formatValue(fc.old_value)}
+                          </span>
+                          <span className="text-gray-400 flex-shrink-0">→</span>
+                          <span className="text-gray-900 font-medium break-all">
+                            {formatValue(fc.new_value)}
+                          </span>
+                        </div>
+                      ))}
+                      {changeset.field_changes.length > 4 && (
+                        <p className="text-xs text-gray-400">+{changeset.field_changes.length - 4} more fields</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+              
+              {/* Comments Board */}
+              <div className="flex-1 overflow-hidden">
+                <ChangeCommentsBoard 
+                  changesetId={expandedComments}
+                  maxHeight={450}
+                  onCommentsChange={() => {
+                    // Refresh unread status
+                    setUnreadKey(k => k + 1);
+                  }}
+                />
+              </div>
+            </div>
           </div>
-          <button
-            onClick={fetchData}
-            disabled={isLoading}
-            className="p-2.5 bg-gray-50 text-gray-600 rounded-xl hover:bg-gray-100 border border-gray-200 transition-colors disabled:opacity-50"
-          >
-            <ArrowPathIcon className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
-          </button>
-        </div>
-      </div>
+        );
+      })()}
 
       {/* Bulk Action Bar */}
       {selectedIds.size > 0 && (
@@ -439,8 +527,47 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
         </div>
       )}
 
-      {/* Table Content */}
+      {/* Header & Table Content - Combined */}
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        {/* Header & Controls */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 border-b border-gray-200">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Pending Changes</h1>
+            <p className="text-gray-500 text-sm mt-1">
+              {data?.total_pending_changesets || 0} changesets across {data?.total_changegroups || 0} groups
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <div className="inline-flex bg-gray-100 p-1 rounded-xl border border-gray-200">
+              <button
+                onClick={() => { setView('fields'); setSelectedIds(new Set()); }}
+                className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${view === 'fields' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+              >
+                Field Changes
+              </button>
+              <button
+                onClick={() => { setView('changesets'); setSelectedIds(new Set()); }}
+                className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${view === 'changesets' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+              >
+                Changesets
+              </button>
+            </div>
+             <button
+               onClick={fetchData}
+               disabled={isLoading}
+               className="p-2.5 bg-gray-50 text-gray-600 rounded-xl hover:bg-gray-100 border border-gray-200 transition-colors disabled:opacity-50"
+             >
+               {isLoading ? (
+                 <LoadingSpinner size="md" noPadding />
+               ) : (
+                 <ArrowPathIcon className="w-5 h-5" />
+               )}
+             </button>
+          </div>
+        </div>
+
+        {/* Table Content */}
         {!hasPending ? (
           <div className="text-center py-24">
             <CheckCircleIcon className="w-16 h-16 text-green-500 mx-auto mb-4" />
@@ -550,6 +677,29 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
                       </td>
                       <td className="p-4 text-right">
                         <div className="flex items-center justify-end gap-1">
+                          {/* Comments Button */}
+                          {(() => {
+                            // For fields view, use changeset_id; for changesets view, use item.id
+                            const csId = view === 'fields' 
+                              ? (item as FlatFieldChange).changeset_id 
+                              : item.id;
+                            return (
+                              <button
+                                onClick={() => setExpandedComments(csId)}
+                                className={`p-1.5 rounded-lg transition-colors relative ${
+                                  unreadChangesetIds.has(csId)
+                                    ? 'text-amber-600 hover:bg-amber-50'
+                                    : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'
+                                }`}
+                                title="Discussion"
+                              >
+                                <ChatBubbleLeftIcon className="w-5 h-5" />
+                                {unreadChangesetIds.has(csId) && (
+                                  <span className="absolute -top-1 -right-1 w-3 h-3 bg-amber-500 rounded-full border-2 border-white" />
+                                )}
+                              </button>
+                            );
+                          })()}
                           <button
                             onClick={() => handleSingleCommit(item.id)}
                             disabled={isCommitting}

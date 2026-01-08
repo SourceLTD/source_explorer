@@ -15,6 +15,7 @@ import { FrameRolesSection } from './FrameRolesSection';
 import { useEntryEditor } from '@/hooks/useEntryEditor';
 import { useEntryMutations } from '@/hooks/useEntryMutations';
 import { PendingEntityBadge } from '@/components/PendingChangeIndicator';
+import LoadingSpinner from '@/components/LoadingSpinner';
 
 interface EditOverlayProps {
   node: GraphNode | Frame | null;
@@ -267,10 +268,7 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
       onDelete={() => setShowDeleteConfirm(true)}
     >
       {showSpinner ? (
-        <div className="p-12 flex flex-col items-center justify-center">
-          <div className="animate-spin h-8 w-8 border-4 border-blue-600 border-t-transparent rounded-full mb-4"></div>
-          <p className="text-gray-700 font-medium">{loadingLabel}</p>
-        </div>
+        <LoadingSpinner size="page" label={loadingLabel} className="p-12" />
       ) : (
         <>
           {/* Pending Changes Indicator */}

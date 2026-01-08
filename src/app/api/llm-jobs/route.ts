@@ -66,6 +66,7 @@ export async function POST(request: NextRequest) {
       reasoning: payload.reasoning,
       jobType: payload.jobType,
       targetFields: payload.targetFields,
+      reallocationEntityTypes: payload.reallocationEntityTypes,
       metadata: payload.metadata ?? {},
     } as CreateLLMJobParams, payload.initialBatchSize);
 

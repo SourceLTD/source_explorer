@@ -122,7 +122,6 @@ export async function GET(request: NextRequest) {
             created_at: cs.created_at,
             reviewed_by: cs.reviewed_by,
             reviewed_at: cs.reviewed_at,
-            comment: cs.comment,
             field_changes: cs.field_changes.map(fc => ({
               id: fc.id.toString(),
               changeset_id: fc.changeset_id.toString(),
@@ -165,7 +164,6 @@ export async function GET(request: NextRequest) {
         created_at: cs.created_at,
         reviewed_by: cs.reviewed_by,
         reviewed_at: cs.reviewed_at,
-        comment: cs.comment,
         field_changes: cs.field_changes.map(fc => ({
           id: fc.id.toString(),
           changeset_id: fc.changeset_id.toString(),

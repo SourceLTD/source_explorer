@@ -9,6 +9,7 @@ import SignOutButton from '@/components/SignOutButton';
 import CategoryDropdown from '@/components/CategoryDropdown';
 import { SearchResult } from '@/lib/types';
 import PendingChangesList from '@/components/PendingChangesList';
+import LoadingSpinner from '@/components/LoadingSpinner';
 
 function PendingChangesContent() {
   const router = useRouter();
@@ -75,9 +76,7 @@ function PendingChangesContent() {
 
 export default function PendingChangesPage() {
   return (
-    <Suspense fallback={<div className="h-screen flex items-center justify-center">
-      <div className="animate-spin h-12 w-12 border-2 border-gray-300 border-t-blue-600 rounded-full"></div>
-    </div>}>
+    <Suspense fallback={<LoadingSpinner fullPage />}>
       <PendingChangesContent />
     </Suspense>
   );

@@ -41,8 +41,9 @@ export interface CreateLLMJobParams {
   previewOnly?: boolean;
   metadata?: Record<string, unknown>;
   serviceTier?: 'flex' | 'default' | 'priority';
-  jobType?: 'moderation' | 'editing';
+  jobType?: 'moderation' | 'editing' | 'reallocation';
   targetFields?: string[];
+  reallocationEntityTypes?: ('verbs' | 'nouns' | 'adjectives' | 'adverbs')[];
   reasoning?: {
     effort?: 'low' | 'medium' | 'high';
   };

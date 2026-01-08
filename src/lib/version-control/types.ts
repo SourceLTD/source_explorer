@@ -77,7 +77,6 @@ export interface Changeset {
   reviewed_by: string | null;
   reviewed_at: Date | null;
   committed_at: Date | null;
-  comment: string | null;
 }
 
 /**
@@ -97,6 +96,28 @@ export interface FieldChange {
   /** Who rejected this field change */
   rejected_by: string | null;
   rejected_at: Date | null;
+}
+
+/**
+ * A comment on a changeset or field change.
+ */
+export interface ChangeComment {
+  id: bigint;
+  changeset_id: bigint | null;
+  field_change_id: bigint | null;
+  author: string;
+  content: string;
+  created_at: Date;
+}
+
+/**
+ * Tracking record for when a user last read a changeset's comments.
+ */
+export interface CommentRead {
+  id: bigint;
+  user_id: string;
+  changeset_id: bigint;
+  last_read_at: Date;
 }
 
 /**
@@ -140,7 +161,6 @@ export interface CreateChangesetInput {
   before_snapshot?: Record<string, unknown>;
   after_snapshot?: Record<string, unknown>;  // For CREATE operations
   created_by: string;
-  comment?: string;
 }
 
 export interface CreateFieldChangeInput {
@@ -148,6 +168,13 @@ export interface CreateFieldChangeInput {
   field_name: string;
   old_value?: unknown;
   new_value?: unknown;
+}
+
+export interface CreateCommentInput {
+  changeset_id?: bigint;
+  field_change_id?: bigint;
+  author: string;
+  content: string;
 }
 
 // ============================================
@@ -260,6 +287,18 @@ export interface PaginatedChangesets {
   page: number;
   page_size: number;
   total_pages: number;
+}
+
+export interface UnreadChangesetInfo {
+  changeset_id: string;
+  entity_type: EntityType;
+  entity_display: string;
+  comment_count: number;
+  latest_comment: {
+    author: string;
+    content: string;
+    created_at: string;
+  };
 }
 
 // ============================================

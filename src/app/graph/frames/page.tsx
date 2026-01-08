@@ -3,6 +3,7 @@
 import { Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import FrameExplorer from '@/components/FrameExplorer';
+import LoadingSpinner from '@/components/LoadingSpinner';
 
 function FrameGraphContent() {
   const searchParams = useSearchParams();
@@ -13,9 +14,7 @@ function FrameGraphContent() {
 
 export default function FrameGraphMode() {
   return (
-    <Suspense fallback={<div className="h-screen flex items-center justify-center">
-      <div className="animate-spin h-12 w-12 border-2 border-gray-300 border-t-purple-600 rounded-full"></div>
-    </div>}>
+    <Suspense fallback={<LoadingSpinner fullPage />}>
       <FrameGraphContent />
     </Suspense>
   );

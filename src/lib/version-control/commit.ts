@@ -219,9 +219,6 @@ async function commitCreate(
         changed_by: committedBy,
         changesets: changeset.id ? { connect: { id: changeset.id } } : undefined,
         changegroups: changeset.changegroup_id ? { connect: { id: changeset.changegroup_id } } : undefined,
-        source: source,
-        proposed_by: proposedBy,
-        comment: changeset.comment,
       },
     });
 
@@ -395,9 +392,6 @@ async function commitUpdate(
           changed_by: committedBy,
           changesets: changeset.id ? { connect: { id: changeset.id } } : undefined,
           changegroups: changeset.changegroup_id ? { connect: { id: changeset.changegroup_id } } : undefined,
-          source: source,
-          proposed_by: proposedBy,
-          comment: changeset.comment,
         },
       });
     }
@@ -624,9 +618,6 @@ async function commitDelete(
         changed_by: committedBy,
         changesets: changeset.id ? { connect: { id: changeset.id } } : undefined,
         changegroups: changeset.changegroup_id ? { connect: { id: changeset.changegroup_id } } : undefined,
-        source: source,
-        proposed_by: proposedBy,
-        comment: changeset.comment,
       },
     });
   });

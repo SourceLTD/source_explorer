@@ -62,13 +62,17 @@ export type {
   Changeset,
   FieldChange,
   AuditLogEntry,
+  ChangeComment,
+  CommentRead,
   // Input types
   CreateChangegroupInput,
   CreateChangesetInput,
   CreateFieldChangeInput,
+  CreateCommentInput,
   // Response types
   ChangegroupWithChangesets,
   ChangesetWithFieldChanges,
+  UnreadChangesetInfo,
   // Query types
   ChangegroupFilters,
   ChangesetFilters,
@@ -102,7 +106,6 @@ export {
   getChangeset,
   findPendingChangeset,
   getPendingChangesetsForEntities,
-  updateChangesetComment,
   // Field change operations
   createFieldChange,
   upsertFieldChange,
@@ -152,4 +155,14 @@ export {
 } from './stage';
 
 export type { StagedResponse } from './stage';
+
+// Comment operations
+export {
+  getComments,
+  addComment,
+  getCommentCounts,
+  markAsRead,
+  getUnreadComments,
+  getUnreadStatusForChangesets,
+} from './comments';
 

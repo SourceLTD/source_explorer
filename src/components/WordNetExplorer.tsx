@@ -13,6 +13,7 @@ import SignOutButton from './SignOutButton';
 import RootNodesView from './RootNodesView';
 import { EditOverlay } from './editing/EditOverlay';
 import CategoryDropdown from './CategoryDropdown';
+import LoadingSpinner from './LoadingSpinner';
 
 interface WordNetExplorerProps {
   initialEntryId?: string;
@@ -331,9 +332,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
         {currentView === 'table' && (
         <aside className="w-80 bg-white border-r border-gray-200 p-6 overflow-y-auto">
           {isLoading && (
-            <div className="flex items-center justify-center h-32">
-              <div className="animate-spin h-8 w-8 border-2 border-gray-300 border-t-blue-600 rounded-full"></div>
-            </div>
+            <LoadingSpinner size="md" className="h-32" />
           )}
 
           {error && (
@@ -1197,10 +1196,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
           ) : (
             <div className="h-full flex items-center justify-center bg-white rounded-xl">
               {isLoading ? (
-                <div className="text-center">
-                  <div className="animate-spin h-12 w-12 border-2 border-gray-300 border-t-blue-600 rounded-full mx-auto mb-4"></div>
-                  <p className="text-gray-500">Loading graph...</p>
-                </div>
+                <LoadingSpinner size="page" label="Loading graph..." className="py-12" />
               ) : (
                 <div className="text-center text-gray-400">
                   <svg className="h-24 w-24 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

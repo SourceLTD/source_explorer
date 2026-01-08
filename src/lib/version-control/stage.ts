@@ -161,7 +161,6 @@ export async function stageUpdate(
     actualChanges,
     userId,
     undefined,
-    comment
   );
 
   return {
@@ -202,7 +201,6 @@ export async function stageDelete(
     entity,
     userId,
     undefined,
-    comment
   );
 
   return {
@@ -303,14 +301,6 @@ export async function stageRolesUpdate(
       );
     }
 
-    // Update comment if provided
-    if (comment) {
-      await prisma.changesets.update({
-        where: { id: changeset.id },
-        data: { comment },
-      });
-    }
-
     changeset = await getChangeset(changeset.id);
     
     return {
@@ -343,7 +333,6 @@ export async function stageRolesUpdate(
     updates,
     userId,
     undefined,
-    comment
   );
 
   return {
@@ -397,14 +386,6 @@ export async function stageFrameRolesUpdate(
       newFrameRoles
     );
 
-    // Update comment if provided
-    if (comment) {
-      await prisma.changesets.update({
-        where: { id: changeset.id },
-        data: { comment },
-      });
-    }
-
     changeset = await getChangeset(changeset.id);
     
     return {
@@ -428,7 +409,6 @@ export async function stageFrameRolesUpdate(
     { frame_roles: newFrameRoles },
     userId,
     undefined,
-    comment
   );
 
   return {

@@ -9,8 +9,10 @@ import {
   CalendarIcon,
   HashtagIcon,
   CheckIcon,
-  XCircleIcon
+  XCircleIcon,
+  ArrowPathIcon
 } from '@heroicons/react/24/outline';
+import LoadingSpinner from './LoadingSpinner';
 import { SparklesIcon } from '@heroicons/react/24/outline';
 import { POS_LABELS } from '@/lib/types';
 
@@ -561,7 +563,7 @@ export default function FilterPanel({
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Flagged by (Job)</label>
                 {jobsLoading ? (
-                  <div className="text-sm text-gray-500">Loading jobs…</div>
+                  <LoadingSpinner size="sm" label="Loading jobs…" className="!flex-row !gap-2 !py-2" />
                 ) : (
                   <div className="flex items-center gap-2">
                     <select
@@ -683,7 +685,7 @@ export default function FilterPanel({
                 <div className="relative" ref={frameDropdownContainerRef}>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Frame ID</label>
                   {loadingFrames ? (
-                    <div className="text-sm text-gray-500">Loading frames...</div>
+                    <LoadingSpinner size="sm" label="Loading frames..." className="!flex-row !gap-2 !py-2" />
                   ) : (
                     <>
                       <input

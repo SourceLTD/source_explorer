@@ -6,7 +6,8 @@ import { createEmptyGroup, type BooleanFilterGroup } from '@/lib/filters/types';
 import { showGlobalAlert } from '@/lib/alerts';
 import type { SerializedJob, JobScope } from '@/lib/llm/types';
 import { getVariablesForEntityType } from '@/lib/llm/schema-variables';
-import { ChevronLeftIcon, ChevronRightIcon, ClipboardDocumentIcon } from '@heroicons/react/24/outline';
+import { ChevronLeftIcon, ChevronRightIcon, ClipboardDocumentIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
+import LoadingSpinner from '@/components/LoadingSpinner';
 
 import type { AIJobsOverlayProps, JobListResponse, PreviewResponse } from './types';
 import { MODEL_OPTIONS, DEFAULT_PROMPT, DEFAULT_LABEL, STEPPER_STEPS, STEP_TITLES, type StepperStep } from './constants';
@@ -96,8 +97,9 @@ export function AIJobsOverlay({
   const previewTimerRef = useRef<number | null>(null);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
-  const [jobType, setJobType] = useState<'moderation' | 'editing'>('moderation');
+  const [jobType, setJobType] = useState<'moderation' | 'editing' | 'reallocation'>('moderation');
   const [targetFields, setTargetFields] = useState<string[]>([]);
+  const [reallocationEntityTypes, setReallocationEntityTypes] = useState<('verbs' | 'nouns' | 'adjectives' | 'adverbs')[]>([]);
   const [currentStep, setCurrentStep] = useState<StepperStep>('details');
   const [variableActiveIndex, setVariableActiveIndex] = useState<number>(-1);
   const [submissionProgress, setSubmissionProgress] = useState<{
@@ -126,6 +128,7 @@ export function AIJobsOverlay({
     setModel(MODEL_OPTIONS[0].value);
     setJobType('moderation');
     setTargetFields([]);
+    setReallocationEntityTypes([]);
     setPriority('normal');
     setReasoningEffort('medium');
     setScopeMode('selection');
@@ -163,8 +166,9 @@ export function AIJobsOverlay({
       model?: string; 
       promptTemplate?: string; 
       serviceTier?: string | null;
-      jobType?: 'moderation' | 'editing';
+      jobType?: 'moderation' | 'editing' | 'reallocation';
       targetFields?: string[];
+      reallocationEntityTypes?: ('verbs' | 'nouns' | 'adjectives' | 'adverbs')[];
       reasoning?: { effort?: 'low' | 'medium' | 'high' } | null;
     } | null;
     
@@ -175,6 +179,7 @@ export function AIJobsOverlay({
     setModel(config?.model ?? MODEL_OPTIONS[0].value);
     setJobType(config?.jobType ?? (job.job_type as any) ?? 'moderation');
     setTargetFields(config?.targetFields ?? []);
+    setReallocationEntityTypes(config?.reallocationEntityTypes ?? []);
     setPriority(serviceTierToPriority(config?.serviceTier));
     setReasoningEffort(config?.reasoning?.effort ?? 'medium');
     setPromptTemplate(config?.promptTemplate ?? DEFAULT_PROMPT);
@@ -372,11 +377,15 @@ export function AIJobsOverlay({
   const isLastStep = stepIndex === STEPPER_STEPS.length - 1;
 
   const nextDisabled = useMemo(() => {
-    if (currentStep === 'details') return jobType === 'editing' && targetFields.length === 0;
+    if (currentStep === 'details') {
+      if (jobType === 'editing' && targetFields.length === 0) return true;
+      if (jobType === 'reallocation' && reallocationEntityTypes.length === 0) return true;
+      return false;
+    }
     if (currentStep === 'scope') return !isScopeValid;
     if (currentStep === 'prompt') return !promptIsValid;
     return false;
-  }, [currentStep, isScopeValid, promptIsValid, jobType, targetFields]);
+  }, [currentStep, isScopeValid, promptIsValid, jobType, targetFields, reallocationEntityTypes]);
 
     const handlePreview = useCallback(async () => {
     setPreviewLoading(true);
@@ -597,7 +606,7 @@ export function AIJobsOverlay({
 
             <div className="space-y-3">
               <label className="block text-xs font-medium text-gray-600">Job Type</label>
-              <div className="flex gap-4">
+              <div className="flex gap-3">
                 <label className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border p-3 transition-colors ${jobType === 'moderation' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 hover:bg-gray-50'}`}>
                   <input
                     type="radio"
@@ -607,11 +616,12 @@ export function AIJobsOverlay({
                     onChange={() => {
                       setJobType('moderation');
                       setTargetFields([]);
+                      setReallocationEntityTypes([]);
                     }}
                     className="sr-only"
                   />
                   <div className="text-center">
-                    <div className="text-sm font-semibold">Moderate</div>
+                    <div className="text-sm font-semibold">Flag</div>
                     <div className="text-[10px] opacity-70">Flag issues</div>
                   </div>
                 </label>
@@ -621,12 +631,32 @@ export function AIJobsOverlay({
                     name="jobType"
                     value="editing"
                     checked={jobType === 'editing'}
-                    onChange={() => setJobType('editing')}
+                    onChange={() => {
+                      setJobType('editing');
+                      setReallocationEntityTypes([]);
+                    }}
                     className="sr-only"
                   />
                   <div className="text-center">
                     <div className="text-sm font-semibold">Edit</div>
-                    <div className="text-[10px] opacity-70">Improve data quality</div>
+                    <div className="text-[10px] opacity-70">Improve data</div>
+                  </div>
+                </label>
+                <label className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border p-3 transition-colors ${jobType === 'reallocation' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 hover:bg-gray-50'}`}>
+                  <input
+                    type="radio"
+                    name="jobType"
+                    value="reallocation"
+                    checked={jobType === 'reallocation'}
+                    onChange={() => {
+                      setJobType('reallocation');
+                      setTargetFields([]);
+                    }}
+                    className="sr-only"
+                  />
+                  <div className="text-center">
+                    <div className="text-sm font-semibold">Reallocate</div>
+                    <div className="text-[10px] opacity-70">Change frame contents</div>
                   </div>
                 </label>
               </div>
@@ -661,6 +691,37 @@ export function AIJobsOverlay({
                 </div>
                 {targetFields.length === 0 && (
                   <p className="mt-2 text-[10px] text-amber-600 font-medium">Select at least one field the AI should be allowed to suggest changes for.</p>
+                )}
+              </div>
+            )}
+
+            {jobType === 'reallocation' && (
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-2">Entity Types to Reallocate</label>
+                <div className="flex flex-wrap gap-2">
+                  {(['verbs', 'nouns', 'adjectives', 'adverbs'] as const).map(entityType => (
+                    <button
+                      key={entityType}
+                      onClick={() => {
+                        setReallocationEntityTypes(prev => 
+                          prev.includes(entityType) 
+                            ? prev.filter(t => t !== entityType)
+                            : [...prev, entityType]
+                        );
+                      }}
+                      type="button"
+                      className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                        reallocationEntityTypes.includes(entityType)
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      {entityType.charAt(0).toUpperCase() + entityType.slice(1)}
+                    </button>
+                  ))}
+                </div>
+                {reallocationEntityTypes.length === 0 && (
+                  <p className="mt-2 text-[10px] text-amber-600 font-medium">Select at least one entity type the AI can suggest reallocating.</p>
                 )}
               </div>
             )}
@@ -1696,6 +1757,7 @@ export function AIJobsOverlay({
           scope: firstBatchScope,
           jobType,
           targetFields,
+          reallocationEntityTypes,
           serviceTier: priority === 'normal' ? 'default' : priority,
           reasoning: { effort: reasoningEffort },
           metadata: {
@@ -1758,6 +1820,7 @@ export function AIJobsOverlay({
           scope,
           jobType,
           targetFields,
+          reallocationEntityTypes,
           serviceTier: priority === 'normal' ? 'default' : priority,
           reasoning: { effort: reasoningEffort },
           metadata: {
@@ -1896,10 +1959,7 @@ export function AIJobsOverlay({
             <div className="bg-white p-6 rounded-xl max-w-md w-full mx-4">
               <div className="text-center">
                 <div className="flex justify-center mb-4">
-                  <svg className="h-12 w-12 animate-spin text-blue-600" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
+                  <LoadingSpinner size="page" />
                 </div>
                 <p className="text-lg font-semibold text-gray-900 mb-2">Preparing large job...</p>
                 <p className="text-sm text-gray-600 mb-4">
@@ -1926,8 +1986,8 @@ export function AIJobsOverlay({
         <header className="border-b border-gray-200 bg-gray-50 px-6 py-5">
           <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-              <h2 className="text-xl font-semibold text-gray-900">AI Batch Moderation</h2>
-            <p className="text-sm text-gray-600">Create and track AI-assisted flagging runs for {mode} table entries.</p>
+              <h2 className="text-xl font-semibold text-gray-900">AI Agent</h2>
+            <p className="text-sm text-gray-600">Create and track AI jobs</p>
           </div>
             <div className="flex items-center gap-2">
             {pendingBadge && (
@@ -1945,9 +2005,11 @@ export function AIJobsOverlay({
               }`}
               type="button"
             >
-              <svg className={`h-4 w-4 ${jobsLoading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
+              <LoadingSpinner 
+                size="sm" 
+                isSpinning={jobsLoading} 
+                noPadding 
+              />
               Refresh
             </button>
             <button
@@ -2034,10 +2096,7 @@ export function AIJobsOverlay({
                     >
                       {submissionLoading ? (
                         <>
-                          <svg className="h-4 w-4 shrink-0 animate-spin" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                          </svg>
+                          <LoadingSpinner size="sm" className="shrink-0 text-white" noPadding />
                           Creating Job…
                         </>
                       ) : (
@@ -2128,15 +2187,7 @@ export function AIJobsOverlay({
             <main className="relative flex flex-1 flex-col overflow-hidden bg-white">
               <div className="flex-1 overflow-auto px-8 py-6">
                 {selectedJobLoading ? (
-                  <div className="flex h-full items-center justify-center text-sm text-gray-500">
-                    <div className="flex flex-col items-center gap-2">
-                      <svg className="h-6 w-6 animate-spin text-blue-600" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                      </svg>
-                      <span>Loading job details...</span>
-                    </div>
-                  </div>
+                  <LoadingSpinner size="page" label="Loading job details..." className="h-full" />
                 ) : selectedJobDetails ? (
                   <JobDetails
                     job={selectedJobDetails}

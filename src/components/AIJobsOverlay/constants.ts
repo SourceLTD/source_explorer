@@ -1,8 +1,9 @@
 export const MODEL_OPTIONS = [
-  { value: 'gpt-5-nano', label: 'GPT-5 Nano (cheapest)' },
-  { value: 'gpt-5-mini', label: 'GPT-5 Mini (balanced)' },
-  { value: 'gpt-5', label: 'GPT-5 (highest quality)' },
-];
+  { value: 'gpt-5-nano', label: 'GPT-5 Nano' },
+  { value: 'gpt-5-mini', label: 'GPT-5 Mini' },
+  { value: 'gpt-5.2', label: 'GPT-5.2' },
+  { value: 'gpt-5.2-pro', label: 'GPT-5.2 Pro' },
+] as const;
 
 export const DEFAULT_PROMPT = `You are reviewing lexical entries for quality assurance.
 

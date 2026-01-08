@@ -63,18 +63,6 @@ export async function getChangegroup(id: bigint): Promise<Changegroup | null> {
   return result ? transformChangegroup(result) : null;
 }
 
-/**
- * Update the comment (justification) for a changeset.
- */
-export async function updateChangesetComment(
-  changesetId: bigint,
-  comment: string | null
-): Promise<void> {
-  await prisma.changesets.update({
-    where: { id: changesetId },
-    data: { comment },
-  });
-}
 
 /**
  * Update changegroup stats (call after modifying changesets).
@@ -108,7 +96,6 @@ export async function createChangeset(
       after_snapshot: toJsonValue(input.after_snapshot),
       created_by: input.created_by,
       status: 'pending',
-      comment: input.comment ?? null,
     },
   });
 
@@ -373,7 +360,6 @@ export async function rejectAllFieldChanges(
  * @param updates - The proposed changes (field name -> new value)
  * @param createdBy - The user making the change
  * @param changegroupId - Optional changegroup to add this changeset to
- * @param comment - Optional justification for the change
  */
 export async function createChangesetFromUpdate(
   entityType: EntityType,
@@ -382,7 +368,6 @@ export async function createChangesetFromUpdate(
   updates: Record<string, unknown>,
   createdBy: string,
   changegroupId?: bigint,
-  comment?: string
 ): Promise<ChangesetWithFieldChanges> {
   // Check if there's already a pending changeset for this entity
   let changeset = await findPendingChangeset(entityType, entityId);
@@ -405,14 +390,6 @@ export async function createChangesetFromUpdate(
         fieldChanges.push(fc);
       }
     }
-
-    // Update comment if provided
-    if (comment) {
-      await prisma.changesets.update({
-        where: { id: changeset.id },
-        data: { comment },
-      });
-    }
     
     // Refresh the changeset to get all field changes
     changeset = await getChangeset(changeset.id);
@@ -428,7 +405,6 @@ export async function createChangesetFromUpdate(
     entity_version: (currentEntity.version as number) ?? 1,
     before_snapshot: currentEntity,
     created_by: createdBy,
-    comment: comment,
   });
   
   // Create field changes for each updated field
@@ -462,14 +438,12 @@ export async function createChangesetFromUpdate(
  * @param entityData - The full entity data
  * @param createdBy - The user creating the entity
  * @param changegroupId - Optional changegroup to add this changeset to
- * @param comment - Optional justification for the creation
  */
 export async function createChangesetFromCreate(
   entityType: EntityType,
   entityData: Record<string, unknown>,
   createdBy: string,
   changegroupId?: bigint,
-  comment?: string
 ): Promise<ChangesetWithFieldChanges> {
   // Create the changeset with after_snapshot containing the full entity
   const changeset = await createChangeset({
@@ -481,7 +455,6 @@ export async function createChangesetFromCreate(
     before_snapshot: undefined,
     after_snapshot: entityData,
     created_by: createdBy,
-    comment: comment,
   });
   
   // For CREATE operations, we don't create individual field_changes
@@ -500,7 +473,6 @@ export async function createChangesetFromCreate(
  * @param currentEntity - The current state of the entity (for audit purposes)
  * @param createdBy - The user deleting the entity
  * @param changegroupId - Optional changegroup to add this changeset to
- * @param comment - Optional justification for the deletion
  */
 export async function createChangesetFromDelete(
   entityType: EntityType,
@@ -508,7 +480,6 @@ export async function createChangesetFromDelete(
   currentEntity: Record<string, unknown>,
   createdBy: string,
   changegroupId?: bigint,
-  comment?: string
 ): Promise<ChangesetWithFieldChanges> {
   const changeset = await createChangeset({
     changegroup_id: changegroupId,
@@ -518,7 +489,6 @@ export async function createChangesetFromDelete(
     entity_version: (currentEntity.version as number) ?? 1,
     before_snapshot: currentEntity,
     created_by: createdBy,
-    comment: comment,
   });
   
   return {
@@ -567,7 +537,6 @@ function transformChangeset(result: any): Changeset {
     reviewed_by: result.reviewed_by,
     reviewed_at: result.reviewed_at,
     committed_at: result.committed_at,
-    comment: result.comment,
   };
 }
 

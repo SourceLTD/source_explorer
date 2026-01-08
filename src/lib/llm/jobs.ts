@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 import type { llm_job_items } from '@prisma/client';
 import type OpenAI from 'openai';
 import { prisma } from '@/lib/prisma';
-import { FLAGGING_RESPONSE_SCHEMA, EDIT_RESPONSE_SCHEMA, type FlaggingResponse, type EditResponse } from './schema';
+import { FLAGGING_RESPONSE_SCHEMA, EDIT_RESPONSE_SCHEMA, REALLOCATION_RESPONSE_SCHEMA, type FlaggingResponse, type EditResponse, type ReallocationResponse } from './schema';
 import {
   CancelJobResult,
   CreateLLMJobParams,
@@ -26,6 +26,7 @@ import {
   EntityType,
   Changegroup,
   ENTITY_TYPE_TO_TABLE,
+  addComment,
 } from '@/lib/version-control';
 
 // Cache for changegroups per LLM job to avoid creating duplicates
@@ -970,18 +971,137 @@ function compareNumber(actual: number, op: 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 
 async function applyJobResult(
   item: llm_job_items,
   entry: LexicalEntrySummary,
-  result: FlaggingResponse | EditResponse,
+  result: FlaggingResponse | EditResponse | ReallocationResponse,
   jobLabel: string | null,
   submittedBy: string,
-  jobType: 'moderation' | 'editing',
-  jobScope?: JobScope
+  jobType: 'moderation' | 'editing' | 'reallocation',
+  jobScope?: JobScope,
+  jobConfig?: Record<string, unknown>
 ): Promise<void> {
   // Get or create the changegroup for this job
   const changegroupId = await getOrCreateJobChangegroup(item.job_id, submittedBy, jobLabel);
 
-  if (jobType === 'editing') {
+  if (jobType === 'reallocation') {
+    const reallocationResult = result as ReallocationResponse;
+    const { reallocations, confidence, notes } = reallocationResult;
+    let hasEdits = false;
+
+    // Get the reallocation entity types from config (defaults to all)
+    const entityTypes = (jobConfig?.reallocationEntityTypes as string[] | undefined) ?? ['verbs', 'nouns', 'adjectives', 'adverbs'];
+
+    // Track created changesets to post notes as comments
+    const createdChangesets: { id: bigint }[] = [];
+
+    if (reallocations && Object.keys(reallocations).length > 0) {
+      let reallocationCount = 0;
+
+      for (const [entryCode, targetFrameId] of Object.entries(reallocations)) {
+        // Validate the target frame exists
+        const targetFrame = await prisma.frames.findUnique({
+          where: { id: BigInt(targetFrameId) },
+          select: { id: true },
+        });
+
+        if (!targetFrame) {
+          console.warn(`[LLM] Job ${item.job_id} suggested non-existent target frame ${targetFrameId} for entry ${entryCode}`);
+          continue;
+        }
+
+        // Find the entry by code - only check entity types that are enabled
+        const [verb, noun, adjective, adverb] = await Promise.all([
+          entityTypes.includes('verbs') ? prisma.verbs.findFirst({ where: { code: entryCode, deleted: false } }) : null,
+          entityTypes.includes('nouns') ? prisma.nouns.findFirst({ where: { code: entryCode, deleted: false } }) : null,
+          entityTypes.includes('adjectives') ? prisma.adjectives.findFirst({ where: { code: entryCode, deleted: false } }) : null,
+          entityTypes.includes('adverbs') ? prisma.adverbs.findFirst({ where: { code: entryCode, deleted: false } }) : null,
+        ]);
+
+        if (verb && verb.frame_id !== BigInt(targetFrameId)) {
+          const changeset = await createChangesetFromUpdate(
+            'verb',
+            verb.id,
+            verb as unknown as Record<string, unknown>,
+            { frame_id: BigInt(targetFrameId) },
+            submittedBy,
+            changegroupId,
+          );
+          createdChangesets.push(changeset);
+          reallocationCount++;
+          hasEdits = true;
+        } else if (noun && noun.frame_id !== BigInt(targetFrameId)) {
+          const changeset = await createChangesetFromUpdate(
+            'noun',
+            noun.id,
+            noun as unknown as Record<string, unknown>,
+            { frame_id: BigInt(targetFrameId) },
+            submittedBy,
+            changegroupId,
+          );
+          createdChangesets.push(changeset);
+          reallocationCount++;
+          hasEdits = true;
+        } else if (adjective && adjective.frame_id !== BigInt(targetFrameId)) {
+          const changeset = await createChangesetFromUpdate(
+            'adjective',
+            adjective.id,
+            adjective as unknown as Record<string, unknown>,
+            { frame_id: BigInt(targetFrameId) },
+            submittedBy,
+            changegroupId,
+          );
+          createdChangesets.push(changeset);
+          reallocationCount++;
+          hasEdits = true;
+        } else if (adverb && adverb.frame_id !== BigInt(targetFrameId)) {
+          const changeset = await createChangesetFromUpdate(
+            'adverb',
+            adverb.id,
+            adverb as unknown as Record<string, unknown>,
+            { frame_id: BigInt(targetFrameId) },
+            submittedBy,
+            changegroupId,
+          );
+          createdChangesets.push(changeset);
+          reallocationCount++;
+          hasEdits = true;
+        } else if (!verb && !noun && !adjective && !adverb) {
+          console.warn(`[LLM] Job ${item.job_id} suggested reallocation for unknown entry ${entryCode}`);
+        }
+      }
+
+      if (reallocationCount > 0) {
+        console.log(`[LLM] Job ${item.job_id} created ${reallocationCount} reallocation changesets`);
+      }
+    }
+
+    // Post AI notes as discussion comments on each created changeset
+    if (notes && notes.trim() && createdChangesets.length > 0) {
+      for (const changeset of createdChangesets) {
+        await addComment({
+          changeset_id: changeset.id,
+          author: 'system:llm-agent',
+          content: notes.trim(),
+        });
+      }
+    }
+
+    await prisma.llm_job_items.update({
+      where: { id: item.id },
+      data: {
+        status: 'succeeded',
+        has_edits: hasEdits,
+        flags: {
+          confidence,
+          notes,
+          staged_at: new Date().toISOString(),
+          changegroup_id: changegroupId.toString(),
+          reallocations: reallocations,
+        },
+        completed_at: new Date(),
+      },
+    });
+  } else if (jobType === 'editing') {
     const editResult = result as EditResponse;
-    const { edits, frame_id, relations, confidence, notes } = editResult;
+    const { edits, frame_id, entry_reallocations, relations, confidence, notes } = editResult;
     let hasEdits = false;
 
     const entityType = item.verb_id ? 'verb' : 
@@ -1009,8 +1129,8 @@ async function applyJobResult(
           }
         }
 
-        // 2. Handle frame_id reallocation
-        if (frame_id !== undefined && frame_id !== null) {
+        // 2. Handle frame_id reallocation (for verb/noun/adjective/adverb jobs)
+        if (frame_id !== undefined && frame_id !== null && entityType !== 'frame') {
           // Validate the frame exists
           const targetFrame = await prisma.frames.findUnique({
             where: { id: BigInt(frame_id) },
@@ -1028,20 +1148,106 @@ async function applyJobResult(
           }
         }
 
+        // 3. Handle entry_reallocations for frame jobs (reallocate specific entries to different frames)
+        if (entityType === 'frame' && entry_reallocations && Object.keys(entry_reallocations).length > 0) {
+          let reallocationCount = 0;
+          
+          for (const [entryCode, targetFrameId] of Object.entries(entry_reallocations)) {
+            // Validate the target frame exists
+            const targetFrame = await prisma.frames.findUnique({
+              where: { id: BigInt(targetFrameId) },
+              select: { id: true },
+            });
+
+            if (!targetFrame) {
+              console.warn(`[LLM] Job ${item.job_id} suggested non-existent target frame ${targetFrameId} for entry ${entryCode}`);
+              continue;
+            }
+
+            // Find the entry by code - check verbs, nouns, adjectives, adverbs
+            const [verb, noun, adjective, adverb] = await Promise.all([
+              prisma.verbs.findFirst({ where: { code: entryCode, frame_id: entityId, deleted: false } }),
+              prisma.nouns.findFirst({ where: { code: entryCode, frame_id: entityId, deleted: false } }),
+              prisma.adjectives.findFirst({ where: { code: entryCode, frame_id: entityId, deleted: false } }),
+              prisma.adverbs.findFirst({ where: { code: entryCode, frame_id: entityId, deleted: false } }),
+            ]);
+
+            if (verb) {
+              await createChangesetFromUpdate(
+                'verb',
+                verb.id,
+                verb as unknown as Record<string, unknown>,
+                { frame_id: BigInt(targetFrameId) },
+                submittedBy,
+                changegroupId,
+              );
+              reallocationCount++;
+              hasEdits = true;
+            } else if (noun) {
+              await createChangesetFromUpdate(
+                'noun',
+                noun.id,
+                noun as unknown as Record<string, unknown>,
+                { frame_id: BigInt(targetFrameId) },
+                submittedBy,
+                changegroupId,
+              );
+              reallocationCount++;
+              hasEdits = true;
+            } else if (adjective) {
+              await createChangesetFromUpdate(
+                'adjective',
+                adjective.id,
+                adjective as unknown as Record<string, unknown>,
+                { frame_id: BigInt(targetFrameId) },
+                submittedBy,
+                changegroupId,
+              );
+              reallocationCount++;
+              hasEdits = true;
+            } else if (adverb) {
+              await createChangesetFromUpdate(
+                'adverb',
+                adverb.id,
+                adverb as unknown as Record<string, unknown>,
+                { frame_id: BigInt(targetFrameId) },
+                submittedBy,
+                changegroupId,
+              );
+              reallocationCount++;
+              hasEdits = true;
+            } else {
+              console.warn(`[LLM] Job ${item.job_id} suggested reallocation for unknown entry ${entryCode} in frame ${entityId}`);
+            }
+          }
+
+          if (reallocationCount > 0) {
+            console.log(`[LLM] Job ${item.job_id} created ${reallocationCount} entry reallocation changesets for frame ${entityId}`);
+          }
+        }
+
         if (Object.keys(validUpdates).length > 0) {
-          await createChangesetFromUpdate(
+          const changeset = await createChangesetFromUpdate(
             entityType as EntityType,
             entityId,
             currentEntity as Record<string, unknown>,
             validUpdates,
             submittedBy,
             changegroupId,
-            notes
           );
           hasEdits = true;
+
+          // Post AI notes as the first discussion comment
+          if (notes && notes.trim()) {
+            await addComment({
+              changeset_id: changeset.id,
+              author: 'system:llm-agent',
+              content: notes.trim(),
+            });
+          }
         }
 
-        // 3. Handle relations (simplified)
+        // 4. Handle relations (simplified)
         if (relations && Object.keys(relations).length > 0) {
           console.log(`[LLM] Job ${item.job_id} suggested relations for ${entry.code}:`, relations);
         }
@@ -1060,6 +1266,7 @@ async function applyJobResult(
           changegroup_id: changegroupId.toString(),
           suggested_relations: relations,
           suggested_frame_id: frame_id,
+          entry_reallocations: entry_reallocations,
         },
         completed_at: new Date(),
       },
@@ -1097,7 +1304,6 @@ async function applyJobResult(
         updates,
         submittedBy,
         changegroupId,
-        flaggingResult.notes ?? undefined
       );
     };
 
@@ -1292,6 +1498,7 @@ export async function createLLMJob(
     serviceTier: params.serviceTier ?? null,
     reasoning: params.reasoning ?? null,
     targetFields: (params.targetFields ?? []) as Prisma.InputJsonValue,
+    reallocationEntityTypes: (params.reallocationEntityTypes ?? []) as Prisma.InputJsonValue,
     metadata: (params.metadata ?? {}) as Prisma.InputJsonObject,
   };
 
@@ -1402,7 +1609,7 @@ export async function submitJobItemBatch(
   // 2. Update job status to 'running' if this is the first batch
   const job = await getLLMJobsDelegate().findUnique({
     where: { id: jobId },
-    select: { status: true, config: true },
+    select: { status: true, config: true, job_type: true },
   });
   
   if (job?.status === 'queued') {
@@ -1413,6 +1620,12 @@ export async function submitJobItemBatch(
   }
 
   const config = job?.config as { model: string; serviceTier?: string; reasoning?: unknown } | null;
+  const jobType = job?.job_type ?? 'moderation';
+  const responseSchema = jobType === 'editing' 
+    ? EDIT_RESPONSE_SCHEMA 
+    : jobType === 'reallocation' 
+      ? REALLOCATION_RESPONSE_SCHEMA 
+      : FLAGGING_RESPONSE_SCHEMA;
   const client = ensureOpenAIClient();
   const openAIServiceTier = normalizeServiceTier(config?.serviceTier as CreateLLMJobParams['serviceTier']);
   
@@ -1446,9 +1659,9 @@ export async function submitJobItemBatch(
           text: {
             format: {
               type: 'json_schema',
-              name: FLAGGING_RESPONSE_SCHEMA.name,
-              strict: FLAGGING_RESPONSE_SCHEMA.strict,
-              schema: FLAGGING_RESPONSE_SCHEMA.schema,
+              name: responseSchema.name,
+              strict: responseSchema.strict,
+              schema: responseSchema.schema,
             },
           },
         });
@@ -1699,7 +1912,7 @@ async function refreshSingleItem(item: SerializedJob['items'][number], jobId: st
 
       const jobRecord = await getLLMJobsDelegate().findUnique({
         where: { id: BigInt(jobId) },
-        select: { scope: true, submitted_by: true, job_type: true },
+        select: { scope: true, submitted_by: true, job_type: true, config: true },
       });
       
       await applyJobResult(
@@ -1709,7 +1922,8 @@ async function refreshSingleItem(item: SerializedJob['items'][number], jobId: st
         jobLabel,
         jobRecord?.submitted_by ?? 'system:llm-agent',
         (jobRecord?.job_type as any) ?? 'moderation',
-        jobRecord?.scope as JobScope | undefined
+        jobRecord?.scope as JobScope | undefined,
+        jobRecord?.config as Record<string, unknown> | undefined
       );
 
       await prisma.llm_job_items.update({

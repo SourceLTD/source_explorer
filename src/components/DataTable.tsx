@@ -8,7 +8,8 @@ import ColumnVisibilityPanel, { ColumnConfig, ColumnVisibilityState } from './Co
 import PageSizeSelector from './PageSizeSelector';
 import { api } from '@/lib/api-client';
 import AIJobsOverlay from './AIJobsOverlay';
-import { SparklesIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import { SparklesIcon, ExclamationTriangleIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
+import LoadingSpinner from './LoadingSpinner';
 import { showGlobalAlert } from '@/lib/alerts';
 import { PendingFieldIndicator, getPendingRowClasses } from './PendingChangeIndicator';
 
@@ -1778,8 +1779,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
     return (
       <div className={`bg-white rounded-xl border border-gray-200 ${className || ''}`}>
         <div className="p-8 text-center">
-          <div className="animate-spin h-12 w-12 border-2 border-gray-300 border-t-blue-600 rounded-full mx-auto mb-4"></div>
-          <p className="text-gray-500">Loading entries...</p>
+          <LoadingSpinner size="page" label="Loading entries..." className="py-20" />
         </div>
       </div>
     );
@@ -1793,8 +1793,9 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
           <p>Error loading data: {error}</p>
           <button 
             onClick={fetchData}
-            className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 cursor-pointer"
+            className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 cursor-pointer flex items-center gap-2 mx-auto"
           >
+            {loading && <LoadingSpinner size="sm" className="text-white" noPadding />}
             Retry
           </button>
         </div>
@@ -1962,7 +1963,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
       <div className="overflow-x-auto relative h-[calc(100vh-300px)] overflow-y-auto bg-gray-50">
         {loading && (
           <div className="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center z-10">
-            <div className="animate-spin h-8 w-8 border-2 border-gray-300 border-t-blue-600 rounded-full"></div>
+            <LoadingSpinner size="page" />
           </div>
         )}
         <table className="w-full" style={{ tableLayout: 'fixed' }}>
@@ -2488,10 +2489,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
                   </div>
 
                   {frameOptionsLoading ? (
-                    <div className="flex items-center gap-2 text-sm text-gray-600">
-                      <div className="h-4 w-4 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin"></div>
-                      Loading frames...
-                    </div>
+                    <LoadingSpinner size="sm" label="Loading frames..." className="!flex-row !gap-2 !py-2" />
                   ) : frameOptionsError ? (
                     <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700 space-y-2">
                       <p>{frameOptionsError}</p>

@@ -7,14 +7,12 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
 import { 
   getChangeset,
   updateFieldChangeStatus,
   approveAllFieldChanges,
   rejectAllFieldChanges,
   discardChangeset,
-  updateChangesetComment,
   FieldChangeStatus,
 } from '@/lib/version-control';
 import { getCurrentUserName } from '@/utils/supabase/server';
@@ -65,18 +63,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     const changesetId = BigInt(id);
     const body = await request.json();
     
-    const { action, field_change_id, field_changes_updates, comment } = body;
+    const { action, field_change_id, field_changes_updates } = body;
     const userId = await getCurrentUserName();
-
-    // Option 0: Update changeset comment
-    if (comment !== undefined) {
-      await updateChangesetComment(changesetId, comment);
-      
-      // If ONLY comment was provided, return early
-      if (!action && !field_change_id && !field_changes_updates) {
-        return NextResponse.json({ success: true, comment });
-      }
-    }
 
     // Option 1: Bulk action on all fields
     if (action) {
