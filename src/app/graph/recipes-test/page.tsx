@@ -8,6 +8,7 @@ import { GraphNode, LogicNode, Recipe, RecipePredicateNode, RecipeRelationType }
 function verbNode(id: string, gloss: string): GraphNode {
   return {
     id,
+    numericId: id,
     legacy_id: id,
     lemmas: [id.split('.v.')[0]],
     src_lemmas: [],
@@ -45,6 +46,7 @@ function buildComplexRecipes(): { current: GraphNode; recipes: Recipe[] } {
   // Main/current node
   const current: GraphNode = {
     id: 'investigate.v.00',
+    numericId: 'investigate.v.00',
     legacy_id: 'investigate.v.00',
     lemmas: ['investigate'],
     src_lemmas: [],

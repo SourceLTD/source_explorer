@@ -3,7 +3,8 @@
 import React, { useMemo, useState, useCallback } from 'react';
 import { Group } from '@visx/group';
 import { LinearGradient } from '@visx/gradient';
-import { GraphNode, sortRolesByPrecedence } from '@/lib/types';
+import { GraphNode, sortRolesByPrecedence, PendingChangeInfo } from '@/lib/types';
+import { getPendingNodeStroke, getPendingNodeFill } from './PendingChangeIndicator';
 
 // Color scheme
 const currentNodeColor = '#3b82f6';
@@ -1202,8 +1203,20 @@ export default function LexicalGraph({ currentNode, onNodeClick, onEditClick, mo
               
               const isParent = posNode.nodeType === 'parent';
               const isForbiddenNode = posNode.node.forbidden;
-              const fillColor = isForbiddenNode ? forbiddenNodeColor : (isParent ? parentNodeColor : childNodeColor);
-              const strokeColor = isForbiddenNode ? forbiddenNodeStroke : (isParent ? parentNodeStroke : childNodeStroke);
+              const hasPending = !!posNode.node.pending;
+              const pendingOp = posNode.node.pending?.operation;
+              
+              // Determine colors - pending changes take precedence
+              const fillColor = hasPending && pendingOp
+                ? getPendingNodeFill(pendingOp)
+                : isForbiddenNode 
+                ? forbiddenNodeColor 
+                : (isParent ? parentNodeColor : childNodeColor);
+              const strokeColor = hasPending && pendingOp
+                ? getPendingNodeStroke(pendingOp)
+                : isForbiddenNode 
+                ? forbiddenNodeStroke 
+                : (isParent ? parentNodeStroke : childNodeStroke);
               
               // Check if this node has a legacy ID beginning with 'src' for special styling
               const isSourceNode = hasSourceLegacyId(posNode.node);
@@ -1224,7 +1237,7 @@ export default function LexicalGraph({ currentNode, onNodeClick, onEditClick, mo
                     x={centerX}
                     fill={fillColor}
                     stroke={isSourceNode ? '#000000' : strokeColor}
-                    strokeWidth={isSourceNode ? 2 : 1}
+                    strokeWidth={hasPending ? 3 : (isSourceNode ? 2 : 1)}
                     rx={4}
                     ry={4}
                     style={{ cursor: 'pointer' }}

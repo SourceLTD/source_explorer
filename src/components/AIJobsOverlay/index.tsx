@@ -541,7 +541,7 @@ export function AIJobsOverlay({
                 value={label}
                 onChange={event => setLabel(event.target.value)}
                 placeholder="Optional job label"
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-lg focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               <p className="mt-2 text-xs text-gray-500">Give the batch a short name to identify it later in the jobs list.</p>
             </div>
@@ -550,7 +550,7 @@ export function AIJobsOverlay({
               <select
                 value={model}
                 onChange={event => setModel(event.target.value)}
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-lg focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 {MODEL_OPTIONS.map(option => (
                   <option key={option.value} value={option.value}>
@@ -566,7 +566,7 @@ export function AIJobsOverlay({
                 <select
                   value={priority}
                   onChange={event => setPriority(event.target.value as 'flex' | 'normal' | 'priority')}
-                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-lg focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="flex">flex</option>
                   <option value="normal">normal</option>
@@ -579,7 +579,7 @@ export function AIJobsOverlay({
                 <select
                   value={reasoningEffort}
                   onChange={event => setReasoningEffort(event.target.value as 'low' | 'medium' | 'high')}
-                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-lg focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="low">low</option>
                   <option value="medium">medium</option>
@@ -658,7 +658,7 @@ export function AIJobsOverlay({
               <label className="block text-xs font-medium text-gray-600">Prompt Template</label>
               <div className="relative mt-1">
                 {/* Highlight overlay (behind the textarea) */}
-                <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-md px-3 py-2 text-sm text-gray-900">
+                <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-xl px-3 py-2 text-sm text-gray-900">
                   <div
                     className="whitespace-pre-wrap break-words"
                     style={{ transform: `translate(${-editorScroll.left}px, ${-editorScroll.top}px)` }}
@@ -682,14 +682,14 @@ export function AIJobsOverlay({
                     }
                   }}
                   rows={12}
-                  className="w-full rounded-md border border-gray-300 bg-transparent px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-xl border border-gray-300 bg-transparent px-3 py-2 text-sm shadow-lg focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   style={{ color: 'transparent', caretColor: '#111827' }}
                   placeholder="Write instructions for the AI..."
                 />
               </div>
               {showVariableMenu && (
                 <div
-                  className="fixed z-10 max-h-48 w-60 overflow-y-auto rounded-md border border-gray-200 bg-white shadow-lg"
+                  className="fixed z-10 max-h-48 w-60 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-lg"
                   style={{ top: `${menuPosition.top}px`, left: `${menuPosition.left}px` }}
                 >
                   {filteredVariables.length === 0 ? (
@@ -721,7 +721,7 @@ export function AIJobsOverlay({
       case 'review':
         return (
           <div className="space-y-6">
-            <div className="rounded-md border border-gray-200 bg-gray-50 p-2">
+            <div className="rounded-xl border border-gray-200 bg-gray-50 p-2">
               <h4 className="text-xs font-semibold text-gray-800 mb-1.5">Summary</h4>
               <div className="grid grid-cols-3 gap-x-4 gap-y-0.5 text-[11px]">
                 {/* Row 1: Label, Model, Priority */}
@@ -845,7 +845,7 @@ export function AIJobsOverlay({
                       </button>
                     </div>
                   )}
-                  <div className="rounded-md border border-gray-200 bg-white text-xs text-gray-700 flex">
+                  <div className="rounded-xl border border-gray-200 bg-white text-xs text-gray-700 flex">
                     {/* Variables Section - 1/5 width */}
                     {Object.keys(preview.previews[currentPreviewIndex].variables).length > 0 && (
                       <div className="w-1/5 border-r border-gray-200 p-3 space-y-1">
@@ -1813,7 +1813,7 @@ export function AIJobsOverlay({
         {/* Progress overlay during batch preparation */}
         {submissionProgress?.phase === 'preparing' && (
           <div className="absolute inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-            <div className="bg-white p-6 rounded-lg shadow-xl max-w-md w-full mx-4">
+            <div className="bg-white p-6 rounded-xl shadow-lg max-w-md w-full mx-4">
               <div className="text-center">
                 <div className="flex justify-center mb-4">
                   <svg className="h-12 w-12 animate-spin text-blue-600" fill="none" viewBox="0 0 24 24">
@@ -1858,7 +1858,7 @@ export function AIJobsOverlay({
             <button
               onClick={() => loadJobs()}
               disabled={jobsLoading}
-              className={`inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-sm font-medium transition focus:outline-none focus:ring-2 ${
+              className={`inline-flex items-center gap-1 rounded-xl border px-3 py-1.5 text-sm font-medium transition focus:outline-none focus:ring-2 ${
                 jobsLoading
                   ? 'cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400 focus:ring-gray-300'
                   : 'cursor-pointer border-gray-300 bg-white text-gray-700 hover:bg-gray-100 focus:ring-blue-500'
@@ -1872,7 +1872,7 @@ export function AIJobsOverlay({
             </button>
             <button
               onClick={onClose}
-                className="cursor-pointer inline-flex items-center gap-1 rounded-md bg-gray-200 px-3 py-1.5 text-sm font-medium text-gray-700 transition hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400"
+                className="cursor-pointer inline-flex items-center gap-1 rounded-xl bg-gray-200 px-3 py-1.5 text-sm font-medium text-gray-700 transition hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400"
                 type="button"
             >
               Close
@@ -1892,7 +1892,7 @@ export function AIJobsOverlay({
                 </div>
                 <button
                   onClick={closeCreateFlow}
-                  className="cursor-pointer inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-3 py-1 text-sm font-medium text-gray-700 transition hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="cursor-pointer inline-flex items-center gap-1 rounded-xl border border-gray-300 bg-white px-3 py-1 text-sm font-medium text-gray-700 transition hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   type="button"
                 >
                   Cancel
@@ -1930,7 +1930,7 @@ export function AIJobsOverlay({
                 <button
                   onClick={goToPreviousStep}
                   disabled={stepIndex === 0}
-                  className="cursor-pointer inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="cursor-pointer inline-flex items-center gap-2 rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
                   type="button"
                 >
                   Back
@@ -1940,7 +1940,7 @@ export function AIJobsOverlay({
                     <button
                       onClick={goToNextStep}
                       disabled={nextDisabled}
-                      className="cursor-pointer inline-flex items-center gap-2 rounded-md bg-gradient-to-r from-blue-500 to-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:from-blue-600 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60 disabled:pointer-events-none"
+                      className="cursor-pointer inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:from-blue-600 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60 disabled:pointer-events-none"
                       type="button"
                     >
                       {nextButtonLabel}
@@ -1949,7 +1949,7 @@ export function AIJobsOverlay({
                     <button
                       onClick={handleSubmit}
                       disabled={isSubmitDisabled}
-                      className="cursor-pointer inline-flex items-center gap-2 rounded-md bg-gradient-to-r from-blue-500 to-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:from-blue-600 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60 disabled:pointer-events-none"
+                      className="cursor-pointer inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:from-blue-600 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60 disabled:pointer-events-none"
                       type="button"
                     >
                       {submissionLoading ? (
@@ -1979,7 +1979,7 @@ export function AIJobsOverlay({
                 <button
                   onClick={startCreateFlow}
                   disabled={isCreating}
-                  className="cursor-pointer inline-flex items-center justify-center rounded-md bg-gradient-to-r from-blue-500 to-blue-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:from-blue-600 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60 disabled:pointer-events-none"
+                  className="cursor-pointer inline-flex items-center justify-center rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 px-3 py-1.5 text-sm font-semibold text-white shadow-lg transition hover:from-blue-600 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60 disabled:pointer-events-none"
                   type="button"
                 >
                   Create New Job
@@ -1987,7 +1987,7 @@ export function AIJobsOverlay({
               </div>
               <div className="h-full overflow-auto px-2">
                 {jobsError && (
-                  <div className="m-4 rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-700">
+                  <div className="m-4 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700">
                     {jobsError}
                   </div>
                 )}
@@ -2001,7 +2001,7 @@ export function AIJobsOverlay({
                       <li key={job.id} className="relative">
                         <button
                           onClick={() => setActiveJobId(job.id)}
-                          className={`cursor-pointer flex w-full flex-col items-start gap-1 rounded-md px-4 py-3 text-left transition ${
+                          className={`cursor-pointer flex w-full flex-col items-start gap-1 rounded-xl px-4 py-3 text-left transition ${
                             job.id === selectedJob?.id ? 'bg-white shadow-inner' : 'hover:bg-white'
                           }`}
                           type="button"

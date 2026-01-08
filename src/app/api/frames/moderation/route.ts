@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { stageModerationUpdates } from '@/lib/version-control';
 
 export async function PATCH(request: NextRequest) {
   try {
@@ -20,39 +20,27 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    // Convert string IDs to BigInt
-    const bigIntIds = ids.map((id: string) => BigInt(id));
+    // TODO: Get actual user ID from auth context
+    const userId = 'current-user';
 
-    // Build update object
-    const updateData: Record<string, unknown> = {};
-    
-    if (updates.flagged !== undefined) updateData.flagged = updates.flagged;
-    if (updates.flaggedReason !== undefined) updateData.flagged_reason = updates.flaggedReason;
-    if (updates.forbidden !== undefined) updateData.forbidden = updates.forbidden;
-    if (updates.forbiddenReason !== undefined) updateData.forbidden_reason = updates.forbiddenReason;
-    
-    updateData.updated_at = new Date();
-
-    // Update all frames
-    const result = await prisma.frames.updateMany({
-      where: {
-        id: {
-          in: bigIntIds,
-        },
-      },
-      data: updateData,
-    });
+    const result = await stageModerationUpdates('frame', ids, updates, userId);
 
     return NextResponse.json({
-      success: true,
-      count: Number(result.count),
+      staged: true,
+      staged_count: result.staged_count,
+      changeset_ids: result.changeset_ids,
+      message: `Staged moderation changes for ${result.staged_count} frames`,
+    }, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+        'Pragma': 'no-cache',
+      },
     });
   } catch (error) {
-    console.error('[API] Error updating frame moderation:', error);
+    console.error('[API] Error staging frame moderation:', error);
     return NextResponse.json(
-      { error: 'Failed to update frame moderation' },
+      { error: 'Failed to stage frame moderation' },
       { status: 500 }
     );
   }
 }
-

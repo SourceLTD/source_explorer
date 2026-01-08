@@ -2,7 +2,8 @@
 
 import React, { useState, useCallback } from 'react';
 import { Group } from '@visx/group';
-import { GraphNode, sortRolesByPrecedence } from '@/lib/types';
+import { GraphNode, sortRolesByPrecedence, PendingChangeInfo } from '@/lib/types';
+import { getPendingNodeStroke, getPendingNodeFill } from './PendingChangeIndicator';
 
 interface GraphMainNodeProps {
   node: GraphNode;
@@ -220,6 +221,8 @@ export default function GraphMainNode({
   
   const isForbiddenNode = node.forbidden;
   const isSourceNode = node.legacy_id.startsWith('src');
+  const hasPendingChanges = !!node.pending;
+  const pendingOperation = node.pending?.operation;
   
   const { glossHeight, lemmasHeight, examplesHeight, rolesHeight } = nodeHeights;
   
@@ -276,15 +279,52 @@ export default function GraphMainNode({
         height={nodeHeight}
         y={centerY}
         x={centerX}
-        fill={isForbiddenNode ? '#fca5a5' : '#3b82f6'}
-        stroke={isSourceNode ? '#000000' : (isForbiddenNode ? '#dc2626' : '#1e40af')}
-        strokeWidth={3}
+        fill={
+          hasPendingChanges && pendingOperation
+            ? getPendingNodeFill(pendingOperation)
+            : isForbiddenNode 
+            ? '#fca5a5' 
+            : '#3b82f6'
+        }
+        stroke={
+          hasPendingChanges && pendingOperation
+            ? getPendingNodeStroke(pendingOperation)
+            : isSourceNode 
+            ? '#000000' 
+            : (isForbiddenNode ? '#dc2626' : '#1e40af')
+        }
+        strokeWidth={hasPendingChanges ? 4 : 3}
         rx={8}
         ry={8}
         style={{ cursor: 'pointer' }}
         filter={hoveredNodeId === node.id ? 'url(#nodeHoverShadow)' : undefined}
         onClick={() => onNodeClick(node.id)}
       />
+      
+      {/* Pending changes indicator badge */}
+      {hasPendingChanges && pendingOperation && (
+        <g>
+          <rect
+            x={centerX + nodeWidth - 80}
+            y={centerY + 5}
+            width={75}
+            height={20}
+            rx={10}
+            fill={getPendingNodeStroke(pendingOperation)}
+          />
+          <text
+            x={centerX + nodeWidth - 42}
+            y={centerY + 18}
+            fontSize={10}
+            fontFamily="Arial"
+            textAnchor="middle"
+            fill="white"
+            fontWeight="600"
+          >
+            {pendingOperation === 'create' ? 'NEW' : pendingOperation === 'delete' ? 'DELETED' : 'MODIFIED'}
+          </text>
+        </g>
+      )}
       
       {/* Title */}
       <text

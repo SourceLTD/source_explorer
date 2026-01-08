@@ -37,9 +37,17 @@ export async function updateSession(request: NextRequest) {
     }
   )
 
-  // IMPORTANT: Avoid writing any logic between createServerClient and
-  // supabase.auth.getUser(). A simple mistake could make it very hard to debug
-  // issues with users being randomly logged out.
+  // Define public routes that don't require authentication
+  const publicRoutes = ['/login', '/auth/confirm', '/auth/verify', '/auth/check-email', '/error']
+  const isPublicRoute = publicRoutes.some(route => request.nextUrl.pathname.startsWith(route))
+  
+  // Allow all API routes without authentication
+  const isApiRoute = request.nextUrl.pathname.startsWith('/api/')
+
+  // Optimization: skip getUser() for API routes and public routes if we don't need user context
+  if (isApiRoute || isPublicRoute) {
+    return supabaseResponse
+  }
 
   let user = null
   try {
@@ -58,7 +66,17 @@ export async function updateSession(request: NextRequest) {
         errorMessage.includes('refresh_token_not_found')
       
       if (!isExpectedError) {
-        console.error('Auth error:', response.error)
+        console.error('Auth error in middleware:', response.error)
+        
+        // If it's a bad JWT (expired), we should try to clear the session cookies
+        // so the client doesn't keep sending them.
+        if (errorMessage.includes('invalid JWT') || errorMessage.includes('token is expired')) {
+          console.log('Clearing invalid/expired session cookies');
+          const cookieNames = ['sb-txyvapnclxnwpiifbxmu-auth-token', 'supabase-auth-token'];
+          cookieNames.forEach(name => {
+            supabaseResponse.cookies.set(name, '', { maxAge: 0 });
+          });
+        }
       }
     }
   } catch (error) {
@@ -66,34 +84,12 @@ export async function updateSession(request: NextRequest) {
     console.error('Unexpected error in auth middleware:', error)
   }
 
-  // Define public routes that don't require authentication
-  const publicRoutes = ['/login', '/auth/confirm', '/auth/verify', '/auth/check-email', '/error']
-  const isPublicRoute = publicRoutes.some(route => request.nextUrl.pathname.startsWith(route))
-  
-  // Allow all API routes without authentication
-  const isApiRoute = request.nextUrl.pathname.startsWith('/api/')
-
-  // Redirect unauthenticated users to login (except for public routes and API routes)
-  if (!user && !isPublicRoute && !isApiRoute) {
+  // Redirect unauthenticated users to login
+  if (!user) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)
   }
-
-  // Redirect authenticated users away from login page
-  if (user && request.nextUrl.pathname === '/login') {
-    const url = request.nextUrl.clone()
-    url.pathname = '/'
-    return NextResponse.redirect(url)
-  }
-
-  // IMPORTANT: You *must* return the supabaseResponse object as it is. If you're
-  // creating a new response object with NextResponse.next() make sure to:
-  // 1. Pass the request in it, like so:
-  //    const myNewResponse = NextResponse.next({ request })
-  // 2. Copy over the cookies, like so:
-  //    myNewResponse.cookies.setAll(supabaseResponse.cookies.getAll())
-  // 3. Change the myNewResponse object instead of the supabaseResponse object
 
   return supabaseResponse
 }

@@ -17,8 +17,60 @@ import {
 } from './types';
 import { getOpenAIClient } from './client';
 import { translateFilterASTToPrisma } from '@/lib/filters/translate';
+import { withRetry } from '@/lib/db-utils';
 import type { BooleanFilterGroup } from '@/lib/filters/types';
 import { sortRolesByPrecedence } from '@/lib/types';
+import {
+  createChangegroup,
+  createChangesetFromUpdate,
+  EntityType,
+  Changegroup,
+} from '@/lib/version-control';
+
+// Cache for changegroups per LLM job to avoid creating duplicates
+const jobChangegroupCache = new Map<string, bigint>();
+
+/**
+ * Get or create a changegroup for an LLM job.
+ * This ensures all changesets from a single job are grouped together.
+ */
+async function getOrCreateJobChangegroup(
+  jobId: bigint,
+  jobLabel?: string | null
+): Promise<bigint> {
+  const cacheKey = jobId.toString();
+  
+  // Check cache first
+  if (jobChangegroupCache.has(cacheKey)) {
+    return jobChangegroupCache.get(cacheKey)!;
+  }
+  
+  // Check if a changegroup already exists for this job
+  const existing = await prisma.changegroups.findFirst({
+    where: {
+      llm_job_id: jobId,
+      status: 'pending',
+    },
+    select: { id: true },
+  });
+  
+  if (existing) {
+    jobChangegroupCache.set(cacheKey, existing.id);
+    return existing.id;
+  }
+  
+  // Create a new changegroup
+  const changegroup = await createChangegroup({
+    source: 'llm_job',
+    label: jobLabel || `LLM Job ${jobId}`,
+    description: `Changes from LLM job processing`,
+    llm_job_id: jobId,
+    created_by: 'system:llm-agent',
+  });
+  
+  jobChangegroupCache.set(cacheKey, changegroup.id);
+  return changegroup.id;
+}
 
 const TERMINAL_ITEM_STATUSES = new Set(['succeeded', 'failed', 'skipped']);
 
@@ -183,18 +235,6 @@ function extractEntrySummary(item: llm_job_items): {
     gloss: (entry.gloss as string) ?? null,
     lemmas: (entry.lemmas as string[]) ?? null,
   };
-}
-
-/**
- * Determine entity type for a job item based on which foreign key is set
- */
-function getItemEntityType(item: llm_job_items): PartOfSpeech | null {
-  if (item.verb_id) return 'verbs';
-  if (item.noun_id) return 'nouns';
-  if (item.adjective_id) return 'adjectives';
-  if (item.adverb_id) return 'adverbs';
-  if (item.frame_id) return 'frames';
-  return null;
 }
 
 function ensureOpenAIClient(): OpenAI {
@@ -893,6 +933,12 @@ function compareNumber(actual: number, op: 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 
   }
 }
 
+/**
+ * Apply moderation result by creating changesets (version control).
+ * 
+ * Instead of directly updating entities, this creates changesets that
+ * must be reviewed and committed by an admin before they take effect.
+ */
 async function applyModerationResult(
   item: llm_job_items,
   entry: LexicalEntrySummary,
@@ -912,73 +958,90 @@ async function applyModerationResult(
     flagTarget = jobScope.flagTarget ?? 'frame';
   }
 
+  // Get or create the changegroup for this job
+  const changegroupId = await getOrCreateJobChangegroup(item.job_id, jobLabel);
+
+  // Helper to create a changeset for an entity update
+  const createModerationChangeset = async (
+    entityType: EntityType,
+    entityId: bigint,
+    currentEntity: Record<string, unknown>
+  ) => {
+    const updates: Record<string, unknown> = {
+      flagged,
+      flagged_reason: prefixedReason,
+    };
+
+    await createChangesetFromUpdate(
+      entityType,
+      entityId,
+      currentEntity,
+      updates,
+      'system:llm-agent',
+      changegroupId
+    );
+  };
+
   if (item.verb_id) {
-    await prisma.verbs.update({
-      where: { 
-        id: item.verb_id
-      },
-      data: {
-        flagged,
-        flagged_reason: prefixedReason,
-      },
+    const verb = await prisma.verbs.findUnique({
+      where: { id: item.verb_id },
     });
+    if (verb) {
+      await createModerationChangeset('verb', item.verb_id, verb as unknown as Record<string, unknown>);
+    }
   } else if (item.noun_id) {
-    await prisma.nouns.update({
+    const noun = await prisma.nouns.findUnique({
       where: { id: item.noun_id },
-      data: {
-        flagged,
-        flagged_reason: prefixedReason,
-      },
     });
+    if (noun) {
+      await createModerationChangeset('noun', item.noun_id, noun as unknown as Record<string, unknown>);
+    }
   } else if (item.adjective_id) {
-    await prisma.adjectives.update({
+    const adjective = await prisma.adjectives.findUnique({
       where: { id: item.adjective_id },
-      data: {
-        flagged,
-        flagged_reason: prefixedReason,
-      },
     });
+    if (adjective) {
+      await createModerationChangeset('adjective', item.adjective_id, adjective as unknown as Record<string, unknown>);
+    }
   } else if (item.adverb_id) {
-    await prisma.adverbs.update({
+    const adverb = await prisma.adverbs.findUnique({
       where: { id: item.adverb_id },
-      data: {
-        flagged,
-        flagged_reason: prefixedReason,
-      },
     });
+    if (adverb) {
+      await createModerationChangeset('adverb', item.adverb_id, adverb as unknown as Record<string, unknown>);
+    }
   } else if (item.frame_id) {
     // For frames, we need to handle the flagTarget option
     const frameId = item.frame_id;
     
     // Flag the frame if target is 'frame' or 'both'
     if (flagTarget === 'frame' || flagTarget === 'both') {
-      await prisma.frames.update({
+      const frame = await prisma.frames.findUnique({
         where: { id: frameId },
-        data: {
-          flagged,
-          flagged_reason: prefixedReason,
-        },
       });
+      if (frame) {
+        await createModerationChangeset('frame', frameId, frame as unknown as Record<string, unknown>);
+      }
     }
     
     // Flag associated verbs if target is 'verb' or 'both'
     if (flagTarget === 'verb' || flagTarget === 'both') {
-      // Get the frame's verbs from the entry's additional data
       if (entry.additional?.frame_id) {
-        await prisma.verbs.updateMany({
+        const verbs = await prisma.verbs.findMany({
           where: { 
             frame_id: BigInt(entry.additional.frame_id as string),
             deleted: false,
           },
-          data: {
-            flagged,
-            flagged_reason: prefixedReason,
-          },
         });
+        for (const verb of verbs) {
+          await createModerationChangeset('verb', verb.id, verb as unknown as Record<string, unknown>);
+        }
       }
     }
   }
 
+  // Update the job item status - this still happens immediately
+  // (the changeset creation is what's tracked for review)
   await prisma.llm_job_items.update({
     where: { id: item.id },
     data: {
@@ -989,7 +1052,8 @@ async function applyModerationResult(
         flagged_reason: prefixedReason,
         confidence: result.confidence ?? null,
         notes: result.notes ?? null,
-        applied_at: new Date().toISOString(),
+        staged_at: new Date().toISOString(),  // Changed from applied_at to staged_at
+        changegroup_id: changegroupId.toString(),
       },
       completed_at: new Date(),
     },
@@ -1885,10 +1949,14 @@ export async function markJobAsSeen(jobId: string | number): Promise<void> {
 
 export async function getUnseenJobsCount(pos?: PartOfSpeech): Promise<number> {
   try {
-    const jobs = await getLLMJobsDelegate().findMany({
-      where: { unseen_change: true, deleted: false } as any,
-      select: { id: true, scope: true },
-    });
+    const jobs = await withRetry(
+      () => getLLMJobsDelegate().findMany({
+        where: { unseen_change: true, deleted: false } as any,
+        select: { id: true, scope: true },
+      }),
+      undefined,
+      'getUnseenJobsCount'
+    );
     
     if (!pos) return jobs.length;
     

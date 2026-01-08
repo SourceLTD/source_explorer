@@ -5,15 +5,6 @@ import { RelationType, type LexicalType, type Verb, type VerbWithRelations, type
 import type { verbs as PrismaVerb, verb_relations as PrismaVerbRelation } from '@prisma/client';
 import { Prisma } from '@prisma/client';
 
-// Type for Prisma entry that might have optional fields
-type PrismaEntryWithOptionalFields = {
-  flagged?: boolean;
-  flaggedReason?: string;
-  forbidden?: boolean;
-  forbiddenReason?: string;
-  [key: string]: unknown;
-};
-
 // Type for Prisma entry with relations
 type PrismaEntryWithRelations = {
   id: string | bigint;
@@ -621,6 +612,7 @@ export async function getRecipesForEntryInternal(entryId: string): Promise<Entry
       example: p.example,
       lexical: {
         id: p.lex_code, // Use code as the id
+        numericId: p.predicate_verb_id.toString(),
         legacy_id: p.lex_legacy_id,
         lemmas: p.lex_lemmas,
         src_lemmas: p.lex_src_lemmas,
@@ -1212,6 +1204,7 @@ async function getVerbGraphNode(entryId: string): Promise<GraphNode | null> {
       const target = rel.verbs_verb_relations_target_idToverbs as { id: bigint | string; code?: string };
       return {
       id: target.code || (typeof target.id === 'bigint' ? target.id.toString() : target.id), // Use code or convert BigInt
+      numericId: typeof target.id === 'bigint' ? target.id.toString() : target.id,
       legacy_id: rel.verbs_verb_relations_target_idToverbs!.legacy_id,
       lemmas: rel.verbs_verb_relations_target_idToverbs!.lemmas,
       src_lemmas: rel.verbs_verb_relations_target_idToverbs!.src_lemmas,
@@ -1242,6 +1235,7 @@ async function getVerbGraphNode(entryId: string): Promise<GraphNode | null> {
       const source = rel.verbs_verb_relations_source_idToverbs as { id: bigint | string; code?: string };
       return {
         id: source.code || (typeof source.id === 'bigint' ? source.id.toString() : source.id), // Use code or convert BigInt
+        numericId: typeof source.id === 'bigint' ? source.id.toString() : source.id,
         legacy_id: rel.verbs_verb_relations_source_idToverbs!.legacy_id,
         lemmas: rel.verbs_verb_relations_source_idToverbs!.lemmas,
         src_lemmas: rel.verbs_verb_relations_source_idToverbs!.src_lemmas,
@@ -1272,6 +1266,7 @@ async function getVerbGraphNode(entryId: string): Promise<GraphNode | null> {
       const target = rel.verbs_verb_relations_target_idToverbs as { id: bigint | string; code?: string };
       return {
       id: target.code || (typeof target.id === 'bigint' ? target.id.toString() : target.id), // Use code or convert BigInt
+      numericId: typeof target.id === 'bigint' ? target.id.toString() : target.id,
       legacy_id: rel.verbs_verb_relations_target_idToverbs!.legacy_id,
       lemmas: rel.verbs_verb_relations_target_idToverbs!.lemmas,
       src_lemmas: rel.verbs_verb_relations_target_idToverbs!.src_lemmas,
@@ -1302,6 +1297,7 @@ async function getVerbGraphNode(entryId: string): Promise<GraphNode | null> {
       const target = rel.verbs_verb_relations_target_idToverbs as { id: bigint | string; code?: string };
       return {
       id: target.code || (typeof target.id === 'bigint' ? target.id.toString() : target.id), // Use code or convert BigInt
+      numericId: typeof target.id === 'bigint' ? target.id.toString() : target.id,
       legacy_id: rel.verbs_verb_relations_target_idToverbs!.legacy_id,
       lemmas: rel.verbs_verb_relations_target_idToverbs!.lemmas,
       src_lemmas: rel.verbs_verb_relations_target_idToverbs!.src_lemmas,
@@ -1332,6 +1328,7 @@ async function getVerbGraphNode(entryId: string): Promise<GraphNode | null> {
       const target = rel.verbs_verb_relations_target_idToverbs as { id: bigint | string; code?: string };
       return {
       id: target.code || (typeof target.id === 'bigint' ? target.id.toString() : target.id), // Use code or convert BigInt
+      numericId: typeof target.id === 'bigint' ? target.id.toString() : target.id,
       legacy_id: rel.verbs_verb_relations_target_idToverbs!.legacy_id,
       lemmas: rel.verbs_verb_relations_target_idToverbs!.lemmas,
       src_lemmas: rel.verbs_verb_relations_target_idToverbs!.src_lemmas,
@@ -1406,6 +1403,7 @@ async function getVerbGraphNode(entryId: string): Promise<GraphNode | null> {
   
   return {
     id: entryCode,
+    numericId: numericId?.toString() || '',
     legacy_id: entry.legacy_id,
     lemmas: entry.lemmas,
     src_lemmas: entry.src_lemmas,
@@ -1536,6 +1534,7 @@ function mapNounToGraphNode(noun: {
 
   return {
     id: nounRecord.code || nounRecord.id.toString(),
+    numericId: nounRecord.id.toString(),
     legacy_id: nounRecord.legacy_id,
     lemmas: nounRecord.lemmas,
     src_lemmas: nounRecord.src_lemmas,
@@ -1606,6 +1605,7 @@ function mapAdjectiveToGraphNode(adjective: {
 
   return {
     id: adjRecord.code || adjRecord.id.toString(),
+    numericId: adjRecord.id.toString(),
     legacy_id: adjRecord.legacy_id,
     lemmas: adjRecord.lemmas,
     src_lemmas: adjRecord.src_lemmas,
@@ -1881,6 +1881,7 @@ async function getAncestorPathInternal(entryId: string): Promise<GraphNode[]> {
   // Convert to GraphNode format (without nested relations for efficiency)
   return results.map(result => ({
     id: result.code, // Use code as the id for display
+    numericId: result.id.toString(),
     legacy_id: result.legacy_id,
     lemmas: result.lemmas,
     src_lemmas: result.src_lemmas,
@@ -2056,7 +2057,6 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
     examples,
     flaggedReason,
     forbiddenReason,
-    isMwe,
     flagged,
     forbidden,
     parentsCountMin,
@@ -2157,7 +2157,7 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
         const frames = await prisma.frames.findMany({
           where: {
             OR: codesToLookup.map(code => ({
-              code: {
+              frame_name: {
                 equals: code,
                 mode: 'insensitive'
               }
@@ -2165,7 +2165,6 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
           },
           select: {
             id: true,
-            code: true
           } as Prisma.framesSelect
         });
 
@@ -2347,35 +2346,46 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
     take: limit,
     orderBy,
     include: {
-      _count: {
-        select: {
-          verb_relations_verb_relations_source_idToverbs: {
-            where: { type: 'hypernym' }
-          },
-          verb_relations_verb_relations_target_idToverbs: {
-            where: { type: 'hypernym' }
-          }
-        }
-      },
       frames: {
         select: {
           id: true,
-          code: true,
           frame_name: true,
         } as Prisma.framesSelect
       },
-      // roles omitted for performance and Prisma include typing stability
+      // roles and counts omitted for performance and Prisma include typing stability
     }
   }),
     undefined,
     'getPaginatedEntries:findMany'
   ) as unknown as PrismaEntryWithCounts[];
 
-  // Get all entry IDs for bulk fetching roles and role_groups
+  // Get all entry IDs for bulk fetching roles, role_groups and relation counts
   const entryIds = entries.map(e => {
     const entry = e as unknown as { id?: bigint };
     return entry.id;
   }).filter(Boolean) as bigint[];
+
+  // Fetch all relation counts for these entries in bulk
+  const countsData = entryIds.length > 0 ? await withRetry(
+    () => prisma.$queryRaw<Array<{
+      verb_id: bigint;
+      parents_count: bigint;
+      children_count: bigint;
+    }>>`
+      SELECT 
+        v.id as verb_id,
+        (SELECT COUNT(*)::bigint FROM verb_relations WHERE source_id = v.id AND type = 'hypernym') as parents_count,
+        (SELECT COUNT(*)::bigint FROM verb_relations WHERE target_id = v.id AND type = 'hypernym') as children_count
+      FROM (SELECT unnest(${entryIds}::bigint[]) as id) v
+    `,
+    undefined,
+    'getPaginatedEntries:counts'
+  ) : [];
+
+  const countsByEntryId = new Map(countsData.map(c => [c.verb_id.toString(), {
+    parents: Number(c.parents_count),
+    children: Number(c.children_count)
+  }]));
 
   // Fetch all roles for these entries in bulk
   const rolesData = entryIds.length > 0 ? await withRetry(
@@ -2519,6 +2529,7 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
     
     return {
       id: entryCode,
+      numericId: numericId,
       legacy_id: entry.legacy_id,
       lemmas: entry.lemmas,
       src_lemmas: entry.src_lemmas,
@@ -2535,8 +2546,8 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
       vendler_class: entry.vendler_class ?? null,
       roles: rolesByEntryId.get(numericId) || [],
       role_groups: roleGroupsByEntryId.get(numericId) || [],
-      parentsCount: entry._count.verb_relations_verb_relations_source_idToverbs,
-      childrenCount: entry._count.verb_relations_verb_relations_target_idToverbs,
+      parentsCount: countsByEntryId.get(numericId)?.parents || 0,
+      childrenCount: countsByEntryId.get(numericId)?.children || 0,
       createdAt: (entry as any).createdAt ?? (entry as any).created_at,
       updatedAt: (entry as any).updatedAt ?? (entry as any).updated_at
     };
@@ -2819,6 +2830,7 @@ export async function getPaginatedNouns(params: PaginationParams = {}): Promise<
     
     return {
       id: nounCode,
+      numericId: noun.id.toString(),
       legacy_id: noun.legacy_id,
       lemmas: noun.lemmas,
       src_lemmas: noun.src_lemmas,
@@ -3120,6 +3132,7 @@ export async function getPaginatedAdjectives(params: PaginationParams = {}): Pro
     
     return {
       id: adjectiveCode,
+      numericId: adjective.id.toString(),
       legacy_id: adjective.legacy_id,
       lemmas: adjective.lemmas,
       src_lemmas: adjective.src_lemmas,
@@ -3421,6 +3434,7 @@ export async function getPaginatedAdverbs(params: PaginationParams = {}): Promis
     
     return {
       id: adverbCode,
+      numericId: adverb.id.toString(),
       legacy_id: adverb.legacy_id,
       lemmas: adverb.lemmas,
       src_lemmas: adverb.src_lemmas,

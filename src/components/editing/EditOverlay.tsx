@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { GraphNode, Frame, RoleType } from '@/lib/types';
+import { GraphNode, Frame, RoleType, PendingChangeInfo } from '@/lib/types';
 import { Mode, OverlaySectionsState, FrameOption } from './types';
 import { EditOverlayModal } from './EditOverlayModal';
 import { ModerationButtons } from './ModerationButtons';
@@ -14,6 +14,7 @@ import { FramePropertiesSection } from './FramePropertiesSection';
 import { FrameRolesSection } from './FrameRolesSection';
 import { useEntryEditor } from '@/hooks/useEntryEditor';
 import { useEntryMutations } from '@/hooks/useEntryMutations';
+import { PendingEntityBadge } from '@/components/PendingChangeIndicator';
 
 interface EditOverlayProps {
   node: GraphNode | Frame;
@@ -261,6 +262,23 @@ export function EditOverlay({ node, mode, isOpen, onClose, onUpdate }: EditOverl
       validationMessage={editor.codeValidationMessage && !editor.isSaving ? editor.codeValidationMessage : ''}
       onDelete={() => setShowDeleteConfirm(true)}
     >
+      {/* Pending Changes Indicator */}
+      {node.pending && (
+        <div className="mb-4 p-3 rounded-lg bg-gradient-to-r from-green-50 to-green-100 border border-green-200">
+          <div className="flex items-center gap-3">
+            <PendingEntityBadge pending={node.pending} size="md" />
+            <div className="text-sm text-green-800">
+              <span className="font-medium">
+                {Object.keys(node.pending.pending_fields).length} field{Object.keys(node.pending.pending_fields).length !== 1 ? 's' : ''} pending
+              </span>
+              <span className="text-green-600 ml-2">
+                ({Object.keys(node.pending.pending_fields).join(', ')})
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Moderation Section */}
       <ModerationButtons
         flagged={node.flagged ?? false}
@@ -288,6 +306,7 @@ export function EditOverlay({ node, mode, isOpen, onClose, onUpdate }: EditOverl
           onSave={handleSave}
           onCancel={editor.cancelEditing}
           isSaving={editor.isSaving}
+          pending={node.pending}
         />
       )}
 
@@ -297,7 +316,6 @@ export function EditOverlay({ node, mode, isOpen, onClose, onUpdate }: EditOverl
           frame={node as Frame}
           editingField={editor.editingField}
           editValue={editor.editValue}
-          codeValidationMessage={editor.codeValidationMessage}
           isOpen={overlaySections.frameProperties}
           onToggle={() => setOverlaySections(prev => ({ ...prev, frameProperties: !prev.frameProperties }))}
           onStartEdit={editor.startEditing}

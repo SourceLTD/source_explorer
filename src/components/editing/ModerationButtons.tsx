@@ -15,7 +15,7 @@ export function ModerationButtons({ flagged, forbidden, onFlagToggle, onForbidTo
         <div className="flex items-center gap-2">
           <button
             onClick={onFlagToggle}
-            className={`flex items-center gap-1 px-3 py-1 text-sm font-medium border rounded-md transition-colors cursor-pointer ${
+            className={`flex items-center gap-1 px-3 py-1 text-sm font-medium border rounded-xl transition-colors cursor-pointer ${
               flagged 
                 ? 'text-orange-700 bg-orange-100 border-orange-200 hover:bg-orange-200' 
                 : 'text-gray-700 bg-gray-100 border-gray-200 hover:bg-gray-200'
@@ -28,7 +28,7 @@ export function ModerationButtons({ flagged, forbidden, onFlagToggle, onForbidTo
           </button>
           <button
             onClick={onForbidToggle}
-            className={`flex items-center gap-1 px-3 py-1 text-sm font-medium border rounded-md transition-colors cursor-pointer ${
+            className={`flex items-center gap-1 px-3 py-1 text-sm font-medium border rounded-xl transition-colors cursor-pointer ${
               forbidden 
                 ? 'text-red-700 bg-red-100 border-red-200 hover:bg-red-200' 
                 : 'text-gray-700 bg-gray-100 border-gray-200 hover:bg-gray-200'

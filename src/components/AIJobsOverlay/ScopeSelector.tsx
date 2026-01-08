@@ -88,10 +88,10 @@ export const ScopeSelector = memo(function ScopeSelector({
   onFrameFlagTargetChange?: (target: 'frame' | 'verb' | 'both') => void;
 }) {
   return (
-    <div className="space-y-2 rounded-md border border-gray-200 bg-white p-3 shadow-sm">
+    <div className="space-y-2 rounded-xl border border-gray-200 bg-white p-3 shadow-lg">
       <div className="text-xs font-semibold text-gray-700">Scope</div>
       <div className="space-y-2">
-        <label className={`flex items-start gap-2 rounded-md border px-3 py-2 ${mode === 'selection' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
+        <label className={`flex items-start gap-2 rounded-xl border px-3 py-2 ${mode === 'selection' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
           <input
             type="radio"
             name="scope"
@@ -108,7 +108,7 @@ export const ScopeSelector = memo(function ScopeSelector({
           </div>
         </label>
 
-        <label className={`flex items-start gap-2 rounded-md border px-3 py-2 ${mode === 'all' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
+        <label className={`flex items-start gap-2 rounded-xl border px-3 py-2 ${mode === 'all' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
           <input
             type="radio"
             name="scope"
@@ -123,7 +123,7 @@ export const ScopeSelector = memo(function ScopeSelector({
           </div>
         </label>
 
-        <label className={`flex items-start gap-2 rounded-md border px-3 py-2 ${mode === 'filters' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
+        <label className={`flex items-start gap-2 rounded-xl border px-3 py-2 ${mode === 'filters' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
           <input
             type="radio"
             name="scope"
@@ -149,7 +149,7 @@ export const ScopeSelector = memo(function ScopeSelector({
                   />
                   <button
                     onClick={onValidateFilters}
-                    className="cursor-pointer rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 hover:bg-gray-100"
+                    className="cursor-pointer rounded-xl border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 hover:bg-gray-100"
                     type="button"
                   >
                     {filterValidateLoading ? 'Validating…' : 'Validate filters'}
@@ -185,7 +185,7 @@ export const ScopeSelector = memo(function ScopeSelector({
           </div>
         </label>
 
-        <label className={`flex items-start gap-2 rounded-md border px-3 py-2 ${mode === 'manual' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
+        <label className={`flex items-start gap-2 rounded-xl border px-3 py-2 ${mode === 'manual' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
           <input
             type="radio"
             name="scope"
@@ -205,12 +205,12 @@ export const ScopeSelector = memo(function ScopeSelector({
                   onChange={handleManualIdChange}
                   onKeyDown={handleManualIdKeyDown}
                   rows={3}
-                  className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="w-full rounded-xl border border-gray-300 px-2 py-1 text-xs text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   placeholder={getManualIdPlaceholder(pos)}
                 />
                 {showManualIdMenu && manualIdSuggestions.length > 0 && (
                   <div
-                    className="fixed z-10 max-h-48 w-60 overflow-y-auto rounded-md border border-gray-200 bg-white shadow-lg"
+                    className="fixed z-10 max-h-48 w-60 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-lg"
                     style={{ top: `${manualIdMenuPosition.top}px`, left: `${manualIdMenuPosition.left}px` }}
                   >
                     <ul>
@@ -248,7 +248,7 @@ export const ScopeSelector = memo(function ScopeSelector({
 
         {/* Frame IDs scope - only for verbs and frames */}
         {(pos === 'verbs' || pos === 'frames') && (
-          <label className={`flex items-start gap-2 rounded-md border px-3 py-2 ${mode === 'frames' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
+          <label className={`flex items-start gap-2 rounded-xl border px-3 py-2 ${mode === 'frames' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
           <input
             type="radio"
             name="scope"
@@ -268,12 +268,12 @@ export const ScopeSelector = memo(function ScopeSelector({
                   onChange={handleFrameIdChange}
                   onKeyDown={handleFrameIdKeyDown}
                   rows={2}
-                  className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="w-full rounded-xl border border-gray-300 px-2 py-1 text-xs text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   placeholder="e.g., Communication, 1023"
                 />
                 {showFrameIdMenu && frameIdSuggestions.length > 0 && (
                   <div
-                    className="fixed z-10 max-h-48 w-60 overflow-y-auto rounded-md border border-gray-200 bg-white shadow-lg"
+                    className="fixed z-10 max-h-48 w-60 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-lg"
                     style={{ top: `${frameIdMenuPosition.top}px`, left: `${frameIdMenuPosition.left}px` }}
                   >
                     <ul>
@@ -307,7 +307,7 @@ export const ScopeSelector = memo(function ScopeSelector({
                 
                 {/* Frames-specific controls (only when pos='frames') */}
                 {pos === 'frames' && (
-                  <div className="space-y-2 rounded-md border border-blue-200 bg-blue-50 p-2">
+                  <div className="space-y-2 rounded-xl border border-blue-200 bg-blue-50 p-2">
                     <div className="flex items-center gap-2">
                       <input
                         type="checkbox"

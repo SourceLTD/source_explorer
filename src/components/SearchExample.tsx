@@ -33,12 +33,12 @@ export default function SearchExample() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search entries..."
-            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="flex-1 px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
           <select
             value={selectedPos}
             onChange={(e) => setSelectedPos(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            className="px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500"
           >
             <option value="">All POS</option>
             {Object.entries(POS_LABELS).map(([pos, label]) => (
@@ -48,7 +48,7 @@ export default function SearchExample() {
           <button
             type="submit"
             disabled={loading || !query.trim()}
-            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-6 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? 'Searching...' : 'Search'}
           </button>
@@ -57,7 +57,7 @@ export default function SearchExample() {
 
       {/* Error Display */}
       {error && (
-        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-xl">
           <p className="text-red-600">Error: {error}</p>
         </div>
       )}
@@ -89,7 +89,7 @@ export default function SearchExample() {
 
 function EntryCard({ entry }: { entry: Verb }) {
   return (
-    <div className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+    <div className="border border-gray-200 rounded-xl p-4 hover:shadow-lg transition-shadow">
       <div className="flex items-start justify-between mb-2">
         <h3 className="font-semibold text-lg text-blue-600">
           {(() => {

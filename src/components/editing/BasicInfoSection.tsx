@@ -1,11 +1,12 @@
 import React from 'react';
-import { GraphNode } from '@/lib/types';
+import { GraphNode, PendingChangeInfo } from '@/lib/types';
 import { EditableField, Mode } from './types';
 import { OverlaySection } from './OverlaySection';
 import { CodeFieldEditor } from './CodeFieldEditor';
 import { ListFieldEditor } from './ListFieldEditor';
 import { GlossEditor } from './GlossEditor';
 import { LexfileSelector } from './LexfileSelector';
+import { PendingFieldIndicator } from '@/components/PendingChangeIndicator';
 
 interface BasicInfoSectionProps {
   node: GraphNode;
@@ -24,6 +25,7 @@ interface BasicInfoSectionProps {
   onSave: () => void;
   onCancel: () => void;
   isSaving: boolean;
+  pending?: PendingChangeInfo | null;
 }
 
 export function BasicInfoSection({
@@ -42,8 +44,13 @@ export function BasicInfoSection({
   onListItemRemove,
   onSave,
   onCancel,
-  isSaving
+  isSaving,
+  pending
 }: BasicInfoSectionProps) {
+  // Helper to check if a field has pending changes
+  const hasPendingField = (fieldName: string) => {
+    return !!pending?.pending_fields?.[fieldName];
+  };
   return (
     <OverlaySection
       title="Basic Information"
@@ -88,7 +95,12 @@ export function BasicInfoSection({
       {/* Src Lemmas */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <h3 className="text-sm font-medium text-gray-700">Source Lemmas</h3>
+          <h3 className="text-sm font-medium text-gray-700">
+            Source Lemmas
+            {hasPendingField('src_lemmas') && (
+              <span className="ml-2 text-xs text-green-600 font-normal">(pending)</span>
+            )}
+          </h3>
           {editingField !== 'src_lemmas' && (
             <button
               onClick={() => onStartEdit('src_lemmas')}
@@ -112,26 +124,33 @@ export function BasicInfoSection({
             isSaving={isSaving}
           />
         ) : (
-          <div className="text-sm text-gray-900">
-            {node.src_lemmas && node.src_lemmas.length > 0 ? (
-              <div className="flex flex-wrap gap-1">
-                {node.src_lemmas.map((lemma, idx) => (
-                  <span key={idx} className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-semibold">
-                    {lemma}
-                  </span>
-                ))}
-              </div>
-            ) : (
-              <p className="text-gray-500 text-sm italic">No source lemmas</p>
-            )}
-          </div>
+          <PendingFieldIndicator fieldName="src_lemmas" pending={pending}>
+            <div className="text-sm text-gray-900">
+              {node.src_lemmas && node.src_lemmas.length > 0 ? (
+                <div className="flex flex-wrap gap-1">
+                  {node.src_lemmas.map((lemma, idx) => (
+                    <span key={idx} className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-semibold">
+                      {lemma}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-gray-500 text-sm italic">No source lemmas</p>
+              )}
+            </div>
+          </PendingFieldIndicator>
         )}
       </div>
 
       {/* Definition */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <h3 className="text-sm font-medium text-gray-700">Definition</h3>
+          <h3 className="text-sm font-medium text-gray-700">
+            Definition
+            {hasPendingField('gloss') && (
+              <span className="ml-2 text-xs text-green-600 font-normal">(pending)</span>
+            )}
+          </h3>
           {editingField !== 'gloss' && (
             <button
               onClick={() => onStartEdit('gloss')}
@@ -150,16 +169,23 @@ export function BasicInfoSection({
             isSaving={isSaving}
           />
         ) : (
-          <p className="text-gray-900 text-sm leading-relaxed">
-            {node.gloss}
-          </p>
+          <PendingFieldIndicator fieldName="gloss" pending={pending}>
+            <p className="text-gray-900 text-sm leading-relaxed">
+              {node.gloss}
+            </p>
+          </PendingFieldIndicator>
         )}
       </div>
 
       {/* Examples */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <h3 className="text-sm font-medium text-gray-700">Examples</h3>
+          <h3 className="text-sm font-medium text-gray-700">
+            Examples
+            {hasPendingField('examples') && (
+              <span className="ml-2 text-xs text-green-600 font-normal">(pending)</span>
+            )}
+          </h3>
           {editingField !== 'examples' && (
             <button
               onClick={() => onStartEdit('examples')}
@@ -183,19 +209,21 @@ export function BasicInfoSection({
             isSaving={isSaving}
           />
         ) : (
-          <div>
-            {node.examples && node.examples.length > 0 ? (
-              <div className="space-y-1">
-                {node.examples.map((example, index) => (
-                  <p key={index} className="text-gray-900 text-sm italic">
-                    &quot;{example}&quot;
-                  </p>
-                ))}
-              </div>
-            ) : (
-              <p className="text-gray-500 text-sm italic">No examples</p>
-            )}
-          </div>
+          <PendingFieldIndicator fieldName="examples" pending={pending}>
+            <div>
+              {node.examples && node.examples.length > 0 ? (
+                <div className="space-y-1">
+                  {node.examples.map((example, index) => (
+                    <p key={index} className="text-gray-900 text-sm italic">
+                      &quot;{example}&quot;
+                    </p>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-gray-500 text-sm italic">No examples</p>
+              )}
+            </div>
+          </PendingFieldIndicator>
         )}
       </div>
 

@@ -1,5 +1,3 @@
-import { GraphNode, RoleType } from '@/lib/types';
-
 export type Mode = 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames';
 
 export type EditableField =
@@ -72,6 +70,4 @@ export interface OverlaySectionsState {
 export interface FrameOption {
   id: string;
   frame_name: string;
-  code?: string | null;
 }
-

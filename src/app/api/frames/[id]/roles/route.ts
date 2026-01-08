@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { stageFrameRolesUpdate } from '@/lib/version-control';
 
 export async function PATCH(
   request: NextRequest,
@@ -31,65 +32,22 @@ export async function PATCH(
       );
     }
 
-    // Delete all existing frame_roles for this frame
-    await prisma.frame_roles.deleteMany({
-      where: { frame_id: frameId },
-    });
+    // TODO: Get actual user ID from auth context
+    const userId = 'current-user';
 
-    // Create new frame_roles
-    const createdRoles = [];
-    for (const role of roles) {
-      const { roleType, description, notes, main, examples } = role;
+    const response = await stageFrameRolesUpdate(idParam, roles, userId);
 
-      // Find role_type by label
-      const roleType_record = await prisma.role_types.findUnique({
-        where: { label: roleType },
-      });
-
-      if (!roleType_record) {
-        return NextResponse.json(
-          { error: `Role type not found: ${roleType}` },
-          { status: 400 }
-        );
-      }
-
-      // Create the frame_role
-      const createdRole = await prisma.frame_roles.create({
-        data: {
-          frame_id: frameId,
-          role_type_id: roleType_record.id,
-          description: description || null,
-          notes: notes || null,
-          main: main ?? false,
-          examples: examples || [],
-        },
-        include: {
-          role_types: true,
-        },
-      });
-
-      createdRoles.push(createdRole);
-    }
-
-    // Serialize BigInt fields
-    const serialized = createdRoles.map(role => ({
-      ...role,
-      id: role.id.toString(),
-      frame_id: role.frame_id.toString(),
-      role_type_id: role.role_type_id.toString(),
-      role_types: {
-        ...role.role_types,
-        id: role.role_types.id.toString(),
+    return NextResponse.json(response, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+        'Pragma': 'no-cache',
       },
-    }));
-
-    return NextResponse.json(serialized);
+    });
   } catch (error) {
-    console.error('[API] Error updating frame roles:', error);
+    console.error('[API] Error staging frame roles update:', error);
     return NextResponse.json(
-      { error: 'Failed to update frame roles' },
+      { error: 'Failed to stage frame roles update' },
       { status: 500 }
     );
   }
 }
-

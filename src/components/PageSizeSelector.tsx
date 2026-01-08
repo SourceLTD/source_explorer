@@ -48,7 +48,7 @@ export default function PageSizeSelector({
     <div className="relative" ref={panelRef}>
       <button
         onClick={onToggle}
-        className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent cursor-pointer"
+        className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent cursor-pointer"
       >
         Show: {currentLabel}
         <svg
@@ -62,7 +62,7 @@ export default function PageSizeSelector({
       </button>
 
       {isOpen && (
-        <div className="absolute top-full right-0 mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
+        <div className="absolute top-full right-0 mt-2 w-48 bg-white border border-gray-200 rounded-xl shadow-lg z-50">
           <div className="p-4">
             <h3 className="text-sm font-semibold text-gray-900 mb-3">Items per page</h3>
             

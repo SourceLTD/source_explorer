@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
 import { parseURLToFilterAST } from '@/lib/filters/url';
 import { translateFilterASTToPrisma } from '@/lib/filters/translate';
+import { attachPendingInfoToEntities } from '@/lib/version-control';
 
 export async function GET(request: NextRequest) {
   try {
@@ -139,8 +140,15 @@ export async function GET(request: NextRequest) {
 
     const totalPages = Math.ceil(totalCount / limit);
 
+    // Attach pending change info to each frame
+    const dataWithPending = await attachPendingInfoToEntities(
+      serializedFrames,
+      'frame',
+      (frame) => BigInt(frame.id)
+    );
+
     return NextResponse.json({
-      data: serializedFrames,
+      data: dataWithPending,
       total: totalCount,
       page,
       limit,

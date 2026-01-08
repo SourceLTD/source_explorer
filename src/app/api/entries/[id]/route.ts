@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getEntryById, updateEntry, deleteEntry } from '@/lib/db';
+import { getEntryById } from '@/lib/db';
 import { handleDatabaseError } from '@/lib/db-utils';
+import { stageUpdate, stageDelete, stageRolesUpdate } from '@/lib/version-control';
 
 // Force dynamic rendering - no static optimization
 export const dynamic = 'force-dynamic';
@@ -57,14 +58,53 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 });
     }
 
-    const updatedEntry = await updateEntry(id, updateData);
+    // Check if this is a roles update
+    const hasRoles = 'roles' in updateData;
+    const hasRoleGroups = 'role_groups' in updateData;
     
-    if (!updatedEntry) {
-      return NextResponse.json({ error: 'Entry not found' }, { status: 404 });
+    // Separate roles from other fields
+    const { roles, role_groups, ...otherFields } = updateData;
+
+    // TODO: Get actual user ID from auth context
+    const userId = 'current-user';
+
+    // Stage roles update if present
+    if (hasRoles || hasRoleGroups) {
+      const rolesResponse = await stageRolesUpdate(
+        id,
+        roles as unknown[] ?? [],
+        hasRoleGroups ? role_groups as unknown[] : undefined,
+        userId
+      );
+
+      // If only roles are being updated, return the roles response
+      if (Object.keys(otherFields).length === 0) {
+        return NextResponse.json(rolesResponse, {
+          headers: {
+            'Cache-Control': 'no-store, no-cache, must-revalidate',
+            'Pragma': 'no-cache',
+          },
+        });
+      }
     }
 
-    // Return with no-cache headers to ensure fresh data
-    return NextResponse.json(updatedEntry, {
+    // Stage other field updates
+    if (Object.keys(otherFields).length > 0) {
+      const response = await stageUpdate('verb', id, otherFields, userId);
+      
+      return NextResponse.json(response, {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate',
+          'Pragma': 'no-cache',
+        },
+      });
+    }
+
+    // If we got here with roles, return a combined response
+    return NextResponse.json({
+      staged: true,
+      message: 'Changes staged for review',
+    }, {
       headers: {
         'Cache-Control': 'no-store, no-cache, must-revalidate',
         'Pragma': 'no-cache',
@@ -90,25 +130,19 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   const { id } = await params;
 
   try {
-    const deletedEntry = await deleteEntry(id);
+    // TODO: Get actual user ID from auth context
+    const userId = 'current-user';
     
-    if (!deletedEntry) {
-      return NextResponse.json({ error: 'Entry not found' }, { status: 404 });
-    }
+    const response = await stageDelete('verb', id, userId);
 
-    // Return with no-cache headers to ensure fresh data
-    return NextResponse.json({ 
-      success: true, 
-      message: `Entry ${id} deleted successfully`,
-      deletedEntry 
-    }, {
+    return NextResponse.json(response, {
       headers: {
         'Cache-Control': 'no-store, no-cache, must-revalidate',
         'Pragma': 'no-cache',
       },
     });
   } catch (error) {
-    const { message, status, shouldRetry } = handleDatabaseError(error, 'DELETE /api/entries/[id]');
+    const { message, status, shouldRetry } = handleDatabaseError(error, `DELETE /api/entries/${id}`);
     return NextResponse.json(
       { 
         error: message,

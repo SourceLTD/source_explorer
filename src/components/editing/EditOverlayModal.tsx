@@ -33,7 +33,7 @@ export function EditOverlayModal({
         className="absolute inset-0"
         style={{ backgroundColor: 'rgba(0, 0, 0, 0.25)' }}
       ></div>
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-5xl mx-4 max-h-[85vh] overflow-hidden relative z-10 flex flex-col">
+      <div className="bg-white rounded-xl shadow-lg w-full max-w-5xl mx-4 max-h-[85vh] overflow-hidden relative z-10 flex flex-col">
         {/* Header */}
         <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between shrink-0">
           <div className="flex-1">

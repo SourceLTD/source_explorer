@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
-import { TableEntry, PaginatedResult, PaginationParams, POS_LABELS, Frame } from '@/lib/types';
+import { TableEntry, PaginatedResult, PaginationParams, POS_LABELS, Frame, PendingChangeInfo } from '@/lib/types';
 import FilterPanel, { FilterState } from './FilterPanel';
 import ColumnVisibilityPanel, { ColumnConfig, ColumnVisibilityState } from './ColumnVisibilityPanel';
 import PageSizeSelector from './PageSizeSelector';
@@ -10,6 +10,7 @@ import { api } from '@/lib/api-client';
 import AIJobsOverlay from './AIJobsOverlay';
 import { SparklesIcon } from '@heroicons/react/24/outline';
 import { showGlobalAlert } from '@/lib/alerts';
+import { PendingFieldIndicator, getPendingRowClasses } from './PendingChangeIndicator';
 
 interface DataTableProps {
   onRowClick?: (entry: TableEntry | Frame) => void;
@@ -1719,9 +1720,15 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
   };
 
   const getRowBackgroundColor = (entry: TableEntry | Frame, isSelected: boolean, isHovered: boolean = false) => {
-    // Priority: Selection > Forbidden > Flagged > Default
+    // Priority: Selection > Pending Changes > Forbidden > Flagged > Default
     if (isSelected) {
       return 'bg-blue-50';
+    }
+    
+    // Check for pending changes
+    const pending = (entry as TableEntry & { pending?: PendingChangeInfo | null }).pending;
+    if (pending) {
+      return getPendingRowClasses(pending.operation);
     }
     
     // Only TableEntry has flagged/forbidden properties
@@ -1767,7 +1774,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
 
   if (loading && !data) {
     return (
-      <div className={`bg-white rounded-lg shadow-sm border border-gray-200 ${className || ''}`}>
+      <div className={`bg-white rounded-xl shadow-lg border border-gray-200 ${className || ''}`}>
         <div className="p-8 text-center">
           <div className="animate-spin h-12 w-12 border-2 border-gray-300 border-t-blue-600 rounded-full mx-auto mb-4"></div>
           <p className="text-gray-500">Loading entries...</p>
@@ -1778,7 +1785,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
 
   if (error) {
     return (
-      <div className={`bg-white rounded-lg shadow-sm border border-gray-200 ${className || ''}`}>
+      <div className={`bg-white rounded-xl shadow-lg border border-gray-200 ${className || ''}`}>
         <div className="p-8 text-center text-red-600">
           <svg className="h-12 w-12 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 15.5c-.77.833.192 2.5 1.732 2.5z" />
@@ -1799,7 +1806,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
   const hasData = data && data.data && data.data.length > 0;
 
   return (
-    <div className={`bg-white rounded-lg shadow-sm border border-gray-200 ${className || ''} ${isResizing ? 'select-none' : ''}`}>
+    <div className={`bg-white rounded-xl shadow-lg border border-gray-200 ${className || ''} ${isResizing ? 'select-none' : ''}`}>
       {/* Filters and Controls */}
       <div className="p-4 border-b border-gray-200 bg-gray-50">
         {/* Row Status Legend */}
@@ -1842,7 +1849,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
             </div>
             <button
               onClick={handleResetColumnWidths}
-              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent cursor-pointer"
+              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent cursor-pointer"
               title="Reset column widths to defaults"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1853,7 +1860,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
             <button
               onClick={() => mode !== 'frames' && setIsAIOverlayOpen(true)}
               disabled={mode === 'frames'}
-              className={`relative inline-flex items-center justify-center rounded-md px-3 py-2 text-white shadow-sm transition-colors focus:outline-none focus:ring-2 ${
+              className={`relative inline-flex items-center justify-center rounded-xl px-3 py-2 text-white shadow-lg transition-colors focus:outline-none focus:ring-2 ${
                 mode === 'frames'
                   ? 'bg-gray-300 cursor-not-allowed opacity-50'
                   : 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 focus:ring-blue-500 cursor-pointer'
@@ -1887,7 +1894,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
                   {(noneFlagged || mixedFlagged) && (
                     <button
                       onClick={() => handleOpenModerationModal('flag')}
-                      className="flex items-center gap-1 px-3 py-1 text-sm font-medium text-orange-700 bg-orange-100 border border-orange-200 rounded-md hover:bg-orange-200 transition-colors cursor-pointer"
+                      className="flex items-center gap-1 px-3 py-1 text-sm font-medium text-orange-700 bg-orange-100 border border-orange-200 rounded-xl hover:bg-orange-200 transition-colors cursor-pointer"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 2H21l-3 6 3 6h-8.5l-1-2H5a2 2 0 00-2 2zm9-13.5V9" />
@@ -1898,7 +1905,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
                   {(allFlagged || mixedFlagged) && (
                     <button
                       onClick={() => handleOpenModerationModal('unflag')}
-                      className="flex items-center gap-1 px-3 py-1 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-200 rounded-md hover:bg-gray-200 transition-colors cursor-pointer"
+                      className="flex items-center gap-1 px-3 py-1 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-200 rounded-xl hover:bg-gray-200 transition-colors cursor-pointer"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -1911,7 +1918,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
                   {(noneForbidden || mixedForbidden) && (
                     <button
                       onClick={() => handleOpenModerationModal('forbid')}
-                      className="flex items-center gap-1 px-3 py-1 text-sm font-medium text-red-700 bg-red-100 border border-red-200 rounded-md hover:bg-red-200 transition-colors cursor-pointer"
+                      className="flex items-center gap-1 px-3 py-1 text-sm font-medium text-red-700 bg-red-100 border border-red-200 rounded-xl hover:bg-red-200 transition-colors cursor-pointer"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636m12.728 12.728L18.364 5.636M5.636 18.364l12.728-12.728" />
@@ -1922,7 +1929,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
                   {(allForbidden || mixedForbidden) && (
                     <button
                       onClick={() => handleOpenModerationModal('allow')}
-                      className="flex items-center gap-1 px-3 py-1 text-sm font-medium text-green-700 bg-green-100 border border-green-200 rounded-md hover:bg-green-200 transition-colors cursor-pointer"
+                      className="flex items-center gap-1 px-3 py-1 text-sm font-medium text-green-700 bg-green-100 border border-green-200 rounded-xl hover:bg-green-200 transition-colors cursor-pointer"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -1933,7 +1940,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
                   {mode === 'verbs' && (
                     <button
                       onClick={handleOpenFrameModal}
-                      className="flex items-center gap-1 px-3 py-1 text-sm font-medium text-blue-700 bg-blue-100 border border-blue-200 rounded-md hover:bg-blue-200 transition-colors cursor-pointer"
+                      className="flex items-center gap-1 px-3 py-1 text-sm font-medium text-blue-700 bg-blue-100 border border-blue-200 rounded-xl hover:bg-blue-200 transition-colors cursor-pointer"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7h11m-2-3 3 3-3 3M20 17H9m2-3-3 3 3 3" />
@@ -2031,6 +2038,25 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
                   {visibleColumns.map((column) => {
                     const isClickable = onRowClick && column.key !== 'isMwe' && column.key !== 'gloss' && column.key !== 'actions';
                     const cellClassName = `px-4 py-4 break-words ${isClickable ? 'cursor-pointer' : ''} align-top border-r border-gray-200`;
+                    const pending = (entry as TableEntry & { pending?: PendingChangeInfo | null }).pending;
+                    
+                    // Map column keys to actual field names for pending check
+                    const fieldNameMap: Record<string, string> = {
+                      'frame': 'frame_id',
+                      'frame_name': 'frame_name',
+                      'gloss': 'gloss',
+                      'lemmas': 'lemmas',
+                      'examples': 'examples',
+                      'flagged': 'flagged',
+                      'flaggedReason': 'flagged_reason',
+                      'forbidden': 'forbidden',
+                      'forbiddenReason': 'forbidden_reason',
+                      'vendler_class': 'vendler_class',
+                      'definition': 'definition',
+                      'short_definition': 'short_definition',
+                    };
+                    const fieldName = fieldNameMap[column.key] || column.key;
+                    const hasPendingChange = pending?.pending_fields?.[fieldName];
                     
                     return (
                       <td 
@@ -2040,7 +2066,17 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
                         onClick={isClickable ? () => onRowClick?.(entry) : undefined}
                       >
                         <div className="max-w-full">
-                          {renderCellContent(entry, column.key)}
+                          {hasPendingChange ? (
+                            <PendingFieldIndicator
+                              fieldName={fieldName}
+                              pending={pending}
+                              isTableCell={true}
+                            >
+                              {renderCellContent(entry, column.key)}
+                            </PendingFieldIndicator>
+                          ) : (
+                            renderCellContent(entry, column.key)
+                          )}
                         </div>
                       </td>
                     );
@@ -2082,7 +2118,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
             <button
               onClick={() => handlePageChange(data.page - 1)}
               disabled={!data.hasPrev || loading}
-              className="px-4 py-2 text-sm font-medium border border-gray-300 rounded-md hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed bg-white text-gray-700 cursor-pointer"
+              className="px-4 py-2 text-sm font-medium border border-gray-300 rounded-xl hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed bg-white text-gray-700 cursor-pointer"
             >
               Previous
             </button>
@@ -2097,9 +2133,9 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
                     key={pageNum}
                     onClick={() => handlePageChange(pageNum)}
                     disabled={loading}
-                    className={`px-4 py-2 text-sm font-semibold border-gray-300 rounded-md min-w-[40px] ${
+                    className={`px-4 py-2 text-sm font-semibold border-gray-300 rounded-xl min-w-[40px] ${
                       pageNum === data.page
-                        ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-lg'
                         : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'
                     } disabled:opacity-50 transition-colors cursor-pointer`}
                   >
@@ -2112,7 +2148,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
             <button
               onClick={() => handlePageChange(data.page + 1)}
               disabled={!data.hasNext || loading}
-              className="px-4 py-2 text-sm font-medium border border-gray-300 rounded-md hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed bg-white text-gray-700 cursor-pointer"
+              className="px-4 py-2 text-sm font-medium border border-gray-300 rounded-xl hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed bg-white text-gray-700 cursor-pointer"
             >
               Next
             </button>
@@ -2132,7 +2168,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
 
         return (
           <div
-            className="fixed bg-white rounded-lg shadow-xl border border-gray-200 py-1 z-50 min-w-48"
+            className="fixed bg-white rounded-xl shadow-lg border border-gray-200 py-1 z-50 min-w-48"
             style={{
               left: `${contextMenu.x}px`,
               top: `${contextMenu.y}px`,
@@ -2255,7 +2291,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
               style={{ backgroundColor: 'rgba(0, 0, 0, 0.25)' }}
               onClick={handleCloseModerationModal}
             ></div>
-            <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto relative z-10">
+            <div className="bg-white rounded-xl shadow-lg max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto relative z-10">
               <div className="p-6">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">
                   {moderationModal.action === 'flag' && 'Flag Entries'}
@@ -2270,7 +2306,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
 
                 {/* Warning for multi-page selections */}
                 {hasMultiPageSelection && (
-                  <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                  <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-xl">
                     <div className="flex items-start gap-2">
                       <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -2289,7 +2325,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
 
                 {/* Show existing reasons */}
                 {moderationModal.action === 'unflag' && existingReasons.flagged.length > 0 && (
-                  <div className="mb-4 p-3 bg-orange-50 border border-orange-200 rounded-md">
+                  <div className="mb-4 p-3 bg-orange-50 border border-orange-200 rounded-xl">
                     <h4 className="text-sm font-medium text-orange-900 mb-2">Existing Flag Reasons:</h4>
                     <div className="space-y-2 max-h-32 overflow-y-auto">
                       {existingReasons.flagged.map(({ id, reason }) => (
@@ -2302,7 +2338,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
                 )}
 
                 {moderationModal.action === 'allow' && existingReasons.forbidden.length > 0 && (
-                  <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
+                  <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl">
                     <h4 className="text-sm font-medium text-red-900 mb-2">Existing Forbidden Reasons:</h4>
                     <div className="space-y-2 max-h-32 overflow-y-auto">
                       {existingReasons.forbidden.map(({ id, reason }) => (
@@ -2324,7 +2360,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
                       value={moderationModal.reason}
                       onChange={(e) => setModerationModal(prev => ({ ...prev, reason: e.target.value }))}
                       placeholder={`Enter reason for ${moderationModal.action === 'flag' ? 'flagging' : 'marking as forbidden'}...`}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
                       rows={4}
                     />
                   </div>
@@ -2333,13 +2369,13 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
                 <div className="flex justify-end gap-3">
                   <button
                     onClick={handleCloseModerationModal}
-                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
                   >
                     Cancel
                   </button>
                 <button
                   onClick={handleConfirmModeration}
-                  className={`px-4 py-2 text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 cursor-pointer ${
+                  className={`px-4 py-2 text-sm font-medium rounded-xl focus:outline-none focus:ring-2 focus:ring-offset-2 cursor-pointer ${
                     moderationModal.action === 'flag' 
                       ? 'bg-orange-600 hover:bg-orange-700 text-white focus:ring-orange-500'
                       : moderationModal.action === 'forbid'
@@ -2399,7 +2435,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
               style={{ backgroundColor: 'rgba(0, 0, 0, 0.25)' }}
               onClick={isFrameUpdating ? undefined : handleCloseFrameModal}
             ></div>
-            <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto relative z-10">
+            <div className="bg-white rounded-xl shadow-lg max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto relative z-10">
               <div className="p-6 space-y-5">
                 <div className="space-y-2">
                   <h3 className="text-lg font-semibold text-gray-900">Change Frame</h3>
@@ -2412,7 +2448,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
 
                 {/* Warning for multi-page selections */}
                 {hasMultiPageSelection && (
-                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl">
                     <div className="flex items-start gap-2">
                       <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -2430,7 +2466,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
                 )}
 
                 {frameSummary.length > 0 && (
-                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl">
                     <h4 className="text-xs font-semibold text-blue-900 uppercase tracking-wide mb-2">
                       Current Frame Breakdown
                     </h4>
@@ -2456,7 +2492,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
                       value={frameSearchQuery}
                       onChange={(e) => setFrameSearchQuery(e.target.value)}
                       placeholder="Filter by frame name or code..."
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-gray-900"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-gray-900"
                     />
                   </div>
 
@@ -2466,7 +2502,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
                       Loading frames...
                     </div>
                   ) : frameOptionsError ? (
-                    <div className="p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-700 space-y-2">
+                    <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700 space-y-2">
                       <p>{frameOptionsError}</p>
                       <button
                         type="button"
@@ -2488,7 +2524,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
                           setFrameOptionsError(null);
                           setSelectedFrameValue(e.target.value);
                         }}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-gray-900"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-gray-900"
                       >
                         <option value="">Select a new frame…</option>
                         <option value="__CLEAR__">No frame (clear existing frame)</option>
@@ -2508,14 +2544,14 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
                 <div className="flex justify-end gap-3">
                   <button
                     onClick={handleCloseFrameModal}
-                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     disabled={isFrameUpdating}
                   >
                     Cancel
                   </button>
                   <button
                     onClick={handleConfirmFrameChange}
-                    className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-xl hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     disabled={isFrameUpdating || frameOptionsLoading || selectedFrameValue === ''}
                   >
                     {isFrameUpdating ? 'Applying...' : 'Apply Frame'}

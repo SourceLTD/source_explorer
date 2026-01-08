@@ -14,7 +14,7 @@ export function VendlerClassSelector({ value, onChange, onSave, onCancel, isSavi
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+        className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
       >
         <option value="">None</option>
         {VENDLER_CLASSES.map(vc => (

@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { GraphNode, Frame, sortRolesByPrecedence } from '@/lib/types';
-import { EditableField, EditableRole, EditableRoleGroup, EditableFrameRole, EditingState, Mode } from '@/components/editing/types';
+import { EditableField, EditableRole, EditableRoleGroup, EditableFrameRole, Mode } from '@/components/editing/types';
 
 export function useEntryEditor(node: GraphNode | Frame | null, mode: Mode) {
   const [editingField, setEditingField] = useState<EditableField | null>(null);

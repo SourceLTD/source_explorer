@@ -35,7 +35,7 @@ export function LexfileSelector({ value, onChange, mode, onSave, onCancel, isSav
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+        className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
       >
         {options.map(lf => (
           <option key={lf} value={lf}>{lf}</option>

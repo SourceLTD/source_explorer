@@ -8,9 +8,11 @@ import RecipesGraph from './RecipesGraph';
 import SearchBox from './SearchBox';
 import Breadcrumbs from './Breadcrumbs';
 import ViewToggle, { ViewMode } from './ViewToggle';
+import PendingChangesButton from './PendingChangesButton';
 import SignOutButton from './SignOutButton';
 import RootNodesView from './RootNodesView';
 import { EditOverlay } from './editing/EditOverlay';
+import CategoryDropdown from './CategoryDropdown';
 
 interface WordNetExplorerProps {
   initialEntryId?: string;
@@ -286,9 +288,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
               SourceNet
             </button>
             <div className="h-6 w-px bg-gray-300"></div>
-            <h1 className="text-xl font-bold text-gray-900">
-              {mode === 'nouns' ? 'Nouns' : mode === 'adjectives' ? 'Adjectives' : mode === 'adverbs' ? 'Adverbs' : 'Verbs'}
-            </h1>
+            <CategoryDropdown currentCategory={mode} currentView="graph" />
             <p className="text-sm text-gray-600">
               Explore lexical relationships
             </p>
@@ -319,6 +319,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
               }}
               hideRecipes={mode === 'nouns' || mode === 'adjectives' || mode === 'adverbs'}
             />
+            <PendingChangesButton />
             <SignOutButton />
           </div>
         </div>
@@ -336,7 +337,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
           )}
 
           {error && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4">
               <div className="flex items-center">
                 <svg className="h-5 w-5 text-red-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -384,7 +385,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
                 <div className="flex items-center gap-2 mb-4">
                   <button
                     onClick={handleFlagToggle}
-                    className={`flex items-center gap-1 px-3 py-1 text-sm font-medium border rounded-md transition-colors cursor-pointer ${
+                    className={`flex items-center gap-1 px-3 py-1 text-sm font-medium border rounded-xl transition-colors cursor-pointer ${
                       currentNode.flagged 
                         ? 'text-orange-700 bg-orange-100 border-orange-200 hover:bg-orange-200' 
                         : 'text-gray-700 bg-gray-100 border-gray-200 hover:bg-gray-200'
@@ -397,7 +398,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
                   </button>
                   <button
                     onClick={handleForbidToggle}
-                    className={`flex items-center gap-1 px-3 py-1 text-sm font-medium border rounded-md transition-colors cursor-pointer ${
+                    className={`flex items-center gap-1 px-3 py-1 text-sm font-medium border rounded-xl transition-colors cursor-pointer ${
                       currentNode.forbidden 
                         ? 'text-red-700 bg-red-100 border-red-200 hover:bg-red-200' 
                         : 'text-gray-700 bg-gray-100 border-gray-200 hover:bg-gray-200'
@@ -423,7 +424,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
                             type="text"
                             value={item}
                             onChange={(e) => updateListItem(index, e.target.value)}
-                            className="flex-1 px-3 py-2 border-2 border-blue-400 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-600 text-sm bg-white text-gray-900 font-medium shadow-sm"
+                            className="flex-1 px-3 py-2 border-2 border-blue-400 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-600 text-sm bg-white text-gray-900 font-medium shadow-lg"
                             placeholder="Enter lemma"
                             autoFocus={index === editListItems.length - 1}
                           />
@@ -466,7 +467,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
                     
                     <button
                       onClick={addListItem}
-                      className="w-full px-3 py-2 border-2 border-dashed border-gray-300 rounded-md text-gray-600 hover:border-gray-400 hover:text-gray-700 text-sm flex items-center justify-center space-x-2"
+                      className="w-full px-3 py-2 border-2 border-dashed border-gray-300 rounded-xl text-gray-600 hover:border-gray-400 hover:text-gray-700 text-sm flex items-center justify-center space-x-2"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -532,7 +533,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
                       value={editValue}
                       onChange={(e) => setEditValue(e.target.value)}
                       onKeyDown={handleKeyDown}
-                      className="w-full px-3 py-2 border-2 border-blue-400 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-600 text-sm resize-vertical bg-white text-gray-900 font-medium shadow-sm"
+                      className="w-full px-3 py-2 border-2 border-blue-400 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-600 text-sm resize-vertical bg-white text-gray-900 font-medium shadow-lg"
                       rows={3}
                       placeholder="Enter definition"
                       autoFocus
@@ -576,7 +577,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
                           <textarea
                             value={item}
                             onChange={(e) => updateListItem(index, e.target.value)}
-                            className="flex-1 px-3 py-2 border-2 border-blue-400 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-600 text-sm bg-white text-gray-900 font-medium shadow-sm resize-vertical"
+                            className="flex-1 px-3 py-2 border-2 border-blue-400 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-600 text-sm bg-white text-gray-900 font-medium shadow-lg resize-vertical"
                             rows={2}
                             placeholder="Enter example sentence"
                             autoFocus={index === editListItems.length - 1}
@@ -620,7 +621,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
                     
                     <button
                       onClick={addListItem}
-                      className="w-full px-3 py-2 border-2 border-dashed border-gray-300 rounded-md text-gray-600 hover:border-gray-400 hover:text-gray-700 text-sm flex items-center justify-center space-x-2"
+                      className="w-full px-3 py-2 border-2 border-dashed border-gray-300 rounded-xl text-gray-600 hover:border-gray-400 hover:text-gray-700 text-sm flex items-center justify-center space-x-2"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -674,7 +675,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
                     <div className="space-y-3">
                       <div className="space-y-2">
                         {editRoles.map((role) => (
-                          <div key={role.clientId} className={`p-3 border rounded-lg ${role.main ? 'border-blue-300 bg-blue-50' : 'border-purple-300 bg-purple-50'}`}>
+                          <div key={role.clientId} className={`p-3 border rounded-xl ${role.main ? 'border-blue-300 bg-blue-50' : 'border-purple-300 bg-purple-50'}`}>
                             <div className="flex items-center space-x-2">
                               <select
                                 value={role.roleType}
@@ -750,7 +751,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
                       <div className="flex space-x-2">
                         <button
                           onClick={() => addRole(true)}
-                          className="flex-1 px-3 py-2 border-2 border-dashed border-blue-300 rounded-md text-blue-600 hover:border-blue-400 hover:text-blue-700 text-sm flex items-center justify-center space-x-2"
+                          className="flex-1 px-3 py-2 border-2 border-dashed border-blue-300 rounded-xl text-blue-600 hover:border-blue-400 hover:text-blue-700 text-sm flex items-center justify-center space-x-2"
                         >
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -759,7 +760,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
                         </button>
                         <button
                           onClick={() => addRole(false)}
-                          className="flex-1 px-3 py-2 border-2 border-dashed border-purple-300 rounded-md text-purple-600 hover:border-purple-400 hover:text-purple-700 text-sm flex items-center justify-center space-x-2"
+                          className="flex-1 px-3 py-2 border-2 border-dashed border-purple-300 rounded-xl text-purple-600 hover:border-purple-400 hover:text-purple-700 text-sm flex items-center justify-center space-x-2"
                         >
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -777,7 +778,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
                           {editRoleGroups.length > 0 && (
                             <div className="space-y-3 mb-3">
                               {editRoleGroups.map((group, groupIndex) => (
-                                <div key={group.id || `group-${groupIndex}`} className="p-3 border-2 border-gray-300 rounded-lg bg-gray-50">
+                                <div key={group.id || `group-${groupIndex}`} className="p-3 border-2 border-gray-300 rounded-xl bg-gray-50">
                                   <div className="flex items-start justify-between mb-2">
                                     <input
                                       type="text"
@@ -828,7 +829,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
                           
                           <button
                             onClick={addRoleGroup}
-                            className="w-full px-3 py-2 border-2 border-dashed border-gray-300 rounded-md text-gray-600 hover:border-gray-400 hover:text-gray-700 text-sm flex items-center justify-center space-x-2"
+                            className="w-full px-3 py-2 border-2 border-dashed border-gray-300 rounded-xl text-gray-600 hover:border-gray-400 hover:text-gray-700 text-sm flex items-center justify-center space-x-2"
                           >
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -941,7 +942,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
                       <button
                         key={parent.id}
                         onClick={() => handleNodeClick(parent.id)}
-                        className="block w-full text-left p-3 bg-green-50 hover:bg-green-100 border border-green-200 rounded-lg transition-colors"
+                        className="block w-full text-left p-3 bg-green-50 hover:bg-green-100 border border-green-200 rounded-xl transition-colors"
                       >
                         <div className="font-medium text-green-800 text-sm">
                           {(() => {
@@ -984,7 +985,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
                       <button
                         key={child.id}
                         onClick={() => handleNodeClick(child.id)}
-                        className="block w-full text-left p-3 bg-yellow-50 hover:bg-yellow-100 border border-yellow-200 rounded-lg transition-colors"
+                        className="block w-full text-left p-3 bg-yellow-50 hover:bg-yellow-100 border border-yellow-200 rounded-xl transition-colors"
                       >
                         <div className="font-medium text-yellow-800 text-sm">
                           {(() => {
@@ -1027,7 +1028,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
                       <button
                         key={cause.id}
                         onClick={() => handleNodeClick(cause.id)}
-                        className="block w-full text-left p-3 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-lg transition-colors"
+                        className="block w-full text-left p-3 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-xl transition-colors"
                       >
                         <div className="font-medium text-purple-800 text-sm">
                           {(() => {
@@ -1070,7 +1071,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
                       <button
                         key={entail.id}
                         onClick={() => handleNodeClick(entail.id)}
-                        className="block w-full text-left p-3 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition-colors"
+                        className="block w-full text-left p-3 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition-colors"
                       >
                         <div className="font-medium text-indigo-800 text-sm">
                           {(() => {
@@ -1113,7 +1114,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
                       <button
                         key={similar.id}
                         onClick={() => handleNodeClick(similar.id)}
-                        className="block w-full text-left p-3 bg-teal-50 hover:bg-teal-100 border border-teal-200 rounded-lg transition-colors"
+                        className="block w-full text-left p-3 bg-teal-50 hover:bg-teal-100 border border-teal-200 rounded-xl transition-colors"
                       >
                         <div className="font-medium text-teal-800 text-sm">
                           {(() => {
@@ -1194,7 +1195,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
               </div>
             </div>
           ) : (
-            <div className="h-full flex items-center justify-center bg-white rounded-lg shadow-sm">
+            <div className="h-full flex items-center justify-center bg-white rounded-xl shadow-lg">
               {isLoading ? (
                 <div className="text-center">
                   <div className="animate-spin h-12 w-12 border-2 border-gray-300 border-t-blue-600 rounded-full mx-auto mb-4"></div>

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { applyPendingToEntity } from '@/lib/version-control';
 
 export async function GET(
   request: NextRequest,
@@ -70,6 +71,7 @@ export async function GET(
     // Build graph node structure
     const graphNode = {
       id: frame.id.toString(),
+      numericId: frame.id.toString(),
       pos: 'frames' as const,
       frame_name: frame.frame_name,
       gloss: frame.definition,
@@ -118,7 +120,17 @@ export async function GET(
       ],
     };
 
-    return NextResponse.json(graphNode);
+    // Apply pending changes to merge pending values for preview
+    const { entity: graphNodeWithPending, pending: pendingInfo } = await applyPendingToEntity(
+      graphNode,
+      'frame',
+      id
+    );
+
+    return NextResponse.json({
+      ...graphNodeWithPending,
+      pending: pendingInfo,
+    });
   } catch (error) {
     console.error('[API] Error fetching frame graph:', error);
     return NextResponse.json(

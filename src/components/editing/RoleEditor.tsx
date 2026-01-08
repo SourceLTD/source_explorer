@@ -41,7 +41,7 @@ export function RoleEditor({
   return (
     <div className="space-y-3">
       {roles.map((role) => (
-        <div key={role.clientId} className={`p-3 border rounded-lg ${role.main ? 'border-blue-300 bg-blue-50' : 'border-purple-300 bg-purple-50'}`}>
+        <div key={role.clientId} className={`p-3 border rounded-xl ${role.main ? 'border-blue-300 bg-blue-50' : 'border-purple-300 bg-purple-50'}`}>
           <div className="flex items-center justify-between mb-2">
             <select
               value={role.roleType}
@@ -92,13 +92,13 @@ export function RoleEditor({
       <div className="flex space-x-2">
         <button
           onClick={() => onRoleAdd(true)}
-          className="flex-1 px-3 py-2 border border-blue-300 rounded-md text-blue-600 hover:bg-blue-50 text-sm cursor-pointer"
+          className="flex-1 px-3 py-2 border border-blue-300 rounded-xl text-blue-600 hover:bg-blue-50 text-sm cursor-pointer"
         >
           + Add Main Role
         </button>
         <button
           onClick={() => onRoleAdd(false)}
-          className="flex-1 px-3 py-2 border border-purple-300 rounded-md text-purple-600 hover:bg-purple-50 text-sm cursor-pointer"
+          className="flex-1 px-3 py-2 border border-purple-300 rounded-xl text-purple-600 hover:bg-purple-50 text-sm cursor-pointer"
         >
           + Add Alt Role
         </button>
@@ -109,7 +109,7 @@ export function RoleEditor({
         <div className="pt-4 border-t">
           <h4 className="text-sm font-medium text-gray-700 mb-2">Role Groups (OR constraints)</h4>
           {roleGroups.map((group, groupIndex) => (
-            <div key={groupIndex} className="p-3 border border-gray-300 rounded-lg bg-gray-50 mb-2">
+            <div key={groupIndex} className="p-3 border border-gray-300 rounded-xl bg-gray-50 mb-2">
               <div className="flex items-start justify-between mb-2">
                 <input
                   type="text"

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import DataTable from '@/components/DataTable';
 import SearchBox from '@/components/SearchBox';
 import SignOutButton from '@/components/SignOutButton';
+import CategoryDropdown from '@/components/CategoryDropdown';
 import { SearchResult, Frame } from '@/lib/types';
 import { EditOverlay } from '@/components/editing/EditOverlay';
 
@@ -89,9 +90,7 @@ export default function FramesTableMode() {
               SourceNet
             </button>
             <div className="h-6 w-px bg-gray-300"></div>
-            <h1 className="text-xl font-bold text-gray-900">
-              Frames
-            </h1>
+            <CategoryDropdown currentCategory="frames" currentView="table" />
           </div>
           
           <div className="flex items-center gap-4 flex-1 justify-end">
@@ -112,7 +111,7 @@ export default function FramesTableMode() {
       {/* Main Content */}
       <main className="flex-1 flex flex-col bg-white">
         {/* Data Table */}
-        <div className="m-6 bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+        <div className="m-6 bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
           <Suspense fallback={<div className="p-8 text-center text-gray-500">Loading...</div>}>
           <DataTable 
             searchQuery={searchQuery}
@@ -129,7 +128,7 @@ export default function FramesTableMode() {
       {/* Loading indicator */}
       {isLoadingFrame && (
         <div className="fixed inset-0 bg-black bg-opacity-25 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 shadow-xl">
+          <div className="bg-white rounded-xl p-6 shadow-lg">
             <div className="animate-spin h-8 w-8 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-4"></div>
             <p className="text-gray-700">Loading frame...</p>
           </div>

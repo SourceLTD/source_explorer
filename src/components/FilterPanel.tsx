@@ -390,7 +390,7 @@ export default function FilterPanel({
       <button
         ref={buttonRef}
         onClick={onToggle}
-        className={`inline-flex items-center gap-2 px-3 py-2 text-sm font-medium border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors cursor-pointer ${
+        className={`inline-flex items-center gap-2 px-3 py-2 text-sm font-medium border border-gray-300 rounded-xl shadow-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors cursor-pointer ${
           hasActiveFilters ? 'bg-blue-50 border-blue-300 text-blue-700' : 'bg-white text-gray-700'
         }`}
       >
@@ -407,7 +407,7 @@ export default function FilterPanel({
       {isOpen && (
         <div 
           ref={panelRef}
-          className={`absolute top-full left-0 mt-2 w-[32rem] bg-white border border-gray-200 rounded-lg shadow-lg z-50 ${className || ''}`}
+          className={`absolute top-full left-0 mt-2 w-[32rem] bg-white border border-gray-200 rounded-xl shadow-lg z-50 ${className || ''}`}
         >
           {/* Header */}
           <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
@@ -451,7 +451,7 @@ export default function FilterPanel({
                       value={filters.frame_name || ''}
                       onChange={(e) => updateFilter('frame_name', e.target.value)}
                       placeholder="Search in frame names..."
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
                     />
                   </div>
                   <div>
@@ -461,7 +461,7 @@ export default function FilterPanel({
                       value={filters.definition || ''}
                       onChange={(e) => updateFilter('definition', e.target.value)}
                       placeholder="Search in definitions..."
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
                     />
                   </div>
                   <div>
@@ -471,7 +471,7 @@ export default function FilterPanel({
                       value={filters.short_definition || ''}
                       onChange={(e) => updateFilter('short_definition', e.target.value)}
                       placeholder="Search in short definitions..."
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
                     />
                   </div>
                   <div>
@@ -481,7 +481,7 @@ export default function FilterPanel({
                       value={filters.prototypical_synset || ''}
                       onChange={(e) => updateFilter('prototypical_synset', e.target.value)}
                       placeholder="Search in prototypical synset..."
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
                     />
                   </div>
                 </>
@@ -494,7 +494,7 @@ export default function FilterPanel({
                       value={filters.gloss || ''}
                       onChange={(e) => updateFilter('gloss', e.target.value)}
                       placeholder="Search in definitions..."
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
                     />
                   </div>
                   <div>
@@ -504,7 +504,7 @@ export default function FilterPanel({
                       value={filters.lemmas || ''}
                       onChange={(e) => updateFilter('lemmas', e.target.value)}
                       placeholder="Search in lemmas..."
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
                     />
                   </div>
                   <div>
@@ -514,7 +514,7 @@ export default function FilterPanel({
                       value={filters.examples || ''}
                       onChange={(e) => updateFilter('examples', e.target.value)}
                       placeholder="Search in examples..."
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
                     />
                   </div>
                   <div>
@@ -524,7 +524,7 @@ export default function FilterPanel({
                       value={filters.frames || ''}
                       onChange={(e) => updateFilter('frames', e.target.value)}
                       placeholder="Search in frames..."
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
                     />
                   </div>
                 </>
@@ -536,7 +536,7 @@ export default function FilterPanel({
                   value={filters.flaggedReason || ''}
                   onChange={(e) => updateFilter('flaggedReason', e.target.value)}
                   placeholder="Search in flagged reason..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
                 />
               </div>
               <div>
@@ -546,7 +546,7 @@ export default function FilterPanel({
                   value={filters.forbiddenReason || ''}
                   onChange={(e) => updateFilter('forbiddenReason', e.target.value)}
                   placeholder="Search in forbidden reason..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
                 />
               </div>
             </FilterSection>
@@ -567,7 +567,7 @@ export default function FilterPanel({
                     <select
                       value={filters.flaggedByJobId || ''}
                       onChange={(e) => updateFilter('flaggedByJobId', e.target.value || undefined)}
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
                     >
                       <option value="">Any job</option>
                       {jobs.map(job => (
@@ -607,10 +607,10 @@ export default function FilterPanel({
                     onFocus={() => setPosDropdownOpen(true)}
                     onBlur={() => setTimeout(() => setPosDropdownOpen(false), 200)}
                     placeholder="Search parts of speech..."
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 mb-2"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 mb-2"
                   />
                   {posDropdownOpen && (
-                    <div className="max-h-48 overflow-y-auto border border-gray-300 rounded-md bg-white">
+                    <div className="max-h-48 overflow-y-auto border border-gray-300 rounded-xl bg-white">
                       {filteredPosOptions.length === 0 ? (
                         <div className="px-3 py-2 text-sm text-gray-500">No parts of speech found</div>
                       ) : (
@@ -648,10 +648,10 @@ export default function FilterPanel({
                     onFocus={() => setLexfileDropdownOpen(true)}
                     onBlur={() => setTimeout(() => setLexfileDropdownOpen(false), 200)}
                     placeholder="Search lexfiles..."
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 mb-2"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 mb-2"
                   />
                   {lexfileDropdownOpen && (
-                    <div className="max-h-48 overflow-y-auto border border-gray-300 rounded-md bg-white">
+                    <div className="max-h-48 overflow-y-auto border border-gray-300 rounded-xl bg-white">
                       {filteredLexfiles.length === 0 ? (
                         <div className="px-3 py-2 text-sm text-gray-500">No lexfiles found</div>
                       ) : (
@@ -692,10 +692,10 @@ export default function FilterPanel({
                         onChange={(e) => setFrameSearchQuery(e.target.value)}
                         onFocus={() => setFrameDropdownOpen(true)}
                         placeholder="Search frames..."
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 mb-2"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 mb-2"
                       />
                       {frameDropdownOpen && (
-                        <div className="max-h-48 overflow-y-auto border border-gray-300 rounded-md bg-white">
+                        <div className="max-h-48 overflow-y-auto border border-gray-300 rounded-xl bg-white">
                           {filteredFrames.length === 0 ? (
                             <div className="px-3 py-2 text-sm text-gray-500">No frames found</div>
                           ) : (
@@ -749,7 +749,7 @@ export default function FilterPanel({
                       <div className="flex gap-2">
                         <button
                           onClick={() => updateFilter('isMwe', filters.isMwe === true ? undefined : true)}
-                          className={`px-3 py-1 rounded-md text-sm font-medium transition-colors cursor-pointer ${
+                          className={`px-3 py-1 rounded-xl text-sm font-medium transition-colors cursor-pointer ${
                             filters.isMwe === true 
                               ? 'bg-blue-100 text-blue-800 border border-blue-200' 
                               : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
@@ -759,7 +759,7 @@ export default function FilterPanel({
                         </button>
                         <button
                           onClick={() => updateFilter('isMwe', filters.isMwe === false ? undefined : false)}
-                          className={`px-3 py-1 rounded-md text-sm font-medium transition-colors cursor-pointer ${
+                          className={`px-3 py-1 rounded-xl text-sm font-medium transition-colors cursor-pointer ${
                             filters.isMwe === false 
                               ? 'bg-blue-100 text-blue-800 border border-blue-200' 
                               : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
@@ -777,7 +777,7 @@ export default function FilterPanel({
                 <div className="flex gap-2">
                   <button
                     onClick={() => updateFilter('flagged', filters.flagged === true ? undefined : true)}
-                    className={`px-3 py-1 rounded-md text-sm font-medium transition-colors cursor-pointer ${
+                    className={`px-3 py-1 rounded-xl text-sm font-medium transition-colors cursor-pointer ${
                       filters.flagged === true 
                         ? 'bg-orange-100 text-orange-800 border border-orange-200' 
                         : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
@@ -787,7 +787,7 @@ export default function FilterPanel({
                   </button>
                   <button
                     onClick={() => updateFilter('flagged', filters.flagged === false ? undefined : false)}
-                    className={`px-3 py-1 rounded-md text-sm font-medium transition-colors cursor-pointer ${
+                    className={`px-3 py-1 rounded-xl text-sm font-medium transition-colors cursor-pointer ${
                       filters.flagged === false 
                         ? 'bg-orange-100 text-orange-800 border border-orange-200' 
                         : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
@@ -802,7 +802,7 @@ export default function FilterPanel({
                 <div className="flex gap-2">
                   <button
                     onClick={() => updateFilter('forbidden', filters.forbidden === true ? undefined : true)}
-                    className={`px-3 py-1 rounded-md text-sm font-medium transition-colors cursor-pointer ${
+                    className={`px-3 py-1 rounded-xl text-sm font-medium transition-colors cursor-pointer ${
                       filters.forbidden === true 
                         ? 'bg-red-100 text-red-800 border border-red-200' 
                         : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
@@ -812,7 +812,7 @@ export default function FilterPanel({
                   </button>
                   <button
                     onClick={() => updateFilter('forbidden', filters.forbidden === false ? undefined : false)}
-                    className={`px-3 py-1 rounded-md text-sm font-medium transition-colors cursor-pointer ${
+                    className={`px-3 py-1 rounded-xl text-sm font-medium transition-colors cursor-pointer ${
                       filters.forbidden === false 
                         ? 'bg-red-100 text-red-800 border border-red-200' 
                         : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
@@ -841,7 +841,7 @@ export default function FilterPanel({
                       onChange={(e) => updateFilter('parentsCountMin', e.target.value ? parseInt(e.target.value) : undefined)}
                       placeholder="Min"
                       min="0"
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
                     />
                     <input
                       type="number"
@@ -849,7 +849,7 @@ export default function FilterPanel({
                       onChange={(e) => updateFilter('parentsCountMax', e.target.value ? parseInt(e.target.value) : undefined)}
                       placeholder="Max"
                       min="0"
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
                     />
                   </div>
                 </div>
@@ -862,7 +862,7 @@ export default function FilterPanel({
                       onChange={(e) => updateFilter('childrenCountMin', e.target.value ? parseInt(e.target.value) : undefined)}
                       placeholder="Min"
                       min="0"
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
                     />
                     <input
                       type="number"
@@ -870,7 +870,7 @@ export default function FilterPanel({
                       onChange={(e) => updateFilter('childrenCountMax', e.target.value ? parseInt(e.target.value) : undefined)}
                       placeholder="Max"
                       min="0"
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
                     />
                   </div>
                 </div>
@@ -891,14 +891,14 @@ export default function FilterPanel({
                     type="date"
                     value={filters.createdAfter || ''}
                     onChange={(e) => updateFilter('createdAfter', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
                     placeholder="After"
                   />
                   <input
                     type="date"
                     value={filters.createdBefore || ''}
                     onChange={(e) => updateFilter('createdBefore', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
                     placeholder="Before"
                   />
                 </div>
@@ -910,14 +910,14 @@ export default function FilterPanel({
                     type="date"
                     value={filters.updatedAfter || ''}
                     onChange={(e) => updateFilter('updatedAfter', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
                     placeholder="After"
                   />
                   <input
                     type="date"
                     value={filters.updatedBefore || ''}
                     onChange={(e) => updateFilter('updatedBefore', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
                     placeholder="Before"
                   />
                 </div>

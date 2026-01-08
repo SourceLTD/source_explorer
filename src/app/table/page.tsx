@@ -5,7 +5,9 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import DataTable from '@/components/DataTable';
 import SearchBox from '@/components/SearchBox';
 import ViewToggle, { ViewMode } from '@/components/ViewToggle';
+import PendingChangesButton from '@/components/PendingChangesButton';
 import SignOutButton from '@/components/SignOutButton';
+import CategoryDropdown from '@/components/CategoryDropdown';
 import { SearchResult, TableEntry, GraphNode, Frame } from '@/lib/types';
 import { EditOverlay } from '@/components/editing/EditOverlay';
 
@@ -14,10 +16,7 @@ function TableModeContent() {
   const searchParams = useSearchParams();
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [isEditOverlayOpen, setIsEditOverlayOpen] = useState(false);
-  const [currentNode, setCurrentNode] = useState<GraphNode | Frame | null>(null);
-  
-  // Get active tab from URL params or default to 'verbs'
-  const activeTab = (searchParams?.get('tab') as 'verbs' | 'frames') || 'verbs';
+  const [currentNode, setCurrentNode] = useState<GraphNode | null>(null);
 
   const handleSearchResult = (result: SearchResult) => {
     // Navigate to the graph mode with this entry
@@ -26,15 +25,6 @@ function TableModeContent() {
 
   const handleSearchQueryChange = (query: string) => {
     setSearchQuery(query);
-  };
-
-  const handleTabChange = (tab: 'verbs' | 'frames') => {
-    const params = new URLSearchParams(searchParams?.toString() || '');
-    params.set('tab', tab);
-    // Clear sortBy and sortOrder when switching tabs to avoid invalid column errors
-    params.delete('sortBy');
-    params.delete('sortOrder');
-    router.push(`/table?${params.toString()}`);
   };
 
   useEffect(() => {
@@ -49,23 +39,12 @@ function TableModeContent() {
     
     // Load full entry data
     try {
-      if (activeTab === 'frames') {
-        // Load frame data
-        const response = await fetch(`/api/frames/${entry.id}`);
-        if (!response.ok) {
-          throw new Error('Failed to load frame details');
-        }
-        const frameData: Frame = await response.json();
-        setCurrentNode(frameData);
-      } else {
-        // Load verb/entry data
-        const response = await fetch(`/api/verbs/${entry.id}/graph`);
-        if (!response.ok) {
-          throw new Error('Failed to load entry details');
-        }
-        const graphNode: GraphNode = await response.json();
-        setCurrentNode(graphNode);
+      const response = await fetch(`/api/verbs/${entry.id}/graph`);
+      if (!response.ok) {
+        throw new Error('Failed to load entry details');
       }
+      const graphNode: GraphNode = await response.json();
+      setCurrentNode(graphNode);
     } catch (err) {
       console.error('Error loading entry details:', err);
     }
@@ -74,20 +53,10 @@ function TableModeContent() {
   const handleUpdate = async () => {
     if (currentNode) {
       try {
-        if (activeTab === 'frames') {
-          // Reload frame data
-          const response = await fetch(`/api/frames/${currentNode.id}`);
-          if (response.ok) {
-            const updatedFrame: Frame = await response.json();
-            setCurrentNode(updatedFrame);
-          }
-        } else {
-          // Reload verb data
-          const response = await fetch(`/api/verbs/${currentNode.id}/graph?invalidate=true&t=${Date.now()}`, { cache: 'no-store' });
-          if (response.ok) {
-            const updatedNode: GraphNode = await response.json();
-            setCurrentNode(updatedNode);
-          }
+        const response = await fetch(`/api/verbs/${currentNode.id}/graph?invalidate=true&t=${Date.now()}`, { cache: 'no-store' });
+        if (response.ok) {
+          const updatedNode: GraphNode = await response.json();
+          setCurrentNode(updatedNode);
         }
       } catch (err) {
         console.error('Error updating entry:', err);
@@ -98,8 +67,8 @@ function TableModeContent() {
   return (
     <div className="h-screen flex flex-col bg-white">
       {/* Header */}
-      <header className="bg-white px-6 pt-4">
-        <div className="flex items-center justify-between mb-2">
+      <header className="bg-white border-b border-gray-200 px-6 py-4">
+        <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
             <button
               onClick={() => router.push('/')}
@@ -108,9 +77,7 @@ function TableModeContent() {
               SourceNet
             </button>
             <div className="h-6 w-px bg-gray-300"></div>
-            <h1 className="text-xl font-bold text-gray-900">
-              Verbs
-            </h1>
+            <CategoryDropdown currentCategory="verbs" currentView="table" />
           </div>
           
           <div className="flex items-center gap-4 flex-1 justify-end">
@@ -131,46 +98,21 @@ function TableModeContent() {
                 }
               }}
             />
+            <PendingChangesButton />
             <SignOutButton />
           </div>
 
-        </div>
-        
-        {/* Tab Switcher */}
-        <div className="px-6">
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => handleTabChange('verbs')}
-              className={`px-4 py-2 text-sm font-medium transition-colors relative cursor-pointer ${
-                activeTab === 'verbs'
-                  ? 'text-blue-600 border-b-2 border-blue-600'
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-              }`}
-            >
-              Verbs
-            </button>
-            <button
-              onClick={() => handleTabChange('frames')}
-              className={`px-4 py-2 text-sm font-medium transition-colors relative cursor-pointer ${
-                activeTab === 'frames'
-                  ? 'text-blue-600 border-b-2 border-blue-600'
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-              }`}
-            >
-              Frames
-            </button>
-          </div>
         </div>
       </header>
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col bg-white">
         {/* Data Table */}
-        <div className="mx-6 mb-6 bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+        <div className="m-6 bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
           <Suspense fallback={<div className="p-8 text-center text-gray-500">Loading...</div>}>
             <DataTable 
               searchQuery={searchQuery}
-              mode={activeTab}
+              mode="verbs"
               onEditClick={handleEditClick}
             />
           </Suspense>
@@ -181,7 +123,7 @@ function TableModeContent() {
       {currentNode && (
         <EditOverlay
           node={currentNode}
-          mode={activeTab}
+          mode="verbs"
           isOpen={isEditOverlayOpen}
           onClose={() => setIsEditOverlayOpen(false)}
           onUpdate={handleUpdate}

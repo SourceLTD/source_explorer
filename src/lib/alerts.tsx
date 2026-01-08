@@ -42,7 +42,7 @@ export function showGlobalAlert(detail: GlobalAlertDetail) {
       <div
         role="alert"
         aria-live={type === "error" ? "assertive" : "polite"}
-        className={`pointer-events-auto w-full max-w-md rounded-2xl border border-white/15 bg-gradient-to-r from-blue-500 to-blue-600 px-5 py-4 text-white shadow-2xl shadow-blue-900/30 backdrop-blur-sm transition-all ${
+        className={`pointer-events-auto w-full max-w-md rounded-xl border border-white/15 bg-gradient-to-r from-blue-500 to-blue-600 px-5 py-4 text-white shadow-2xl shadow-blue-900/30 backdrop-blur-sm transition-all ${
           t.visible ? "animate-toast-in" : "animate-toast-out"
         }`}
         data-toast-type={type}
@@ -68,7 +68,7 @@ export function showGlobalAlert(detail: GlobalAlertDetail) {
           <button
             type="button"
             onClick={() => toast.dismiss(t.id)}
-            className="ml-2 shrink-0 rounded-md px-2 py-1 text-xs font-semibold uppercase tracking-wide text-white/80 transition hover:bg-white/15 hover:text-white focus:outline-none focus:ring-2 focus:ring-white/40 focus:ring-offset-2 focus:ring-offset-blue-500/0"
+            className="ml-2 shrink-0 rounded-xl px-2 py-1 text-xs font-semibold uppercase tracking-wide text-white/80 transition hover:bg-white/15 hover:text-white focus:outline-none focus:ring-2 focus:ring-white/40 focus:ring-offset-2 focus:ring-offset-blue-500/0"
           >
             Dismiss
           </button>

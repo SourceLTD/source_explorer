@@ -32,7 +32,7 @@ export function ListFieldEditor({
               <textarea
                 value={item}
                 onChange={(e) => onItemChange(index, e.target.value)}
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-vertical"
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-vertical"
                 rows={2}
                 placeholder={placeholder}
               />
@@ -41,7 +41,7 @@ export function ListFieldEditor({
                 type="text"
                 value={item}
                 onChange={(e) => onItemChange(index, e.target.value)}
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                 placeholder={placeholder}
               />
             )}

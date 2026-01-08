@@ -44,7 +44,7 @@ export default function AuthHeader() {
   if (loading) {
     return (
       <div className="fixed top-4 right-4 z-50">
-        <div className="animate-pulse bg-gray-200 rounded-md px-4 py-2 w-20 h-10"></div>
+        <div className="animate-pulse bg-gray-200 rounded-xl px-4 py-2 w-20 h-10"></div>
       </div>
     )
   }
@@ -64,7 +64,7 @@ export default function AuthHeader() {
     <div className="fixed top-6 right-6 z-50">
       <button
         onClick={handleSignOut}
-        className="inline-flex items-center rounded-md bg-gray-100 text-gray-700 px-4 py-2 text-sm font-medium border border-gray-300 hover:bg-red-50 hover:text-red-700 hover:border-red-300 hover:cursor-pointer focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors whitespace-nowrap"
+        className="inline-flex items-center rounded-xl bg-gray-100 text-gray-700 px-4 py-2 text-sm font-medium border border-gray-300 hover:bg-red-50 hover:text-red-700 hover:border-red-300 hover:cursor-pointer focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors whitespace-nowrap"
       >
         Sign Out
       </button>

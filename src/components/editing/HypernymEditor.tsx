@@ -29,7 +29,7 @@ export function HypernymEditor({
     <div className="space-y-3">
       <div className="space-y-2">
         {/* Current Hypernym */}
-        <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+        <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-xl">
           <p className="text-xs text-yellow-800 font-medium mb-1">Current Hypernym:</p>
           <p className="text-sm text-gray-900">
             {currentNode.parents[0]?.id || <span className="text-gray-500 italic">None</span>}
@@ -52,7 +52,7 @@ export function HypernymEditor({
 
         {/* Selected New Hypernym */}
         {value && value !== currentNode.parents[0]?.id && (
-          <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+          <div className="p-3 bg-green-50 border border-green-200 rounded-xl">
             <p className="text-xs text-green-800 font-medium mb-1">New Hypernym:</p>
             <p className="text-sm text-gray-900">{value}</p>
           </div>

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { updateModerationStatus } from '@/lib/db';
+import { stageModerationUpdates } from '@/lib/version-control';
 
 // Force dynamic rendering - no static optimization
 export const dynamic = 'force-dynamic';
@@ -28,12 +28,17 @@ export async function PATCH(request: NextRequest) {
       }, { status: 400 });
     }
 
-    const updatedCount = await updateModerationStatus(ids, updates);
+    // TODO: Get actual user ID from auth context
+    const userId = 'current-user';
+
+    // Default to 'verb' for entries (verbs are the main "entries" in this system)
+    const result = await stageModerationUpdates('verb', ids, updates, userId);
 
     return NextResponse.json({ 
-      success: true, 
-      updatedCount,
-      message: `Updated ${updatedCount} entries` 
+      staged: true, 
+      staged_count: result.staged_count,
+      changeset_ids: result.changeset_ids,
+      message: `Staged moderation changes for ${result.staged_count} entries` 
     }, {
       headers: {
         'Cache-Control': 'no-store, no-cache, must-revalidate',
@@ -41,7 +46,7 @@ export async function PATCH(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('Error updating moderation status:', error);
+    console.error('Error staging moderation status:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

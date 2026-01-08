@@ -58,9 +58,9 @@ function VerifyForm() {
   return (
     <div className="h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
       <div className="max-w-md mx-auto px-6">
-        <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-8">
+        <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-8">
           <div className="text-center mb-6">
-            <div className="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <div className="w-16 h-16 bg-blue-100 rounded-xl flex items-center justify-center mx-auto mb-4">
               <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
               </svg>
@@ -93,19 +93,19 @@ function VerifyForm() {
                 disabled={isPending}
                 value={code}
                 onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg text-center text-2xl font-mono tracking-widest focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full px-4 py-3 border border-gray-300 rounded-xl text-center text-2xl font-mono tracking-widest focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 placeholder="000000"
               />
             </div>
 
             {error && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-600">
+              <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-sm text-red-600">
                 {error}
               </div>
             )}
 
             {message && (
-              <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-sm text-green-600">
+              <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-sm text-green-600">
                 {message}
               </div>
             )}
@@ -113,7 +113,7 @@ function VerifyForm() {
             <button
               type="submit"
               disabled={isPending || code.length !== 6}
-              className="w-full bg-indigo-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center"
+              className="w-full bg-indigo-600 text-white py-3 px-4 rounded-xl font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center"
             >
               {isPending ? (
                 <>
@@ -136,14 +136,14 @@ function VerifyForm() {
             <button
               onClick={handleResend}
               disabled={resendCooldown > 0 || isResending}
-              className="block w-full bg-gray-100 text-gray-700 py-3 px-4 rounded-lg font-medium hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="block w-full bg-gray-100 text-gray-700 py-3 px-4 rounded-xl font-medium hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isResending ? 'Sending...' : resendCooldown > 0 ? `Wait ${resendCooldown}s` : 'Request a new code'}
             </button>
             
             <Link
               href="/"
-              className="block w-full text-indigo-600 py-3 px-4 rounded-lg font-medium hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-colors"
+              className="block w-full text-indigo-600 py-3 px-4 rounded-xl font-medium hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-colors"
             >
               Back to Home
             </Link>
@@ -158,9 +158,9 @@ function LoadingFallback() {
   return (
     <div className="h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
       <div className="max-w-md mx-auto px-6">
-        <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-8">
+        <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-8">
           <div className="text-center">
-            <div className="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center mx-auto mb-4 animate-pulse">
+            <div className="w-16 h-16 bg-blue-100 rounded-xl flex items-center justify-center mx-auto mb-4 animate-pulse">
               <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
               </svg>
@@ -181,6 +181,8 @@ export default function VerifyPage() {
     </Suspense>
   )
 }
+
+
 
 
 

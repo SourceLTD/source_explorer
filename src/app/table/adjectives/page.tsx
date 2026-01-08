@@ -6,6 +6,7 @@ import DataTable from '@/components/DataTable';
 import SearchBox from '@/components/SearchBox';
 import ViewToggle, { ViewMode } from '@/components/ViewToggle';
 import SignOutButton from '@/components/SignOutButton';
+import CategoryDropdown from '@/components/CategoryDropdown';
 import { SearchResult, TableEntry, GraphNode } from '@/lib/types';
 import { EditOverlay } from '@/components/editing/EditOverlay';
 
@@ -67,9 +68,7 @@ export default function AdjectiveTableMode() {
               SourceNet
             </button>
             <div className="h-6 w-px bg-gray-300"></div>
-            <h1 className="text-xl font-bold text-gray-900">
-              Adjectives
-            </h1>
+            <CategoryDropdown currentCategory="adjectives" currentView="table" />
           </div>
           
           <div className="flex items-center gap-4 flex-1 justify-end">
@@ -101,7 +100,7 @@ export default function AdjectiveTableMode() {
       {/* Main Content */}
       <main className="flex-1 flex flex-col bg-white">
         {/* Data Table */}
-        <div className="m-6 bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+        <div className="m-6 bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
           <Suspense fallback={<div className="p-8 text-center text-gray-500">Loading...</div>}>
             <DataTable 
               searchQuery={searchQuery}

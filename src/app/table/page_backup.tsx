@@ -481,7 +481,7 @@ export default function AdjectiveTableMode() {
       {/* Main Content */}
       <main className="flex-1 flex flex-col bg-white">
         {/* Data Table */}
-        <div className="m-6 bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+        <div className="m-6 bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
           <Suspense fallback={<div className="p-8 text-center text-gray-500">Loading...</div>}>
             <DataTable 
               searchQuery={searchQuery}
@@ -507,7 +507,7 @@ export default function AdjectiveTableMode() {
             className="absolute inset-0"
             style={{ backgroundColor: 'rgba(0, 0, 0, 0.25)' }}
           ></div>
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-5xl mx-4 max-h-[85vh] overflow-hidden relative z-10 flex flex-col">
+          <div className="bg-white rounded-xl shadow-lg w-full max-w-5xl mx-4 max-h-[85vh] overflow-hidden relative z-10 flex flex-col">
             {/* Header */}
             <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between shrink-0">
               <div className="flex-1">
@@ -558,7 +558,7 @@ export default function AdjectiveTableMode() {
                   <div className="flex items-center gap-2">
                     <button
                       onClick={handleFlagToggle}
-                      className={`flex items-center gap-1 px-3 py-1 text-sm font-medium border rounded-md transition-colors cursor-pointer ${
+                      className={`flex items-center gap-1 px-3 py-1 text-sm font-medium border rounded-xl transition-colors cursor-pointer ${
                         currentNode.flagged 
                           ? 'text-orange-700 bg-orange-100 border-orange-200 hover:bg-orange-200' 
                           : 'text-gray-700 bg-gray-100 border-gray-200 hover:bg-gray-200'
@@ -571,7 +571,7 @@ export default function AdjectiveTableMode() {
                     </button>
                     <button
                       onClick={handleForbidToggle}
-                      className={`flex items-center gap-1 px-3 py-1 text-sm font-medium border rounded-md transition-colors cursor-pointer ${
+                      className={`flex items-center gap-1 px-3 py-1 text-sm font-medium border rounded-xl transition-colors cursor-pointer ${
                         currentNode.forbidden 
                           ? 'text-red-700 bg-red-100 border-red-200 hover:bg-red-200' 
                           : 'text-gray-700 bg-gray-100 border-gray-200 hover:bg-gray-200'
@@ -630,7 +630,7 @@ export default function AdjectiveTableMode() {
                                 type="text"
                                 value={editValue}
                                 onChange={(e) => setEditValue(e.target.value)}
-                                className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-mono"
+                                className="flex-1 px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-mono"
                                 placeholder="Enter lemma (e.g., good)"
                                 autoFocus
                               />
@@ -692,7 +692,7 @@ export default function AdjectiveTableMode() {
                                   type="text"
                                   value={item}
                                   onChange={(e) => updateListItem(index, e.target.value)}
-                                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                                  className="flex-1 px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                                   placeholder="Enter lemma"
                                 />
                                 <button
@@ -764,7 +764,7 @@ export default function AdjectiveTableMode() {
                             value={editValue}
                             onChange={(e) => setEditValue(e.target.value)}
                             onKeyDown={handleKeyDown}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-vertical"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-vertical"
                             rows={3}
                             placeholder="Enter definition"
                             autoFocus
@@ -813,7 +813,7 @@ export default function AdjectiveTableMode() {
                                 <textarea
                                   value={item}
                                   onChange={(e) => updateListItem(index, e.target.value)}
-                                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-vertical"
+                                  className="flex-1 px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-vertical"
                                   rows={2}
                                   placeholder="Enter example sentence"
                                 />
@@ -885,7 +885,7 @@ export default function AdjectiveTableMode() {
                           <select
                             value={editValue}
                             onChange={(e) => setEditValue(e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                           >
                             {availableLexfiles.map(lf => (
                               <option key={lf} value={lf}>{lf}</option>
@@ -943,7 +943,7 @@ export default function AdjectiveTableMode() {
                     <div className="space-y-3">
                       <div className="space-y-2">
                         {/* Current Hypernym */}
-                        <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                        <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-xl">
                           <p className="text-xs text-yellow-800 font-medium mb-1">Current Hypernym:</p>
                           <p className="text-sm text-gray-900">
                             {currentNode.parents[0]?.id || <span className="text-gray-500 italic">None</span>}
@@ -966,7 +966,7 @@ export default function AdjectiveTableMode() {
 
                         {/* Selected New Hypernym */}
                         {editValue && editValue !== currentNode.parents[0]?.id && (
-                          <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                          <div className="p-3 bg-green-50 border border-green-200 rounded-xl">
                             <p className="text-xs text-green-800 font-medium mb-1">New Hypernym:</p>
                             <p className="text-sm text-gray-900">{editValue}</p>
                           </div>
@@ -1085,7 +1085,7 @@ export default function AdjectiveTableMode() {
                 className="absolute inset-0 bg-black bg-opacity-50"
                 onClick={() => setShowDeleteConfirm(false)}
               ></div>
-              <div className="bg-white rounded-lg shadow-xl p-6 max-w-md mx-4 relative z-30">
+              <div className="bg-white rounded-xl shadow-lg p-6 max-w-md mx-4 relative z-30">
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">Delete Entry</h3>
                 <p className="text-sm text-gray-600 mb-4">
                   Are you sure you want to delete <strong>{currentNode.id}</strong>?

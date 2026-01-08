@@ -57,7 +57,7 @@ export const JobDetails = memo(function JobDetails({
         <div className="flex items-center gap-2">
           <button
             onClick={() => onCloneSettings(job)}
-            className="cursor-pointer inline-flex items-center gap-2 rounded-md border border-blue-600 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+            className="cursor-pointer inline-flex items-center gap-2 rounded-xl border border-blue-600 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100"
             title="Clone job settings to create a new job"
           >
             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -75,7 +75,7 @@ export const JobDetails = memo(function JobDetails({
                   : `/table/${mode}?flaggedByJobId=${encodeURIComponent(job.id)}`;
                 router.push(baseUrl);
               }}
-              className="cursor-pointer inline-flex items-center gap-2 rounded-md border border-blue-600 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+              className="cursor-pointer inline-flex items-center gap-2 rounded-xl border border-blue-600 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100"
             >
               See all flagged {mode}
             </button>
@@ -84,7 +84,7 @@ export const JobDetails = memo(function JobDetails({
             <button
               onClick={() => onCancel(job.id)}
               disabled={cancelLoading}
-              className="cursor-pointer inline-flex items-center gap-2 rounded-md border border-red-600 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="cursor-pointer inline-flex items-center gap-2 rounded-xl border border-red-600 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {cancelLoading ? (
                 <>
@@ -101,7 +101,7 @@ export const JobDetails = memo(function JobDetails({
           )}
           <button
             onClick={() => onDelete(job.id)}
-            className="cursor-pointer inline-flex items-center gap-2 rounded-md border border-red-600 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100"
+            className="cursor-pointer inline-flex items-center gap-2 rounded-xl border border-red-600 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100"
           >
             Delete Job
           </button>
@@ -109,7 +109,7 @@ export const JobDetails = memo(function JobDetails({
       </div>
 
       {submissionProgress && submissionProgress.jobId === job.id && (
-        <div className="rounded-md border border-blue-200 bg-blue-50 p-3">
+        <div className="rounded-xl border border-blue-200 bg-blue-50 p-3">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-semibold text-blue-800">
               Submitting to OpenAI...
@@ -138,7 +138,7 @@ export const JobDetails = memo(function JobDetails({
       {['queued', 'running'].includes(job.status) && 
        job.submitted_items === job.total_items && 
        (job.processed_items ?? 0) < job.total_items && (
-        <div className="rounded-md border border-green-200 bg-green-50 p-3">
+        <div className="rounded-xl border border-green-200 bg-green-50 p-3">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-semibold text-green-800">
               Processing with OpenAI...

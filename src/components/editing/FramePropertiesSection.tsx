@@ -2,13 +2,11 @@ import React from 'react';
 import { Frame } from '@/lib/types';
 import { EditableField } from './types';
 import { OverlaySection } from './OverlaySection';
-import { CodeFieldEditor } from './CodeFieldEditor';
 
 interface FramePropertiesSectionProps {
   frame: Frame;
   editingField: EditableField | null;
   editValue: string;
-  codeValidationMessage: string;
   isOpen: boolean;
   onToggle: () => void;
   onStartEdit: (field: EditableField) => void;
@@ -22,7 +20,6 @@ export function FramePropertiesSection({
   frame,
   editingField,
   editValue,
-  codeValidationMessage,
   isOpen,
   onToggle,
   onStartEdit,
@@ -61,7 +58,7 @@ export function FramePropertiesSection({
               type="text"
               value={editValue}
               onChange={(e) => onValueChange(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
               placeholder="Frame name"
               autoFocus
             />
@@ -104,7 +101,7 @@ export function FramePropertiesSection({
             <textarea
               value={editValue}
               onChange={(e) => onValueChange(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-vertical"
+              className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-vertical"
               rows={4}
               placeholder="Frame definition"
               autoFocus
@@ -148,7 +145,7 @@ export function FramePropertiesSection({
             <textarea
               value={editValue}
               onChange={(e) => onValueChange(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-vertical"
+              className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-vertical"
               rows={2}
               placeholder="Short definition"
               autoFocus
@@ -193,7 +190,7 @@ export function FramePropertiesSection({
               type="text"
               value={editValue}
               onChange={(e) => onValueChange(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-mono"
+              className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-mono"
               placeholder="Verb ID (e.g., speak.v.01)"
               autoFocus
             />

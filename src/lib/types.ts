@@ -183,6 +183,8 @@ export interface Frame {
   createdAt: Date;
   updatedAt: Date;
   frame_roles?: FrameRole[];
+  // Pending changes info (optional, included when there are uncommitted changes)
+  pending?: PendingChangeInfo | null;
 }
 
 export interface RoleType {
@@ -211,6 +213,7 @@ export interface RoleGroup {
 
 export interface GraphNode {
   id: string;
+  numericId: string; // The database BigInt ID as string (for pending changes lookup)
   legacy_id: string;
   lemmas: string[];
   src_lemmas: string[];
@@ -248,6 +251,8 @@ export interface GraphNode {
   entails: GraphNode[];
   causes: GraphNode[];
   alsoSee: GraphNode[];
+  // Pending changes info (optional, included when there are uncommitted changes)
+  pending?: PendingChangeInfo | null;
 }
 
 export interface SearchResult {
@@ -366,8 +371,22 @@ export interface PaginatedResult<T> {
   hasPrev: boolean;
 }
 
+/**
+ * Paginated result with pending change info attached to each entity.
+ */
+export interface PaginatedResultWithPending<T> {
+  data: WithPendingInfo<T>[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  hasNext: boolean;
+  hasPrev: boolean;
+}
+
 export interface TableEntry {
   id: string;
+  numericId: string; // The database BigInt ID as string (for pending changes lookup)
   legacy_id: string;
   lemmas: string[];
   src_lemmas: string[];
@@ -404,6 +423,8 @@ export interface TableEntry {
   childrenCount: number;
   createdAt: Date;
   updatedAt: Date;
+  // Pending changes info (optional, included when there are uncommitted changes)
+  pending?: PendingChangeInfo | null;
 }
 
 export const POS_LABELS = {
@@ -564,6 +585,205 @@ export const ROLE_PRECEDENCE: Record<string, number> = {
   'ASSET': 0,
   'IDIOM': -1
 };
+
+// ============================================
+// Pending Change Types (for API responses)
+// ============================================
+
+export type PendingChangeOperation = 'create' | 'update' | 'delete';
+
+/**
+ * Information about a pending field change.
+ * Serializable version for API responses.
+ */
+export interface PendingFieldChange {
+  field_change_id: string;
+  old_value: unknown;
+  new_value: unknown;
+  status: 'pending' | 'approved' | 'rejected';
+}
+
+/**
+ * Metadata about pending changes on an entity.
+ * Attached to API responses when there are uncommitted changes.
+ */
+export interface PendingChangeInfo {
+  /** The type of pending operation */
+  operation: PendingChangeOperation;
+  /** The changeset ID (as string for JSON serialization) */
+  changeset_id: string;
+  /** Map of field names to their pending change info */
+  pending_fields: Record<string, PendingFieldChange>;
+}
+
+/**
+ * Wrapper type for entities that may have pending changes.
+ * Used in paginated responses and graph data.
+ */
+export interface WithPendingInfo<T> {
+  /** The entity data (with pending values applied for preview) */
+  data: T;
+  /** Pending change metadata, or null if no pending changes */
+  pending: PendingChangeInfo | null;
+}
+
+// ============================================
+// Frame Graph Types
+// ============================================
+
+export type FrameRelationType = 
+  | 'causes'
+  | 'inherits_from'
+  | 'inherited_by'
+  | 'uses'
+  | 'used_by'
+  | 'subframe_of'
+  | 'has_subframe'
+  | 'precedes'
+  | 'preceded_by'
+  | 'perspective_on'
+  | 'perspectivized_in'
+  | 'see_also'
+  | 'reframing_mapping'
+  | 'metaphor';
+
+export interface FrameGraphRole {
+  id: string;
+  frame_id: string;
+  role_type_id: string;
+  role_type_code: string;
+  role_type_label: string;
+  description: string | null;
+  notes: string | null;
+  main: boolean | null;
+  examples: string[];
+  nickname: string | null;
+}
+
+export interface FrameGraphVerb {
+  id: string;
+  code: string;
+  gloss: string;
+  lemmas: string[];
+  examples: string[];
+  flagged: boolean | null;
+  flagged_reason: string | null;
+}
+
+export interface FrameGraphRelation {
+  type: FrameRelationType;
+  direction: 'incoming' | 'outgoing';
+  target?: {
+    id: string;
+    frame_name: string;
+    short_definition: string;
+  };
+  source?: {
+    id: string;
+    frame_name: string;
+    short_definition: string;
+  };
+}
+
+export interface FrameGraphNode {
+  id: string;
+  numericId: string;
+  pos: 'frames';
+  frame_name: string;
+  gloss: string; // definition
+  short_definition: string;
+  prototypical_synset: string;
+  roles: FrameGraphRole[];
+  verbs: FrameGraphVerb[];
+  relations: FrameGraphRelation[];
+  flagged?: boolean;
+  flaggedReason?: string;
+  forbidden?: boolean;
+  forbiddenReason?: string;
+  pending?: PendingChangeInfo | null;
+}
+
+export interface FrameRecipeRole {
+  id: string;
+  role_type: {
+    id: string;
+    code: string;
+    label: string;
+    generic_description: string;
+  };
+  description: string | null;
+  notes: string | null;
+  main: boolean | null;
+  examples: string[];
+  nickname: string | null;
+  groups: Array<{
+    id: string;
+    description: string | null;
+    require_at_least_one: boolean;
+  }>;
+}
+
+export interface FrameRecipeVerb {
+  id: string;
+  code: string;
+  lemmas: string[];
+  gloss: string;
+  vendler_class: 'state' | 'activity' | 'accomplishment' | 'achievement' | null;
+  roles: Array<{
+    id: string;
+    role_type: {
+      id: string;
+      code: string;
+      label: string;
+    };
+    description: string | null;
+    main: boolean;
+    example_sentence: string | null;
+  }>;
+  role_groups: Array<{
+    id: string;
+    description: string | null;
+    require_at_least_one: boolean;
+    role_ids: string[];
+  }>;
+}
+
+export interface FrameRecipeRelatedFrame {
+  id: string;
+  frame_name: string;
+  short_definition: string;
+  roles?: Array<{
+    id: string;
+    role_type_label: string;
+    description: string | null;
+    main: boolean | null;
+  }>;
+}
+
+export interface FrameRecipeData {
+  frame: {
+    id: string;
+    frame_name: string;
+    definition: string;
+    short_definition: string;
+    prototypical_synset: string;
+    flagged: boolean | null;
+    flagged_reason: string | null;
+  };
+  roles: FrameRecipeRole[];
+  verbs: FrameRecipeVerb[];
+  relations: {
+    inherits_from: FrameRecipeRelatedFrame[];
+    inherited_by: FrameRecipeRelatedFrame[];
+    uses: FrameRecipeRelatedFrame[];
+    used_by: FrameRecipeRelatedFrame[];
+    other: Array<{
+      type: FrameRelationType;
+      direction: 'incoming' | 'outgoing';
+      frame: FrameRecipeRelatedFrame;
+    }>;
+  };
+}
 
 // Helper function to sort roles by precedence
 export function sortRolesByPrecedence<T extends { role_type: { label: string }; main?: boolean | null }>(roles: T[]): T[] {

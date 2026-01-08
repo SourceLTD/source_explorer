@@ -1,7 +1,0 @@
-node_modules/
-dist/
-function.zip
-.env
-*.log
-.DS_Store
-

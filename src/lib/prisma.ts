@@ -56,7 +56,7 @@ export const prisma = globalForPrisma.prisma ?? new PrismaClient({
   errorFormat: 'pretty',
   transactionOptions: {
     timeout: 60000, // 60 seconds
-    maxWait: 20000, // 20 seconds
+    maxWait: 30000, // 30 seconds
   },
 });
 

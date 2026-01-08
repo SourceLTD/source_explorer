@@ -1,18 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { 
   getEntryById, 
-  updateEntry, 
-  deleteEntry, 
   searchEntries,
-  updateModerationStatus,
   getGraphNode,
-  getPaginatedEntries,
-  getPaginatedNouns,
-  getPaginatedAdjectives,
-  getPaginatedAdverbs
 } from './db';
+import { getPaginatedEntities } from './db/entities';
 import { handleDatabaseError } from './db-utils';
-import type { LexicalType, PaginationParams } from './types';
+import { stageUpdate, stageDelete, stageModerationUpdates, stageRolesUpdate, EntityType, attachPendingInfoToEntities, getPendingInfoForEntity, applyPendingToEntity } from './version-control';
+import type { LexicalType, PaginationParams, TableEntry } from './types';
+
+/**
+ * Helper to convert LexicalType to EntityType
+ */
+function lexicalTypeToEntityType(lexicalType: LexicalType): EntityType {
+  const mapping: Record<LexicalType, EntityType> = {
+    verbs: 'verb',
+    nouns: 'noun',
+    adjectives: 'adjective',
+    adverbs: 'adverb',
+  };
+  return mapping[lexicalType];
+}
 
 /**
  * Helper to get entity name from lexical type
@@ -28,19 +36,6 @@ function getEntityName(lexicalType: LexicalType): string {
 }
 
 /**
- * Helper to get the appropriate paginated function based on lexical type
- */
-function getPaginatedFunction(lexicalType: LexicalType) {
-  const functions = {
-    verbs: getPaginatedEntries,
-    nouns: getPaginatedNouns,
-    adjectives: getPaginatedAdjectives,
-    adverbs: getPaginatedAdverbs
-  };
-  return functions[lexicalType];
-}
-
-/**
  * Helper to get search table name from lexical type
  */
 function getSearchTable(lexicalType: LexicalType): 'verbs' | 'nouns' | 'adjectives' | 'adverbs' {
@@ -48,7 +43,112 @@ function getSearchTable(lexicalType: LexicalType): 'verbs' | 'nouns' | 'adjectiv
 }
 
 /**
+ * Valid sortBy fields for pagination
+ */
+const VALID_SORT_FIELDS = [
+  'id', 'legacy_id', 'gloss', 'pos', 'lexfile', 'lemmas', 'src_lemmas', 
+  'frame_id', 'vendler_class', 'parentsCount', 'childrenCount', 
+  'createdAt', 'updatedAt', 'created_at', 'updated_at'
+];
+
+/**
+ * Parse pagination parameters from URL search params
+ * Returns the params and any validation error
+ */
+function parsePaginationParams(searchParams: URLSearchParams): { 
+  params: PaginationParams; 
+  validationError: string | null;
+} {
+  // Debug logging to catch src_id usage
+  const sortByParam = searchParams.get('sortBy');
+  if (sortByParam === 'src_id') {
+    console.warn('⚠️  WARNING: Request received with sortBy=src_id, converting to legacy_id');
+  }
+  
+  // Convert old field names to new ones for backward compatibility
+  let sortBy = searchParams.get('sortBy') || 'id';
+  if (sortBy === 'src_id') {
+    sortBy = 'legacy_id';
+  }
+  if (sortBy === 'frame') {
+    sortBy = 'frame_id';
+  }
+
+  // Parse page and limit
+  const pageParam = searchParams.get('page') ? parseInt(searchParams.get('page')!, 10) : 1;
+  const limitParam = searchParams.get('limit') ? parseInt(searchParams.get('limit')!, 10) : 10;
+  
+  // Validate page
+  if (isNaN(pageParam) || pageParam < 1) {
+    return { 
+      params: {} as PaginationParams, 
+      validationError: 'Page must be a valid number >= 1' 
+    };
+  }
+  
+  // Validate limit (1-2000 range)
+  if (isNaN(limitParam) || limitParam < 1 || limitParam > 2000) {
+    return { 
+      params: {} as PaginationParams, 
+      validationError: 'Limit must be a valid number between 1 and 2000' 
+    };
+  }
+
+  // Validate sortBy field
+  if (!VALID_SORT_FIELDS.includes(sortBy)) {
+    return { 
+      params: {} as PaginationParams, 
+      validationError: 'Invalid sortBy field' 
+    };
+  }
+
+  return {
+    validationError: null,
+    params: {
+      page: pageParam,
+      limit: limitParam,
+      sortBy,
+      sortOrder: (searchParams.get('sortOrder') as 'asc' | 'desc') || 'asc',
+      search: searchParams.get('search') || undefined,
+      
+      // Basic filters
+      pos: searchParams.get('pos') || undefined,
+      lexfile: searchParams.get('lexfile') || undefined,
+      frame_id: searchParams.get('frame_id') || undefined,
+      
+      // Advanced filters
+      gloss: searchParams.get('gloss') || undefined,
+      lemmas: searchParams.get('lemmas') || undefined,
+      examples: searchParams.get('examples') || undefined,
+      flaggedReason: searchParams.get('flaggedReason') || undefined,
+      forbiddenReason: searchParams.get('forbiddenReason') || undefined,
+      
+      // AI jobs filters
+      flaggedByJobId: searchParams.get('flaggedByJobId') || undefined,
+      
+      // Boolean filters
+      isMwe: searchParams.get('isMwe') === 'true' ? true : searchParams.get('isMwe') === 'false' ? false : undefined,
+      flagged: searchParams.get('flagged') === 'true' ? true : searchParams.get('flagged') === 'false' ? false : undefined,
+      forbidden: searchParams.get('forbidden') === 'true' ? true : searchParams.get('forbidden') === 'false' ? false : undefined,
+      
+      // Numeric filters
+      parentsCountMin: searchParams.get('parentsCountMin') ? parseInt(searchParams.get('parentsCountMin')!) : undefined,
+      parentsCountMax: searchParams.get('parentsCountMax') ? parseInt(searchParams.get('parentsCountMax')!) : undefined,
+      childrenCountMin: searchParams.get('childrenCountMin') ? parseInt(searchParams.get('childrenCountMin')!) : undefined,
+      childrenCountMax: searchParams.get('childrenCountMax') ? parseInt(searchParams.get('childrenCountMax')!) : undefined,
+      
+      // Date filters
+      createdAfter: searchParams.get('createdAfter') || undefined,
+      createdBefore: searchParams.get('createdBefore') || undefined,
+      updatedAfter: searchParams.get('updatedAfter') || undefined,
+      updatedBefore: searchParams.get('updatedBefore') || undefined,
+    }
+  };
+}
+
+/**
  * Handles paginated requests for any lexical type
+ * Uses the unified getPaginatedEntities function
  */
 export async function handlePaginatedRequest(
   request: NextRequest,
@@ -56,39 +156,41 @@ export async function handlePaginatedRequest(
 ): Promise<NextResponse> {
   try {
     const { searchParams } = new URL(request.url);
+    const { params, validationError } = parsePaginationParams(searchParams);
     
-    const params: PaginationParams = {
-      page: searchParams.get('page') ? parseInt(searchParams.get('page')!) : undefined,
-      limit: searchParams.get('limit') ? parseInt(searchParams.get('limit')!) : undefined,
-      sortBy: searchParams.get('sortBy') || undefined,
-      sortOrder: (searchParams.get('sortOrder') as 'asc' | 'desc') || undefined,
-      search: searchParams.get('search') || undefined,
-      pos: searchParams.get('pos') || undefined,
-      lexfile: searchParams.get('lexfile') || undefined,
-      gloss: searchParams.get('gloss') || undefined,
-      lemmas: searchParams.get('lemmas') || undefined,
-      examples: searchParams.get('examples') || undefined,
-      flaggedReason: searchParams.get('flaggedReason') || undefined,
-      forbiddenReason: searchParams.get('forbiddenReason') || undefined,
-      isMwe: searchParams.get('isMwe') === 'true' ? true : searchParams.get('isMwe') === 'false' ? false : undefined,
-      flagged: searchParams.get('flagged') === 'true' ? true : searchParams.get('flagged') === 'false' ? false : undefined,
-      forbidden: searchParams.get('forbidden') === 'true' ? true : searchParams.get('forbidden') === 'false' ? false : undefined,
-      parentsCountMin: searchParams.get('parentsCountMin') ? parseInt(searchParams.get('parentsCountMin')!) : undefined,
-      parentsCountMax: searchParams.get('parentsCountMax') ? parseInt(searchParams.get('parentsCountMax')!) : undefined,
-      childrenCountMin: searchParams.get('childrenCountMin') ? parseInt(searchParams.get('childrenCountMin')!) : undefined,
-      childrenCountMax: searchParams.get('childrenCountMax') ? parseInt(searchParams.get('childrenCountMax')!) : undefined,
-      createdAfter: searchParams.get('createdAfter') || undefined,
-      createdBefore: searchParams.get('createdBefore') || undefined,
-      updatedAfter: searchParams.get('updatedAfter') || undefined,
-      updatedBefore: searchParams.get('updatedBefore') || undefined,
-    };
+    // Return validation error if any
+    if (validationError) {
+      return NextResponse.json({ error: validationError }, { status: 400 });
+    }
 
-    const paginatedFunction = getPaginatedFunction(lexicalType);
-    const result = await paginatedFunction(params);
-    return NextResponse.json(result);
+    // Use the unified paginated entities function
+    const result = await getPaginatedEntities(lexicalType, params);
+    
+    // Attach pending change info to each entry
+    const entityType = lexicalTypeToEntityType(lexicalType);
+    const dataWithPending = await attachPendingInfoToEntities(
+      result.data,
+      entityType,
+      (entry: TableEntry) => BigInt(entry.numericId)
+    );
+    
+    return NextResponse.json({
+      ...result,
+      data: dataWithPending,
+    });
   } catch (error) {
-    const { message, status } = handleDatabaseError(error, `GET /api/${lexicalType}/paginated`);
-    return NextResponse.json({ error: message }, { status });
+    const { message, status, shouldRetry } = handleDatabaseError(error, `GET /api/${lexicalType}/paginated`);
+    return NextResponse.json(
+      { 
+        error: message,
+        retryable: shouldRetry,
+        timestamp: new Date().toISOString()
+      },
+      { 
+        status,
+        headers: shouldRetry ? { 'Retry-After': '5' } : {}
+      }
+    );
   }
 }
 
@@ -112,13 +214,45 @@ export async function handleGetById(
     
     return NextResponse.json(entry);
   } catch (error) {
-    const { message, status } = handleDatabaseError(error, routePath);
-    return NextResponse.json({ error: message }, { status });
+    const { message, status, shouldRetry } = handleDatabaseError(error, routePath);
+    return NextResponse.json(
+      { 
+        error: message,
+        retryable: shouldRetry,
+        timestamp: new Date().toISOString()
+      },
+      { 
+        status,
+        headers: shouldRetry ? { 'Retry-After': '5' } : {}
+      }
+    );
+  }
+}
+
+/**
+ * Get allowed fields for each entity type
+ */
+function getAllowedFieldsForType(lexicalType: LexicalType): string[] {
+  const commonFields = ['id', 'gloss', 'lemmas', 'src_lemmas', 'examples', 'lexfile'];
+  
+  switch (lexicalType) {
+    case 'verbs':
+      return [...commonFields, 'roles', 'role_groups', 'vendler_class', 'frame_id'];
+    case 'nouns':
+      return [...commonFields, 'countable', 'proper', 'collective', 'concrete', 'predicate'];
+    case 'adjectives':
+      return [...commonFields, 'gradable', 'predicative', 'attributive', 'subjective', 'relational'];
+    case 'adverbs':
+      return [...commonFields, 'gradable'];
+    default:
+      return commonFields;
   }
 }
 
 /**
  * Handles PATCH (update) requests for any lexical type
+ * Now stages changes for version control instead of direct updates
+ * Supports verb-specific roles handling
  */
 export async function handleUpdateById(
   id: string,
@@ -127,24 +261,106 @@ export async function handleUpdateById(
   routePath: string
 ): Promise<NextResponse> {
   try {
-    const updatedEntry = await updateEntry(id, body as any);
+    const entityType = lexicalTypeToEntityType(lexicalType);
+    // TODO: Get actual user ID from auth context
+    const userId = 'current-user';
     
-    if (!updatedEntry) {
-      return NextResponse.json(
-        { error: `${getEntityName(lexicalType)} not found` },
-        { status: 404 }
-      );
+    const updates = body as Record<string, unknown>;
+    
+    // Validate that only allowed fields are being updated
+    const allowedFields = getAllowedFieldsForType(lexicalType);
+    const updateData: Record<string, unknown> = {};
+    
+    for (const [key, value] of Object.entries(updates)) {
+      if (allowedFields.includes(key)) {
+        updateData[key] = value;
+      }
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 });
+    }
+
+    // Handle verb-specific roles update
+    if (lexicalType === 'verbs') {
+      const hasRoles = 'roles' in updateData;
+      const hasRoleGroups = 'role_groups' in updateData;
+      
+      // Separate roles from other fields
+      const { roles, role_groups, ...otherFields } = updateData;
+
+      // Stage roles update if present
+      if (hasRoles || hasRoleGroups) {
+        const rolesResponse = await stageRolesUpdate(
+          id,
+          roles as unknown[] ?? [],
+          hasRoleGroups ? role_groups as unknown[] : undefined,
+          userId
+        );
+
+        // If only roles are being updated, return the roles response
+        if (Object.keys(otherFields).length === 0) {
+          return NextResponse.json(rolesResponse, {
+            headers: {
+              'Cache-Control': 'no-store, no-cache, must-revalidate',
+              'Pragma': 'no-cache',
+            },
+          });
+        }
+      }
+
+      // Stage other field updates for verbs
+      if (Object.keys(otherFields).length > 0) {
+        const response = await stageUpdate(entityType, id, otherFields, userId);
+        
+        return NextResponse.json(response, {
+          headers: {
+            'Cache-Control': 'no-store, no-cache, must-revalidate',
+            'Pragma': 'no-cache',
+          },
+        });
+      }
+
+      // If we got here with roles, return a combined response
+      return NextResponse.json({
+        staged: true,
+        message: 'Changes staged for review',
+      }, {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate',
+          'Pragma': 'no-cache',
+        },
+      });
     }
     
-    return NextResponse.json(updatedEntry);
+    // For non-verb entities, stage all updates directly
+    const response = await stageUpdate(entityType, id, updateData, userId);
+    
+    return NextResponse.json(response, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+        'Pragma': 'no-cache',
+      },
+    });
   } catch (error) {
-    const { message, status } = handleDatabaseError(error, routePath);
-    return NextResponse.json({ error: message }, { status });
+    const { message, status, shouldRetry } = handleDatabaseError(error, routePath);
+    return NextResponse.json(
+      { 
+        error: message,
+        retryable: shouldRetry,
+        timestamp: new Date().toISOString()
+      },
+      { 
+        status,
+        headers: shouldRetry ? { 'Retry-After': '5' } : {}
+      }
+    );
   }
 }
 
 /**
  * Handles DELETE requests for any lexical type
+ * Now stages deletion for version control instead of direct delete
  */
 export async function handleDeleteById(
   id: string,
@@ -152,28 +368,31 @@ export async function handleDeleteById(
   routePath: string
 ): Promise<NextResponse> {
   try {
-    const deletedEntry = await deleteEntry(id);
+    const entityType = lexicalTypeToEntityType(lexicalType);
+    // TODO: Get actual user ID from auth context
+    const userId = 'current-user';
     
-    if (!deletedEntry) {
-      return NextResponse.json(
-        { error: `${getEntityName(lexicalType)} not found` },
-        { status: 404 }
-      );
-    }
+    const response = await stageDelete(entityType, id, userId);
     
-    return NextResponse.json({ 
-      success: true, 
-      message: `${getEntityName(lexicalType)} ${id} deleted successfully`,
-      deletedEntry 
-    }, {
+    return NextResponse.json(response, {
       headers: {
         'Cache-Control': 'no-store, no-cache, must-revalidate',
         'Pragma': 'no-cache',
       },
     });
   } catch (error) {
-    const { message, status } = handleDatabaseError(error, routePath);
-    return NextResponse.json({ error: message }, { status });
+    const { message, status, shouldRetry } = handleDatabaseError(error, routePath);
+    return NextResponse.json(
+      { 
+        error: message,
+        retryable: shouldRetry,
+        timestamp: new Date().toISOString()
+      },
+      { 
+        status,
+        headers: shouldRetry ? { 'Retry-After': '5' } : {}
+      }
+    );
   }
 }
 
@@ -235,8 +454,18 @@ export async function handleGetRelations(
       targetRelations: entry.targetRelations
     });
   } catch (error) {
-    const { message, status } = handleDatabaseError(error, routePath);
-    return NextResponse.json({ error: message }, { status });
+    const { message, status, shouldRetry } = handleDatabaseError(error, routePath);
+    return NextResponse.json(
+      { 
+        error: message,
+        retryable: shouldRetry,
+        timestamp: new Date().toISOString()
+      },
+      { 
+        status,
+        headers: shouldRetry ? { 'Retry-After': '5' } : {}
+      }
+    );
   }
 }
 
@@ -258,15 +487,62 @@ export async function handleGetGraph(
       );
     }
     
-    return NextResponse.json(node);
+    // Apply pending changes to the main node (merges pending values for preview)
+    const entityType = lexicalTypeToEntityType(lexicalType);
+    const { entity: nodeWithPendingValues, pending: pendingInfo } = await applyPendingToEntity(
+      node,
+      entityType,
+      BigInt(node.numericId)
+    );
+    
+    // Also check for pending info on parent/child nodes
+    const attachPendingToNodes = async (nodes: typeof node.parents) => {
+      if (!nodes || nodes.length === 0) return nodes;
+      
+      const nodesWithPending = await Promise.all(
+        nodes.map(async (n) => {
+          const pending = await getPendingInfoForEntity(entityType, BigInt(n.numericId));
+          return { ...n, pending };
+        })
+      );
+      return nodesWithPending;
+    };
+    
+    const [parentsWithPending, childrenWithPending] = await Promise.all([
+      attachPendingToNodes(nodeWithPendingValues.parents),
+      attachPendingToNodes(nodeWithPendingValues.children),
+    ]);
+    
+    return NextResponse.json({
+      ...nodeWithPendingValues,
+      pending: pendingInfo,
+      parents: parentsWithPending,
+      children: childrenWithPending,
+    });
   } catch (error) {
-    const { message, status } = handleDatabaseError(error, routePath);
-    return NextResponse.json({ error: message }, { status });
+    const { message, status, shouldRetry } = handleDatabaseError(error, routePath);
+    return NextResponse.json(
+      { 
+        error: message,
+        retryable: shouldRetry,
+        timestamp: new Date().toISOString()
+      },
+      { 
+        status,
+        headers: shouldRetry ? { 'Retry-After': '5' } : {}
+      }
+    );
   }
 }
 
 /**
+ * Valid moderation fields
+ */
+const VALID_MODERATION_FIELDS = ['flagged', 'flaggedReason', 'forbidden', 'forbiddenReason'];
+
+/**
  * Handles PATCH moderation requests for any lexical type
+ * Now stages moderation changes for version control
  */
 export async function handleModerationRequest(
   request: NextRequest,
@@ -290,16 +566,45 @@ export async function handleModerationRequest(
       );
     }
 
-    const count = await updateModerationStatus(ids, updates, lexicalType);
+    // Validate that at least one moderation field is being updated
+    const hasValidUpdate = Object.keys(updates).some(key => VALID_MODERATION_FIELDS.includes(key));
+    if (!hasValidUpdate) {
+      return NextResponse.json(
+        { error: 'At least one moderation field must be updated' },
+        { status: 400 }
+      );
+    }
+
+    const entityType = lexicalTypeToEntityType(lexicalType);
+    // TODO: Get actual user ID from auth context
+    const userId = 'current-user';
+    
+    const result = await stageModerationUpdates(entityType, ids, updates, userId);
     
     return NextResponse.json({ 
-      success: true,
-      count,
-      message: `Updated ${count} ${lexicalType}` 
+      staged: true,
+      staged_count: result.staged_count,
+      changeset_ids: result.changeset_ids,
+      message: `Staged moderation changes for ${result.staged_count} ${lexicalType}` 
+    }, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+        'Pragma': 'no-cache',
+      },
     });
   } catch (error) {
-    const { message, status } = handleDatabaseError(error, `PATCH /api/${lexicalType}/moderation`);
-    return NextResponse.json({ error: message }, { status });
+    const { message, status, shouldRetry } = handleDatabaseError(error, `PATCH /api/${lexicalType}/moderation`);
+    return NextResponse.json(
+      { 
+        error: message,
+        retryable: shouldRetry,
+        timestamp: new Date().toISOString()
+      },
+      { 
+        status,
+        headers: shouldRetry ? { 'Retry-After': '5' } : {}
+      }
+    );
   }
 }
 

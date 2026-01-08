@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { stageUpdate, stageDelete } from '@/lib/version-control';
 
 export async function GET(
   request: NextRequest,
@@ -79,7 +80,6 @@ export async function PATCH(
 ) {
   try {
     const { id: idParam } = await params;
-    const id = BigInt(idParam);
     const body = await request.json();
 
     // Build update object dynamically based on provided fields
@@ -96,62 +96,57 @@ export async function PATCH(
     if (body.flaggedReason !== undefined) updateData.flagged_reason = body.flaggedReason;
     if (body.forbidden !== undefined) updateData.forbidden = body.forbidden;
     if (body.forbiddenReason !== undefined) updateData.forbidden_reason = body.forbiddenReason;
-    
-    // Update timestamp
-    updateData.updated_at = new Date();
 
-    // Check if frame exists
-    const existingFrame = await prisma.frames.findUnique({
-      where: { id },
-    });
-
-    if (!existingFrame) {
+    if (Object.keys(updateData).length === 0) {
       return NextResponse.json(
-        { error: 'Frame not found' },
-        { status: 404 }
+        { error: 'No valid fields to update' },
+        { status: 400 }
       );
     }
 
-    // Update the frame
-    const updatedFrame = await prisma.frames.update({
-      where: { id },
-      data: updateData,
-      include: {
-        frame_roles: {
-          include: {
-            role_types: true,
-          },
-        },
+    // TODO: Get actual user ID from auth context
+    const userId = 'current-user';
+
+    const response = await stageUpdate('frame', idParam, updateData, userId);
+
+    return NextResponse.json(response, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+        'Pragma': 'no-cache',
       },
     });
-
-    // Serialize BigInt fields
-    const serialized = {
-      ...updatedFrame,
-      id: updatedFrame.id.toString(),
-      frame_roles: updatedFrame.frame_roles.map(role => ({
-        id: role.id.toString(),
-        description: role.description,
-        notes: role.notes,
-        main: role.main,
-        examples: role.examples,
-        role_type: {
-          id: role.role_types.id.toString(),
-          code: role.role_types.code,
-          label: role.role_types.label,
-          generic_description: role.role_types.generic_description,
-          explanation: role.role_types.explanation,
-        },
-      })),
-    };
-
-    return NextResponse.json(serialized);
   } catch (error) {
-    console.error('[API] Error updating frame:', error);
+    console.error('[API] Error staging frame update:', error);
     return NextResponse.json(
-      { error: 'Failed to update frame' },
+      { error: 'Failed to stage frame update' },
       { status: 500 }
     );
   }
 }
 
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id: idParam } = await params;
+    
+    // TODO: Get actual user ID from auth context
+    const userId = 'current-user';
+
+    const response = await stageDelete('frame', idParam, userId);
+
+    return NextResponse.json(response, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+        'Pragma': 'no-cache',
+      },
+    });
+  } catch (error) {
+    console.error('[API] Error staging frame delete:', error);
+    return NextResponse.json(
+      { error: 'Failed to stage frame deletion' },
+      { status: 500 }
+    );
+  }
+}

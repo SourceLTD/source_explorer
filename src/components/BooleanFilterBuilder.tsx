@@ -35,11 +35,11 @@ export default function BooleanFilterBuilder({ pos, value, onChange, className }
     });
 
   return (
-    <div className={`rounded-md border border-gray-200 bg-white ${className ?? ''}`}>
+    <div className={`rounded-xl border border-gray-200 bg-white ${className ?? ''}`}>
       <GroupEditor pos={pos} node={value} fields={fields} onChange={onChange} />
       <div className="flex gap-2 border-t border-gray-200 p-2">
-        <button onClick={addRule} className="cursor-pointer rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 hover:bg-gray-100" type="button">+ Add Rule</button>
-        <button onClick={addGroup} className="cursor-pointer rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 hover:bg-gray-100" type="button">+ Add Group</button>
+        <button onClick={addRule} className="cursor-pointer rounded-xl border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 hover:bg-gray-100" type="button">+ Add Rule</button>
+        <button onClick={addGroup} className="cursor-pointer rounded-xl border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 hover:bg-gray-100" type="button">+ Add Group</button>
       </div>
     </div>
   );
@@ -77,7 +77,7 @@ function GroupEditor({ pos, node, fields, onChange }: { pos: Pos; node: BooleanF
               <RuleEditor rule={child} fields={fields} onChange={next => updateChild(index, next)} />
             )}
             <div className="mt-1 flex justify-end">
-              <button onClick={() => removeChild(index)} className="cursor-pointer rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 hover:bg-gray-100" type="button">
+              <button onClick={() => removeChild(index)} className="cursor-pointer rounded-xl border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 hover:bg-gray-100" type="button">
                 Remove
               </button>
             </div>

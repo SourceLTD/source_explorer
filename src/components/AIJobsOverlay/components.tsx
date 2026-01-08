@@ -30,7 +30,7 @@ export const StatusPill = memo(function StatusPill({ status }: { status: Seriali
 
 export const Metric = memo(function Metric({ label, value, helper }: { label: string; value: string | JSX.Element; helper?: string }) {
   return (
-    <div className="rounded-md border border-gray-200 bg-white p-3 shadow-sm">
+    <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-lg">
       <div className="text-xs font-medium text-gray-500">{label}</div>
       <div className="mt-1 text-sm font-semibold text-gray-900">{value}</div>
       {helper && <div className="text-[11px] text-gray-500">{helper}</div>}

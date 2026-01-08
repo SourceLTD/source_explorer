@@ -120,7 +120,7 @@ export default function SearchBox({ onSelectResult, onSearchChange, placeholder 
           onKeyDown={handleKeyDown}
           onFocus={() => query && setIsOpen(true)}
           placeholder={placeholder}
-          className="w-full px-4 py-2 pr-10 text-base font-medium text-gray-900 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+          className="w-full px-4 py-2 pr-10 text-base font-medium text-gray-900 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
         />
         <div className="absolute inset-y-0 right-0 flex items-center pr-3">
           {isLoading ? (
@@ -134,7 +134,7 @@ export default function SearchBox({ onSelectResult, onSearchChange, placeholder 
       </div>
 
       {isOpen && results.length > 0 && (
-        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-[600px] overflow-y-auto">
+        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-[600px] overflow-y-auto">
                       {results.map((result) => (
             <button
               key={result.id}
@@ -178,7 +178,7 @@ export default function SearchBox({ onSelectResult, onSearchChange, placeholder 
       )}
 
       {isOpen && results.length === 0 && query && !isLoading && (
-        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg">
+        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg">
           <div className="px-4 py-3 text-gray-500 text-sm">
             No results found for &quot;{query}&quot;
           </div>

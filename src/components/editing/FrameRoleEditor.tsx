@@ -31,7 +31,7 @@ export function FrameRoleEditor({
   return (
     <div className="space-y-3">
       {roles.map((role) => (
-        <div key={role.clientId} className={`p-3 border rounded-lg ${role.main ? 'border-blue-300 bg-blue-50' : 'border-purple-300 bg-purple-50'}`}>
+        <div key={role.clientId} className={`p-3 border rounded-xl ${role.main ? 'border-blue-300 bg-blue-50' : 'border-purple-300 bg-purple-50'}`}>
           <div className="flex items-center justify-between mb-2">
             <select
               value={role.roleType}
@@ -97,13 +97,13 @@ export function FrameRoleEditor({
       <div className="flex space-x-2">
         <button
           onClick={() => onRoleAdd(true)}
-          className="flex-1 px-3 py-2 border border-blue-300 rounded-md text-blue-600 hover:bg-blue-50 text-sm cursor-pointer"
+          className="flex-1 px-3 py-2 border border-blue-300 rounded-xl text-blue-600 hover:bg-blue-50 text-sm cursor-pointer"
         >
           + Add Main Role
         </button>
         <button
           onClick={() => onRoleAdd(false)}
-          className="flex-1 px-3 py-2 border border-purple-300 rounded-md text-purple-600 hover:bg-purple-50 text-sm cursor-pointer"
+          className="flex-1 px-3 py-2 border border-purple-300 rounded-xl text-purple-600 hover:bg-purple-50 text-sm cursor-pointer"
         >
           + Add Alt Role
         </button>
