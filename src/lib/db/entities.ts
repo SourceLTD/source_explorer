@@ -26,9 +26,9 @@ function buildCommonWhereConditions(
     lemmas,
     examples,
     flaggedReason,
-    forbiddenReason,
+    unverifiableReason,
     flagged,
-    forbidden,
+    verifiable,
     isMwe,
     frame_id,
     flaggedByJobId,
@@ -93,9 +93,9 @@ function buildCommonWhereConditions(
     });
   }
 
-  if (forbiddenReason) {
+  if (unverifiableReason) {
     conditions.push({
-      forbidden_reason: { contains: forbiddenReason, mode: 'insensitive' },
+      unverifiable_reason: { contains: unverifiableReason, mode: 'insensitive' },
     });
   }
 
@@ -104,8 +104,8 @@ function buildCommonWhereConditions(
     conditions.push({ flagged });
   }
 
-  if (forbidden !== undefined) {
-    conditions.push({ forbidden });
+  if (verifiable !== undefined) {
+    conditions.push({ verifiable });
   }
 
   // isMwe filter (for non-verb entities)
@@ -540,8 +540,8 @@ async function executeVerbQuery(
       examples: entry.examples,
       flagged: entry.flagged ?? undefined,
       flaggedReason: entry.flagged_reason ?? undefined,
-      forbidden: entry.forbidden ?? undefined,
-      forbiddenReason: entry.forbidden_reason ?? undefined,
+      verifiable: entry.verifiable ?? undefined,
+      unverifiableReason: entry.unverifiable_reason ?? undefined,
       frame_id: frameId ? frameId.toString() : null,
       frame: frameData?.label || null,
       vendler_class: entry.vendler_class ?? null,
@@ -693,8 +693,8 @@ async function executeNonVerbQuery(
       examples: entry.examples as string[],
       flagged: (entry.flagged as boolean) ?? undefined,
       flaggedReason: (entry.flagged_reason as string) || undefined,
-      forbidden: (entry.forbidden as boolean) ?? undefined,
-      forbiddenReason: (entry.forbidden_reason as string) || undefined,
+      verifiable: (entry.verifiable as boolean) ?? undefined,
+      unverifiableReason: (entry.unverifiable_reason as string) || undefined,
       frame_id: frameId ? frameId.toString() : null,
       frame: frameData?.label || null,
       vendler_class: null,

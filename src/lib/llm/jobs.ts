@@ -272,8 +272,8 @@ function buildVariableMap(entry: LexicalEntrySummary): Record<string, string> {
     examples_json: JSON.stringify(entry.examples ?? [], null, 2),
     flagged: entry.flagged ? 'true' : 'false',
     flagged_reason: entry.flagged_reason ?? '',
-    forbidden: entry.forbidden ? 'true' : 'false',
-    forbidden_reason: entry.forbidden_reason ?? '',
+    verifiable: entry.verifiable ? 'true' : 'false',
+    unverifiable_reason: entry.unverifiable_reason ?? '',
     label: entry.label ?? '',
     lexfile: entry.lexfile ?? '',
   };
@@ -285,8 +285,8 @@ function buildVariableMap(entry: LexicalEntrySummary): Record<string, string> {
     base.prototypical_synset = entry.prototypical_synset ?? '';
     base.flagged = entry.flagged ? 'true' : 'false';
     base.flagged_reason = entry.flagged_reason ?? '';
-    base.forbidden = entry.forbidden ? 'true' : 'false';
-    base.forbidden_reason = entry.forbidden_reason ?? '';
+    base.verifiable = entry.verifiable ? 'true' : 'false';
+    base.unverifiable_reason = entry.unverifiable_reason ?? '';
   }
 
   // Add additional fields (includes frame.* fields for verbs)
@@ -509,8 +509,8 @@ async function fetchEntriesByIds(pos: PartOfSpeech, ids: string[]): Promise<Lexi
         prototypical_synset: true,
         flagged: true,
         flagged_reason: true,
-        forbidden: true,
-        forbidden_reason: true,
+        verifiable: true,
+        unverifiable_reason: true,
       },
     });
     const byId = new Map(records.map(record => [record.id.toString(), record]));
@@ -529,8 +529,8 @@ async function fetchEntriesByIds(pos: PartOfSpeech, ids: string[]): Promise<Lexi
         prototypical_synset: record.prototypical_synset,
         flagged: record.flagged,
         flagged_reason: record.flagged_reason,
-        forbidden: record.forbidden,
-        forbidden_reason: record.forbidden_reason,
+        verifiable: record.verifiable,
+        unverifiable_reason: record.unverifiable_reason,
       }));
   }
 
@@ -558,8 +558,8 @@ async function fetchEntriesByFrameIds(
       prototypical_synset: true,
       flagged: true,
       flagged_reason: true,
-      forbidden: true,
-      forbidden_reason: true,
+      verifiable: true,
+      unverifiable_reason: true,
       frame_roles: {
         select: {
           id: true,
@@ -612,8 +612,8 @@ async function fetchEntriesByFrameIds(
         prototypical_synset: frame.prototypical_synset,
         flagged: frame.flagged,
         flagged_reason: frame.flagged_reason,
-        forbidden: frame.forbidden,
-        forbidden_reason: frame.forbidden_reason,
+        verifiable: frame.verifiable,
+        unverifiable_reason: frame.unverifiable_reason,
       });
     }
   }
@@ -915,8 +915,8 @@ async function fetchEntriesByFilters(pos: PartOfSpeech, filters: { limit?: numbe
         prototypical_synset: true,
         flagged: true,
         flagged_reason: true,
-        forbidden: true,
-        forbidden_reason: true,
+        verifiable: true,
+        unverifiable_reason: true,
       } as any,
     });
     return records.map(record => ({
@@ -932,8 +932,8 @@ async function fetchEntriesByFilters(pos: PartOfSpeech, filters: { limit?: numbe
       prototypical_synset: record.prototypical_synset,
       flagged: record.flagged,
       flagged_reason: record.flagged_reason,
-      forbidden: record.forbidden,
-      forbidden_reason: record.forbidden_reason,
+      verifiable: record.verifiable,
+      unverifiable_reason: record.unverifiable_reason,
     }));
   }
 

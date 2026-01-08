@@ -23,6 +23,16 @@ function serializeBigInt(obj: unknown): unknown {
   return obj;
 }
 
+// Helper to check if a changeset is non-empty
+// UPDATE operations need field_changes, CREATE/DELETE use snapshots
+function isNonEmptyChangeset(changeset: { operation: string; field_changes: unknown[] }): boolean {
+  if (changeset.operation === 'update') {
+    return changeset.field_changes.length > 0;
+  }
+  // CREATE and DELETE operations don't use field_changes
+  return true;
+}
+
 // GET /api/changegroups/pending - Get all pending changes for review
 export async function GET(request: NextRequest) {
   try {
@@ -55,6 +65,12 @@ export async function GET(request: NextRequest) {
       },
     });
 
+    // Filter out empty changesets from each changegroup
+    const changegroupsWithNonEmpty = changegroups.map(cg => ({
+      ...cg,
+      changesets: cg.changesets.filter(isNonEmptyChangeset),
+    }));
+
     // Get ungrouped pending changesets (those without a changegroup)
     const ungroupedChangesets = await prisma.changesets.findMany({
       where: {
@@ -69,14 +85,20 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    // Calculate total pending count
-    const totalPendingChangesets = changegroups.reduce(
+    // Filter out empty ungrouped changesets
+    const nonEmptyUngroupedChangesets = ungroupedChangesets.filter(isNonEmptyChangeset);
+
+    // Calculate total pending count (using filtered changesets)
+    const totalPendingChangesets = changegroupsWithNonEmpty.reduce(
       (sum, cg) => sum + cg.changesets.length,
       0
-    ) + ungroupedChangesets.length;
+    ) + nonEmptyUngroupedChangesets.length;
+
+    // Filter out changegroups that have no non-empty changesets
+    const nonEmptyChangegroups = changegroupsWithNonEmpty.filter(cg => cg.changesets.length > 0);
 
     // Transform changegroups to group changesets by entity type
-    const transformedChangegroups = changegroups.map(cg => {
+    const transformedChangegroups = nonEmptyChangegroups.map(cg => {
       // Group changesets by entity_type
       const byEntityType: Record<string, typeof cg.changesets> = {};
       for (const cs of cg.changesets) {
@@ -139,9 +161,9 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    // Group ungrouped changesets by entity type
-    const ungroupedByType: Record<string, typeof ungroupedChangesets> = {};
-    for (const cs of ungroupedChangesets) {
+    // Group ungrouped changesets by entity type (using filtered list)
+    const ungroupedByType: Record<string, typeof nonEmptyUngroupedChangesets> = {};
+    for (const cs of nonEmptyUngroupedChangesets) {
       if (!ungroupedByType[cs.entity_type]) {
         ungroupedByType[cs.entity_type] = [];
       }
@@ -183,7 +205,7 @@ export async function GET(request: NextRequest) {
       changegroups: transformedChangegroups,
       ungrouped_changesets_by_type: transformedUngrouped,
       total_pending_changesets: totalPendingChangesets,
-      total_changegroups: changegroups.length,
+      total_changegroups: nonEmptyChangegroups.length,
     });
   } catch (error) {
     console.error('Error getting pending changegroups:', error);

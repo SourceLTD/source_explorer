@@ -222,14 +222,14 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
     }
   };
 
-  const handleForbidToggle = async () => {
+  const handleVerifiableToggle = async () => {
     if (!node) return;
     setIsUpdating(true);
     try {
-      await mutations.toggleForbidden(node.id, node.forbidden ?? false);
+      await mutations.toggleVerifiable(node.id, node.verifiable ?? true);
       await onUpdate();
     } catch (err) {
-      console.error('Error toggling forbidden:', err);
+      console.error('Error toggling verifiable:', err);
     } finally {
       setIsUpdating(false);
     }
@@ -291,9 +291,9 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
           {/* Moderation Section */}
           <ModerationButtons
             flagged={node.flagged ?? false}
-            forbidden={node.forbidden ?? false}
+            verifiable={node.verifiable ?? true}
             onFlagToggle={handleFlagToggle}
-            onForbidToggle={handleForbidToggle}
+            onVerifiableToggle={handleVerifiableToggle}
           />
 
           {/* Basic Info Section (for non-frame modes) */}

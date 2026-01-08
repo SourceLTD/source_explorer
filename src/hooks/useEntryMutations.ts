@@ -180,20 +180,20 @@ export function useEntryMutations(mode: Mode) {
     }
   }, [apiPrefix]);
 
-  const toggleForbidden = useCallback(async (entryId: string, currentForbidden: boolean): Promise<void> => {
+  const toggleVerifiable = useCallback(async (entryId: string, currentVerifiable: boolean): Promise<void> => {
     const response = await fetch(`${apiPrefix}/moderation`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         ids: [entryId],
         updates: {
-          forbidden: !currentForbidden
+          verifiable: !currentVerifiable
         }
       })
     });
 
     if (!response.ok) {
-      throw new Error('Failed to update forbidden status');
+      throw new Error('Failed to update verifiable status');
     }
   }, [apiPrefix]);
 
@@ -231,7 +231,7 @@ export function useEntryMutations(mode: Mode) {
     updateFrameRoles,
     deleteEntry,
     toggleFlag,
-    toggleForbidden,
+    toggleVerifiable,
   };
 }
 

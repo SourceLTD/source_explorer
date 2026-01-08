@@ -10,7 +10,7 @@ import { ChevronLeftIcon, ChevronRightIcon, ClipboardDocumentIcon, ArrowPathIcon
 import LoadingSpinner from '@/components/LoadingSpinner';
 
 import type { AIJobsOverlayProps, JobListResponse, PreviewResponse } from './types';
-import { MODEL_OPTIONS, DEFAULT_PROMPT, DEFAULT_LABEL, STEPPER_STEPS, STEP_TITLES, type StepperStep } from './constants';
+import { MODEL_OPTIONS, DEFAULT_PROMPTS, DEFAULT_LABEL, STEPPER_STEPS, STEP_TITLES, type StepperStep } from './constants';
 import {
   calculateCursorPosition,
   getReplacementRange,
@@ -46,7 +46,8 @@ export function AIJobsOverlay({
   const [priority, setPriority] = useState<'flex' | 'normal' | 'priority'>('normal');
   const [reasoningEffort, setReasoningEffort] = useState<'low' | 'medium' | 'high'>('medium');
   const [label, setLabel] = useState(DEFAULT_LABEL);
-  const [scopeMode, setScopeMode] = useState<'selection' | 'manual' | 'frames' | 'all' | 'filters'>('selection');
+  const [labelManuallyEdited, setLabelManuallyEdited] = useState(false);
+  const [scopeMode, setScopeMode] = useState<'selection' | 'manual' | 'frames' | 'all' | 'filters'>('all');
   const [filterGroup, setFilterGroup] = useState<BooleanFilterGroup>(createEmptyGroup());
   const [filterLimit, setFilterLimit] = useState<number>(50);
   const [filterValidateLoading, setFilterValidateLoading] = useState(false);
@@ -71,7 +72,8 @@ export function AIJobsOverlay({
   const [frameIdActiveIndex, setFrameIdActiveIndex] = useState<number>(-1);
   const manualIdInputRef = useRef<HTMLTextAreaElement | null>(null);
   const frameIdInputRef = useRef<HTMLTextAreaElement | null>(null);
-  const [promptTemplate, setPromptTemplate] = useState(DEFAULT_PROMPT);
+  const [promptTemplate, setPromptTemplate] = useState(DEFAULT_PROMPTS.moderation);
+  const [promptManuallyEdited, setPromptManuallyEdited] = useState(false);
   const [preview, setPreview] = useState<PreviewResponse | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [currentPreviewIndex, setCurrentPreviewIndex] = useState(0);
@@ -100,7 +102,7 @@ export function AIJobsOverlay({
   const [jobType, setJobType] = useState<'moderation' | 'editing' | 'reallocation'>('moderation');
   const [targetFields, setTargetFields] = useState<string[]>([]);
   const [reallocationEntityTypes, setReallocationEntityTypes] = useState<('verbs' | 'nouns' | 'adjectives' | 'adverbs')[]>([]);
-  const [currentStep, setCurrentStep] = useState<StepperStep>('details');
+  const [currentStep, setCurrentStep] = useState<StepperStep>('scope');
   const [variableActiveIndex, setVariableActiveIndex] = useState<number>(-1);
   const [submissionProgress, setSubmissionProgress] = useState<{
     jobId: string;
@@ -118,6 +120,60 @@ export function AIJobsOverlay({
 
   const parsedSelectionCount = selectedIds.length;
 
+  // Generate dynamic label based on job type, scope, and timestamp
+  const generateDynamicLabel = useCallback(() => {
+    // Action based on job type
+    const action = jobType === 'moderation' ? 'Flag' : jobType === 'editing' ? 'Edit' : 'Reallocate';
+    
+    // Scope description
+    let scopeDesc: string;
+    switch (scopeMode) {
+      case 'all':
+        scopeDesc = `All ${mode.charAt(0).toUpperCase() + mode.slice(1)}`;
+        break;
+      case 'selection':
+        scopeDesc = `${parsedSelectionCount} Selected`;
+        break;
+      case 'manual':
+        const manualCount = manualIdsText.split(/[\s,;\n]+/).filter(s => s.trim()).length;
+        scopeDesc = `${manualCount} ${mode.charAt(0).toUpperCase() + mode.slice(1)}`;
+        break;
+      case 'frames':
+        const frameNames = frameIdsText.split(/[\s,;\n]+/).filter(s => s.trim()).slice(0, 2);
+        scopeDesc = frameNames.length > 0 ? frameNames.join(', ') : 'Frames';
+        if (frameIdsText.split(/[\s,;\n]+/).filter(s => s.trim()).length > 2) {
+          scopeDesc += '...';
+        }
+        break;
+      case 'filters':
+        scopeDesc = `Filtered ${mode.charAt(0).toUpperCase() + mode.slice(1)}`;
+        break;
+      default:
+        scopeDesc = mode.charAt(0).toUpperCase() + mode.slice(1);
+    }
+    
+    // DateTime in "Jan 8 14:30" format
+    const now = new Date();
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const dateTime = `${monthNames[now.getMonth()]} ${now.getDate()} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+    
+    return `${action} ${scopeDesc} - ${dateTime}`;
+  }, [jobType, scopeMode, mode, parsedSelectionCount, manualIdsText, frameIdsText]);
+
+  // Auto-update label when job type or scope changes (if not manually edited)
+  useEffect(() => {
+    if (!labelManuallyEdited && isCreating) {
+      setLabel(generateDynamicLabel());
+    }
+  }, [labelManuallyEdited, isCreating, generateDynamicLabel]);
+
+  // Auto-update prompt when job type changes (if not manually edited)
+  useEffect(() => {
+    if (!promptManuallyEdited && isCreating) {
+      setPromptTemplate(DEFAULT_PROMPTS[jobType]);
+    }
+  }, [jobType, promptManuallyEdited, isCreating]);
+
   const pendingJobsCount = useMemo(
     () => jobs.filter(job => job.status === 'queued' || job.status === 'running').length,
     [jobs]
@@ -125,16 +181,18 @@ export function AIJobsOverlay({
 
   const resetCreationFields = useCallback(() => {
     setLabel(DEFAULT_LABEL);
+    setLabelManuallyEdited(false);
     setModel(MODEL_OPTIONS[0].value);
     setJobType('moderation');
     setTargetFields([]);
     setReallocationEntityTypes([]);
     setPriority('normal');
     setReasoningEffort('medium');
-    setScopeMode('selection');
+    setScopeMode('all');
     setManualIdsText('');
     setFrameIdsText('');
-    setPromptTemplate(DEFAULT_PROMPT);
+    setPromptTemplate(DEFAULT_PROMPTS.moderation);
+    setPromptManuallyEdited(false);
     setPreview(null);
     setSubmissionError(null);
     setSubmissionLoading(false);
@@ -151,12 +209,12 @@ export function AIJobsOverlay({
   const startCreateFlow = useCallback(() => {
     resetCreationFields();
     setIsCreating(true);
-    setCurrentStep('details');
+    setCurrentStep('scope');
   }, [resetCreationFields]);
 
   const closeCreateFlow = useCallback(() => {
     setIsCreating(false);
-    setCurrentStep('details');
+    setCurrentStep('scope');
     resetCreationFields();
   }, [resetCreationFields]);
 
@@ -175,14 +233,17 @@ export function AIJobsOverlay({
     const scope = job.scope as JobScope | null;
 
     // Load basic settings
+    const loadedJobType = config?.jobType ?? (job.job_type as 'moderation' | 'editing' | 'reallocation') ?? 'moderation';
     setLabel(job.label ?? DEFAULT_LABEL);
+    setLabelManuallyEdited(true); // Preserve loaded label from auto-update
     setModel(config?.model ?? MODEL_OPTIONS[0].value);
-    setJobType(config?.jobType ?? (job.job_type as any) ?? 'moderation');
+    setJobType(loadedJobType);
     setTargetFields(config?.targetFields ?? []);
     setReallocationEntityTypes(config?.reallocationEntityTypes ?? []);
     setPriority(serviceTierToPriority(config?.serviceTier));
     setReasoningEffort(config?.reasoning?.effort ?? 'medium');
-    setPromptTemplate(config?.promptTemplate ?? DEFAULT_PROMPT);
+    setPromptTemplate(config?.promptTemplate ?? DEFAULT_PROMPTS[loadedJobType]);
+    setPromptManuallyEdited(true); // Preserve loaded prompt from auto-update
 
     // Parse and load scope settings
     if (scope) {
@@ -224,7 +285,7 @@ export function AIJobsOverlay({
 
     // Manually start the creation flow (don't call startCreateFlow as it resets fields)
     setIsCreating(true);
-    setCurrentStep('details');
+    setCurrentStep('scope');
   }, [selectedIds, mode]);
 
   useEffect(() => {
@@ -377,12 +438,13 @@ export function AIJobsOverlay({
   const isLastStep = stepIndex === STEPPER_STEPS.length - 1;
 
   const nextDisabled = useMemo(() => {
-    if (currentStep === 'details') {
+    if (currentStep === 'scope') {
+      // Job type + scope validation
       if (jobType === 'editing' && targetFields.length === 0) return true;
       if (jobType === 'reallocation' && reallocationEntityTypes.length === 0) return true;
-      return false;
+      return !isScopeValid;
     }
-    if (currentStep === 'scope') return !isScopeValid;
+    if (currentStep === 'model') return false; // Model step has no required validation
     if (currentStep === 'prompt') return !promptIsValid;
     return false;
   }, [currentStep, isScopeValid, promptIsValid, jobType, targetFields, reallocationEntityTypes]);
@@ -550,62 +612,12 @@ export function AIJobsOverlay({
 
   const renderStepContent = () => {
     switch (currentStep) {
-      case 'details':
+      case 'scope':
         return (
           <div className="space-y-5">
-            <div>
-              <label className="block text-xs font-medium text-gray-600">Job Label</label>
-              <input
-                value={label}
-                onChange={event => setLabel(event.target.value)}
-                placeholder="Optional job label"
-                className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <p className="mt-2 text-xs text-gray-500">Give the batch a short name to identify it later in the jobs list.</p>
-            </div>
-            <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-600">Model</label>
-                <select
-                  value={model}
-                  onChange={event => setModel(event.target.value)}
-                  className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  {MODEL_OPTIONS.map(option => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600">Priority</label>
-                <select
-                  value={priority}
-                  onChange={event => setPriority(event.target.value as 'flex' | 'normal' | 'priority')}
-                  className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="flex">flex</option>
-                  <option value="normal">normal</option>
-                  <option value="priority">priority</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600">Reasoning Effort</label>
-                <select
-                  value={reasoningEffort}
-                  onChange={event => setReasoningEffort(event.target.value as 'low' | 'medium' | 'high')}
-                  className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="low">low</option>
-                  <option value="medium">medium</option>
-                  <option value="high">high</option>
-                </select>
-              </div>
-            </div>
-
+            {/* Job Type Selection */}
             <div className="space-y-3">
-              <label className="block text-xs font-medium text-gray-600">Job Type</label>
+              <label className="block text-xs font-semibold text-gray-700">Job Type</label>
               <div className="flex gap-3">
                 <label className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border p-3 transition-colors ${jobType === 'moderation' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 hover:bg-gray-50'}`}>
                   <input
@@ -662,75 +674,15 @@ export function AIJobsOverlay({
               </div>
             </div>
 
-            {jobType === 'editing' && (
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-2">Target Fields for Editing</label>
-                <div className="flex flex-wrap gap-2">
-                  {availableVariables
-                    .filter(v => v.category === 'basic' && !['id', 'code', 'pos', 'flagged', 'flagged_reason'].includes(v.key))
-                    .map(variable => (
-                      <button
-                        key={variable.key}
-                        onClick={() => {
-                          setTargetFields(prev => 
-                            prev.includes(variable.key) 
-                              ? prev.filter(f => f !== variable.key)
-                              : [...prev, variable.key]
-                          );
-                        }}
-                        type="button"
-                        className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                          targetFields.includes(variable.key)
-                            ? 'bg-blue-600 text-white shadow-sm'
-                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                        }`}
-                      >
-                        {variable.label}
-                      </button>
-                    ))}
-                </div>
-                {targetFields.length === 0 && (
-                  <p className="mt-2 text-[10px] text-amber-600 font-medium">Select at least one field the AI should be allowed to suggest changes for.</p>
-                )}
-              </div>
-            )}
+            {/* Separator */}
+            <div className="border-t border-gray-200" />
 
-            {jobType === 'reallocation' && (
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-2">Entity Types to Reallocate</label>
-                <div className="flex flex-wrap gap-2">
-                  {(['verbs', 'nouns', 'adjectives', 'adverbs'] as const).map(entityType => (
-                    <button
-                      key={entityType}
-                      onClick={() => {
-                        setReallocationEntityTypes(prev => 
-                          prev.includes(entityType) 
-                            ? prev.filter(t => t !== entityType)
-                            : [...prev, entityType]
-                        );
-                      }}
-                      type="button"
-                      className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                        reallocationEntityTypes.includes(entityType)
-                          ? 'bg-blue-600 text-white shadow-sm'
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                      }`}
-                    >
-                      {entityType.charAt(0).toUpperCase() + entityType.slice(1)}
-                    </button>
-                  ))}
-                </div>
-                {reallocationEntityTypes.length === 0 && (
-                  <p className="mt-2 text-[10px] text-amber-600 font-medium">Select at least one entity type the AI can suggest reallocating.</p>
-                )}
-              </div>
-            )}
-          </div>
-        );
-      case 'scope':
-        return (
-          <div className="space-y-4">
-            <ScopeSelector
+            {/* Scope Selection */}
+            <div className="space-y-3">
+              <label className="block text-xs font-semibold text-gray-700">
+                {jobType === 'moderation' ? 'Entries to Flag' : jobType === 'editing' ? 'Entries to Edit' : 'Entries to Reallocate'}
+              </label>
+              <ScopeSelector
               mode={scopeMode}
               setMode={setScopeMode}
               selectedCount={parsedSelectionCount}
@@ -772,20 +724,160 @@ export function AIJobsOverlay({
                 frameFlagTarget={frameFlagTarget}
                 onFrameFlagTargetChange={setFrameFlagTarget}
             />
-            {!isScopeValid && (
-              <p className="text-xs text-red-500">
-                {scopeMode === 'manual' && manualIds.length > 0 && manualIds.some(id => !validatedManualIds.has(id))
-                  ? 'Some manual IDs are invalid. Please ensure all IDs exist in the database.'
-                  : scopeMode === 'frames' && (mode === 'verbs' || mode === 'frames') && frameIds.length > 0 && frameIds.some(id => !validatedFrameIds.has(id))
-                  ? (frameIncludeVerbs && mode === 'verbs' 
-                      ? 'Some frame IDs are invalid or have no associated verbs. Please ensure all frame IDs exist and have verbs.'
-                      : 'Some frame IDs are invalid. Please ensure all frame IDs exist in the database.')
-                  : scopeMode === 'frames' && (mode !== 'verbs' && mode !== 'frames')
-                  ? 'Frame scope is only available for verbs and frames.'
-                  : 'Choose at least one target before continuing.'}
-              </p>
+              {!isScopeValid && (
+                <p className="text-xs text-red-500">
+                  {scopeMode === 'manual' && manualIds.length > 0 && manualIds.some(id => !validatedManualIds.has(id))
+                    ? 'Some manual IDs are invalid. Please ensure all IDs exist in the database.'
+                    : scopeMode === 'frames' && (mode === 'verbs' || mode === 'frames') && frameIds.length > 0 && frameIds.some(id => !validatedFrameIds.has(id))
+                    ? (frameIncludeVerbs && mode === 'verbs' 
+                        ? 'Some frame IDs are invalid or have no associated verbs. Please ensure all frame IDs exist and have verbs.'
+                        : 'Some frame IDs are invalid. Please ensure all frame IDs exist in the database.')
+                    : scopeMode === 'frames' && (mode !== 'verbs' && mode !== 'frames')
+                    ? 'Frame scope is only available for verbs and frames.'
+                    : 'Choose at least one target before continuing.'}
+                </p>
+              )}
+            </div>
+
+            {/* Target Fields for Editing - only show when scope is valid */}
+            {jobType === 'editing' && isScopeValid && (
+              <>
+                <div className="border-t border-gray-200" />
+                <div className="space-y-3">
+                  <label className="block text-xs font-semibold text-gray-700">Target Fields</label>
+                  <div className="flex flex-wrap gap-2">
+                    {availableVariables
+                      .filter(v => v.category === 'basic' && !['id', 'code', 'pos', 'flagged', 'flagged_reason'].includes(v.key))
+                      .map(variable => (
+                        <label
+                          key={variable.key}
+                          className={`flex cursor-pointer items-center justify-center rounded-xl border px-3 py-2 transition-colors ${
+                            targetFields.includes(variable.key)
+                              ? 'border-blue-500 bg-blue-50 text-blue-700'
+                              : 'border-gray-200 hover:bg-gray-50'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={targetFields.includes(variable.key)}
+                            onChange={() => {
+                              setTargetFields(prev => 
+                                prev.includes(variable.key) 
+                                  ? prev.filter(f => f !== variable.key)
+                                  : [...prev, variable.key]
+                              );
+                            }}
+                            className="sr-only"
+                          />
+                          <span className="text-sm font-medium">{variable.label}</span>
+                        </label>
+                      ))}
+                  </div>
+                  {targetFields.length === 0 && (
+                    <p className="text-[10px] text-amber-600 font-medium">Select at least one field the AI should be allowed to suggest changes for.</p>
+                  )}
+                </div>
+              </>
             )}
-            <p className="text-xs text-gray-500">Scope defines which entries the AI will review in this batch.</p>
+
+            {/* Entity Types for Reallocation - only show when scope is valid */}
+            {jobType === 'reallocation' && isScopeValid && (
+              <>
+                <div className="border-t border-gray-200" />
+                <div className="space-y-3">
+                  <label className="block text-xs font-semibold text-gray-700">Entity Types to Reallocate</label>
+                  <div className="flex gap-3">
+                    {(['verbs', 'nouns', 'adjectives', 'adverbs'] as const).map(entityType => (
+                      <label
+                        key={entityType}
+                        className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border p-3 transition-colors ${
+                          reallocationEntityTypes.includes(entityType)
+                            ? 'border-blue-500 bg-blue-50 text-blue-700'
+                            : 'border-gray-200 hover:bg-gray-50'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={reallocationEntityTypes.includes(entityType)}
+                          onChange={() => {
+                            setReallocationEntityTypes(prev => 
+                              prev.includes(entityType) 
+                                ? prev.filter(t => t !== entityType)
+                                : [...prev, entityType]
+                            );
+                          }}
+                          className="sr-only"
+                        />
+                        <div className="text-center">
+                          <div className="text-sm font-semibold">{entityType.charAt(0).toUpperCase() + entityType.slice(1)}</div>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                  {reallocationEntityTypes.length === 0 && (
+                    <p className="text-[10px] text-amber-600 font-medium">Select at least one entity type the AI can suggest reallocating.</p>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        );
+      case 'model':
+        return (
+          <div className="space-y-5">
+            <div>
+              <label className="block text-xs font-medium text-gray-600">Job Label</label>
+              <input
+                value={label}
+                onChange={event => {
+                  setLabel(event.target.value);
+                  setLabelManuallyEdited(true);
+                }}
+                placeholder="Optional job label"
+                className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <p className="mt-2 text-xs text-gray-500">Give the batch a short name to identify it later in the jobs list.</p>
+            </div>
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600">Model</label>
+                <select
+                  value={model}
+                  onChange={event => setModel(event.target.value)}
+                  className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {MODEL_OPTIONS.map(option => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600">Priority</label>
+                <select
+                  value={priority}
+                  onChange={event => setPriority(event.target.value as 'flex' | 'normal' | 'priority')}
+                  className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="flex">flex</option>
+                  <option value="normal">normal</option>
+                  <option value="priority">priority</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600">Reasoning Effort</label>
+                <select
+                  value={reasoningEffort}
+                  onChange={event => setReasoningEffort(event.target.value as 'low' | 'medium' | 'high')}
+                  className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="low">low</option>
+                  <option value="medium">medium</option>
+                  <option value="high">high</option>
+                </select>
+              </div>
+            </div>
           </div>
         );
       case 'prompt':
@@ -1358,6 +1450,7 @@ export function AIJobsOverlay({
   const handlePromptChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
     const { value, selectionStart } = event.target;
     setPromptTemplate(value);
+    setPromptManuallyEdited(true);
 
     const uptoCursor = value.slice(0, selectionStart);
     const openIndex = uptoCursor.lastIndexOf('{{');

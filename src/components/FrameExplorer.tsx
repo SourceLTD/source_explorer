@@ -144,7 +144,7 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
     }
   };
 
-  const handleForbidToggle = async () => {
+  const handleVerifiableToggle = async () => {
     if (!currentFrame) return;
     try {
       await fetch('/api/frames/moderation', {
@@ -152,12 +152,12 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ids: [currentFrame.id],
-          forbidden: !currentFrame.forbidden,
+          verifiable: currentFrame.verifiable === false ? true : false,
         }),
       });
       await handleUpdate();
     } catch (err) {
-      console.error('Error toggling forbidden:', err);
+      console.error('Error toggling verifiable:', err);
     }
   };
 
@@ -182,8 +182,8 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
     prototypical_synset: currentFrame.prototypical_synset,
     flagged: currentFrame.flagged,
     flaggedReason: currentFrame.flaggedReason,
-    forbidden: currentFrame.forbidden,
-    forbiddenReason: currentFrame.forbiddenReason,
+    verifiable: currentFrame.verifiable,
+    unverifiableReason: currentFrame.unverifiableReason,
     frame_roles: currentFrame.roles?.map(r => ({
       id: r.id,
       description: r.description,
@@ -282,9 +282,9 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
                       Flagged
                     </span>
                   )}
-                  {currentFrame.forbidden && (
-                    <span className="px-2 py-0.5 text-xs font-medium bg-red-100 text-red-800 rounded-full">
-                      Forbidden
+                  {currentFrame.verifiable === false && (
+                    <span className="px-2 py-0.5 text-xs font-medium bg-gray-200 text-gray-800 rounded-full">
+                      Unverifiable
                     </span>
                   )}
                 </div>
@@ -300,14 +300,14 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
                     {currentFrame.flagged ? 'Unflag' : 'Flag'}
                   </button>
                   <button
-                    onClick={handleForbidToggle}
+                    onClick={handleVerifiableToggle}
                     className={`px-3 py-1 text-sm font-medium rounded-lg transition-colors ${
-                      currentFrame.forbidden 
-                        ? 'bg-red-100 text-red-700 hover:bg-red-200' 
+                      currentFrame.verifiable === false 
+                        ? 'bg-gray-200 text-gray-700 hover:bg-gray-300' 
                         : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                     }`}
                   >
-                    {currentFrame.forbidden ? 'Allow' : 'Forbid'}
+                    {currentFrame.verifiable === false ? 'Mark Verifiable' : 'Mark Unverifiable'}
                   </button>
                 </div>
               </div>

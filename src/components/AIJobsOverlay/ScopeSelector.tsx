@@ -88,9 +88,7 @@ export const ScopeSelector = memo(function ScopeSelector({
   onFrameFlagTargetChange?: (target: 'frame' | 'verb' | 'both') => void;
 }) {
   return (
-    <div className="space-y-2 rounded-xl border border-gray-200 bg-white p-3">
-      <div className="text-xs font-semibold text-gray-700">Scope</div>
-      <div className="space-y-2">
+    <div className="space-y-2">
         <label className={`flex items-start gap-2 rounded-xl border px-3 py-2 ${mode === 'selection' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
           <input
             type="radio"
@@ -367,7 +365,6 @@ export const ScopeSelector = memo(function ScopeSelector({
         </label>
         )}
 
-      </div>
     </div>
   );
 });

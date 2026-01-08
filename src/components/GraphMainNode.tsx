@@ -219,7 +219,6 @@ export default function GraphMainNode({
   const centerX = -nodeWidth / 2;
   const centerY = -nodeHeight / 2;
   
-  const isForbiddenNode = node.forbidden;
   const isSourceNode = node.legacy_id.startsWith('src');
   const hasPendingChanges = !!node.pending;
   const pendingOperation = node.pending?.operation;
@@ -282,8 +281,6 @@ export default function GraphMainNode({
         fill={
           hasPendingChanges && pendingOperation
             ? getPendingNodeFill(pendingOperation)
-            : isForbiddenNode 
-            ? '#fca5a5' 
             : '#3b82f6'
         }
         stroke={
@@ -291,7 +288,7 @@ export default function GraphMainNode({
             ? getPendingNodeStroke(pendingOperation)
             : isSourceNode 
             ? '#000000' 
-            : (isForbiddenNode ? '#dc2626' : '#1e40af')
+            : '#1e40af'
         }
         strokeWidth={hasPendingChanges ? 4 : 3}
         rx={8}

@@ -21,7 +21,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Validate that at least one moderation field is being updated
-    const VALID_MODERATION_FIELDS = ['flagged', 'flaggedReason', 'forbidden', 'forbiddenReason'];
+    const VALID_MODERATION_FIELDS = ['flagged', 'flaggedReason', 'verifiable', 'unverifiableReason'];
     const hasValidUpdate = Object.keys(updates).some(key => VALID_MODERATION_FIELDS.includes(key));
     
     if (!hasValidUpdate) {
@@ -56,7 +56,7 @@ export async function PATCH(request: NextRequest) {
       message = `Updated flagging status for ${directCount} entries. `;
     }
 
-    // Stage other moderation updates (e.g., forbidden)
+    // Stage other moderation updates (e.g., verifiable)
     if (Object.keys(stagedUpdates).length > 0) {
       const result = await stageModerationUpdates('verb', ids, stagedUpdates, userId);
       stagedCount = result.staged_count;

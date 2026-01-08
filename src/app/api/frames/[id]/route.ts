@@ -99,8 +99,8 @@ export async function PATCH(
     if (body.flagged !== undefined) moderationUpdates.flagged = body.flagged;
     if (body.flaggedReason !== undefined) moderationUpdates.flaggedReason = body.flaggedReason;
     
-    if (body.forbidden !== undefined) updateData.forbidden = body.forbidden;
-    if (body.forbiddenReason !== undefined) updateData.forbidden_reason = body.forbiddenReason;
+    if (body.verifiable !== undefined) updateData.verifiable = body.verifiable;
+    if (body.unverifiableReason !== undefined) updateData.unverifiable_reason = body.unverifiableReason;
 
     if (Object.keys(updateData).length === 0 && Object.keys(moderationUpdates).length === 0) {
       return NextResponse.json(

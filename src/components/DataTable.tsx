@@ -6,12 +6,14 @@ import { TableEntry, PaginatedResult, PaginationParams, POS_LABELS, Frame, Pendi
 import FilterPanel, { FilterState } from './FilterPanel';
 import ColumnVisibilityPanel, { ColumnConfig, ColumnVisibilityState } from './ColumnVisibilityPanel';
 import PageSizeSelector from './PageSizeSelector';
+import Pagination from './Pagination';
 import { api } from '@/lib/api-client';
 import AIJobsOverlay from './AIJobsOverlay';
 import { SparklesIcon, ExclamationTriangleIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import LoadingSpinner from './LoadingSpinner';
 import { showGlobalAlert } from '@/lib/alerts';
 import { PendingFieldIndicator, getPendingRowClasses } from './PendingChangeIndicator';
+import { Modal, EmptyState } from './ui';
 
 interface DataTableProps {
   onRowClick?: (entry: TableEntry | Frame) => void;
@@ -72,8 +74,8 @@ const VERBS_DEFAULT_COLUMNS: ColumnConfig[] = [
   { key: 'lexfile', label: 'Lexfile', visible: false, sortable: true },
   { key: 'flagged', label: 'Flagged', visible: false, sortable: true },
   { key: 'flaggedReason', label: 'Flagged Reason', visible: true, sortable: false },
-  { key: 'forbidden', label: 'Forbidden', visible: false, sortable: true },
-  { key: 'forbiddenReason', label: 'Forbidden Reason', visible: true, sortable: false },
+  { key: 'verifiable', label: 'Verifiable', visible: false, sortable: true },
+  { key: 'unverifiableReason', label: 'Unverifiable Reason', visible: true, sortable: false },
   { key: 'examples', label: 'Examples', visible: true, sortable: false },
   { key: 'vendler_class', label: 'Vendler Class', visible: false, sortable: true },
   { key: 'roles', label: 'Roles', visible: false, sortable: false },
@@ -94,8 +96,8 @@ const NOUNS_ADJECTIVES_DEFAULT_COLUMNS: ColumnConfig[] = [
   { key: 'isMwe', label: 'Multi-word Expression', visible: false, sortable: true },
   { key: 'flagged', label: 'Flagged', visible: false, sortable: true },
   { key: 'flaggedReason', label: 'Flagged Reason', visible: true, sortable: false },
-  { key: 'forbidden', label: 'Forbidden', visible: false, sortable: true },
-  { key: 'forbiddenReason', label: 'Forbidden Reason', visible: true, sortable: false },
+  { key: 'verifiable', label: 'Verifiable', visible: false, sortable: true },
+  { key: 'unverifiableReason', label: 'Unverifiable Reason', visible: true, sortable: false },
   { key: 'examples', label: 'Examples', visible: true, sortable: false },
   { key: 'createdAt', label: 'Created', visible: false, sortable: true },
   { key: 'updatedAt', label: 'Updated', visible: false, sortable: true },
@@ -115,8 +117,8 @@ const ADVERBS_COLUMNS: ColumnConfig[] = [
   { key: 'gradable', label: 'Gradable', visible: false, sortable: true },
   { key: 'flagged', label: 'Flagged', visible: false, sortable: true },
   { key: 'flaggedReason', label: 'Flagged Reason', visible: true, sortable: false },
-  { key: 'forbidden', label: 'Forbidden', visible: false, sortable: true },
-  { key: 'forbiddenReason', label: 'Forbidden Reason', visible: true, sortable: false },
+  { key: 'verifiable', label: 'Verifiable', visible: false, sortable: true },
+  { key: 'unverifiableReason', label: 'Unverifiable Reason', visible: true, sortable: false },
   { key: 'examples', label: 'Examples', visible: true, sortable: false },
   { key: 'createdAt', label: 'Created', visible: false, sortable: true },
   { key: 'updatedAt', label: 'Updated', visible: false, sortable: true },
@@ -147,8 +149,8 @@ const DEFAULT_COLUMN_WIDTHS: ColumnWidthState = {
   isMwe: 100,
   flagged: 100,
   flaggedReason: 250,
-  forbidden: 100,
-  forbiddenReason: 250,
+  verifiable: 100,
+  unverifiableReason: 250,
   examples: 250,
   vendler_class: 150,
   roles: 250,
@@ -233,10 +235,10 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
     const filters: FilterState = {};
     
     // Parse text filters
-    ['gloss', 'lemmas', 'examples', 'frames', 'flaggedReason', 'forbiddenReason'].forEach(key => {
+    ['gloss', 'lemmas', 'examples', 'frames', 'flaggedReason', 'unverifiableReason'].forEach(key => {
       const value = params.get(key);
       if (value !== null) {
-        filters[key as 'gloss' | 'lemmas' | 'examples' | 'frames' | 'flaggedReason' | 'forbiddenReason'] = value;
+        filters[key as 'gloss' | 'lemmas' | 'examples' | 'frames' | 'flaggedReason' | 'unverifiableReason'] = value;
       }
     });
     
@@ -249,10 +251,10 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
     });
     
     // Parse boolean filters
-    ['isMwe', 'flagged', 'forbidden'].forEach(key => {
+    ['isMwe', 'flagged', 'verifiable'].forEach(key => {
       const value = params.get(key);
       if (value !== null) {
-        filters[key as 'isMwe' | 'flagged' | 'forbidden'] = value === 'true';
+        filters[key as 'isMwe' | 'flagged' | 'verifiable'] = value === 'true';
       }
     });
     
@@ -474,10 +476,10 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
     const filters: FilterState = {};
     
     // Parse text filters
-    ['gloss', 'lemmas', 'examples', 'frames', 'flaggedReason', 'forbiddenReason'].forEach(key => {
+    ['gloss', 'lemmas', 'examples', 'frames', 'flaggedReason', 'unverifiableReason'].forEach(key => {
       const value = params.get(key);
       if (value !== null) {
-        filters[key as 'gloss' | 'lemmas' | 'examples' | 'frames' | 'flaggedReason' | 'forbiddenReason'] = value;
+        filters[key as 'gloss' | 'lemmas' | 'examples' | 'frames' | 'flaggedReason' | 'unverifiableReason'] = value;
       }
     });
     
@@ -490,10 +492,10 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
     });
     
     // Parse boolean filters
-    ['isMwe', 'flagged', 'forbidden'].forEach(key => {
+    ['isMwe', 'flagged', 'verifiable'].forEach(key => {
       const value = params.get(key);
       if (value !== null) {
-        filters[key as 'isMwe' | 'flagged' | 'forbidden'] = value === 'true';
+        filters[key as 'isMwe' | 'flagged' | 'verifiable'] = value === 'true';
       }
     });
     
@@ -605,14 +607,14 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
     params.delete('examples');
     params.delete('frames');
     params.delete('flaggedReason');
-    params.delete('forbiddenReason');
+    params.delete('unverifiableReason');
     params.delete('pos');
     params.delete('lexfile');
     params.delete('frame_id');
     params.delete('flaggedByJobId');
     params.delete('isMwe');
     params.delete('flagged');
-    params.delete('forbidden');
+    params.delete('verifiable');
     params.delete('parentsCountMin');
     params.delete('parentsCountMax');
     params.delete('childrenCountMin');
@@ -926,8 +928,8 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
   const handleModerationUpdate = async (updates: { 
     flagged?: boolean; 
     flaggedReason?: string;
-    forbidden?: boolean;
-    forbiddenReason?: string;
+    verifiable?: boolean;
+    unverifiableReason?: string;
   }) => {
     if (selection.selectedIds.size === 0) return;
 
@@ -964,8 +966,8 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
       setModerationModal({ isOpen: false, action: null, reason: '' });
 
       // Determine the action for user feedback
-      const action = updates.forbidden === true ? 'forbidden' : 
-                    updates.forbidden === false ? 'allowed' :
+      const action = updates.verifiable === false ? 'marked unverifiable' : 
+                    updates.verifiable === true ? 'marked verifiable' :
                     updates.flagged === true ? 'flagged' :
                     updates.flagged === false ? 'unflagged' : 'updated';
 
@@ -1140,8 +1142,8 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
     const updates: {
       flagged?: boolean;
       flaggedReason?: string;
-      forbidden?: boolean;
-      forbiddenReason?: string;
+      verifiable?: boolean;
+      unverifiableReason?: string;
     } = {};
 
     switch (action) {
@@ -1156,14 +1158,14 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
         updates.flaggedReason = null as unknown as string;
         break;
       case 'forbid':
-        updates.forbidden = true;
+        updates.verifiable = false;
         if (reason.trim()) {
-          updates.forbiddenReason = reason.trim();
+          updates.unverifiableReason = reason.trim();
         }
         break;
       case 'allow':
-        updates.forbidden = false;
-        updates.forbiddenReason = null as unknown as string;
+        updates.verifiable = true;
+        updates.unverifiableReason = null as unknown as string;
         break;
     }
 
@@ -1261,22 +1263,22 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
     if (selectedEntriesOnCurrentPage.length === 0) {
       // No selected entries on current page, but there might be selections on other pages
       // Default to showing all action buttons
-      return { allFlagged: false, noneFlagged: false, allForbidden: false, noneForbidden: false };
+      return { allFlagged: false, noneFlagged: false, allUnverifiable: false, noneUnverifiable: false };
     }
 
-    // Filter to only TableEntry items (frames don't have flagged/forbidden)
+    // Filter to only TableEntry items (frames don't have flagged/verifiable)
     const moderatableEntries = selectedEntriesOnCurrentPage.filter((entry): entry is TableEntry => 'flagged' in entry);
     
     if (moderatableEntries.length === 0) {
-      return { allFlagged: false, noneFlagged: true, allForbidden: false, noneForbidden: true };
+      return { allFlagged: false, noneFlagged: true, allUnverifiable: false, noneUnverifiable: true };
     }
 
     const allFlagged = moderatableEntries.every(entry => entry.flagged);
     const noneFlagged = moderatableEntries.every(entry => !entry.flagged);
-    const allForbidden = moderatableEntries.every(entry => entry.forbidden);
-    const noneForbidden = moderatableEntries.every(entry => !entry.forbidden);
+    const allUnverifiable = moderatableEntries.every(entry => entry.verifiable === false);
+    const noneUnverifiable = moderatableEntries.every(entry => entry.verifiable !== false);
     
-    return { allFlagged, noneFlagged, allForbidden, noneForbidden };
+    return { allFlagged, noneFlagged, allUnverifiable, noneUnverifiable };
   };
 
   const getSortIcon = (field: string) => {
@@ -1536,27 +1538,27 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
             )}
           </div>
         );
-      case 'forbidden':
+      case 'verifiable':
         if (isFrame(entry)) return <NACell />;
-        if (entry.forbidden === null || entry.forbidden === undefined) {
+        if (entry.verifiable === null || entry.verifiable === undefined) {
           return <NACell />;
         }
         return (
           <div className="flex items-center gap-1">
             <span className={`inline-block px-2 py-1 text-xs rounded font-medium ${
-              entry.forbidden 
-                ? 'bg-red-100 text-red-800' 
+              entry.verifiable 
+                ? 'bg-green-100 text-green-800' 
                 : 'bg-gray-100 text-gray-600'
             }`}>
-              {entry.forbidden ? 'Yes' : 'No'}
+              {entry.verifiable ? 'Yes' : 'No'}
             </span>
-            {entry.forbidden && entry.forbiddenReason && (
+            {!entry.verifiable && entry.unverifiableReason && (
               <div className="group relative">
-                <svg className="w-4 h-4 text-red-600 cursor-help" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 text-gray-600 cursor-help" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 <div className="absolute left-0 top-6 hidden group-hover:block z-50 w-64 p-2 bg-gray-900 text-white text-xs rounded">
-                  {entry.forbiddenReason}
+                  {entry.unverifiableReason}
                 </div>
               </div>
             )}
@@ -1572,14 +1574,14 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
             {entry.flaggedReason}
           </div>
         );
-      case 'forbiddenReason':
+      case 'unverifiableReason':
         if (isFrame(entry)) return <NACell />;
-        if (!entry.forbiddenReason) {
+        if (!entry.unverifiableReason) {
           return <span className="text-gray-400 text-xs">None</span>;
         }
         return (
           <div className="text-xs text-gray-700 break-words">
-            {entry.forbiddenReason}
+            {entry.unverifiableReason}
           </div>
         );
       case 'examples':
@@ -1722,8 +1724,8 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
     return `${width}px`;
   };
 
-  const getRowBackgroundColor = (entry: TableEntry | Frame, isSelected: boolean, isHovered: boolean = false) => {
-    // Priority: Selection > Pending Changes > Forbidden > Flagged > Default
+  const getRowBackgroundColor = (entry: TableEntry | Frame, isSelected: boolean) => {
+    // Priority: Selection > Pending Changes > Flagged > Default
     if (isSelected) {
       return 'bg-blue-50';
     }
@@ -1734,16 +1736,12 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
       return getPendingRowClasses(pending.operation);
     }
     
-    // Only TableEntry has flagged/forbidden properties
-    if ('forbidden' in entry && entry.forbidden) {
-      return isHovered ? 'hover:bg-red-200' : '';
-    }
-    
+    // Flagged rows get blue background (handled via inline styles, but add hover here)
     if ('flagged' in entry && entry.flagged) {
-      return isHovered ? 'hover:bg-blue-200' : '';
+      return 'bg-white hover:bg-blue-200';
     }
     
-    return 'hover:bg-gray-50';
+    return 'bg-white hover:bg-gray-50';
   };
 
   const getRowInlineStyles = (entry: TableEntry | Frame, isSelected: boolean) => {
@@ -1751,24 +1749,25 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
       return {};
     }
     
-    // Only TableEntry has flagged/forbidden properties
-    if (!('forbidden' in entry)) {
-      return {};
-    }
+    // Check for pending changes
+    const pending = (entry as TableEntry & { pending?: PendingChangeInfo | null }).pending;
+    const isFlagged = 'flagged' in entry && entry.flagged;
     
-    // When both forbidden and flagged, use red background with blue left border
-    if (entry.forbidden && entry.flagged) {
+    // If both pending AND flagged, show pending background with blue left border
+    if (pending && isFlagged) {
+      const pendingBackgroundColors: Record<string, string> = {
+        create: '#f0fdf4',  // green-50
+        update: '#fff7ed',  // orange-50
+        delete: '#fef2f2',  // red-50
+      };
       return { 
-        backgroundColor: '#ffc7ce',
-        borderLeft: '4px solid #3b82f6'
+        backgroundColor: pendingBackgroundColors[pending.operation] || '#fff7ed',
+        borderLeft: '4px solid #3b82f6'  // blue-500
       };
     }
     
-    if (entry.forbidden) {
-      return { backgroundColor: '#ffc7ce' };
-    }
-    
-    if (entry.flagged) {
+    // If only flagged (no pending), show blue background
+    if (isFlagged) {
       return { backgroundColor: '#add8ff' };
     }
     
@@ -1816,14 +1815,6 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
           <div className="flex items-center gap-1">
             <div className="w-6 h-4 rounded" style={{ backgroundColor: '#add8ff' }}></div>
             <span className="text-gray-600">Flagged</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="w-6 h-4 rounded" style={{ backgroundColor: '#ffc7ce' }}></div>
-            <span className="text-gray-600">Forbidden</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="w-6 h-4 rounded" style={{ backgroundColor: '#ffc7ce', borderLeft: '3px solid #3b82f6' }}></div>
-            <span className="text-gray-600">Both (blue left border)</span>
           </div>
         </div>
         
@@ -1875,9 +1866,9 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
             
             {/* Moderation Actions */}
             {selection.selectedIds.size > 0 && (() => {
-              const { allFlagged, noneFlagged, allForbidden, noneForbidden } = getSelectionModerationState();
+              const { allFlagged, noneFlagged, allUnverifiable, noneUnverifiable } = getSelectionModerationState();
               const mixedFlagged = !allFlagged && !noneFlagged;
-              const mixedForbidden = !allForbidden && !noneForbidden;
+              const mixedUnverifiable = !allUnverifiable && !noneUnverifiable;
               
               return (
                 <div className="flex items-center gap-2">
@@ -1910,19 +1901,19 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
                     </button>
                   )}
                   
-                  {/* Forbidden Actions */}
-                  {(noneForbidden || mixedForbidden) && (
+                  {/* Verifiable Actions */}
+                  {(noneUnverifiable || mixedUnverifiable) && (
                     <button
                       onClick={() => handleOpenModerationModal('forbid')}
-                      className="flex items-center gap-1 px-3 py-1 text-sm font-medium text-red-700 bg-red-100 border border-red-200 rounded-xl hover:bg-red-200 transition-colors cursor-pointer"
+                      className="flex items-center gap-1 px-3 py-1 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-200 rounded-xl hover:bg-gray-200 transition-colors cursor-pointer"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636m12.728 12.728L18.364 5.636M5.636 18.364l12.728-12.728" />
                       </svg>
-                      Mark Forbidden
+                      Mark Unverifiable
                     </button>
                   )}
-                  {(allForbidden || mixedForbidden) && (
+                  {(allUnverifiable || mixedUnverifiable) && (
                     <button
                       onClick={() => handleOpenModerationModal('allow')}
                       className="flex items-center gap-1 px-3 py-1 text-sm font-medium text-green-700 bg-green-100 border border-green-200 rounded-xl hover:bg-green-200 transition-colors cursor-pointer"
@@ -1930,7 +1921,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
-                      Allow
+                      Mark Verifiable
                     </button>
                   )}
                   {mode === 'verbs' && (
@@ -2008,7 +1999,7 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
                 return (
                 <tr
                   key={entry.id}
-                  className={`${getRowBackgroundColor(entry, isSelected)} ${isSelected ? 'bg-blue-50' : 'bg-white'}`}
+                  className={getRowBackgroundColor(entry, isSelected)}
                   style={getRowInlineStyles(entry, isSelected)}
                   onContextMenu={(e) => handleContextMenu(e, entry.id)}
                   onDoubleClick={(e) => {
@@ -2041,8 +2032,8 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
                       'examples': 'examples',
                       'flagged': 'flagged',
                       'flaggedReason': 'flagged_reason',
-                      'forbidden': 'forbidden',
-                      'forbiddenReason': 'forbidden_reason',
+                      'verifiable': 'verifiable',
+                      'unverifiableReason': 'unverifiable_reason',
                       'vendler_class': 'vendler_class',
                       'definition': 'definition',
                       'short_definition': 'short_definition',
@@ -2078,16 +2069,11 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
               })
             ) : (
               <tr>
-                <td colSpan={visibleColumns.length + 1} className="px-4 py-12 text-center">
-                  <div className="text-gray-400">
-                    <svg className="h-24 w-24 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                    <p className="text-lg">No entries found</p>
-                    {(searchQuery || Object.keys(filters).length > 0) && (
-                      <p className="text-sm mt-2">Try adjusting your search or filters</p>
-                    )}
-                  </div>
+                <td colSpan={visibleColumns.length + 1}>
+                  <EmptyState
+                    title="No entries found"
+                    description={(searchQuery || Object.keys(filters).length > 0) ? "Try adjusting your search or filters" : undefined}
+                  />
                 </td>
               </tr>
             )}
@@ -2096,57 +2082,15 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
       </div>
 
       {/* Pagination */}
-      <div className="px-4 py-3 border-t border-gray-200 bg-gray-50 flex items-center justify-between">
-        <div className="text-sm text-gray-700">
-          {hasData && data ? (
-            <>Showing {((data.page - 1) * data.limit) + 1} to {Math.min(data.page * data.limit, data.total)} of {data.total} entries</>
-          ) : (
-            <>Showing 0 of {data?.total || 0} entries</>
-          )}
-        </div>
-        
-        {hasData && data && (
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => handlePageChange(data.page - 1)}
-              disabled={!data.hasPrev || loading}
-              className="px-4 py-2 text-sm font-medium border border-gray-300 rounded-xl hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed bg-white text-gray-700 cursor-pointer"
-            >
-              Previous
-            </button>
-            
-            <div className="flex items-center gap-1">
-              {Array.from({ length: Math.min(5, data.totalPages) }, (_, i) => {
-                const pageNum = Math.max(1, Math.min(data.totalPages - 4, data.page - 2)) + i;
-                if (pageNum > data.totalPages) return null;
-                
-                return (
-                  <button
-                    key={pageNum}
-                    onClick={() => handlePageChange(pageNum)}
-                    disabled={loading}
-                    className={`px-4 py-2 text-sm font-medium border border-gray-300 rounded-xl min-w-[40px] ${
-                      pageNum === data.page
-                        ? 'bg-blue-600 text-white border-blue-600'
-                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100 hover:border-gray-400'
-                    } disabled:opacity-50 transition-colors cursor-pointer`}
-                  >
-                    {pageNum}
-                  </button>
-                );
-              })}
-            </div>
-            
-            <button
-              onClick={() => handlePageChange(data.page + 1)}
-              disabled={!data.hasNext || loading}
-              className="px-4 py-2 text-sm font-medium border border-gray-300 rounded-xl hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed bg-white text-gray-700 cursor-pointer"
-            >
-              Next
-            </button>
-          </div>
-        )}
-      </div>
+      <Pagination
+        currentPage={data?.page || 1}
+        totalPages={data?.totalPages || 1}
+        totalItems={data?.total || 0}
+        pageSize={data?.limit || pageSize}
+        onPageChange={handlePageChange}
+        loading={loading}
+        itemLabel="entries"
+      />
 
       {/* Context Menu */}
       {contextMenu.isOpen && contextMenu.entryId && (() => {
@@ -2230,15 +2174,15 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
                 </button>
               )}
 
-              {!tableEntry.forbidden ? (
+              {tableEntry.verifiable !== false ? (
                 <button
                   onClick={() => handleContextMenuAction('forbid')}
-                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-red-50 hover:text-red-800 flex items-center gap-2"
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636m12.728 12.728L18.364 5.636M5.636 18.364l12.728-12.728" />
                   </svg>
-                  Mark as Forbidden
+                  Mark as Unverifiable
                 </button>
               ) : (
                 <button
@@ -2265,136 +2209,136 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
         const selectedEntriesOnPage = data?.data.filter(entry => selection.selectedIds.has(entry.id)) || [];
         const hasMultiPageSelection = selection.selectedIds.size > selectedEntriesOnPage.length;
         
-        // Filter to only TableEntry items (frames don't have flagged/forbidden)
+        // Filter to only TableEntry items (frames don't have flagged/verifiable)
         const moderatableEntries = selectedEntriesOnPage.filter((e): e is TableEntry => 'flagged' in e);
         const existingReasons = {
           flagged: moderatableEntries
             .filter(e => e.flagged && e.flaggedReason)
             .map(e => ({ id: e.id, reason: e.flaggedReason! })),
-          forbidden: moderatableEntries
-            .filter(e => e.forbidden && e.forbiddenReason)
-            .map(e => ({ id: e.id, reason: e.forbiddenReason! }))
+          unverifiable: moderatableEntries
+            .filter(e => e.verifiable === false && e.unverifiableReason)
+            .map(e => ({ id: e.id, reason: e.unverifiableReason! }))
         };
+
+        const modalTitle = 
+          moderationModal.action === 'flag' ? 'Flag Entries' :
+          moderationModal.action === 'unflag' ? 'Unflag Entries' :
+          moderationModal.action === 'forbid' ? 'Mark as Unverifiable' :
+          'Mark as Verifiable';
+
+        const modalFooter = (
+          <div className="flex justify-end gap-3">
+            <button
+              onClick={handleCloseModerationModal}
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleConfirmModeration}
+              className={`px-4 py-2 text-sm font-medium rounded-xl focus:outline-none focus:ring-2 focus:ring-offset-2 cursor-pointer ${
+                moderationModal.action === 'flag' 
+                  ? 'bg-orange-600 hover:bg-orange-700 text-white focus:ring-orange-500'
+                  : moderationModal.action === 'forbid'
+                  ? 'text-gray-900 focus:ring-red-300'
+                  : 'bg-green-600 hover:bg-green-700 text-white focus:ring-green-500'
+              }`}
+              style={moderationModal.action === 'forbid' ? {
+                backgroundColor: '#ff8799',
+                borderColor: '#ff8799'
+              } : {}}
+              onMouseEnter={(e) => {
+                if (moderationModal.action === 'forbid') {
+                  e.currentTarget.style.backgroundColor = '#ff6b81';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (moderationModal.action === 'forbid') {
+                  e.currentTarget.style.backgroundColor = '#ff8799';
+                }
+              }}
+            >
+              Confirm
+            </button>
+          </div>
+        );
         
         return (
-          <div className="fixed inset-0 flex items-center justify-center z-50">
-            <div 
-              className="absolute inset-0"
-              style={{ backgroundColor: 'rgba(0, 0, 0, 0.25)' }}
-              onClick={handleCloseModerationModal}
-            ></div>
-            <div className="bg-white rounded-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto relative z-10">
-              <div className="p-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                  {moderationModal.action === 'flag' && 'Flag Entries'}
-                  {moderationModal.action === 'unflag' && 'Unflag Entries'}
-                  {moderationModal.action === 'forbid' && 'Mark as Forbidden'}
-                  {moderationModal.action === 'allow' && 'Allow Entries'}
-                </h3>
-                
-                <p className="text-sm text-gray-600 mb-4">
-                  You are about to {moderationModal.action} {selection.selectedIds.size} {selection.selectedIds.size === 1 ? 'entry' : 'entries'}.
-                </p>
+          <Modal
+            isOpen={true}
+            onClose={handleCloseModerationModal}
+            title={modalTitle}
+            maxWidth="2xl"
+            footer={modalFooter}
+          >
+            <div className="p-6">
+              <p className="text-sm text-gray-600 mb-4">
+                You are about to {moderationModal.action} {selection.selectedIds.size} {selection.selectedIds.size === 1 ? 'entry' : 'entries'}.
+              </p>
 
-                {/* Warning for multi-page selections */}
-                {hasMultiPageSelection && (
-                  <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-xl">
-                    <div className="flex items-start gap-2">
-                      <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <div className="text-sm text-blue-800">
-                        <p className="font-medium">Multi-page selection detected</p>
-                        <p className="text-blue-700 mt-1">
-                          You have selected {selection.selectedIds.size} {selection.selectedIds.size === 1 ? 'entry' : 'entries'} across multiple pages. 
-                          Only {selectedEntriesOnPage.length} {selectedEntriesOnPage.length === 1 ? 'is' : 'are'} visible on the current page. 
-                          The operation will affect all {selection.selectedIds.size} selected {selection.selectedIds.size === 1 ? 'entry' : 'entries'}.
-                        </p>
-                      </div>
+              {/* Warning for multi-page selections */}
+              {hasMultiPageSelection && (
+                <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-xl">
+                  <div className="flex items-start gap-2">
+                    <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <div className="text-sm text-blue-800">
+                      <p className="font-medium">Multi-page selection detected</p>
+                      <p className="text-blue-700 mt-1">
+                        You have selected {selection.selectedIds.size} {selection.selectedIds.size === 1 ? 'entry' : 'entries'} across multiple pages. 
+                        Only {selectedEntriesOnPage.length} {selectedEntriesOnPage.length === 1 ? 'is' : 'are'} visible on the current page. 
+                        The operation will affect all {selection.selectedIds.size} selected {selection.selectedIds.size === 1 ? 'entry' : 'entries'}.
+                      </p>
                     </div>
                   </div>
-                )}
-
-                {/* Show existing reasons */}
-                {moderationModal.action === 'unflag' && existingReasons.flagged.length > 0 && (
-                  <div className="mb-4 p-3 bg-orange-50 border border-orange-200 rounded-xl">
-                    <h4 className="text-sm font-medium text-orange-900 mb-2">Existing Flag Reasons:</h4>
-                    <div className="space-y-2 max-h-32 overflow-y-auto">
-                      {existingReasons.flagged.map(({ id, reason }) => (
-                        <div key={id} className="text-xs text-orange-800">
-                          <span className="font-mono text-orange-600">{id}:</span> {reason}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {moderationModal.action === 'allow' && existingReasons.forbidden.length > 0 && (
-                  <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl">
-                    <h4 className="text-sm font-medium text-red-900 mb-2">Existing Forbidden Reasons:</h4>
-                    <div className="space-y-2 max-h-32 overflow-y-auto">
-                      {existingReasons.forbidden.map(({ id, reason }) => (
-                        <div key={id} className="text-xs text-red-800">
-                          <span className="font-mono text-red-600">{id}:</span> {reason}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {(moderationModal.action === 'flag' || moderationModal.action === 'forbid') && (
-                  <div className="mb-4">
-                    <label htmlFor="reason" className="block text-sm font-medium text-gray-700 mb-2">
-                      Reason (optional)
-                    </label>
-                    <textarea
-                      id="reason"
-                      value={moderationModal.reason}
-                      onChange={(e) => setModerationModal(prev => ({ ...prev, reason: e.target.value }))}
-                      placeholder={`Enter reason for ${moderationModal.action === 'flag' ? 'flagging' : 'marking as forbidden'}...`}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-                      rows={4}
-                    />
-                  </div>
-                )}
-
-                <div className="flex justify-end gap-3">
-                  <button
-                    onClick={handleCloseModerationModal}
-                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                <button
-                  onClick={handleConfirmModeration}
-                  className={`px-4 py-2 text-sm font-medium rounded-xl focus:outline-none focus:ring-2 focus:ring-offset-2 cursor-pointer ${
-                    moderationModal.action === 'flag' 
-                      ? 'bg-orange-600 hover:bg-orange-700 text-white focus:ring-orange-500'
-                      : moderationModal.action === 'forbid'
-                      ? 'text-gray-900 focus:ring-red-300'
-                      : 'bg-green-600 hover:bg-green-700 text-white focus:ring-green-500'
-                  }`}
-                  style={moderationModal.action === 'forbid' ? {
-                    backgroundColor: '#ff8799',
-                    borderColor: '#ff8799'
-                  } : {}}
-                  onMouseEnter={(e) => {
-                    if (moderationModal.action === 'forbid') {
-                      e.currentTarget.style.backgroundColor = '#ff6b81';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (moderationModal.action === 'forbid') {
-                      e.currentTarget.style.backgroundColor = '#ff8799';
-                    }
-                  }}
-                >
-                  Confirm
-                </button>
                 </div>
-              </div>
+              )}
+
+              {/* Show existing reasons */}
+              {moderationModal.action === 'unflag' && existingReasons.flagged.length > 0 && (
+                <div className="mb-4 p-3 bg-orange-50 border border-orange-200 rounded-xl">
+                  <h4 className="text-sm font-medium text-orange-900 mb-2">Existing Flag Reasons:</h4>
+                  <div className="space-y-2 max-h-32 overflow-y-auto">
+                    {existingReasons.flagged.map(({ id, reason }) => (
+                      <div key={id} className="text-xs text-orange-800">
+                        <span className="font-mono text-orange-600">{id}:</span> {reason}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {moderationModal.action === 'allow' && existingReasons.unverifiable.length > 0 && (
+                <div className="mb-4 p-3 bg-gray-50 border border-gray-200 rounded-xl">
+                  <h4 className="text-sm font-medium text-gray-900 mb-2">Existing Unverifiable Reasons:</h4>
+                  <div className="space-y-2 max-h-32 overflow-y-auto">
+                    {existingReasons.unverifiable.map(({ id, reason }) => (
+                      <div key={id} className="text-xs text-gray-800">
+                        <span className="font-mono text-gray-600">{id}:</span> {reason}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {(moderationModal.action === 'flag' || moderationModal.action === 'forbid') && (
+                <div className="mb-4">
+                  <label htmlFor="reason" className="block text-sm font-medium text-gray-700 mb-2">
+                    Reason (optional)
+                  </label>
+                  <textarea
+                    id="reason"
+                    value={moderationModal.reason}
+                    onChange={(e) => setModerationModal(prev => ({ ...prev, reason: e.target.value }))}
+                    placeholder={`Enter reason for ${moderationModal.action === 'flag' ? 'flagging' : 'marking as unverifiable'}...`}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                    rows={4}
+                  />
+                </div>
+              )}
             </div>
-          </div>
+          </Modal>
         );
       })()}
 
@@ -2420,135 +2364,129 @@ export default function DataTable({ onRowClick, onEditClick, searchQuery, classN
           return Array.from(counts.values()).sort((a, b) => b.count - a.count);
         })();
 
+        const frameModalFooter = (
+          <div className="flex justify-end gap-3">
+            <button
+              onClick={handleCloseFrameModal}
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={isFrameUpdating}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleConfirmFrameChange}
+              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-xl hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={isFrameUpdating || frameOptionsLoading || selectedFrameValue === ''}
+            >
+              {isFrameUpdating ? 'Applying...' : 'Apply Frame'}
+            </button>
+          </div>
+        );
+
         return (
-          <div className="fixed inset-0 flex items-center justify-center z-50">
-            <div
-              className="absolute inset-0"
-              style={{ backgroundColor: 'rgba(0, 0, 0, 0.25)' }}
-              onClick={isFrameUpdating ? undefined : handleCloseFrameModal}
-            ></div>
-            <div className="bg-white rounded-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto relative z-10">
-              <div className="p-6 space-y-5">
-                <div className="space-y-2">
-                  <h3 className="text-lg font-semibold text-gray-900">Change Frame</h3>
-                  <p className="text-sm text-gray-600">
-                    You are about to update the frame for{' '}
-                    <span className="font-medium text-gray-900">{selection.selectedIds.size}</span>{' '}
-                    {selection.selectedIds.size === 1 ? 'entry' : 'entries'}.
-                  </p>
-                </div>
-
-                {/* Warning for multi-page selections */}
-                {hasMultiPageSelection && (
-                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl">
-                    <div className="flex items-start gap-2">
-                      <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <div className="text-sm text-blue-800">
-                        <p className="font-medium">Multi-page selection</p>
-                        <p className="text-blue-700 mt-1">
-                          You selected {selection.selectedIds.size} verbs across multiple pages. 
-                          The breakdown below shows only the {selectedEntriesOnCurrentPage.length} verbs on this page. 
-                          All {selection.selectedIds.size} verbs will be updated.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {frameSummary.length > 0 && (
-                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl">
-                    <h4 className="text-xs font-semibold text-blue-900 uppercase tracking-wide mb-2">
-                      Current Frame Breakdown
-                    </h4>
-                    <ul className="space-y-1 text-sm text-blue-900">
-                      {frameSummary.map(({ label, count }) => (
-                        <li key={`${label}-${count}`} className="flex justify-between">
-                          <span>{label}</span>
-                          <span className="font-medium">{count}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                <div className="space-y-3">
-                  <div>
-                    <label htmlFor="frame-search" className="block text-sm font-medium text-gray-700 mb-1">
-                      Search frames
-                    </label>
-                    <input
-                      id="frame-search"
-                      type="text"
-                      value={frameSearchQuery}
-                      onChange={(e) => setFrameSearchQuery(e.target.value)}
-                      placeholder="Filter by frame name or code..."
-                      className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-gray-900"
-                    />
-                  </div>
-
-                  {frameOptionsLoading ? (
-                    <LoadingSpinner size="sm" label="Loading frames..." className="!flex-row !gap-2 !py-2" />
-                  ) : frameOptionsError ? (
-                    <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700 space-y-2">
-                      <p>{frameOptionsError}</p>
-                      <button
-                        type="button"
-                        onClick={() => void fetchFrameOptions()}
-                        className="inline-flex items-center gap-1 px-3 py-1 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded cursor-pointer"
-                      >
-                        Retry
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      <label htmlFor="frame-select" className="block text-sm font-medium text-gray-700">
-                        New frame
-                      </label>
-                      <select
-                        id="frame-select"
-                        value={selectedFrameValue}
-                        onChange={(e) => {
-                          setFrameOptionsError(null);
-                          setSelectedFrameValue(e.target.value);
-                        }}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-gray-900"
-                      >
-                        <option value="">Select a new frame…</option>
-                        <option value="__CLEAR__">No frame (clear existing frame)</option>
-                        {filteredFrameOptions.map(frame => (
-                          <option key={frame.id} value={frame.id}>
-                            {frame.label}
-                          </option>
-                        ))}
-                      </select>
-                      <p className="text-xs text-gray-500">
-                        Selecting &quot;No frame&quot; will remove the frame assignment from all selected entries.
+          <Modal
+            isOpen={true}
+            onClose={isFrameUpdating ? () => {} : handleCloseFrameModal}
+            title="Change Frame"
+            subtitle={`You are about to update the frame for ${selection.selectedIds.size} ${selection.selectedIds.size === 1 ? 'entry' : 'entries'}.`}
+            maxWidth="2xl"
+            preventClose={isFrameUpdating}
+            footer={frameModalFooter}
+          >
+            <div className="p-6 space-y-5">
+              {/* Warning for multi-page selections */}
+              {hasMultiPageSelection && (
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl">
+                  <div className="flex items-start gap-2">
+                    <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <div className="text-sm text-blue-800">
+                      <p className="font-medium">Multi-page selection</p>
+                      <p className="text-blue-700 mt-1">
+                        You selected {selection.selectedIds.size} verbs across multiple pages. 
+                        The breakdown below shows only the {selectedEntriesOnCurrentPage.length} verbs on this page. 
+                        All {selection.selectedIds.size} verbs will be updated.
                       </p>
                     </div>
-                  )}
+                  </div>
+                </div>
+              )}
+
+              {frameSummary.length > 0 && (
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl">
+                  <h4 className="text-xs font-semibold text-blue-900 uppercase tracking-wide mb-2">
+                    Current Frame Breakdown
+                  </h4>
+                  <ul className="space-y-1 text-sm text-blue-900">
+                    {frameSummary.map(({ label, count }) => (
+                      <li key={`${label}-${count}`} className="flex justify-between">
+                        <span>{label}</span>
+                        <span className="font-medium">{count}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <div className="space-y-3">
+                <div>
+                  <label htmlFor="frame-search" className="block text-sm font-medium text-gray-700 mb-1">
+                    Search frames
+                  </label>
+                  <input
+                    id="frame-search"
+                    type="text"
+                    value={frameSearchQuery}
+                    onChange={(e) => setFrameSearchQuery(e.target.value)}
+                    placeholder="Filter by frame name or code..."
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-gray-900"
+                  />
                 </div>
 
-                <div className="flex justify-end gap-3">
-                  <button
-                    onClick={handleCloseFrameModal}
-                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                    disabled={isFrameUpdating}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleConfirmFrameChange}
-                    className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-xl hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                    disabled={isFrameUpdating || frameOptionsLoading || selectedFrameValue === ''}
-                  >
-                    {isFrameUpdating ? 'Applying...' : 'Apply Frame'}
-                  </button>
-                </div>
+                {frameOptionsLoading ? (
+                  <LoadingSpinner size="sm" label="Loading frames..." className="!flex-row !gap-2 !py-2" />
+                ) : frameOptionsError ? (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700 space-y-2">
+                    <p>{frameOptionsError}</p>
+                    <button
+                      type="button"
+                      onClick={() => void fetchFrameOptions()}
+                      className="inline-flex items-center gap-1 px-3 py-1 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded cursor-pointer"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <label htmlFor="frame-select" className="block text-sm font-medium text-gray-700">
+                      New frame
+                    </label>
+                    <select
+                      id="frame-select"
+                      value={selectedFrameValue}
+                      onChange={(e) => {
+                        setFrameOptionsError(null);
+                        setSelectedFrameValue(e.target.value);
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-gray-900"
+                    >
+                      <option value="">Select a new frame…</option>
+                      <option value="__CLEAR__">No frame (clear existing frame)</option>
+                      {filteredFrameOptions.map(frame => (
+                        <option key={frame.id} value={frame.id}>
+                          {frame.label}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-gray-500">
+                      Selecting &quot;No frame&quot; will remove the frame assignment from all selected entries.
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
-          </div>
+          </Modal>
         );
       })()}
 

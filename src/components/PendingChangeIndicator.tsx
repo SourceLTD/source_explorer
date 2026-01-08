@@ -15,12 +15,12 @@ import ChangeTooltip from './ChangeTooltip';
 export function getPendingRowClasses(operation: PendingChangeOperation): string {
   switch (operation) {
     case 'create':
-      return 'bg-blue-50 hover:bg-blue-100';
+      return 'bg-green-50 hover:bg-green-100';
     case 'delete':
       return 'bg-red-50 hover:bg-red-100 opacity-75';
     case 'update':
     default:
-      return 'bg-green-50 hover:bg-green-100';
+      return 'bg-orange-50 hover:bg-orange-100';
   }
 }
 
@@ -30,12 +30,12 @@ export function getPendingRowClasses(operation: PendingChangeOperation): string 
 export function getPendingCellClasses(operation: PendingChangeOperation): string {
   switch (operation) {
     case 'create':
-      return 'ring-2 ring-blue-400 ring-inset bg-blue-100';
+      return 'ring-2 ring-green-400 ring-inset bg-green-100';
     case 'delete':
       return 'ring-2 ring-red-400 ring-inset bg-red-100 line-through';
     case 'update':
     default:
-      return 'ring-2 ring-green-400 ring-inset bg-green-100';
+      return 'ring-2 ring-orange-400 ring-inset bg-orange-100';
   }
 }
 
@@ -45,12 +45,12 @@ export function getPendingCellClasses(operation: PendingChangeOperation): string
 export function getPendingNodeStroke(operation: PendingChangeOperation): string {
   switch (operation) {
     case 'create':
-      return '#3b82f6'; // blue-500
+      return '#22c55e'; // green-500
     case 'delete':
       return '#ef4444'; // red-500
     case 'update':
     default:
-      return '#22c55e'; // green-500
+      return '#f97316'; // orange-500
   }
 }
 
@@ -60,12 +60,12 @@ export function getPendingNodeStroke(operation: PendingChangeOperation): string 
 export function getPendingNodeFill(operation: PendingChangeOperation): string {
   switch (operation) {
     case 'create':
-      return '#dbeafe'; // blue-100
+      return '#dcfce7'; // green-100
     case 'delete':
       return '#fee2e2'; // red-100
     case 'update':
     default:
-      return '#dcfce7'; // green-100
+      return '#ffedd5'; // orange-100
   }
 }
 
@@ -209,8 +209,8 @@ export function PendingEntityBadge({
   const sizeClasses = size === 'sm' ? 'text-xs px-1.5 py-0.5' : 'text-sm px-2 py-1';
   
   const badgeClasses = {
-    create: 'bg-blue-100 text-blue-700 border-blue-300',
-    update: 'bg-green-100 text-green-700 border-green-300',
+    create: 'bg-green-100 text-green-700 border-green-300',
+    update: 'bg-orange-100 text-orange-700 border-orange-300',
     delete: 'bg-red-100 text-red-700 border-red-300',
   }[pending.operation];
 
@@ -223,9 +223,9 @@ export function PendingEntityBadge({
   return (
     <span className={`${sizeClasses} ${badgeClasses} font-medium rounded border inline-flex items-center gap-1`}>
       <span className={`w-1.5 h-1.5 rounded-full ${
-        pending.operation === 'create' ? 'bg-blue-500' :
+        pending.operation === 'create' ? 'bg-green-500' :
         pending.operation === 'delete' ? 'bg-red-500' :
-        'bg-green-500'
+        'bg-orange-500'
       }`} />
       {label}
     </span>

@@ -21,8 +21,8 @@ type PrismaEntryWithRelations = {
   updated_at: Date;
   flagged: boolean | null;
   flagged_reason: string | null;
-  forbidden: boolean | null;
-  forbidden_reason: string | null;
+  verifiable: boolean | null;
+  unverifiable_reason: string | null;
   frame_id: bigint | null;
   vendler_class: 'state' | 'activity' | 'accomplishment' | 'achievement' | null;
   verb_relations_verb_relations_source_idToverbs: (PrismaVerbRelation & {
@@ -50,8 +50,8 @@ type PrismaEntryWithCounts = {
   updatedAt: Date;
   flagged: boolean | null;
   flaggedReason: string | null;
-  forbidden: boolean | null;
-  forbiddenReason: string | null;
+  verifiable: boolean | null;
+  unverifiableReason: string | null;
   frame_id: bigint | null;
   frames: { id: bigint; label: string } | null;
   vendler_class: 'state' | 'activity' | 'accomplishment' | 'achievement' | null;
@@ -111,8 +111,8 @@ async function getNounById(id: string): Promise<NounWithRelations | null> {
     frame_id: entry.frame_id?.toString() ?? null,
     flagged: entry.flagged ?? undefined,
     flaggedReason: (entry as any).flagged_reason || undefined,
-    forbidden: entry.forbidden ?? undefined,
-    forbiddenReason: (entry as any).forbidden_reason || undefined,
+    verifiable: entry.verifiable ?? undefined,
+    unverifiableReason: (entry as any).unverifiable_reason || undefined,
     createdAt: entry.created_at,
     updatedAt: entry.updated_at,
     sourceRelations: noun_relations_noun_relations_source_idTonouns
@@ -184,8 +184,8 @@ async function getAdjectiveById(id: string): Promise<AdjectiveWithRelations | nu
     frame_id: entry.frame_id?.toString() ?? null,
     flagged: entry.flagged ?? undefined,
     flaggedReason: (entry as any).flagged_reason || undefined,
-    forbidden: entry.forbidden ?? undefined,
-    forbiddenReason: (entry as any).forbidden_reason || undefined,
+    verifiable: entry.verifiable ?? undefined,
+    unverifiableReason: (entry as any).unverifiable_reason || undefined,
     createdAt: entry.created_at,
     updatedAt: entry.updated_at,
     sourceRelations: adjective_relations_adjective_relations_source_idToadjectives
@@ -263,8 +263,8 @@ async function getAdverbById(id: string): Promise<AdverbWithRelations | null> {
     } : null,
     flagged: entry.flagged ?? undefined,
     flaggedReason: (entry as any).flagged_reason || undefined,
-    forbidden: entry.forbidden ?? undefined,
-    forbiddenReason: (entry as any).forbidden_reason || undefined,
+    verifiable: entry.verifiable ?? undefined,
+    unverifiableReason: (entry as any).unverifiable_reason || undefined,
     createdAt: entry.created_at,
     updatedAt: entry.updated_at,
     sourceRelations: adverb_relations_adverb_relations_source_idToadverbs
@@ -350,8 +350,8 @@ export async function getEntryById(id: string): Promise<any | null> {
     frame_id: entry.frame_id?.toString() ?? null,
     flagged: entry.flagged ?? undefined,
     flaggedReason: (entry as any).flagged_reason || undefined,
-    forbidden: entry.forbidden ?? undefined,
-    forbiddenReason: (entry as any).forbidden_reason || undefined,
+    verifiable: entry.verifiable ?? undefined,
+    unverifiableReason: (entry as any).unverifiable_reason || undefined,
     vendler_class: entry.vendler_class || undefined,
     createdAt: entry.created_at,
     updatedAt: entry.updated_at,
@@ -367,8 +367,8 @@ export async function getEntryById(id: string): Promise<any | null> {
           frame_id: (rel.verbs_verb_relations_target_idToverbs as { frame_id?: bigint | null }).frame_id?.toString() ?? null,
           flagged: rel.verbs_verb_relations_target_idToverbs.flagged ?? undefined,
           flaggedReason: (rel.verbs_verb_relations_target_idToverbs as any).flagged_reason || undefined,
-          forbidden: rel.verbs_verb_relations_target_idToverbs.forbidden ?? undefined,
-          forbiddenReason: (rel.verbs_verb_relations_target_idToverbs as any).forbidden_reason || undefined
+          verifiable: rel.verbs_verb_relations_target_idToverbs.verifiable ?? undefined,
+          unverifiableReason: (rel.verbs_verb_relations_target_idToverbs as any).unverifiable_reason || undefined
         } as unknown as Verb : undefined,
       })),
     targetRelations: verb_relations_verb_relations_target_idToverbs
@@ -383,8 +383,8 @@ export async function getEntryById(id: string): Promise<any | null> {
           frame_id: (rel.verbs_verb_relations_source_idToverbs as { frame_id?: bigint | null }).frame_id?.toString() ?? null,
           flagged: rel.verbs_verb_relations_source_idToverbs.flagged ?? undefined,
           flaggedReason: (rel.verbs_verb_relations_source_idToverbs as any).flagged_reason || undefined,
-          forbidden: rel.verbs_verb_relations_source_idToverbs.forbidden ?? undefined,
-          forbiddenReason: (rel.verbs_verb_relations_source_idToverbs as any).forbidden_reason || undefined
+          verifiable: rel.verbs_verb_relations_source_idToverbs.verifiable ?? undefined,
+          unverifiableReason: (rel.verbs_verb_relations_source_idToverbs as any).unverifiable_reason || undefined
         } as unknown as Verb : undefined,
       })),
   };
@@ -551,8 +551,8 @@ export async function getRecipesForEntryInternal(entryId: string): Promise<Entry
       lex_vendler_class: string | null;
       lex_flagged: boolean | null;
       lex_flagged_reason: string | null;
-      lex_forbidden: boolean | null;
-      lex_forbidden_reason: string | null;
+      lex_verifiable: boolean | null;
+      lex_unverifiable_reason: string | null;
       lex_concrete: boolean | null;
     }>>`
       SELECT
@@ -575,8 +575,8 @@ export async function getRecipesForEntryInternal(entryId: string): Promise<Entry
         le.vendler_class as lex_vendler_class,
         le.flagged as lex_flagged,
         le."flagged_reason" as lex_flagged_reason,
-        le.forbidden as lex_forbidden,
-        le."forbidden_reason" as lex_forbidden_reason,
+        le.verifiable as lex_verifiable,
+        le."unverifiable_reason" as lex_unverifiable_reason,
         le.concrete as lex_concrete
       FROM recipe_predicates rp
       JOIN verbs le ON le.id = rp.predicate_verb_id
@@ -857,8 +857,8 @@ export async function getRecipesForEntryInternal(entryId: string): Promise<Entry
         examples: p.lex_examples,
         flagged: p.lex_flagged ?? undefined,
         flaggedReason: p.lex_flagged_reason ?? undefined,
-        forbidden: p.lex_forbidden ?? undefined,
-        forbiddenReason: p.lex_forbidden_reason ?? undefined,
+        verifiable: p.lex_verifiable ?? undefined,
+        unverifiableReason: p.lex_unverifiable_reason ?? undefined,
         concrete: p.lex_concrete ?? undefined,
         frame_id: p.lex_frame_id ? p.lex_frame_id.toString() : null,
         vendler_class: (p.lex_vendler_class as 'state' | 'activity' | 'accomplishment' | 'achievement' | null) ?? null,
@@ -1013,7 +1013,7 @@ export const getRecipesForEntry = process.env.DISABLE_CACHE === 'true'
       { revalidate: 60, tags: ['entry-recipes'] }
     );
 
-export async function updateEntry(id: string, updates: Partial<Pick<Verb, 'gloss' | 'lemmas' | 'src_lemmas' | 'examples' | 'flagged' | 'flaggedReason' | 'forbidden' | 'forbiddenReason'> & { id?: string; roles?: unknown[]; role_groups?: unknown[]; vendler_class?: string | null; lexfile?: string; frame_id?: string | null }>): Promise<VerbWithRelations | null> {
+export async function updateEntry(id: string, updates: Partial<Pick<Verb, 'gloss' | 'lemmas' | 'src_lemmas' | 'examples' | 'flagged' | 'flaggedReason' | 'verifiable' | 'unverifiableReason'> & { id?: string; roles?: unknown[]; role_groups?: unknown[]; vendler_class?: string | null; lexfile?: string; frame_id?: string | null }>): Promise<VerbWithRelations | null> {
   // Handle roles and role_groups updates separately
   if (updates.roles) {
     await updateEntryRoles(id, updates.roles);
@@ -1034,8 +1034,8 @@ export async function updateEntry(id: string, updates: Partial<Pick<Verb, 'gloss
       prismaUpdates.code = value; // ID is stored as 'code' in database
     } else if (key === 'flaggedReason') {
       prismaUpdates.flagged_reason = value;
-    } else if (key === 'forbiddenReason') {
-      prismaUpdates.forbidden_reason = value;
+    } else if (key === 'unverifiableReason') {
+      prismaUpdates.unverifiable_reason = value;
     } else if (key === 'src_lemmas') {
       prismaUpdates.src_lemmas = value;
     } else if (key === 'vendler_class') {
@@ -1102,8 +1102,8 @@ export async function updateEntry(id: string, updates: Partial<Pick<Verb, 'gloss
     frame_id: updatedEntry.frame_id?.toString() ?? null,
     flagged: updatedEntry.flagged ?? undefined,
     flaggedReason: (updatedEntry as any).flagged_reason || undefined,
-    forbidden: updatedEntry.forbidden ?? undefined,
-    forbiddenReason: (updatedEntry as any).forbidden_reason || undefined,
+    verifiable: updatedEntry.verifiable ?? undefined,
+    unverifiableReason: (updatedEntry as any).unverifiable_reason || undefined,
     vendler_class: updatedEntry.vendler_class || undefined,
     createdAt: updatedEntry.created_at,
     updatedAt: updatedEntry.updated_at,
@@ -1119,8 +1119,8 @@ export async function updateEntry(id: string, updates: Partial<Pick<Verb, 'gloss
           frame_id: (rel.verbs_verb_relations_target_idToverbs as { frame_id?: bigint | null }).frame_id?.toString() ?? null,
           flagged: rel.verbs_verb_relations_target_idToverbs.flagged ?? undefined,
           flaggedReason: (rel.verbs_verb_relations_target_idToverbs as any).flagged_reason || undefined,
-          forbidden: rel.verbs_verb_relations_target_idToverbs.forbidden ?? undefined,
-          forbiddenReason: (rel.verbs_verb_relations_target_idToverbs as any).forbidden_reason || undefined
+          verifiable: rel.verbs_verb_relations_target_idToverbs.verifiable ?? undefined,
+          unverifiableReason: (rel.verbs_verb_relations_target_idToverbs as any).unverifiable_reason || undefined
         } as unknown as Verb : undefined,
       } as VerbRelation)),
     targetRelations: verb_relations_verb_relations_target_idToverbs
@@ -1135,8 +1135,8 @@ export async function updateEntry(id: string, updates: Partial<Pick<Verb, 'gloss
           frame_id: (rel.verbs_verb_relations_source_idToverbs as { frame_id?: bigint | null }).frame_id?.toString() ?? null,
           flagged: rel.verbs_verb_relations_source_idToverbs.flagged ?? undefined,
           flaggedReason: (rel.verbs_verb_relations_source_idToverbs as any).flagged_reason || undefined,
-          forbidden: rel.verbs_verb_relations_source_idToverbs.forbidden ?? undefined,
-          forbiddenReason: (rel.verbs_verb_relations_source_idToverbs as any).forbidden_reason || undefined
+          verifiable: rel.verbs_verb_relations_source_idToverbs.verifiable ?? undefined,
+          unverifiableReason: (rel.verbs_verb_relations_source_idToverbs as any).unverifiable_reason || undefined
         } as unknown as Verb : undefined,
       } as VerbRelation)),
   };
@@ -1329,8 +1329,8 @@ async function getVerbGraphNode(entryId: string): Promise<GraphNode | null> {
                 examples: true,
                 frame_id: true,
                 vendler_class: true,
-                forbidden: true,
-                forbidden_reason: true,
+                verifiable: true,
+                unverifiable_reason: true,
                 flagged: true,
                 flagged_reason: true,
                 deleted: true,
@@ -1355,8 +1355,8 @@ async function getVerbGraphNode(entryId: string): Promise<GraphNode | null> {
                 examples: true,
                 frame_id: true,
                 vendler_class: true,
-                forbidden: true,
-                forbidden_reason: true,
+                verifiable: true,
+                unverifiable_reason: true,
                 flagged: true,
                 flagged_reason: true,
                 deleted: true,
@@ -1449,8 +1449,8 @@ async function getVerbGraphNode(entryId: string): Promise<GraphNode | null> {
       examples: rel.verbs_verb_relations_target_idToverbs!.examples,
       flagged: (rel.verbs_verb_relations_target_idToverbs as { flagged?: boolean | null }).flagged ?? undefined,
       flaggedReason: (rel.verbs_verb_relations_target_idToverbs as { flagged_reason?: string | null }).flagged_reason || undefined,
-      forbidden: (rel.verbs_verb_relations_target_idToverbs as { forbidden?: boolean | null }).forbidden ?? undefined,
-      forbiddenReason: (rel.verbs_verb_relations_target_idToverbs as { forbidden_reason?: string | null }).forbidden_reason || undefined,
+      verifiable: (rel.verbs_verb_relations_target_idToverbs as { verifiable?: boolean | null }).verifiable ?? undefined,
+      unverifiableReason: (rel.verbs_verb_relations_target_idToverbs as { unverifiable_reason?: string | null }).unverifiable_reason || undefined,
       frame_id: (rel.verbs_verb_relations_target_idToverbs as { frame_id?: bigint | null }).frame_id?.toString() ?? null,
       vendler_class: (rel.verbs_verb_relations_target_idToverbs as { vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null }).vendler_class ?? null,
       parents: [],
@@ -1480,8 +1480,8 @@ async function getVerbGraphNode(entryId: string): Promise<GraphNode | null> {
         examples: rel.verbs_verb_relations_source_idToverbs!.examples,
         flagged: (rel.verbs_verb_relations_source_idToverbs as { flagged?: boolean | null }).flagged ?? undefined,
         flaggedReason: (rel.verbs_verb_relations_source_idToverbs as { flagged_reason?: string | null }).flagged_reason || undefined,
-        forbidden: (rel.verbs_verb_relations_source_idToverbs as { forbidden?: boolean | null }).forbidden ?? undefined,
-        forbiddenReason: (rel.verbs_verb_relations_source_idToverbs as { forbidden_reason?: string | null }).forbidden_reason || undefined,
+        verifiable: (rel.verbs_verb_relations_source_idToverbs as { verifiable?: boolean | null }).verifiable ?? undefined,
+        unverifiableReason: (rel.verbs_verb_relations_source_idToverbs as { unverifiable_reason?: string | null }).unverifiable_reason || undefined,
         frame_id: (rel.verbs_verb_relations_source_idToverbs as { frame_id?: bigint | null }).frame_id?.toString() ?? null,
         vendler_class: (rel.verbs_verb_relations_source_idToverbs as { vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null }).vendler_class ?? null,
         parents: [],
@@ -1511,8 +1511,8 @@ async function getVerbGraphNode(entryId: string): Promise<GraphNode | null> {
       examples: rel.verbs_verb_relations_target_idToverbs!.examples,
       flagged: (rel.verbs_verb_relations_target_idToverbs as { flagged?: boolean | null }).flagged ?? undefined,
       flaggedReason: (rel.verbs_verb_relations_target_idToverbs as { flagged_reason?: string | null }).flagged_reason || undefined,
-      forbidden: (rel.verbs_verb_relations_target_idToverbs as { forbidden?: boolean | null }).forbidden ?? undefined,
-      forbiddenReason: (rel.verbs_verb_relations_target_idToverbs as { forbidden_reason?: string | null }).forbidden_reason || undefined,
+      verifiable: (rel.verbs_verb_relations_target_idToverbs as { verifiable?: boolean | null }).verifiable ?? undefined,
+      unverifiableReason: (rel.verbs_verb_relations_target_idToverbs as { unverifiable_reason?: string | null }).unverifiable_reason || undefined,
       frame_id: (rel.verbs_verb_relations_target_idToverbs as { frame_id?: bigint | null }).frame_id?.toString() ?? null,
       vendler_class: (rel.verbs_verb_relations_target_idToverbs as { vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null }).vendler_class ?? null,
       parents: [],
@@ -1542,8 +1542,8 @@ async function getVerbGraphNode(entryId: string): Promise<GraphNode | null> {
       examples: rel.verbs_verb_relations_target_idToverbs!.examples,
       flagged: (rel.verbs_verb_relations_target_idToverbs as { flagged?: boolean | null }).flagged ?? undefined,
       flaggedReason: (rel.verbs_verb_relations_target_idToverbs as { flagged_reason?: string | null }).flagged_reason || undefined,
-      forbidden: (rel.verbs_verb_relations_target_idToverbs as { forbidden?: boolean | null }).forbidden ?? undefined,
-      forbiddenReason: (rel.verbs_verb_relations_target_idToverbs as { forbidden_reason?: string | null }).forbidden_reason || undefined,
+      verifiable: (rel.verbs_verb_relations_target_idToverbs as { verifiable?: boolean | null }).verifiable ?? undefined,
+      unverifiableReason: (rel.verbs_verb_relations_target_idToverbs as { unverifiable_reason?: string | null }).unverifiable_reason || undefined,
       frame_id: (rel.verbs_verb_relations_target_idToverbs as { frame_id?: bigint | null }).frame_id?.toString() ?? null,
       vendler_class: (rel.verbs_verb_relations_target_idToverbs as { vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null }).vendler_class ?? null,
       parents: [],
@@ -1573,8 +1573,8 @@ async function getVerbGraphNode(entryId: string): Promise<GraphNode | null> {
       examples: rel.verbs_verb_relations_target_idToverbs!.examples,
       flagged: (rel.verbs_verb_relations_target_idToverbs as { flagged?: boolean | null }).flagged ?? undefined,
       flaggedReason: (rel.verbs_verb_relations_target_idToverbs as { flagged_reason?: string | null }).flagged_reason || undefined,
-      forbidden: (rel.verbs_verb_relations_target_idToverbs as { forbidden?: boolean | null }).forbidden ?? undefined,
-      forbiddenReason: (rel.verbs_verb_relations_target_idToverbs as { forbidden_reason?: string | null }).forbidden_reason || undefined,
+      verifiable: (rel.verbs_verb_relations_target_idToverbs as { verifiable?: boolean | null }).verifiable ?? undefined,
+      unverifiableReason: (rel.verbs_verb_relations_target_idToverbs as { unverifiable_reason?: string | null }).unverifiable_reason || undefined,
       frame_id: (rel.verbs_verb_relations_target_idToverbs as { frame_id?: bigint | null }).frame_id?.toString() ?? null,
       vendler_class: (rel.verbs_verb_relations_target_idToverbs as { vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null }).vendler_class ?? null,
       parents: [],
@@ -1649,8 +1649,8 @@ async function getVerbGraphNode(entryId: string): Promise<GraphNode | null> {
     examples: entry.examples,
     flagged: entry.flagged ?? undefined,
     flaggedReason: (entry as any).flagged_reason || undefined,
-    forbidden: entry.forbidden ?? undefined,
-    forbiddenReason: (entry as any).forbidden_reason || undefined,
+    verifiable: entry.verifiable ?? undefined,
+    unverifiableReason: (entry as any).unverifiable_reason || undefined,
     frame_id: entryTyped.frame_id?.toString() ?? null,
     vendler_class: (entry as { vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null }).vendler_class ?? null,
     frame: frameData 
@@ -1738,8 +1738,8 @@ function mapNounToGraphNode(noun: {
   examples: string[];
   flagged?: boolean | null;
   flagged_reason?: string | null;
-  forbidden?: boolean | null;
-  forbidden_reason?: string | null;
+  verifiable?: boolean | null;
+  unverifiable_reason?: string | null;
   countable?: boolean | null;
   proper?: boolean | null;
   collective?: boolean | null;
@@ -1758,8 +1758,8 @@ function mapNounToGraphNode(noun: {
     examples: string[];
     flagged?: boolean | null;
     flagged_reason?: string | null;
-    forbidden?: boolean | null;
-    forbidden_reason?: string | null;
+    verifiable?: boolean | null;
+    unverifiable_reason?: string | null;
     countable?: boolean | null;
     proper?: boolean | null;
     collective?: boolean | null;
@@ -1782,8 +1782,8 @@ function mapNounToGraphNode(noun: {
     examples: nounRecord.examples,
     flagged: nounRecord.flagged ?? undefined,
     flaggedReason: nounRecord.flagged_reason || undefined,
-    forbidden: nounRecord.forbidden ?? undefined,
-    forbiddenReason: nounRecord.forbidden_reason || undefined,
+    verifiable: nounRecord.verifiable ?? undefined,
+    unverifiableReason: nounRecord.unverifiable_reason || undefined,
     countable: nounRecord.countable ?? null,
     proper: nounRecord.proper ?? undefined,
     collective: nounRecord.collective ?? undefined,
@@ -1814,8 +1814,8 @@ function mapAdjectiveToGraphNode(adjective: {
   examples: string[];
   flagged?: boolean | null;
   flagged_reason?: string | null;
-  forbidden?: boolean | null;
-  forbidden_reason?: string | null;
+  verifiable?: boolean | null;
+  unverifiable_reason?: string | null;
   is_satellite?: boolean | null;
   gradable?: boolean | null;
   predicative?: boolean | null;
@@ -1835,8 +1835,8 @@ function mapAdjectiveToGraphNode(adjective: {
     examples: string[];
     flagged?: boolean | null;
     flagged_reason?: string | null;
-    forbidden?: boolean | null;
-    forbidden_reason?: string | null;
+    verifiable?: boolean | null;
+    unverifiable_reason?: string | null;
     is_satellite?: boolean | null;
     gradable?: boolean | null;
     predicative?: boolean | null;
@@ -1860,8 +1860,8 @@ function mapAdjectiveToGraphNode(adjective: {
     examples: adjRecord.examples,
     flagged: adjRecord.flagged ?? undefined,
     flaggedReason: adjRecord.flagged_reason || undefined,
-    forbidden: adjRecord.forbidden ?? undefined,
-    forbiddenReason: adjRecord.forbidden_reason || undefined,
+    verifiable: adjRecord.verifiable ?? undefined,
+    unverifiableReason: adjRecord.unverifiable_reason || undefined,
     isSatellite: adjRecord.is_satellite ?? undefined,
     gradable: adjRecord.gradable ?? null,
     predicative: adjRecord.predicative ?? undefined,
@@ -2041,8 +2041,8 @@ function mapAdverbToGraphNode(adverb: {
   examples: string[];
   flagged?: boolean | null;
   flagged_reason?: string | null;
-  forbidden?: boolean | null;
-  forbidden_reason?: string | null;
+  verifiable?: boolean | null;
+  unverifiable_reason?: string | null;
   gradable?: boolean | null;
   frame_id?: bigint | null;
   frames?: { id: bigint; label: string } | null;
@@ -2062,8 +2062,8 @@ function mapAdverbToGraphNode(adverb: {
     examples: advRecord.examples,
     flagged: advRecord.flagged ?? undefined,
     flaggedReason: advRecord.flagged_reason || undefined,
-    forbidden: advRecord.forbidden ?? undefined,
-    forbiddenReason: advRecord.forbidden_reason || undefined,
+    verifiable: advRecord.verifiable ?? undefined,
+    unverifiableReason: advRecord.unverifiable_reason || undefined,
     gradable: advRecord.gradable ?? null,
     frame_id: advRecord.frame_id?.toString() ?? null,
     frame: advRecord.frames ? {
@@ -2288,8 +2288,8 @@ export async function updateModerationStatus(
   updates: { 
     flagged?: boolean; 
     flaggedReason?: string; 
-    forbidden?: boolean; 
-    forbiddenReason?: string; 
+    verifiable?: boolean; 
+    unverifiableReason?: string; 
   },
   lexicalType: LexicalType | 'frames' = 'verbs',
   idType: 'code' | 'id' = 'code'
@@ -2298,8 +2298,8 @@ export async function updateModerationStatus(
   const prismaUpdates: Record<string, unknown> = {};
   if (updates.flagged !== undefined) prismaUpdates.flagged = updates.flagged;
   if (updates.flaggedReason !== undefined) prismaUpdates.flagged_reason = updates.flaggedReason;
-  if (updates.forbidden !== undefined) prismaUpdates.forbidden = updates.forbidden;
-  if (updates.forbiddenReason !== undefined) prismaUpdates.forbidden_reason = updates.forbiddenReason;
+  if (updates.verifiable !== undefined) prismaUpdates.verifiable = updates.verifiable;
+  if (updates.unverifiableReason !== undefined) prismaUpdates.unverifiable_reason = updates.unverifiableReason;
 
   let result;
   
@@ -2434,9 +2434,9 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
     lemmas,
     examples,
     flaggedReason,
-    forbiddenReason,
+    unverifiableReason,
     flagged,
-    forbidden,
+    verifiable,
     parentsCountMin,
     parentsCountMax,
     childrenCountMin,
@@ -2620,10 +2620,10 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
     } as Prisma.verbsWhereInput);
   }
 
-  if (forbiddenReason) {
+  if (unverifiableReason) {
     andConditions.push({
-      forbidden_reason: {
-        contains: forbiddenReason,
+      unverifiable_reason: {
+        contains: unverifiableReason,
         mode: 'insensitive'
       }
     } as Prisma.verbsWhereInput);
@@ -2634,8 +2634,8 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
     andConditions.push({ flagged });
   }
 
-  if (forbidden !== undefined) {
-    andConditions.push({ forbidden });
+  if (verifiable !== undefined) {
+    andConditions.push({ verifiable });
   }
 
   // AI jobs: entries flagged by a specific job
@@ -2922,8 +2922,8 @@ export async function getPaginatedEntries(params: PaginationParams = {}): Promis
       examples: entry.examples,
       flagged: (entry as any).flagged ?? undefined,
       flaggedReason: (entry as any).flagged_reason || undefined,
-      forbidden: (entry as any).forbidden ?? undefined,
-      forbiddenReason: (entry as any).forbidden_reason || undefined,
+      verifiable: (entry as any).verifiable ?? undefined,
+      unverifiableReason: (entry as any).unverifiable_reason || undefined,
       frame_id: frameId ? frameId.toString() : null,
       frame: (entry as { frames?: { label: string } } | undefined)?.frames?.label || null,
       vendler_class: entry.vendler_class ?? null,
@@ -2988,10 +2988,10 @@ export async function getPaginatedNouns(params: PaginationParams = {}): Promise<
     lemmas,
     examples,
     flaggedReason,
-    forbiddenReason,
+    unverifiableReason,
     isMwe,
     flagged,
-    forbidden,
+    verifiable,
     parentsCountMin,
     parentsCountMax,
     childrenCountMin,
@@ -3098,10 +3098,10 @@ export async function getPaginatedNouns(params: PaginationParams = {}): Promise<
     } as Prisma.nounsWhereInput);
   }
 
-  if (forbiddenReason) {
+  if (unverifiableReason) {
     andConditions.push({
-      forbidden_reason: {
-        contains: forbiddenReason,
+      unverifiable_reason: {
+        contains: unverifiableReason,
         mode: 'insensitive'
       }
     } as Prisma.nounsWhereInput);
@@ -3116,8 +3116,8 @@ export async function getPaginatedNouns(params: PaginationParams = {}): Promise<
     andConditions.push({ flagged });
   }
 
-  if (forbidden !== undefined) {
-    andConditions.push({ forbidden });
+  if (verifiable !== undefined) {
+    andConditions.push({ verifiable });
   }
 
   // Date filters
@@ -3224,8 +3224,8 @@ export async function getPaginatedNouns(params: PaginationParams = {}): Promise<
       examples: noun.examples,
       flagged: noun.flagged ?? undefined,
       flaggedReason: noun.flagged_reason || undefined,
-      forbidden: noun.forbidden ?? undefined,
-      forbiddenReason: noun.forbidden_reason || undefined,
+      verifiable: noun.verifiable ?? undefined,
+      unverifiableReason: noun.unverifiable_reason || undefined,
       frame_id: null,
       frame: null,
       vendler_class: null,
@@ -3290,10 +3290,10 @@ export async function getPaginatedAdjectives(params: PaginationParams = {}): Pro
     lemmas,
     examples,
     flaggedReason,
-    forbiddenReason,
+    unverifiableReason,
     isMwe,
     flagged,
-    forbidden,
+    verifiable,
     parentsCountMin,
     parentsCountMax,
     childrenCountMin,
@@ -3400,10 +3400,10 @@ export async function getPaginatedAdjectives(params: PaginationParams = {}): Pro
     } as Prisma.adjectivesWhereInput);
   }
 
-  if (forbiddenReason) {
+  if (unverifiableReason) {
     andConditions.push({
-      forbidden_reason: {
-        contains: forbiddenReason,
+      unverifiable_reason: {
+        contains: unverifiableReason,
         mode: 'insensitive'
       }
     } as Prisma.adjectivesWhereInput);
@@ -3418,8 +3418,8 @@ export async function getPaginatedAdjectives(params: PaginationParams = {}): Pro
     andConditions.push({ flagged });
   }
 
-  if (forbidden !== undefined) {
-    andConditions.push({ forbidden });
+  if (verifiable !== undefined) {
+    andConditions.push({ verifiable });
   }
 
   // Date filters
@@ -3526,8 +3526,8 @@ export async function getPaginatedAdjectives(params: PaginationParams = {}): Pro
       examples: adjective.examples,
       flagged: adjective.flagged ?? undefined,
       flaggedReason: adjective.flagged_reason || undefined,
-      forbidden: adjective.forbidden ?? undefined,
-      forbiddenReason: adjective.forbidden_reason || undefined,
+      verifiable: adjective.verifiable ?? undefined,
+      unverifiableReason: adjective.unverifiable_reason || undefined,
       frame_id: null,
       frame: null,
       vendler_class: null,
@@ -3592,10 +3592,10 @@ export async function getPaginatedAdverbs(params: PaginationParams = {}): Promis
     lemmas,
     examples,
     flaggedReason,
-    forbiddenReason,
+    unverifiableReason,
     isMwe,
     flagged,
-    forbidden,
+    verifiable,
     parentsCountMin,
     parentsCountMax,
     childrenCountMin,
@@ -3702,10 +3702,10 @@ export async function getPaginatedAdverbs(params: PaginationParams = {}): Promis
     } as Prisma.adverbsWhereInput);
   }
 
-  if (forbiddenReason) {
+  if (unverifiableReason) {
     andConditions.push({
-      forbidden_reason: {
-        contains: forbiddenReason,
+      unverifiable_reason: {
+        contains: unverifiableReason,
         mode: 'insensitive'
       }
     } as Prisma.adverbsWhereInput);
@@ -3720,8 +3720,8 @@ export async function getPaginatedAdverbs(params: PaginationParams = {}): Promis
     andConditions.push({ flagged });
   }
 
-  if (forbidden !== undefined) {
-    andConditions.push({ forbidden });
+  if (verifiable !== undefined) {
+    andConditions.push({ verifiable });
   }
 
   // Date filters
@@ -3828,8 +3828,8 @@ export async function getPaginatedAdverbs(params: PaginationParams = {}): Promis
       examples: adverb.examples,
       flagged: adverb.flagged ?? undefined,
       flaggedReason: adverb.flagged_reason || undefined,
-      forbidden: adverb.forbidden ?? undefined,
-      forbiddenReason: adverb.forbidden_reason || undefined,
+      verifiable: adverb.verifiable ?? undefined,
+      unverifiableReason: adverb.unverifiable_reason || undefined,
       frame_id: null,
       frame: null,
       vendler_class: null,

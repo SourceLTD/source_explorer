@@ -41,13 +41,13 @@ export async function GET(request: NextRequest) {
     examples: searchParams.get('examples') || undefined,
     // Note: frames filter removed - verbs table only has frame_id
     flaggedReason: searchParams.get('flaggedReason') || undefined,
-    forbiddenReason: searchParams.get('forbiddenReason') || undefined,
+    unverifiableReason: searchParams.get('unverifiableReason') || undefined,
     // AI jobs filters
     flaggedByJobId: searchParams.get('flaggedByJobId') || undefined,
     
     // Boolean filters
     flagged: searchParams.get('flagged') ? searchParams.get('flagged') === 'true' : undefined,
-    forbidden: searchParams.get('forbidden') ? searchParams.get('forbidden') === 'true' : undefined,
+    verifiable: searchParams.get('verifiable') ? searchParams.get('verifiable') === 'true' : undefined,
     
     // Numeric filters
     parentsCountMin: searchParams.get('parentsCountMin') ? parseInt(searchParams.get('parentsCountMin')!, 10) : undefined,

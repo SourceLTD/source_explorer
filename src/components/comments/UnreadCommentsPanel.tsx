@@ -65,7 +65,7 @@ export default function UnreadCommentsPanel({ onChangesetClick, onRefresh }: Unr
   const [unread, setUnread] = useState<UnreadChangesetInfo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [hasLoaded, setHasLoaded] = useState(false);
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
   const fetchUnread = useCallback(async () => {
@@ -177,7 +177,7 @@ export default function UnreadCommentsPanel({ onChangesetClick, onRefresh }: Unr
             <div className="py-4 text-center text-sm text-red-600">{error}</div>
           ) : (
             <div className="space-y-2">
-              {unread.map((item) => (
+              {unread.slice(0, 5).map((item) => (
                 <div
                   key={item.changeset_id}
                   onClick={() => handleItemClick(item.changeset_id)}
@@ -224,6 +224,11 @@ export default function UnreadCommentsPanel({ onChangesetClick, onRefresh }: Unr
                   </button>
                 </div>
               ))}
+              {unread.length > 5 && (
+                <p className="text-xs text-amber-600 text-center pt-2">
+                  +{unread.length - 5} more discussion{unread.length - 5 !== 1 ? 's' : ''} with new activity
+                </p>
+              )}
             </div>
           )}
         </div>

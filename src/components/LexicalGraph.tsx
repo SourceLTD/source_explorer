@@ -13,8 +13,7 @@ const parentNodeColor = '#10b981';
 const parentNodeStroke = '#059669';
 const childNodeColor = '#f59e0b';
 const childNodeStroke = '#d97706';
-const forbiddenNodeColor = '#fca5a5'; // Pale red for forbidden nodes
-const forbiddenNodeStroke = '#dc2626'; // Darker red stroke for forbidden nodes
+// No special colors for unverifiable nodes - use standard parent/child colors
 const linkColor = '#e5e7eb';
 const backgroundColor = '#ffffff';
 
@@ -384,8 +383,6 @@ export default function LexicalGraph({ currentNode, onNodeClick, onEditClick, mo
               // Check if this node has a legacy ID beginning with 'src' for special styling
               const isSourceNode = hasSourceLegacyId(posNode.node);
               
-              // Check if this node is forbidden for special styling
-              const isForbiddenNode = posNode.node.forbidden;
               
               // Calculate Y positions for each section using the same logic as height calculation
               const contentWidth = nodeWidth - 24; // Account for padding
@@ -442,8 +439,8 @@ export default function LexicalGraph({ currentNode, onNodeClick, onEditClick, mo
                     height={nodeHeight}
                     y={centerY}
                     x={centerX}
-                    fill={isForbiddenNode ? forbiddenNodeColor : currentNodeColor}
-                    stroke={isSourceNode ? '#000000' : (isForbiddenNode ? forbiddenNodeStroke : currentNodeStroke)}
+                    fill={currentNodeColor}
+                    stroke={isSourceNode ? '#000000' : currentNodeStroke}
                     strokeWidth={isSourceNode ? 3 : 3}
                     rx={8}
                     ry={8}
@@ -1202,20 +1199,15 @@ export default function LexicalGraph({ currentNode, onNodeClick, onEditClick, mo
               const centerY = -nodeHeight / 2;
               
               const isParent = posNode.nodeType === 'parent';
-              const isForbiddenNode = posNode.node.forbidden;
               const hasPending = !!posNode.node.pending;
               const pendingOp = posNode.node.pending?.operation;
               
               // Determine colors - pending changes take precedence
               const fillColor = hasPending && pendingOp
                 ? getPendingNodeFill(pendingOp)
-                : isForbiddenNode 
-                ? forbiddenNodeColor 
                 : (isParent ? parentNodeColor : childNodeColor);
               const strokeColor = hasPending && pendingOp
                 ? getPendingNodeStroke(pendingOp)
-                : isForbiddenNode 
-                ? forbiddenNodeStroke 
                 : (isParent ? parentNodeStroke : childNodeStroke);
               
               // Check if this node has a legacy ID beginning with 'src' for special styling

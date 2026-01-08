@@ -49,7 +49,7 @@ export default function ViewToggle({ currentView, onViewChange, className, hideR
     } focus-within:ring-2 focus-within:ring-offset-2 ${className || ''}`}>
       {/* Sliding background indicator */}
       <div
-        className={`absolute top-0.5 bottom-0.5 left-0.5 w-9 rounded-lg transform transition-transform duration-300 ease-out ${getTransformClass()} ${
+        className={`absolute top-0 bottom-0 left-0 w-10 rounded-[11px] transform transition-transform duration-300 ease-out ${getTransformClass()} ${
           grayscale 
             ? 'bg-gradient-to-r from-gray-400 to-gray-500' 
             : 'bg-gradient-to-r from-blue-500 to-blue-600'

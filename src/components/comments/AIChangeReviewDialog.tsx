@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { CheckIcon, XMarkIcon, PencilIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
+import { Modal } from '@/components/ui';
 import type { AIReviewSuggestion } from './ChangeCommentsBoard';
 
 interface AIChangeReviewDialogProps {
@@ -48,6 +49,37 @@ function formatValue(value: unknown): string {
   return JSON.stringify(value);
 }
 
+const colorMap = {
+  green: {
+    bg: 'bg-green-50',
+    border: 'border-green-200',
+    icon: 'text-green-600',
+    badge: 'bg-green-100 text-green-800',
+    button: 'bg-green-600 hover:bg-green-700',
+  },
+  red: {
+    bg: 'bg-red-50',
+    border: 'border-red-200',
+    icon: 'text-red-600',
+    badge: 'bg-red-100 text-red-800',
+    button: 'bg-red-600 hover:bg-red-700',
+  },
+  amber: {
+    bg: 'bg-amber-50',
+    border: 'border-amber-200',
+    icon: 'text-amber-600',
+    badge: 'bg-amber-100 text-amber-800',
+    button: 'bg-amber-600 hover:bg-amber-700',
+  },
+  gray: {
+    bg: 'bg-gray-50',
+    border: 'border-gray-200',
+    icon: 'text-gray-600',
+    badge: 'bg-gray-100 text-gray-800',
+    button: 'bg-gray-600 hover:bg-gray-700',
+  },
+};
+
 export default function AIChangeReviewDialog({
   suggestion,
   onApply,
@@ -55,160 +87,126 @@ export default function AIChangeReviewDialog({
 }: AIChangeReviewDialogProps) {
   const config = ACTION_CONFIG[suggestion.action];
   const Icon = config.icon;
-
-  const colorMap = {
-    green: {
-      bg: 'bg-green-50',
-      border: 'border-green-200',
-      icon: 'text-green-600',
-      badge: 'bg-green-100 text-green-800',
-      button: 'bg-green-600 hover:bg-green-700',
-    },
-    red: {
-      bg: 'bg-red-50',
-      border: 'border-red-200',
-      icon: 'text-red-600',
-      badge: 'bg-red-100 text-red-800',
-      button: 'bg-red-600 hover:bg-red-700',
-    },
-    amber: {
-      bg: 'bg-amber-50',
-      border: 'border-amber-200',
-      icon: 'text-amber-600',
-      badge: 'bg-amber-100 text-amber-800',
-      button: 'bg-amber-600 hover:bg-amber-700',
-    },
-    gray: {
-      bg: 'bg-gray-50',
-      border: 'border-gray-200',
-      icon: 'text-gray-600',
-      badge: 'bg-gray-100 text-gray-800',
-      button: 'bg-gray-600 hover:bg-gray-700',
-    },
-  };
   const colorClasses = colorMap[config.color as keyof typeof colorMap];
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Backdrop */}
-      <div 
-        className="absolute inset-0 bg-black/40"
+  const customHeader = (
+    <div className={`flex items-center gap-3 w-full -mx-6 -my-4 px-6 py-4 ${colorClasses.bg} border-b ${colorClasses.border}`}>
+      <div className={`p-2 rounded-lg ${colorClasses.badge}`}>
+        <Icon className={`w-5 h-5 ${colorClasses.icon}`} />
+      </div>
+      <div>
+        <h3 className="text-lg font-semibold text-gray-900">{config.label}</h3>
+        <p className="text-sm text-gray-600">{config.description}</p>
+      </div>
+      <div className="ml-auto">
+        <span className={`px-2 py-1 text-xs font-medium rounded-full ${colorClasses.badge}`}>
+          {Math.round(suggestion.confidence * 100)}% confident
+        </span>
+      </div>
+    </div>
+  );
+
+  const footer = (
+    <div className="flex justify-end gap-3">
+      <button
         onClick={onDismiss}
-      />
-      
-      {/* Dialog */}
-      <div className="relative bg-white rounded-xl shadow-2xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col">
-        {/* Header */}
-        <div className={`px-6 py-4 ${colorClasses.bg} border-b ${colorClasses.border}`}>
-          <div className="flex items-center gap-3">
-            <div className={`p-2 rounded-lg ${colorClasses.badge}`}>
-              <Icon className={`w-5 h-5 ${colorClasses.icon}`} />
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900">{config.label}</h3>
-              <p className="text-sm text-gray-600">{config.description}</p>
-            </div>
-            <div className="ml-auto">
-              <span className={`px-2 py-1 text-xs font-medium rounded-full ${colorClasses.badge}`}>
-                {Math.round(suggestion.confidence * 100)}% confident
-              </span>
-            </div>
+        className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer"
+      >
+        Dismiss
+      </button>
+      <button
+        onClick={onApply}
+        className={`px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors cursor-pointer ${colorClasses.button}`}
+      >
+        {config.buttonText}
+      </button>
+    </div>
+  );
+
+  return (
+    <Modal
+      isOpen={true}
+      onClose={onDismiss}
+      maxWidth="2xl"
+      customHeader={customHeader}
+      showCloseButton={false}
+      footer={footer}
+      className="shadow-2xl"
+    >
+      <div className="p-6 space-y-4">
+        {/* Justification */}
+        <div>
+          <h4 className="text-sm font-medium text-gray-700 mb-2">AI Justification</h4>
+          <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+            <p className="text-sm text-gray-800 whitespace-pre-wrap">{suggestion.justification}</p>
           </div>
         </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
-          {/* Justification */}
+        {/* Modifications Preview (if action is modify) */}
+        {suggestion.action === 'modify' && suggestion.modifications && Object.keys(suggestion.modifications).length > 0 && (
           <div>
-            <h4 className="text-sm font-medium text-gray-700 mb-2">AI Justification</h4>
-            <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-              <p className="text-sm text-gray-800 whitespace-pre-wrap">{suggestion.justification}</p>
-            </div>
-          </div>
-
-          {/* Modifications Preview (if action is modify) */}
-          {suggestion.action === 'modify' && suggestion.modifications && Object.keys(suggestion.modifications).length > 0 && (
-            <div>
-              <h4 className="text-sm font-medium text-gray-700 mb-2">Suggested Modifications</h4>
-              <div className="space-y-2">
-                {Object.entries(suggestion.modifications).map(([fieldName, newValue]) => {
-                  const currentField = suggestion.currentFieldChanges.find(fc => fc.field_name === fieldName);
-                  const currentNewValue = currentField?.new_value;
-                  
-                  return (
-                    <div key={fieldName} className="p-3 bg-white rounded-lg border border-gray-200">
-                      <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
-                        {fieldName}
-                      </div>
-                      <div className="grid grid-cols-2 gap-3 text-sm">
-                        <div>
-                          <span className="text-xs text-gray-400 block mb-1">Current pending value:</span>
-                          <code className="block p-2 bg-red-50 text-red-800 rounded text-xs break-all">
-                            {formatValue(currentNewValue)}
-                          </code>
-                        </div>
-                        <div>
-                          <span className="text-xs text-gray-400 block mb-1">AI suggested value:</span>
-                          <code className="block p-2 bg-green-50 text-green-800 rounded text-xs break-all">
-                            {formatValue(newValue)}
-                          </code>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Current Changes Summary (for approve/reject) */}
-          {(suggestion.action === 'approve' || suggestion.action === 'reject') && suggestion.currentFieldChanges.length > 0 && (
-            <div>
-              <h4 className="text-sm font-medium text-gray-700 mb-2">Current Pending Changes</h4>
-              <div className="space-y-2">
-                {suggestion.currentFieldChanges.map((fc, idx) => (
-                  <div key={idx} className="p-3 bg-white rounded-lg border border-gray-200">
+            <h4 className="text-sm font-medium text-gray-700 mb-2">Suggested Modifications</h4>
+            <div className="space-y-2">
+              {Object.entries(suggestion.modifications).map(([fieldName, newValue]) => {
+                const currentField = suggestion.currentFieldChanges.find(fc => fc.field_name === fieldName);
+                const currentNewValue = currentField?.new_value;
+                
+                return (
+                  <div key={fieldName} className="p-3 bg-white rounded-lg border border-gray-200">
                     <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
-                      {fc.field_name}
+                      {fieldName}
                     </div>
                     <div className="grid grid-cols-2 gap-3 text-sm">
                       <div>
-                        <span className="text-xs text-gray-400 block mb-1">Original:</span>
-                        <code className="block p-2 bg-gray-50 text-gray-700 rounded text-xs break-all">
-                          {formatValue(fc.old_value)}
+                        <span className="text-xs text-gray-400 block mb-1">Current pending value:</span>
+                        <code className="block p-2 bg-red-50 text-red-800 rounded text-xs break-all">
+                          {formatValue(currentNewValue)}
                         </code>
                       </div>
                       <div>
-                        <span className="text-xs text-gray-400 block mb-1">Pending:</span>
-                        <code className="block p-2 bg-blue-50 text-blue-800 rounded text-xs break-all">
-                          {formatValue(fc.new_value)}
+                        <span className="text-xs text-gray-400 block mb-1">AI suggested value:</span>
+                        <code className="block p-2 bg-green-50 text-green-800 rounded text-xs break-all">
+                          {formatValue(newValue)}
                         </code>
                       </div>
                     </div>
                   </div>
-                ))}
-              </div>
+                );
+              })}
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
-        {/* Footer */}
-        <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end gap-3">
-          <button
-            onClick={onDismiss}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            Dismiss
-          </button>
-          <button
-            onClick={onApply}
-            className={`px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors ${colorClasses.button}`}
-          >
-            {config.buttonText}
-          </button>
-        </div>
+        {/* Current Changes Summary (for approve/reject) */}
+        {(suggestion.action === 'approve' || suggestion.action === 'reject') && suggestion.currentFieldChanges.length > 0 && (
+          <div>
+            <h4 className="text-sm font-medium text-gray-700 mb-2">Current Pending Changes</h4>
+            <div className="space-y-2">
+              {suggestion.currentFieldChanges.map((fc, idx) => (
+                <div key={idx} className="p-3 bg-white rounded-lg border border-gray-200">
+                  <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
+                    {fc.field_name}
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <span className="text-xs text-gray-400 block mb-1">Original:</span>
+                      <code className="block p-2 bg-gray-50 text-gray-700 rounded text-xs break-all">
+                        {formatValue(fc.old_value)}
+                      </code>
+                    </div>
+                    <div>
+                      <span className="text-xs text-gray-400 block mb-1">Pending:</span>
+                      <code className="block p-2 bg-blue-50 text-blue-800 rounded text-xs break-all">
+                        {formatValue(fc.new_value)}
+                      </code>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
-    </div>
+    </Modal>
   );
 }
-

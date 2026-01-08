@@ -2,12 +2,12 @@ import React from 'react';
 
 interface ModerationButtonsProps {
   flagged: boolean;
-  forbidden: boolean;
+  verifiable: boolean;
   onFlagToggle: () => void;
-  onForbidToggle: () => void;
+  onVerifiableToggle: () => void;
 }
 
-export function ModerationButtons({ flagged, forbidden, onFlagToggle, onForbidToggle }: ModerationButtonsProps) {
+export function ModerationButtons({ flagged, verifiable, onFlagToggle, onVerifiableToggle }: ModerationButtonsProps) {
   return (
     <div className="border-b border-gray-200 bg-gray-50">
       <div className="px-6 py-4">
@@ -27,17 +27,17 @@ export function ModerationButtons({ flagged, forbidden, onFlagToggle, onForbidTo
             {flagged ? 'Unflag' : 'Flag'}
           </button>
           <button
-            onClick={onForbidToggle}
+            onClick={onVerifiableToggle}
             className={`flex items-center gap-1 px-3 py-1 text-sm font-medium border rounded-xl transition-colors cursor-pointer ${
-              forbidden 
-                ? 'text-red-700 bg-red-100 border-red-200 hover:bg-red-200' 
+              !verifiable 
+                ? 'text-gray-700 bg-gray-200 border-gray-300 hover:bg-gray-300' 
                 : 'text-gray-700 bg-gray-100 border-gray-200 hover:bg-gray-200'
             }`}
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636m12.728 12.728L18.364 5.636M5.636 18.364l12.728-12.728" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            {forbidden ? 'Allow' : 'Forbid'}
+            {verifiable ? 'Mark Unverifiable' : 'Mark Verifiable'}
           </button>
         </div>
       </div>

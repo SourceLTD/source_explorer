@@ -13,8 +13,8 @@ export interface Verb {
   examples: string[];
   flagged?: boolean;
   flaggedReason?: string;
-  forbidden?: boolean;
-  forbiddenReason?: string;
+  verifiable?: boolean;
+  unverifiableReason?: string;
   concrete?: boolean;
   frame_id?: string | null;
   vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null;
@@ -40,8 +40,8 @@ export interface Noun {
   examples: string[];
   flagged?: boolean;
   flaggedReason?: string;
-  forbidden?: boolean;
-  forbiddenReason?: string;
+  verifiable?: boolean;
+  unverifiableReason?: string;
   frame_id?: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -66,8 +66,8 @@ export interface Adjective {
   examples: string[];
   flagged?: boolean;
   flaggedReason?: string;
-  forbidden?: boolean;
-  forbiddenReason?: string;
+  verifiable?: boolean;
+  unverifiableReason?: string;
   frame_id?: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -177,8 +177,8 @@ export interface Adverb {
   examples: string[];
   flagged?: boolean;
   flaggedReason?: string;
-  forbidden?: boolean;
-  forbiddenReason?: string;
+  verifiable?: boolean;
+  unverifiableReason?: string;
   frame_id?: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -215,8 +215,8 @@ export interface Frame {
   prototypical_synset: string;
   flagged?: boolean;
   flaggedReason?: string;
-  forbidden?: boolean;
-  forbiddenReason?: string;
+  verifiable?: boolean;
+  unverifiableReason?: string;
   createdAt: Date;
   updatedAt: Date;
   frame_roles?: FrameRole[];
@@ -261,8 +261,8 @@ export interface GraphNode {
   examples: string[];
   flagged?: boolean;
   flaggedReason?: string;
-  forbidden?: boolean;
-  forbiddenReason?: string;
+  verifiable?: boolean;
+  unverifiableReason?: string;
   // Verb-specific fields
   vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null;
   frame_id?: string | null;
@@ -360,12 +360,12 @@ export interface PaginationParams {
   examples?: string;
   // Note: frames filter removed - verbs table only has frame_id (BigInt), not frames array
   flaggedReason?: string;
-  forbiddenReason?: string;
+  unverifiableReason?: string;
   
   // Boolean filters
   isMwe?: boolean;
   flagged?: boolean;
-  forbidden?: boolean;
+  verifiable?: boolean;
   
   // Numeric filters
   parentsCountMin?: number;
@@ -456,8 +456,8 @@ export interface TableEntry {
   examples: string[];
   flagged?: boolean;
   flaggedReason?: string;
-  forbidden?: boolean;
-  forbiddenReason?: string;
+  verifiable?: boolean;
+  unverifiableReason?: string;
   parentsCount: number;
   childrenCount: number;
   createdAt: Date;
@@ -738,8 +738,8 @@ export interface FrameGraphNode {
   relations: FrameGraphRelation[];
   flagged?: boolean;
   flaggedReason?: string;
-  forbidden?: boolean;
-  forbiddenReason?: string;
+  verifiable?: boolean;
+  unverifiableReason?: string;
   pending?: PendingChangeInfo | null;
 }
 

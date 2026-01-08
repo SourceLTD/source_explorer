@@ -58,8 +58,8 @@ export interface LexicalEntrySummary {
   examples?: string[];
   flagged?: boolean | null;
   flagged_reason?: string | null;
-  forbidden?: boolean | null;
-  forbidden_reason?: string | null;
+  verifiable?: boolean | null;
+  unverifiable_reason?: string | null;
   label?: string | null;
   lexfile?: string | null;
   additional?: Record<string, unknown>;

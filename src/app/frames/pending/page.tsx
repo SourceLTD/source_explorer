@@ -65,7 +65,7 @@ function PendingChangesContent() {
       </header>
 
       {/* Main Content - Full width */}
-      <main className="flex-1 overflow-y-auto bg-gray-50">
+      <main className="flex-1 overflow-y-auto bg-white">
         <div className="w-full px-6 py-8">
           <PendingChangesList />
         </div>

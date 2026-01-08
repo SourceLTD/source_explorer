@@ -217,7 +217,7 @@ export async function stageDelete(
  * 
  * @param entityType - The type of entity (verb, noun, etc.)
  * @param entityCodes - Array of entity codes/IDs
- * @param updates - The moderation updates (flagged, forbidden, etc.)
+ * @param updates - The moderation updates (flagged, verifiable, etc.)
  * @param userId - The user making the changes
  * @returns Array of StagedResponse for each entity
  */

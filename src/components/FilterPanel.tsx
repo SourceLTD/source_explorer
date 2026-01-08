@@ -28,7 +28,7 @@ export interface FilterState {
   examples?: string;
   frames?: string;
   flaggedReason?: string;
-  forbiddenReason?: string;
+  unverifiableReason?: string;
   
   // Categorical filters
   pos?: string;
@@ -40,7 +40,7 @@ export interface FilterState {
   // Boolean filters
   isMwe?: boolean;
   flagged?: boolean;
-  forbidden?: boolean;
+  verifiable?: boolean;
   
   // Numeric filters
   parentsCountMin?: number;
@@ -542,12 +542,12 @@ export default function FilterPanel({
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Forbidden Reason</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Unverifiable Reason</label>
                 <input
                   type="text"
-                  value={filters.forbiddenReason || ''}
-                  onChange={(e) => updateFilter('forbiddenReason', e.target.value)}
-                  placeholder="Search in forbidden reason..."
+                  value={filters.unverifiableReason || ''}
+                  onChange={(e) => updateFilter('unverifiableReason', e.target.value)}
+                  placeholder="Search in unverifiable reason..."
                   className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
                 />
               </div>
@@ -800,23 +800,23 @@ export default function FilterPanel({
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Forbidden</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Verifiable</label>
                 <div className="flex gap-2">
                   <button
-                    onClick={() => updateFilter('forbidden', filters.forbidden === true ? undefined : true)}
+                    onClick={() => updateFilter('verifiable', filters.verifiable === true ? undefined : true)}
                     className={`px-3 py-1 rounded-xl text-sm font-medium transition-colors cursor-pointer ${
-                      filters.forbidden === true 
-                        ? 'bg-red-100 text-red-800 border border-red-200' 
+                      filters.verifiable === true 
+                        ? 'bg-green-100 text-green-800 border border-green-200' 
                         : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
                     }`}
                   >
                     Yes
                   </button>
                   <button
-                    onClick={() => updateFilter('forbidden', filters.forbidden === false ? undefined : false)}
+                    onClick={() => updateFilter('verifiable', filters.verifiable === false ? undefined : false)}
                     className={`px-3 py-1 rounded-xl text-sm font-medium transition-colors cursor-pointer ${
-                      filters.forbidden === false 
-                        ? 'bg-red-100 text-red-800 border border-red-200' 
+                      filters.verifiable === false 
+                        ? 'bg-green-100 text-green-800 border border-green-200' 
                         : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
                     }`}
                   >

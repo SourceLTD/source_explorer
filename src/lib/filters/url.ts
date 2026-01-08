@@ -42,8 +42,8 @@ export function parseURLToFilterAST(pos: PartOfSpeech, input: string | URLSearch
   const flaggedReason = get('flaggedReason');
   if (flaggedReason) addRule(group, { kind: 'rule', field: 'flagged_reason', operator: 'contains', value: flaggedReason });
 
-  const forbiddenReason = get('forbiddenReason');
-  if (forbiddenReason) addRule(group, { kind: 'rule', field: 'forbidden_reason', operator: 'contains', value: forbiddenReason });
+  const unverifiableReason = get('unverifiableReason');
+  if (unverifiableReason) addRule(group, { kind: 'rule', field: 'unverifiable_reason', operator: 'contains', value: unverifiableReason });
 
   // Categorical (skip for frames)
   if (pos !== 'frames') {
@@ -71,8 +71,8 @@ export function parseURLToFilterAST(pos: PartOfSpeech, input: string | URLSearch
   const flagged = get('flagged');
   if (flagged !== null) addRule(group, { kind: 'rule', field: 'flagged', operator: 'is', value: flagged === 'true' });
 
-  const forbidden = get('forbidden');
-  if (forbidden !== null) addRule(group, { kind: 'rule', field: 'forbidden', operator: 'is', value: forbidden === 'true' });
+  const verifiable = get('verifiable');
+  if (verifiable !== null) addRule(group, { kind: 'rule', field: 'verifiable', operator: 'is', value: verifiable === 'true' });
 
   // Numeric (computed for verbs only)
   if (pos === 'verbs') {

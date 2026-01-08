@@ -123,7 +123,7 @@ function parsePaginationParams(searchParams: URLSearchParams): {
       lemmas: searchParams.get('lemmas') || undefined,
       examples: searchParams.get('examples') || undefined,
       flaggedReason: searchParams.get('flaggedReason') || undefined,
-      forbiddenReason: searchParams.get('forbiddenReason') || undefined,
+      unverifiableReason: searchParams.get('unverifiableReason') || undefined,
       
       // AI jobs filters
       flaggedByJobId: searchParams.get('flaggedByJobId') || undefined,
@@ -131,7 +131,7 @@ function parsePaginationParams(searchParams: URLSearchParams): {
       // Boolean filters
       isMwe: searchParams.get('isMwe') === 'true' ? true : searchParams.get('isMwe') === 'false' ? false : undefined,
       flagged: searchParams.get('flagged') === 'true' ? true : searchParams.get('flagged') === 'false' ? false : undefined,
-      forbidden: searchParams.get('forbidden') === 'true' ? true : searchParams.get('forbidden') === 'false' ? false : undefined,
+      verifiable: searchParams.get('verifiable') === 'true' ? true : searchParams.get('verifiable') === 'false' ? false : undefined,
       
       // Numeric filters
       parentsCountMin: searchParams.get('parentsCountMin') ? parseInt(searchParams.get('parentsCountMin')!) : undefined,
@@ -561,7 +561,7 @@ export async function handleGetGraph(
 /**
  * Valid moderation fields
  */
-const VALID_MODERATION_FIELDS = ['flagged', 'flaggedReason', 'forbidden', 'forbiddenReason'];
+const VALID_MODERATION_FIELDS = ['flagged', 'flaggedReason', 'verifiable', 'unverifiableReason'];
 
 /**
  * Handles PATCH moderation requests for any lexical type
@@ -624,7 +624,7 @@ export async function handleModerationRequest(
       message = `Updated flagging status for ${directCount} ${lexicalType}. `;
     }
 
-    // Stage other moderation updates (e.g., forbidden)
+    // Stage other moderation updates (e.g., verifiable)
     if (Object.keys(stagedUpdates).length > 0) {
       const result = await stageModerationUpdates(entityType, ids, stagedUpdates, userId);
       stagedCount = result.staged_count;

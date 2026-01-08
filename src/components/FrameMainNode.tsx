@@ -98,7 +98,6 @@ export default function FrameMainNode({
   const centerX = -nodeWidth / 2;
   const centerY = -nodeHeight / 2;
   
-  const isForbiddenNode = node.forbidden;
   const hasPendingChanges = !!node.pending;
   const pendingOperation = node.pending?.operation;
   
@@ -135,14 +134,12 @@ export default function FrameMainNode({
         fill={
           hasPendingChanges && pendingOperation
             ? getPendingNodeFill(pendingOperation)
-            : isForbiddenNode 
-            ? '#fca5a5' 
             : '#3b82f6'
         }
         stroke={
           hasPendingChanges && pendingOperation
             ? getPendingNodeStroke(pendingOperation)
-            : (isForbiddenNode ? '#dc2626' : '#1e40af')
+            : '#1e40af'
         }
         strokeWidth={hasPendingChanges ? 4 : 3}
         rx={8}
