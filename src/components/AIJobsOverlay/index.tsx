@@ -54,7 +54,7 @@ export function AIJobsOverlay({
     onJobCreated: useCallback(async (job: SerializedJob) => {
       await polling.loadJobs();
       polling.setActiveJobId(job.id);
-    }, [polling]),
+    }, [polling.loadJobs, polling.setActiveJobId]),
   });
 
   // Update polling's isCreating flag
@@ -86,7 +86,7 @@ export function AIJobsOverlay({
         durationMs: 7000,
       });
     }
-  }, [polling]);
+  }, [polling.loadJobs, polling.activeJobId, polling.loadJobDetails]);
 
   // Delete job handler
   const handleDeleteJob = useCallback(async (jobId: string) => {
@@ -109,9 +109,10 @@ export function AIJobsOverlay({
         durationMs: 7000,
       });
     }
-  }, [polling]);
+  }, [polling.clearSelectedJob, polling.loadJobs]);
 
   // Track submission progress for active jobs
+  const { submissionProgress, setSubmissionProgress } = creation;
   useEffect(() => {
     if (!isOpen || polling.jobs.length === 0) return;
     
@@ -121,17 +122,28 @@ export function AIJobsOverlay({
     );
     
     if (activeJob) {
-      creation.setSubmissionProgress({
-        jobId: activeJob.id,
-        submitted: activeJob.submitted_items ?? 0,
-        total: activeJob.total_items,
-        failed: activeJob.failed_items ?? 0,
-        isSubmitting: true,
-      });
-    } else if (creation.submissionProgress?.isSubmitting) {
-      creation.setSubmissionProgress(null);
+      // Only update if values actually changed to avoid infinite loop
+      const newSubmitted = activeJob.submitted_items ?? 0;
+      const newFailed = activeJob.failed_items ?? 0;
+      if (
+        submissionProgress?.jobId !== activeJob.id ||
+        submissionProgress?.submitted !== newSubmitted ||
+        submissionProgress?.total !== activeJob.total_items ||
+        submissionProgress?.failed !== newFailed ||
+        !submissionProgress?.isSubmitting
+      ) {
+        setSubmissionProgress({
+          jobId: activeJob.id,
+          submitted: newSubmitted,
+          total: activeJob.total_items,
+          failed: newFailed,
+          isSubmitting: true,
+        });
+      }
+    } else if (submissionProgress?.isSubmitting) {
+      setSubmissionProgress(null);
     }
-  }, [isOpen, polling.jobs, creation]);
+  }, [isOpen, polling.jobs, submissionProgress, setSubmissionProgress]);
 
   const pendingBadge = polling.pendingJobsCount > 0 ? polling.pendingJobsCount : null;
 

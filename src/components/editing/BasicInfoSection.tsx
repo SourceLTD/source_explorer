@@ -162,11 +162,11 @@ export function BasicInfoSection({
         )}
       </div>
 
-      {/* Definition */}
+      {/* Gloss */}
       <div>
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-sm font-medium text-gray-700">
-            Definition
+            Gloss
             {hasPendingField('gloss') && (
               <span className="ml-2 text-xs text-orange-600 font-normal">(pending)</span>
             )}

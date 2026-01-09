@@ -449,7 +449,7 @@ export default function GraphMainNode({
             cursor: 'pointer'
           }}
         >
-          {node.gloss || 'No definition available'}
+          {node.gloss || 'No gloss available'}
         </div>
       </foreignObject>
       

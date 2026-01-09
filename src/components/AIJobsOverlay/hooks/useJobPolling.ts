@@ -112,7 +112,12 @@ export function useJobPolling({
         return hasChanges ? response.jobs : prevJobs;
       });
       
-      setActiveJobId(prev => prev ?? response.jobs[0]?.id ?? null);
+      // Auto-select: prioritize running/queued jobs, then fall back to latest job
+      setActiveJobId(prev => {
+        if (prev) return prev;
+        const runningJob = response.jobs.find(job => job.status === 'running' || job.status === 'queued');
+        return runningJob?.id ?? response.jobs[0]?.id ?? null;
+      });
       
       if (!silent) {
         setJobsError(null);
