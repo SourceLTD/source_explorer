@@ -7,7 +7,7 @@ import { getVariablesForEntityType, getIterableVariablesForEntityType } from '@/
 import type { PreviewResponse, ScopeMode } from '../types';
 import { 
   MODEL_OPTIONS, 
-  DEFAULT_PROMPTS, 
+  buildPrompt, 
   DEFAULT_LABEL, 
   STEPPER_STEPS,
   type StepperStep 
@@ -58,8 +58,8 @@ export interface UseJobCreationReturn {
   setLabelManuallyEdited: (edited: boolean) => void;
   model: string;
   setModel: (model: string) => void;
-  jobType: 'moderation' | 'editing' | 'reallocation';
-  setJobType: (type: 'moderation' | 'editing' | 'reallocation') => void;
+  jobType: 'moderation' | 'editing' | 'reallocation' | 'allocate';
+  setJobType: (type: 'moderation' | 'editing' | 'reallocation' | 'allocate') => void;
   targetFields: string[];
   setTargetFields: (fields: string[]) => void;
   reallocationEntityTypes: ('verbs' | 'nouns' | 'adjectives' | 'adverbs')[];
@@ -116,6 +116,8 @@ export interface UseJobCreationReturn {
   insertFrameId: (id: string) => void;
   
   // Prompt state
+  promptMode: 'simple' | 'advanced';
+  setPromptMode: (mode: 'simple' | 'advanced') => void;
   promptTemplate: string;
   setPromptTemplate: (template: string) => void;
   promptManuallyEdited: boolean;
@@ -190,7 +192,7 @@ export function useJobCreation({
   const [label, setLabel] = useState(DEFAULT_LABEL);
   const [labelManuallyEdited, setLabelManuallyEdited] = useState(false);
   const [model, setModel] = useState<string>(MODEL_OPTIONS[0].value);
-  const [jobType, setJobType] = useState<'moderation' | 'editing' | 'reallocation'>('moderation');
+  const [jobType, setJobType] = useState<'moderation' | 'editing' | 'reallocation' | 'allocate'>('moderation');
   const [targetFields, setTargetFields] = useState<string[]>([]);
   const [reallocationEntityTypes, setReallocationEntityTypes] = useState<('verbs' | 'nouns' | 'adjectives' | 'adverbs')[]>([]);
   const [priority, setPriority] = useState<'flex' | 'normal' | 'priority'>('normal');
@@ -213,7 +215,13 @@ export function useJobCreation({
   const [filterValidateSample, setFilterValidateSample] = useState<Array<{ code: string; gloss: string }>>([]);
   
   // Prompt state
-  const [promptTemplate, setPromptTemplate] = useState(DEFAULT_PROMPTS.moderation);
+  const [promptMode, setPromptMode] = useState<'simple' | 'advanced'>('simple');
+  const [promptTemplate, setPromptTemplate] = useState(() => buildPrompt({
+    entityType: mode,
+    jobType: 'moderation',
+    agenticMode: true, // Default matches initial agenticMode state
+    scopeMode: 'all',  // Default matches initial scopeMode state
+  }));
   const [promptManuallyEdited, setPromptManuallyEdited] = useState(false);
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const [showVariableMenu, setShowVariableMenu] = useState(false);
@@ -239,6 +247,24 @@ export function useJobCreation({
   } | null>(null);
   const [estimateLoading, setEstimateLoading] = useState(false);
   const [estimateError, setEstimateError] = useState<string | null>(null);
+  
+  // Apply 3x multiplier to token estimates when agentic mode is enabled
+  const adjustedEstimate = useMemo(() => {
+    if (!estimate) return null;
+    if (!agenticMode) return estimate;
+    
+    const multiplier = 3;
+    return {
+      ...estimate,
+      inputTokensPerItem: Math.round(estimate.inputTokensPerItem * multiplier),
+      outputTokensPerItem: Math.round(estimate.outputTokensPerItem * multiplier),
+      totalInputTokens: Math.round(estimate.totalInputTokens * multiplier),
+      totalOutputTokens: Math.round(estimate.totalOutputTokens * multiplier),
+      estimatedCostUSD: estimate.estimatedCostUSD !== null 
+        ? estimate.estimatedCostUSD * multiplier 
+        : null,
+    };
+  }, [estimate, agenticMode]);
   
   // Submission state
   const [submissionLoading, setSubmissionLoading] = useState(false);
@@ -542,7 +568,13 @@ export function useJobCreation({
     setScopeMode('all');
     setManualIdText('');
     setFrameIdText('');
-    setPromptTemplate(DEFAULT_PROMPTS.moderation);
+    setPromptMode('simple');
+    setPromptTemplate(buildPrompt({
+      entityType: mode,
+      jobType: 'moderation',
+      agenticMode: true,
+      scopeMode: 'all',
+    }));
     setPromptManuallyEdited(false);
     setPreview(null);
     setSubmissionError(null);
@@ -584,7 +616,7 @@ export function useJobCreation({
       model?: string; 
       promptTemplate?: string; 
       serviceTier?: string | null;
-      jobType?: 'moderation' | 'editing' | 'reallocation';
+      jobType?: 'moderation' | 'editing' | 'reallocation' | 'allocate';
       targetFields?: string[];
       reallocationEntityTypes?: ('verbs' | 'nouns' | 'adjectives' | 'adverbs')[];
       reasoning?: { effort?: 'low' | 'medium' | 'high' } | null;
@@ -593,7 +625,15 @@ export function useJobCreation({
     
     const scope = job.scope as JobScope | null;
 
-    const loadedJobType = config?.jobType ?? (job.job_type as 'moderation' | 'editing' | 'reallocation') ?? 'moderation';
+    let loadedJobType = config?.jobType ?? (job.job_type as 'moderation' | 'editing' | 'reallocation' | 'allocate') ?? 'moderation';
+    // Reallocation is only valid for frames mode - reset to moderation if not
+    if (loadedJobType === 'reallocation' && mode !== 'frames') {
+      loadedJobType = 'moderation';
+    }
+    // Allocate is only valid for non-frames mode - reset to moderation if frames
+    if (loadedJobType === 'allocate' && mode === 'frames') {
+      loadedJobType = 'moderation';
+    }
     setLabel(job.label ?? DEFAULT_LABEL);
     setLabelManuallyEdited(true);
     setModel(config?.model ?? MODEL_OPTIONS[0].value);
@@ -603,9 +643,16 @@ export function useJobCreation({
     setPriority(serviceTierToPriority(config?.serviceTier));
     setReasoningEffort(config?.reasoning?.effort ?? 'medium');
     // Agentic mode is enabled if mcpApproval is not 'always' (which disables tools)
-    setAgenticMode(config?.mcpApproval !== 'always');
-    setPromptTemplate(config?.promptTemplate ?? DEFAULT_PROMPTS[loadedJobType]);
+    const loadedAgenticMode = config?.mcpApproval !== 'always';
+    setAgenticMode(loadedAgenticMode);
+    setPromptTemplate(config?.promptTemplate ?? buildPrompt({
+      entityType: mode,
+      jobType: loadedJobType,
+      agenticMode: loadedAgenticMode,
+      scopeMode: 'all', // Will be determined later, but prompt is already stored in job
+    }));
     setPromptManuallyEdited(true);
+    setPromptMode('advanced'); // When loading a job, use advanced mode since prompt may be customized
 
     if (scope) {
       if (scope.kind === 'ids') {
@@ -650,6 +697,8 @@ export function useJobCreation({
     const { value, selectionStart } = event.target;
     setPromptTemplate(value);
     setPromptManuallyEdited(true);
+    // Auto-switch to advanced mode when user edits the prompt
+    setPromptMode('advanced');
 
     const uptoCursor = value.slice(0, selectionStart);
     const openIndex = uptoCursor.lastIndexOf('{{');
@@ -963,12 +1012,30 @@ export function useJobCreation({
     }
   }, [labelManuallyEdited, isCreating, generateDynamicLabel]);
 
-  // Auto-update prompt when job type changes
+  // Auto-update prompt when job type, mode, agentic mode, or scope mode changes
   useEffect(() => {
     if (!promptManuallyEdited && isCreating) {
-      setPromptTemplate(DEFAULT_PROMPTS[jobType]);
+      setPromptTemplate(buildPrompt({
+        entityType: mode,
+        jobType,
+        agenticMode,
+        scopeMode,
+      }));
     }
-  }, [jobType, promptManuallyEdited, isCreating]);
+  }, [jobType, mode, agenticMode, scopeMode, promptManuallyEdited, isCreating]);
+
+  // Reset job type to moderation if it's not valid for the current mode
+  // - Reallocation is only valid for frames mode
+  // - Allocate is only valid for non-frames mode
+  useEffect(() => {
+    if (jobType === 'reallocation' && mode !== 'frames') {
+      setJobType('moderation');
+      setReallocationEntityTypes([]);
+    }
+    if (jobType === 'allocate' && mode === 'frames') {
+      setJobType('moderation');
+    }
+  }, [mode, jobType]);
 
   // Close variable menu when leaving prompt step
   useEffect(() => {
@@ -1191,6 +1258,8 @@ export function useJobCreation({
     },
     
     // Prompt state
+    promptMode,
+    setPromptMode,
     promptTemplate,
     setPromptTemplate,
     promptManuallyEdited,
@@ -1211,7 +1280,7 @@ export function useJobCreation({
     previewLoading,
     currentPreviewIndex,
     setCurrentPreviewIndex,
-    estimate,
+    estimate: adjustedEstimate,
     estimateLoading,
     estimateError,
     

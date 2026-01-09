@@ -1,6 +1,6 @@
 import type { llm_job_items } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
-import type { FlaggingResponse, EditResponse, ReallocationResponse } from './schema';
+import type { FlaggingResponse, EditResponse, ReallocationResponse, AllocationResponse } from './schema';
 import type { JobScope, LexicalEntrySummary } from './types';
 import {
   createChangesetFromUpdate,
@@ -18,10 +18,10 @@ import {
 export async function applyJobResult(
   item: llm_job_items,
   entry: LexicalEntrySummary,
-  result: FlaggingResponse | EditResponse | ReallocationResponse,
+  result: FlaggingResponse | EditResponse | ReallocationResponse | AllocationResponse,
   jobLabel: string | null,
   submittedBy: string,
-  jobType: 'moderation' | 'editing' | 'reallocation',
+  jobType: 'moderation' | 'editing' | 'reallocation' | 'allocate',
   jobScope?: JobScope,
   jobConfig?: Record<string, unknown>
 ): Promise<void> {
@@ -32,6 +32,8 @@ export async function applyJobResult(
     await applyReallocationResult(item, result as ReallocationResponse, submittedBy, llmJobId, jobConfig);
   } else if (jobType === 'editing') {
     await applyEditingResult(item, entry, result as EditResponse, submittedBy, llmJobId);
+  } else if (jobType === 'allocate') {
+    await applyAllocationResult(item, entry, result as AllocationResponse, submittedBy, llmJobId);
   } else {
     await applyModerationResult(item, result as FlaggingResponse, jobLabel, submittedBy, llmJobId, jobScope);
   }
@@ -341,6 +343,86 @@ async function applyEditingResult(
         suggested_relations: relations,
         suggested_frame_id: frame_id,
         entry_reallocations: entry_reallocations,
+      },
+      completed_at: new Date(),
+    },
+  });
+}
+
+/**
+ * Apply allocation job result - recommend the best frame for a lexical entry.
+ */
+async function applyAllocationResult(
+  item: llm_job_items,
+  entry: LexicalEntrySummary,
+  result: AllocationResponse,
+  submittedBy: string,
+  llmJobId: bigint
+): Promise<void> {
+  const { recommended_frame_id, keep_current, confidence, reasoning } = result;
+  let hasEdits = false;
+
+  const entityType = item.verb_id ? 'verb' : 
+                   item.noun_id ? 'noun' :
+                   item.adjective_id ? 'adjective' :
+                   item.adverb_id ? 'adverb' : null;
+  const entityId = item.verb_id || item.noun_id || item.adjective_id || item.adverb_id;
+
+  // Only create a changeset if we're not keeping current and have a recommendation
+  if (!keep_current && recommended_frame_id !== null && entityType && entityId) {
+    // Validate the target frame exists
+    const targetFrame = await prisma.frames.findUnique({
+      where: { id: BigInt(recommended_frame_id) },
+      select: { id: true, label: true },
+    });
+
+    if (targetFrame) {
+      const table = ENTITY_TYPE_TO_TABLE[entityType as EntityType];
+      const currentEntity = await (prisma[table as keyof typeof prisma] as any).findUnique({
+        where: { id: entityId },
+      });
+
+      if (currentEntity) {
+        // Check if it's different from current frame
+        const currentFrameId = currentEntity.frame_id;
+        if (currentFrameId === null || BigInt(currentFrameId) !== BigInt(recommended_frame_id)) {
+          const changeset = await createChangesetFromUpdate(
+            entityType as EntityType,
+            entityId,
+            currentEntity as Record<string, unknown>,
+            { frame_id: BigInt(recommended_frame_id) },
+            submittedBy,
+            llmJobId,
+          );
+          hasEdits = true;
+
+          // Post AI reasoning as the first discussion comment
+          if (reasoning && reasoning.trim()) {
+            await addComment({
+              changeset_id: changeset.id,
+              author: 'system:llm-agent',
+              content: reasoning.trim(),
+            });
+          }
+        }
+      }
+    } else {
+      console.warn(`[LLM] Allocation job ${item.job_id} suggested non-existent frame_id: ${recommended_frame_id}`);
+    }
+  }
+
+  await prisma.llm_job_items.update({
+    where: { id: item.id },
+    data: {
+      status: 'succeeded',
+      has_edits: hasEdits,
+      flags: {
+        recommended_frame_id,
+        keep_current,
+        confidence,
+        reasoning,
+        staged_at: new Date().toISOString(),
+        llm_job_id: llmJobId.toString(),
       },
       completed_at: new Date(),
     },

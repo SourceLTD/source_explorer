@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client';
 import type OpenAI from 'openai';
 import { prisma } from '@/lib/prisma';
-import { FLAGGING_RESPONSE_SCHEMA, EDIT_RESPONSE_SCHEMA, REALLOCATION_RESPONSE_SCHEMA, type FlaggingResponse } from './schema';
+import { FLAGGING_RESPONSE_SCHEMA, EDIT_RESPONSE_SCHEMA, REALLOCATION_RESPONSE_SCHEMA, ALLOCATION_RESPONSE_SCHEMA, type FlaggingResponse } from './schema';
 import type { CreateLLMJobParams, JobScope, LexicalEntrySummary, SerializedJob } from './types';
 import { getOpenAIClient } from './client';
 import { applyJobResult } from './result-handlers';
@@ -94,12 +94,14 @@ export async function submitJobItemBatch(
   }
 
   const config = job?.config as { model: string; serviceTier?: string; reasoning?: unknown } | null;
-  const jobType = (job?.job_type ?? 'moderation') as 'moderation' | 'editing' | 'reallocation';
+  const jobType = (job?.job_type ?? 'moderation') as 'moderation' | 'editing' | 'reallocation' | 'allocate';
   const responseSchema = jobType === 'editing' 
     ? EDIT_RESPONSE_SCHEMA 
     : jobType === 'reallocation' 
       ? REALLOCATION_RESPONSE_SCHEMA 
-      : FLAGGING_RESPONSE_SCHEMA;
+      : jobType === 'allocate'
+        ? ALLOCATION_RESPONSE_SCHEMA
+        : FLAGGING_RESPONSE_SCHEMA;
   const client = ensureOpenAIClient();
   const openAIServiceTier = normalizeServiceTier(config?.serviceTier as CreateLLMJobParams['serviceTier']);
   

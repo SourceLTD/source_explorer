@@ -128,6 +128,43 @@ export type ReallocationResponse = {
   notes: string;
 };
 
+export const ALLOCATION_RESPONSE_SCHEMA = {
+  name: 'lexical_allocation_response',
+  strict: true,
+  schema: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['recommended_frame_id', 'keep_current', 'confidence', 'reasoning'],
+    properties: {
+      recommended_frame_id: {
+        type: ['integer', 'null'],
+        description: 'The numeric ID of the recommended frame. Use null if entry should remain unassigned.',
+      },
+      keep_current: {
+        type: 'boolean',
+        description: 'True if the current frame assignment is optimal and should not change.',
+      },
+      confidence: {
+        type: 'number',
+        minimum: 0,
+        maximum: 1,
+        description: 'Confidence score for the recommendation (0-1).',
+      },
+      reasoning: {
+        type: 'string',
+        description: 'Explanation for why this frame is the best fit for this entry.',
+      },
+    },
+  },
+} as const;
+
+export type AllocationResponse = {
+  recommended_frame_id: number | null;
+  keep_current: boolean;
+  confidence: number;
+  reasoning: string;
+};
+
 export const CHANGE_REVIEW_RESPONSE_SCHEMA = {
   name: 'change_review_response',
   strict: true,

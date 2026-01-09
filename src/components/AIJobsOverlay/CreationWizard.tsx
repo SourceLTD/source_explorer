@@ -5,7 +5,7 @@ import { ChevronLeftIcon, ChevronRightIcon, ClipboardDocumentIcon } from '@heroi
 import { showGlobalAlert } from '@/lib/alerts';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import { ScopeSelector } from './ScopeSelector';
-import { STEPPER_STEPS, STEP_TITLES, MODEL_OPTIONS, type StepperStep } from './constants';
+import { STEPPER_STEPS, STEP_TITLES, MODEL_OPTIONS, buildPrompt, type StepperStep } from './constants';
 import { calculateCursorPosition, truncate } from './utils';
 import type { UseJobCreationReturn } from './hooks/useJobCreation';
 
@@ -75,7 +75,10 @@ export const CreationWizard = memo(function CreationWizard({
     handleFrameIdChange,
     handleFrameIdKeyDown,
     insertFrameId,
+    promptMode,
+    setPromptMode,
     promptTemplate,
+    setPromptTemplate,
     promptRef,
     showVariableMenu,
     variableMenuPosition,
@@ -192,23 +195,45 @@ export const CreationWizard = memo(function CreationWizard({
                     <div className="text-[10px] opacity-70">Improve data</div>
                   </div>
                 </label>
-                <label className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border p-3 transition-colors ${jobType === 'reallocation' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 hover:bg-gray-50'}`}>
-                  <input
-                    type="radio"
-                    name="jobType"
-                    value="reallocation"
-                    checked={jobType === 'reallocation'}
-                    onChange={() => {
-                      setJobType('reallocation');
-                      setTargetFields([]);
-                    }}
-                    className="sr-only"
-                  />
-                  <div className="text-center">
-                    <div className="text-sm font-semibold">Reallocate</div>
-                    <div className="text-[10px] opacity-70">Change frame contents</div>
-                  </div>
-                </label>
+                {mode !== 'frames' && (
+                  <label className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border p-3 transition-colors ${jobType === 'allocate' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 hover:bg-gray-50'}`}>
+                    <input
+                      type="radio"
+                      name="jobType"
+                      value="allocate"
+                      checked={jobType === 'allocate'}
+                      onChange={() => {
+                        setJobType('allocate');
+                        setTargetFields([]);
+                        setReallocationEntityTypes([]);
+                      }}
+                      className="sr-only"
+                    />
+                    <div className="text-center">
+                      <div className="text-sm font-semibold">Allocate</div>
+                      <div className="text-[10px] opacity-70">Find best frame</div>
+                    </div>
+                  </label>
+                )}
+                {mode === 'frames' && (
+                  <label className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border p-3 transition-colors ${jobType === 'reallocation' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 hover:bg-gray-50'}`}>
+                    <input
+                      type="radio"
+                      name="jobType"
+                      value="reallocation"
+                      checked={jobType === 'reallocation'}
+                      onChange={() => {
+                        setJobType('reallocation');
+                        setTargetFields([]);
+                      }}
+                      className="sr-only"
+                    />
+                    <div className="text-center">
+                      <div className="text-sm font-semibold">Reallocate</div>
+                      <div className="text-[10px] opacity-70">Change frame contents</div>
+                    </div>
+                  </label>
+                )}
               </div>
             </div>
 
@@ -444,113 +469,187 @@ export const CreationWizard = memo(function CreationWizard({
             </div>
           </div>
         );
-      case 'prompt':
+      case 'prompt': {
+        const jobTypeLabel = jobType === 'moderation' ? 'Flag' : jobType === 'editing' ? 'Edit' : jobType === 'allocate' ? 'Allocate' : 'Reallocate';
+        const defaultPrompt = buildPrompt({
+          entityType: mode,
+          jobType,
+          agenticMode,
+          scopeMode,
+        });
+        
         return (
           <div className="flex h-full flex-col gap-4">
-            <div className="relative flex min-h-0 flex-1 flex-col">
-              <label className="block text-xs font-medium text-gray-600">Prompt Template</label>
-              <div className="relative mt-1 min-h-0 flex-1">
-                {/* Highlight overlay - must have identical text rendering to textarea */}
-                <div 
-                  className="pointer-events-none absolute inset-px overflow-hidden rounded-xl px-3 py-2 text-sm text-gray-900 font-mono leading-normal"
-                  style={{ wordWrap: 'break-word', overflowWrap: 'break-word' }}
-                >
-                  <div
-                    className="whitespace-pre-wrap"
-                    style={{ transform: `translate(${-editorScroll.left}px, ${-editorScroll.top}px)` }}
-                  >
-                    {renderHighlighted(promptTemplate)}
+            {/* Mode Toggle */}
+            <div className="space-y-3">
+              <label className="block text-xs font-semibold text-gray-700">Prompt Mode</label>
+              <div className="flex gap-3">
+                <label className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border p-3 transition-colors ${promptMode === 'simple' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 hover:bg-gray-50'}`}>
+                  <input
+                    type="radio"
+                    name="promptMode"
+                    value="simple"
+                    checked={promptMode === 'simple'}
+                    onChange={() => {
+                      setPromptMode('simple');
+                      setPromptTemplate(defaultPrompt);
+                    }}
+                    className="sr-only"
+                  />
+                  <div className="text-center">
+                    <div className="text-sm font-semibold">Simple</div>
+                    <div className="text-[10px] opacity-70">Use default prompt</div>
                   </div>
-                </div>
-                <textarea
-                  ref={promptRef}
-                  value={promptTemplate}
-                  onChange={handlePromptChange}
-                  onKeyDown={handlePromptKeyDown}
-                  onScroll={event => {
-                    const target = event.currentTarget;
-                    setEditorScroll({ top: target.scrollTop, left: target.scrollLeft });
-                    if (showVariableMenu) {
-                      const cursorPos = target.selectionStart;
-                      const pos = calculateCursorPosition(target, cursorPos);
-                      // Note: This updates position through the hook's state
-                    }
-                  }}
-                  className="h-full w-full resize-none rounded-xl border border-gray-300 bg-transparent px-3 py-2 text-sm font-mono leading-normal focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  style={{ color: 'transparent', caretColor: '#111827' }}
-                  placeholder="Write instructions for the AI..."
-                  spellCheck={false}
-                  autoComplete="off"
-                  autoCorrect="off"
-                  autoCapitalize="off"
-                  data-gramm="false"
-                  data-gramm_editor="false"
-                  data-enable-grammarly="false"
-                />
+                </label>
+                <label className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border p-3 transition-colors ${promptMode === 'advanced' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 hover:bg-gray-50'}`}>
+                  <input
+                    type="radio"
+                    name="promptMode"
+                    value="advanced"
+                    checked={promptMode === 'advanced'}
+                    onChange={() => {
+                      setPromptMode('advanced');
+                      // Keep current prompt when switching to advanced
+                    }}
+                    className="sr-only"
+                  />
+                  <div className="text-center">
+                    <div className="text-sm font-semibold">Advanced</div>
+                    <div className="text-[10px] opacity-70">Custom prompt</div>
+                  </div>
+                </label>
               </div>
-              {showVariableMenu && (
-                <div
-                  className="fixed z-10 max-h-48 w-60 overflow-y-auto rounded-xl border border-gray-200 bg-white"
-                  style={{ top: `${variableMenuPosition.top}px`, left: `${variableMenuPosition.left}px` }}
-                >
-                  {filteredVariables.length === 0 ? (
-                    <div className="p-2 text-xs text-gray-500">No matching variables</div>
-                  ) : (
-                    <ul>
-                      {filteredVariables.map((variable, idx) => (
-                        <li key={variable.key}>
-                          <button
-                            ref={idx === variableActiveIndex ? activeVariableRef : null}
-                            onClick={() => insertVariable(variable.key)}
-                            className={`cursor-pointer flex w-full flex-col items-start px-3 py-2 text-left text-xs hover:bg-blue-50 ${idx === variableActiveIndex ? 'bg-blue-50' : ''}`}
-                            type="button"
-                          >
-                            <span className="font-semibold text-gray-800">{variable.key}</span>
-                            <span className="text-[11px] text-gray-500">{variable.label}</span>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              )}
             </div>
-            <div className="shrink-0 space-y-1 text-xs text-gray-500">
-              <p>
-                Type <code className="rounded bg-gray-100 px-1">{'{{'}</code> to insert variables.
-                {(mode === 'verbs' || mode === 'frames') && (
-                  <> Use <code className="rounded bg-indigo-50 px-1 text-indigo-600">{'{%'} for item in collection {'%}'}</code> for loops.</>
-                )}
-              </p>
-              {(mode === 'verbs' || mode === 'frames') && (
-                <details className="cursor-pointer">
-                  <summary className="text-gray-400 hover:text-gray-600">Loop syntax help</summary>
-                  <div className="mt-1.5 rounded-lg bg-gray-50 p-2 font-mono text-[11px] leading-relaxed">
-                    {mode === 'verbs' ? (
-                      <>
-                        <div className="text-gray-600">{'{%'} for role in frame.roles {'%}'}</div>
-                        <div className="pl-2 text-gray-500">{'{{ role.type }}'}: {'{{ role.description }}'}</div>
-                        <div className="text-gray-600">{'{%'} endfor {'%}'}</div>
-                        <div className="mt-1.5 border-t border-gray-200 pt-1.5 text-gray-400">
-                          Available: frame.roles, frame.verbs, frame.nouns
-                        </div>
-                      </>
+
+            {/* Separator */}
+            <div className="border-t border-gray-200" />
+
+            {promptMode === 'simple' ? (
+              /* Simple Mode - Read-only preview */
+              <div className="flex min-h-0 flex-1 flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-gray-600">
+                    Uses optimized default prompt for <span className="font-semibold">{jobTypeLabel}</span> jobs
+                  </p>
+                </div>
+                <div className="min-h-0 flex-1 rounded-xl border border-gray-200 bg-gray-50 overflow-auto">
+                  <pre className="whitespace-pre-wrap p-3 text-xs text-gray-700 font-mono leading-relaxed">
+                    {renderHighlighted(defaultPrompt)}
+                  </pre>
+                </div>
+              </div>
+            ) : (
+              /* Advanced Mode - Editable textarea */
+              <div className="relative flex min-h-0 flex-1 flex-col">
+                <label className="block text-xs font-medium text-gray-600">Custom Prompt</label>
+                <div className="relative mt-1 min-h-0 flex-1">
+                  {/* Highlight overlay - must have identical text rendering to textarea */}
+                  <div 
+                    className="pointer-events-none absolute inset-px overflow-hidden rounded-xl px-3 py-2 text-sm text-gray-900 font-mono leading-normal"
+                    style={{ wordWrap: 'break-word', overflowWrap: 'break-word' }}
+                  >
+                    <div
+                      className="whitespace-pre-wrap"
+                      style={{ transform: `translate(${-editorScroll.left}px, ${-editorScroll.top}px)` }}
+                    >
+                      {renderHighlighted(promptTemplate)}
+                    </div>
+                  </div>
+                  <textarea
+                    ref={promptRef}
+                    value={promptTemplate}
+                    onChange={handlePromptChange}
+                    onKeyDown={handlePromptKeyDown}
+                    onScroll={event => {
+                      const target = event.currentTarget;
+                      setEditorScroll({ top: target.scrollTop, left: target.scrollLeft });
+                      if (showVariableMenu) {
+                        const cursorPos = target.selectionStart;
+                        const pos = calculateCursorPosition(target, cursorPos);
+                        // Note: This updates position through the hook's state
+                      }
+                    }}
+                    className="h-full w-full resize-none rounded-xl border border-gray-300 bg-transparent px-3 py-2 text-sm font-mono leading-normal focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    style={{ color: 'transparent', caretColor: '#111827' }}
+                    placeholder="Write instructions for the AI..."
+                    spellCheck={false}
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
+                    data-gramm="false"
+                    data-gramm_editor="false"
+                    data-enable-grammarly="false"
+                  />
+                </div>
+                {showVariableMenu && (
+                  <div
+                    className="fixed z-10 max-h-48 w-60 overflow-y-auto rounded-xl border border-gray-200 bg-white"
+                    style={{ top: `${variableMenuPosition.top}px`, left: `${variableMenuPosition.left}px` }}
+                  >
+                    {filteredVariables.length === 0 ? (
+                      <div className="p-2 text-xs text-gray-500">No matching variables</div>
                     ) : (
-                      <>
-                        <div className="text-gray-600">{'{%'} for verb in verbs {'%}'}</div>
-                        <div className="pl-2 text-gray-500">- {'{{ verb.code }}'}: {'{{ verb.gloss }}'}</div>
-                        <div className="text-gray-600">{'{%'} endfor {'%}'}</div>
-                        <div className="mt-1.5 border-t border-gray-200 pt-1.5 text-gray-400">
-                          Available: roles, verbs, nouns
-                        </div>
-                      </>
+                      <ul>
+                        {filteredVariables.map((variable, idx) => (
+                          <li key={variable.key}>
+                            <button
+                              ref={idx === variableActiveIndex ? activeVariableRef : null}
+                              onClick={() => insertVariable(variable.key)}
+                              className={`cursor-pointer flex w-full flex-col items-start px-3 py-2 text-left text-xs hover:bg-blue-50 ${idx === variableActiveIndex ? 'bg-blue-50' : ''}`}
+                              type="button"
+                            >
+                              <span className="font-semibold text-gray-800">{variable.key}</span>
+                              <span className="text-[11px] text-gray-500">{variable.label}</span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
                     )}
                   </div>
-                </details>
-              )}
-            </div>
+                )}
+              </div>
+            )}
+
+            {/* Help text - only show in advanced mode */}
+            {promptMode === 'advanced' && (
+              <div className="shrink-0 space-y-1 text-xs text-gray-500">
+                <p>
+                  Type <code className="rounded bg-gray-100 px-1">{'{{'}</code> to insert variables.
+                  {(mode === 'verbs' || mode === 'frames') && (
+                    <> Use <code className="rounded bg-indigo-50 px-1 text-indigo-600">{'{%'} for item in collection {'%}'}</code> for loops.</>
+                  )}
+                </p>
+                {(mode === 'verbs' || mode === 'frames') && (
+                  <details className="cursor-pointer">
+                    <summary className="text-gray-400 hover:text-gray-600">Loop syntax help</summary>
+                    <div className="mt-1.5 rounded-lg bg-gray-50 p-2 font-mono text-[11px] leading-relaxed">
+                      {mode === 'verbs' ? (
+                        <>
+                          <div className="text-gray-600">{'{%'} for role in frame.roles {'%}'}</div>
+                          <div className="pl-2 text-gray-500">{'{{ role.type }}'}: {'{{ role.description }}'}</div>
+                          <div className="text-gray-600">{'{%'} endfor {'%}'}</div>
+                          <div className="mt-1.5 border-t border-gray-200 pt-1.5 text-gray-400">
+                            Available: frame.roles, frame.verbs, frame.nouns
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="text-gray-600">{'{%'} for verb in verbs {'%}'}</div>
+                          <div className="pl-2 text-gray-500">- {'{{ verb.code }}'}: {'{{ verb.gloss }}'}</div>
+                          <div className="text-gray-600">{'{%'} endfor {'%}'}</div>
+                          <div className="mt-1.5 border-t border-gray-200 pt-1.5 text-gray-400">
+                            Available: roles, verbs, nouns
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </details>
+                )}
+              </div>
+            )}
           </div>
         );
+      }
       case 'review':
         return (
           <div className="flex h-full flex-col gap-6">
