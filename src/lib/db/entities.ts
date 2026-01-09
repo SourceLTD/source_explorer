@@ -8,7 +8,7 @@
 
 import { prisma } from '../prisma';
 import { withRetry } from '../db-utils';
-import { Prisma } from '@prisma/client';
+import { Prisma, entity_type, change_operation } from '@prisma/client';
 import type { LexicalType, PaginationParams, PaginatedResult, TableEntry, Role, RoleGroup } from '../types';
 import { getEntityConfig, type EntityConfig } from './config';
 
@@ -139,8 +139,8 @@ function buildCommonWhereConditions(
 /**
  * Map lexical type to entity type for changesets table
  */
-function lexicalTypeToEntityType(lexicalType: LexicalType): string {
-  const mapping: Record<LexicalType, string> = {
+function lexicalTypeToEntityType(lexicalType: LexicalType): entity_type {
+  const mapping: Record<LexicalType, entity_type> = {
     verbs: 'verb',
     nouns: 'noun',
     adjectives: 'adjective',
@@ -153,8 +153,8 @@ function lexicalTypeToEntityType(lexicalType: LexicalType): string {
  * Get entity IDs that have pending changesets of a specific operation type
  */
 async function getPendingEntityIds(
-  entityType: string,
-  operations: string[]
+  entityType: entity_type,
+  operations: change_operation[]
 ): Promise<bigint[]> {
   const changesets = await prisma.changesets.findMany({
     where: {
@@ -249,7 +249,7 @@ async function buildAdvancedWhereConditions(
   const hasPendingFilter = pendingCreate || pendingUpdate || pendingDelete;
   if (hasPendingFilter) {
     const entityType = lexicalTypeToEntityType(config.tableName as LexicalType);
-    const pendingOps: string[] = [];
+    const pendingOps: change_operation[] = [];
     
     // Note: pendingCreate won't work for filtering existing entities because
     // creates have entity_id = null (they're virtual entities not yet in the table).

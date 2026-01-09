@@ -85,7 +85,27 @@ export default function AIChangeReviewDialog({
   onApply,
   onDismiss,
 }: AIChangeReviewDialogProps) {
-  const config = ACTION_CONFIG[suggestion.action];
+  const config = ACTION_CONFIG[suggestion.action as keyof typeof ACTION_CONFIG];
+  
+  // Fallback if action is not recognized
+  if (!config) {
+    console.error('Unknown action type:', suggestion.action);
+    return (
+      <Modal isOpen={true} onClose={onDismiss} maxWidth="md">
+        <div className="p-6 text-center">
+          <p className="text-red-600 font-medium">Error: Unknown action type &quot;{suggestion.action}&quot;</p>
+          <p className="text-sm text-gray-500 mt-2">The AI returned an unexpected response format.</p>
+          <button
+            onClick={onDismiss}
+            className="mt-4 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+          >
+            Dismiss
+          </button>
+        </div>
+      </Modal>
+    );
+  }
+  
   const Icon = config.icon;
   const colorClasses = colorMap[config.color as keyof typeof colorMap];
 

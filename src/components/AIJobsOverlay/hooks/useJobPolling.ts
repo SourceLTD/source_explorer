@@ -9,6 +9,7 @@ export interface UseJobPollingOptions {
   isCreating: boolean;
   onJobsUpdated?: (pendingJobs: number) => void;
   onUnseenCountChange?: (count: number) => void;
+  onJobCompleted?: () => void;
 }
 
 export interface UseJobPollingReturn {
@@ -35,6 +36,7 @@ export function useJobPolling({
   isCreating,
   onJobsUpdated,
   onUnseenCountChange,
+  onJobCompleted,
 }: UseJobPollingOptions): UseJobPollingReturn {
   const [jobs, setJobs] = useState<SerializedJob[]>([]);
   const [jobsLoading, setJobsLoading] = useState(false);
@@ -48,6 +50,13 @@ export function useJobPolling({
   const loadJobsInProgressRef = useRef(false);
   const pollingInProgressRef = useRef(false);
   const unseenPollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const previousJobStatusesRef = useRef<Map<string, string>>(new Map());
+  const onJobCompletedRef = useRef(onJobCompleted);
+  
+  // Keep callback ref up to date
+  useEffect(() => {
+    onJobCompletedRef.current = onJobCompleted;
+  }, [onJobCompleted]);
 
   const pendingJobsCount = useMemo(
     () => jobs.filter(job => job.status === 'queued' || job.status === 'running').length,
@@ -78,6 +87,26 @@ export function useJobPolling({
     
     try {
       const response = await api.get<JobListResponse>(`/api/llm-jobs?includeCompleted=true&limit=50&entityType=${mode}`);
+      
+      // Detect job completions by comparing with previous statuses
+      let jobCompleted = false;
+      for (const job of response.jobs) {
+        const prevStatus = previousJobStatusesRef.current.get(job.id);
+        const isNowComplete = job.status === 'completed' || job.status === 'cancelled';
+        const wasActive = prevStatus === 'queued' || prevStatus === 'running';
+        
+        if (wasActive && isNowComplete) {
+          jobCompleted = true;
+        }
+        
+        // Update the previous status map
+        previousJobStatusesRef.current.set(job.id, job.status);
+      }
+      
+      // Call the completion callback if any job completed
+      if (jobCompleted && onJobCompletedRef.current) {
+        onJobCompletedRef.current();
+      }
       
       // Smart update: only update state if jobs actually changed
       setJobs(prevJobs => {

@@ -169,8 +169,8 @@ export default function ChangeCommentsBoard({
       setNewComment('');
       onCommentsChange?.();
       
-      // Now call the AI review endpoint (it will also post the AI comment)
-      const aiResponse = await fetch('/api/llm-jobs/change-review', {
+      // Create the AI review job
+      const createJobResponse = await fetch('/api/llm-jobs/change-review', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -184,26 +184,74 @@ export default function ChangeCommentsBoard({
         }),
       });
       
-      if (!aiResponse.ok) {
-        const errorData = await aiResponse.json();
-        throw new Error(errorData.error || 'AI review failed');
+      if (!createJobResponse.ok) {
+        const errorData = await createJobResponse.json();
+        throw new Error(errorData.error || 'Failed to create AI review job');
       }
       
-      const aiResult = await aiResponse.json();
+      const jobData = await createJobResponse.json();
+      const jobId = jobData.job_id;
       
-      // Add the AI's response comment to our local state (it was posted by the API)
-      if (aiResult.aiComment) {
-        setComments(prev => [...prev, aiResult.aiComment]);
+      // Poll for job completion
+      const maxAttempts = 60; // 60 attempts * 2s = 2 minutes max
+      const pollInterval = 2000; // 2 seconds
+      
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
+        
+        const statusResponse = await fetch(`/api/llm-jobs/change-review?job_id=${jobId}`);
+        if (!statusResponse.ok) {
+          throw new Error('Failed to check job status');
+        }
+        
+        const statusData = await statusResponse.json();
+        
+        if (statusData.is_complete) {
+          if (statusData.item_status === 'failed') {
+            throw new Error('AI review job failed');
+          }
+          
+          if (statusData.result) {
+            const aiResult = statusData.result;
+            
+            // Validate that we have a valid action
+            const validActions = ['approve', 'reject', 'modify', 'keep_as_is'];
+            if (!aiResult.action || !validActions.includes(aiResult.action)) {
+              console.warn('AI returned invalid action:', aiResult.action);
+              throw new Error(`AI returned invalid action: ${aiResult.action || 'undefined'}`);
+            }
+            
+            // Fetch the current field changes for the changeset
+            const changesetResponse = await fetch(`/api/changesets/${changesetId}`);
+            let currentFieldChanges: Array<{ field_name: string; old_value: unknown; new_value: unknown }> = [];
+            if (changesetResponse.ok) {
+              const changesetData = await changesetResponse.json();
+              currentFieldChanges = (changesetData.field_changes || []).map((fc: { field_name: string; old_value: unknown; new_value: unknown }) => ({
+                field_name: fc.field_name,
+                old_value: fc.old_value,
+                new_value: fc.new_value,
+              }));
+            }
+            
+            // Note: The Lambda webhook posts the AI comment when processing the job,
+            // so we just need to refresh comments to show it
+            await fetchComments();
+            
+            // Show the confirmation dialog
+            setAISuggestion({
+              action: aiResult.action,
+              modifications: aiResult.modifications,
+              justification: aiResult.justification,
+              confidence: aiResult.confidence ?? 0.8,
+              currentFieldChanges,
+            });
+            
+            return; // Success!
+          }
+        }
       }
       
-      // Show the confirmation dialog
-      setAISuggestion({
-        action: aiResult.action,
-        modifications: aiResult.modifications,
-        justification: aiResult.justification,
-        confidence: aiResult.confidence,
-        currentFieldChanges: aiResult.currentFieldChanges || [],
-      });
+      throw new Error('AI review timed out');
       
     } catch (err) {
       setError(err instanceof Error ? err.message : 'AI review failed');

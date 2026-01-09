@@ -217,6 +217,7 @@ export async function getUnreadComments(userId: string): Promise<UnreadChangeset
 /**
  * Get unread status for specific changesets for a user.
  * Returns a Set of changeset IDs that have unread comments.
+ * Only includes unresolved changesets (pending status, not committed or discarded).
  */
 export async function getUnreadStatusForChangesets(
   userId: string,
@@ -226,11 +227,25 @@ export async function getUnreadStatusForChangesets(
     return new Set();
   }
   
-  // Get latest comment time for each changeset
+  // First, filter to only pending (unresolved) changesets
+  const pendingChangesets = await prisma.changesets.findMany({
+    where: {
+      id: { in: changesetIds },
+      status: 'pending',
+    },
+    select: { id: true },
+  });
+  
+  const pendingIds = pendingChangesets.map(c => c.id);
+  if (pendingIds.length === 0) {
+    return new Set();
+  }
+  
+  // Get latest comment time for each pending changeset
   const latestComments = await prisma.change_comments.groupBy({
     by: ['changeset_id'],
     where: {
-      changeset_id: { in: changesetIds },
+      changeset_id: { in: pendingIds },
     },
     _max: {
       created_at: true,
@@ -245,7 +260,7 @@ export async function getUnreadStatusForChangesets(
   const readRecords = await prisma.comment_reads.findMany({
     where: {
       user_id: userId,
-      changeset_id: { in: changesetIds },
+      changeset_id: { in: pendingIds },
     },
   });
   

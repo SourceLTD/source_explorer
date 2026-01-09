@@ -346,7 +346,7 @@ export function useJobCreation({
     const endforRegex = /\{%\s*endfor\s*%\}/g;
     
     // Find the last unclosed for loop before cursor
-    let lastOpenLoop: { loopVar: string; collectionKey: string; index: number } | null = null;
+    const lastOpenLoop: { loopVar: string; collectionKey: string; index: number } | null = null;
     let match;
     
     // Find all for loops
@@ -367,7 +367,7 @@ export function useJobCreation({
     
     // Match for loops with endfor to find unclosed ones
     // Simple approach: count opens and closes, last open without close is our context
-    let openCount = 0;
+    const openCount = 0;
     const events: Array<{ type: 'for' | 'endfor'; index: number; data?: { loopVar: string; collectionKey: string } }> = [];
     
     for (const fl of forLoops) {
@@ -620,7 +620,7 @@ export function useJobCreation({
       targetFields?: string[];
       reallocationEntityTypes?: ('verbs' | 'nouns' | 'adjectives' | 'adverbs')[];
       reasoning?: { effort?: 'low' | 'medium' | 'high' } | null;
-      mcpApproval?: 'never' | 'always' | null;
+      mcpEnabled?: boolean | null;
     } | null;
     
     const scope = job.scope as JobScope | null;
@@ -642,8 +642,8 @@ export function useJobCreation({
     setReallocationEntityTypes(config?.reallocationEntityTypes ?? []);
     setPriority(serviceTierToPriority(config?.serviceTier));
     setReasoningEffort(config?.reasoning?.effort ?? 'medium');
-    // Agentic mode is enabled if mcpApproval is not 'always' (which disables tools)
-    const loadedAgenticMode = config?.mcpApproval !== 'always';
+    // Agentic mode is enabled if mcpEnabled is not false
+    const loadedAgenticMode = config?.mcpEnabled !== false;
     setAgenticMode(loadedAgenticMode);
     setPromptTemplate(config?.promptTemplate ?? buildPrompt({
       entityType: mode,
@@ -894,8 +894,8 @@ export function useJobCreation({
           reallocationEntityTypes,
           serviceTier: priority === 'normal' ? 'default' : priority,
           reasoning: { effort: reasoningEffort },
-          // When agentic mode is OFF, require approval for all tools (effectively disabling them)
-          mcpApproval: agenticMode ? 'never' : 'always',
+          // When agentic mode is OFF, don't attach MCP tools at all
+          mcpEnabled: agenticMode,
           metadata: { source: 'table-mode' },
           initialBatchSize: BATCH_SIZE,
         };
@@ -952,8 +952,8 @@ export function useJobCreation({
           reallocationEntityTypes,
           serviceTier: priority === 'normal' ? 'default' : priority,
           reasoning: { effort: reasoningEffort },
-          // When agentic mode is OFF, require approval for all tools (effectively disabling them)
-          mcpApproval: agenticMode ? 'never' : 'always',
+          // When agentic mode is OFF, don't attach MCP tools at all
+          mcpEnabled: agenticMode,
           metadata: { source: 'table-mode' },
         };
 

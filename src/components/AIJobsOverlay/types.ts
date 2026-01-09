@@ -11,6 +11,8 @@ export interface AIJobsOverlayProps {
   userEmail?: string | null;
   onJobsUpdated?: (pendingJobs: number) => void;
   onUnseenCountChange?: (count: number) => void;
+  /** Called when any job completes (status changes to completed/cancelled) */
+  onJobCompleted?: () => void;
 }
 
 export interface JobListResponse {

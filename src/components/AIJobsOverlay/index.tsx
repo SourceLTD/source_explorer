@@ -22,6 +22,7 @@ export function AIJobsOverlay({
   userEmail: userEmailProp,
   onJobsUpdated,
   onUnseenCountChange,
+  onJobCompleted,
 }: AIJobsOverlayProps) {
   // Get user email from Supabase if not provided as prop
   const [fetchedUserEmail, setFetchedUserEmail] = useState<string | null>(null);
@@ -43,6 +44,7 @@ export function AIJobsOverlay({
     isCreating: false, // Will be updated below
     onJobsUpdated,
     onUnseenCountChange,
+    onJobCompleted,
   });
 
   // Job creation hook - manages creation wizard state
@@ -156,7 +158,7 @@ export function AIJobsOverlay({
         style={{ backgroundColor: 'rgba(0, 0, 0, 0.25)' }}
         onClick={onClose}
       />
-      <div className="relative z-10 flex h-[90vh] w-full max-w-7xl flex-col overflow-hidden rounded-xl bg-white">
+      <div className="relative z-10 flex h-[90vh] w-full max-w-[90rem] flex-col overflow-hidden rounded-xl bg-white">
         
         <header className="border-b border-gray-200 bg-gray-50 px-6 py-5">
           <div className="flex flex-wrap items-center justify-between gap-4">

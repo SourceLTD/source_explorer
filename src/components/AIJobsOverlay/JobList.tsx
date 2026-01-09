@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import type { SerializedJob } from '@/lib/llm/types';
 import { StatusPill } from './components';
+import LoadingSpinner from '@/components/LoadingSpinner';
 
 export interface JobListProps {
   jobs: SerializedJob[];
@@ -44,7 +45,11 @@ export const JobList = memo(function JobList({
             {jobsError}
           </div>
         )}
-        {jobs.length === 0 && !jobsLoading ? (
+        {jobsLoading && jobs.length === 0 ? (
+          <div className="flex items-center justify-center py-12">
+            <LoadingSpinner size="lg" label="Loading jobs..." />
+          </div>
+        ) : jobs.length === 0 ? (
           <div className="p-4 text-xs text-gray-500">
             No AI jobs yet. Use "Create New Job" to start a batch.
           </div>

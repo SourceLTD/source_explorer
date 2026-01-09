@@ -13,6 +13,7 @@ import {
   SerializedJob,
   SerializedJobItem,
 } from './types';
+import { discardByLlmJob } from '@/lib/version-control';
 import { withRetry } from '@/lib/db-utils';
 
 // Re-export from entries.ts
@@ -492,13 +493,14 @@ export async function createLLMJob(
   const jobConfig: Prisma.InputJsonObject = {
     model: params.model,
     userPromptTemplate: params.promptTemplate,
+    systemPrompt: params.systemPrompt ?? null,
     serviceTier: params.serviceTier ?? null,
     reasoning: params.reasoning ?? null,
     targetFields: (params.targetFields ?? []) as Prisma.InputJsonValue,
     reallocationEntityTypes: (params.reallocationEntityTypes ?? []) as Prisma.InputJsonValue,
     metadata: (params.metadata ?? {}) as Prisma.InputJsonObject,
-    // MCP tool approval configuration
-    mcpApproval: params.mcpApproval ? (params.mcpApproval as unknown as Prisma.InputJsonValue) : null,
+    // MCP enabled configuration
+    mcpEnabled: params.mcpEnabled ?? true,
     // Review job specific fields
     changesetId: params.changesetId ?? null,
     chatHistory: params.chatHistory ? (params.chatHistory as unknown as Prisma.InputJsonValue) : null,
@@ -509,17 +511,36 @@ export async function createLLMJob(
   const preparedJobItemsData = entriesToCreate.map(entry => {
     const { prompt, variables } = renderPrompt(params.promptTemplate, entry);
 
+    // Build frameInfo for the LLM if frame data exists
+    const frameInfo = entry.frame ? {
+      name: entry.frame.label,
+      id: entry.frame.id,
+      definition: entry.frame.definition,
+      short_definition: entry.frame.short_definition,
+      roles: entry.frame.roles,
+    } : null;
+
     const requestPayload = {
       promptTemplate: params.promptTemplate,
       renderedPrompt: prompt,
       variables,
+      // Include full entry data so source-llm can build proper prompts
       entry: {
         code: entry.code,
         pos: entry.pos,
         gloss: entry.gloss,
-        lemmas: entry.lemmas,
+        lemmas: entry.lemmas ?? [],
+        examples: entry.examples ?? [],
         label: entry.label ?? null,
+        flagged: entry.flagged ?? false,
+        flagged_reason: entry.flagged_reason ?? null,
+        lexfile: entry.lexfile ?? null,
+        // Frame-specific fields
+        definition: entry.definition ?? null,
+        short_definition: entry.short_definition ?? null,
       },
+      // Include frame info at top level for source-llm prompts
+      frameInfo,
     } satisfies Record<string, unknown>;
 
     return {
@@ -710,12 +731,19 @@ export async function cancelLLMJob(jobId: number | string): Promise<CancelJobRes
     },
   });
 
+  // Discard any pending changesets created by this job so they don't interfere
+  // with subsequent jobs on the same entities
+  await discardByLlmJob(BigInt(job.id));
+
   const refreshed = await getLLMJob(jobId, { refresh: false });
   await updateJobAggregates(BigInt(refreshed.id));
   return { job: refreshed, cancelledCount: 0 };
 }
 
 export async function deleteLLMJob(jobId: number | string): Promise<void> {
+  // Discard any pending changesets created by this job
+  await discardByLlmJob(BigInt(jobId));
+
   // Soft-delete the job by setting deleted=true; fallback to hard-delete if the field is unknown
   try {
     await getLLMJobsDelegate().update({

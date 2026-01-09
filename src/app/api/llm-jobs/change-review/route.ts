@@ -10,7 +10,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getChangeset, addComment } from '@/lib/version-control';
+import { getChangeset } from '@/lib/version-control';
 import type { Prisma } from '@prisma/client';
 
 interface CommentHistoryItem {
@@ -67,12 +67,13 @@ export async function GET(request: NextRequest) {
       });
     } else {
       // Find most recent review job for this changeset
+      // changesetId is guaranteed non-null here due to the !jobId && !changesetId check above
       job = await prisma.llm_jobs.findFirst({
         where: {
           job_type: 'review',
           config: {
             path: ['changesetId'],
-            equals: changesetId,
+            equals: changesetId!,
           },
         },
         orderBy: { created_at: 'desc' },
@@ -184,7 +185,7 @@ export async function POST(request: NextRequest) {
       changeset: {
         id: changeset.id.toString(),
         entity_type: changeset.entity_type,
-        entity_id: changeset.entity_id.toString(),
+        entity_id: changeset.entity_id?.toString() ?? null,
         operation: changeset.operation,
         before_snapshot: changeset.before_snapshot,
         after_snapshot: changeset.after_snapshot,
@@ -231,12 +232,8 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Also post the user's question as a comment in the thread (for visibility)
-    await addComment({
-      changeset_id: BigInt(changeset_id),
-      author: submitted_by || 'User',
-      content: user_question,
-    });
+    // Note: The frontend posts the user's comment before calling this endpoint,
+    // so we don't duplicate it here.
 
     return NextResponse.json({
       success: true,

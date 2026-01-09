@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import { TableEntry, Frame } from '@/lib/types';
 import { showGlobalAlert } from '@/lib/alerts';
@@ -68,6 +68,10 @@ export default function DataTable({
   // AI Agent Quick Edit modal state
   const [aiQuickEditEntry, setAiQuickEditEntry] = useState<TableEntry | Frame | null>(null);
   
+  // Track submitted quick edit job IDs for background polling
+  const quickEditJobIdsRef = useRef<Set<string>>(new Set());
+  const [isPollingQuickEditJobs, setIsPollingQuickEditJobs] = useState(false);
+  
   // Moderation loading state
   const [isModerationLoading, setIsModerationLoading] = useState(false);
   
@@ -113,16 +117,16 @@ export default function DataTable({
     }
   }, [contextMenu.isOpen]);
 
-  // Fetch pending AI jobs
+  // Fetch pending AI jobs (filtered by current mode)
   const fetchPendingAIJobs = useCallback(async () => {
     try {
-      const response = await api.get<{ jobs: Array<{ status: string }> }>('/api/llm-jobs');
+      const response = await api.get<{ jobs: Array<{ status: string }> }>(`/api/llm-jobs?entityType=${mode}`);
       const pending = response.jobs?.filter(job => job.status === 'queued' || job.status === 'running').length ?? 0;
       setPendingAIJobs(pending);
     } catch (error) {
       console.warn('Failed to load pending AI jobs', error);
     }
-  }, []);
+  }, [mode]);
 
   // Fetch frame options
   const fetchFrameOptions = useCallback(async () => {
@@ -160,6 +164,54 @@ export default function DataTable({
     }, 15000);
     return () => clearInterval(interval);
   }, [fetchPendingAIJobs, isAIOverlayOpen]);
+
+  // Poll for quick edit job completion and refresh data when done
+  useEffect(() => {
+    // Only poll if we're actively tracking jobs
+    if (!isPollingQuickEditJobs) return;
+
+    const pollQuickEditJobs = async () => {
+      const jobIds = Array.from(quickEditJobIdsRef.current);
+      
+      // If no jobs left, stop polling
+      if (jobIds.length === 0) {
+        setIsPollingQuickEditJobs(false);
+        return;
+      }
+      
+      for (const jobId of jobIds) {
+        try {
+          const response = await api.get<{ status: string }>(`/api/llm-jobs/${jobId}`);
+          
+          if (response.status === 'completed' || response.status === 'cancelled') {
+            // Remove from tracking
+            quickEditJobIdsRef.current.delete(jobId);
+            
+            // Refresh table data
+            await tableState.fetchData();
+            
+            // Update pending AI jobs count
+            await fetchPendingAIJobs();
+          }
+        } catch (error) {
+          // Job not found or error - remove from tracking
+          console.warn(`Failed to poll quick edit job ${jobId}:`, error);
+          quickEditJobIdsRef.current.delete(jobId);
+        }
+      }
+      
+      // Stop polling if all jobs are done
+      if (quickEditJobIdsRef.current.size === 0) {
+        setIsPollingQuickEditJobs(false);
+      }
+    };
+
+    // Poll immediately and then every 3 seconds
+    void pollQuickEditJobs();
+    const interval = setInterval(pollQuickEditJobs, 3000);
+    
+    return () => clearInterval(interval);
+  }, [isPollingQuickEditJobs, tableState.fetchData, fetchPendingAIJobs]);
 
   // Load frame options when modal opens
   useEffect(() => {
@@ -520,12 +572,14 @@ export default function DataTable({
     setAiQuickEditEntry(null);
   };
 
-  const handleAIQuickEditComplete = async () => {
-    // Refresh data when AI job completes with changes
-    await tableState.fetchData();
-    // Also refresh pending AI jobs count
-    await fetchPendingAIJobs();
-  };
+  const handleAIQuickEditJobSubmitted = useCallback((jobId: string) => {
+    // Add job ID to tracking set for background polling
+    quickEditJobIdsRef.current.add(jobId);
+    // Start polling if not already polling
+    setIsPollingQuickEditJobs(true);
+    // Close the modal
+    setAiQuickEditEntry(null);
+  }, []);
 
   // Get current columns with actions visible if onEditClick is provided
   const currentColumnsWithActions = useMemo(() => {
@@ -699,6 +753,7 @@ export default function DataTable({
         mode={mode}
         selectedIds={Array.from(selection.selectedIds)}
         onJobsUpdated={setPendingAIJobs}
+        onJobCompleted={tableState.fetchData}
       />
 
       {/* AI Agent Quick Edit Modal */}
@@ -708,7 +763,7 @@ export default function DataTable({
           onClose={handleCloseAIQuickEdit}
           entry={aiQuickEditEntry}
           mode={mode}
-          onJobComplete={handleAIQuickEditComplete}
+          onJobSubmitted={handleAIQuickEditJobSubmitted}
         />
       )}
     </div>

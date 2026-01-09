@@ -62,8 +62,10 @@ export interface CreateLLMJobParams {
   reasoning?: {
     effort?: 'low' | 'medium' | 'high';
   };
-  /** MCP tool approval configuration - which tools require/skip approval */
-  mcpApproval?: McpApprovalConfig;
+  /** Whether MCP tools should be available for this job (default: true) */
+  mcpEnabled?: boolean;
+  /** Custom system prompt to override the default for the job type */
+  systemPrompt?: string;
   /** For review jobs: the changeset ID being reviewed */
   changesetId?: string;
   /** For review jobs: the comment history */
@@ -208,3 +210,66 @@ export interface CancelJobResult {
   cancelledCount: number;
 }
 
+/**
+ * Parsed job configuration stored in llm_jobs.config
+ * This represents the JSON structure stored in the database
+ */
+export interface ParsedJobConfig {
+  model?: string;
+  userPromptTemplate?: string;
+  serviceTier?: 'flex' | 'default' | 'priority' | null;
+  reasoning?: { effort?: 'low' | 'medium' | 'high' } | null;
+  targetFields?: string[];
+  reallocationEntityTypes?: ('verbs' | 'nouns' | 'adjectives' | 'adverbs')[];
+  metadata?: Record<string, unknown>;
+  mcpEnabled?: boolean | null;
+  changesetId?: string | null;
+  chatHistory?: Array<{
+    author: string;
+    content: string;
+    createdAt: string;
+  }> | null;
+}
+
+/**
+ * Helper to safely parse a job's config JSON
+ */
+export function parseJobConfig(config: unknown): ParsedJobConfig | null {
+  if (!config || typeof config !== 'object') return null;
+  return config as ParsedJobConfig;
+}
+
+/**
+ * Helper to safely parse a job's scope JSON
+ */
+export function parseJobScope(scope: unknown): JobScope | null {
+  if (!scope || typeof scope !== 'object') return null;
+  const parsed = scope as { kind?: string };
+  if (!parsed.kind || !['ids', 'frame_ids', 'filters'].includes(parsed.kind)) {
+    return null;
+  }
+  return scope as JobScope;
+}
+
+/**
+ * Format a scope for display
+ */
+export function formatScopeDescription(scope: JobScope | null, totalItems: number): string {
+  if (!scope) return `${totalItems} items`;
+  
+  switch (scope.kind) {
+    case 'ids':
+      return `${scope.ids.length} ${scope.pos} by ID selection`;
+    case 'frame_ids': {
+      const frameCount = scope.frameIds?.length ?? 0;
+      const target = scope.flagTarget === 'both' 
+        ? 'frames & verbs' 
+        : scope.flagTarget ?? 'frames';
+      return `${frameCount} frames (${target})`;
+    }
+    case 'filters':
+      return `Filtered ${scope.pos}${scope.filters?.limit ? ` (limit: ${scope.filters.limit})` : ''}`;
+    default:
+      return `${totalItems} items`;
+  }
+}
