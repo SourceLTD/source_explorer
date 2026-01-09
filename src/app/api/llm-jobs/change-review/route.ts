@@ -1,13 +1,17 @@
 /**
  * API Route: /api/llm-jobs/change-review
  * 
- * POST - Synchronously ask AI to review a pending change and suggest modifications
+ * POST - Create a review job for Lambda to process
+ * GET - Check status of a review job and get results
+ * 
+ * This route creates LLM jobs of type 'review' that Lambda processes
+ * asynchronously. The frontend should poll for results using GET.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getOpenAIClient } from '@/lib/llm/client';
-import { CHANGE_REVIEW_RESPONSE_SCHEMA, type ChangeReviewResponse } from '@/lib/llm/schema';
+import { prisma } from '@/lib/prisma';
 import { getChangeset, addComment } from '@/lib/version-control';
+import type { Prisma } from '@prisma/client';
 
 interface CommentHistoryItem {
   author: string;
@@ -18,80 +22,125 @@ interface CommentHistoryItem {
 interface ChangeReviewRequest {
   changeset_id: string;
   user_question: string;
-  comment_history: CommentHistoryItem[];
+  comment_history?: CommentHistoryItem[];
+  model?: string;
+  submitted_by?: string;
 }
 
 const DEFAULT_MODEL = 'gpt-4.1-mini';
 
-function buildChangeReviewPrompt(
-  changeset: Awaited<ReturnType<typeof getChangeset>>,
-  userQuestion: string,
-  commentHistory: CommentHistoryItem[]
-): string {
-  if (!changeset) {
-    throw new Error('Changeset not found');
+/**
+ * GET - Check the status of a review job and retrieve results
+ */
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  const jobId = searchParams.get('job_id');
+  const changesetId = searchParams.get('changeset_id');
+
+  if (!jobId && !changesetId) {
+    return NextResponse.json(
+      { error: 'Either job_id or changeset_id is required' },
+      { status: 400 }
+    );
   }
 
-  const entityType = changeset.entity_type;
-  const beforeSnapshot = changeset.before_snapshot as Record<string, unknown> | null;
-  const fieldChanges = changeset.field_changes;
-
-  // Build the context about the change
-  let prompt = `You are an AI assistant helping to review a pending change to a ${entityType} entry in a lexical database.
-
-## Entity Information
-`;
-
-  if (beforeSnapshot) {
-    prompt += `\n### Current State (Before Change)\n`;
-    prompt += '```json\n' + JSON.stringify(beforeSnapshot, null, 2) + '\n```\n';
-  }
-
-  prompt += `\n### Pending Field Changes\n`;
-  for (const fc of fieldChanges) {
-    prompt += `\n**${fc.field_name}**:\n`;
-    prompt += `- Original value: ${JSON.stringify(fc.old_value)}\n`;
-    prompt += `- Proposed new value: ${JSON.stringify(fc.new_value)}\n`;
-    prompt += `- Status: ${fc.status}\n`;
-  }
-
-  // Add comment history for context
-  if (commentHistory.length > 0) {
-    prompt += `\n## Discussion Thread\n`;
-    for (const comment of commentHistory) {
-      const timestamp = new Date(comment.created_at).toLocaleString();
-      prompt += `\n**${comment.author}** (${timestamp}):\n${comment.content}\n`;
+  try {
+    // Find the review job
+    let job;
+    if (jobId) {
+      job = await prisma.llm_jobs.findFirst({
+        where: {
+          id: BigInt(jobId),
+          job_type: 'review',
+        },
+        include: {
+          llm_job_items: {
+            take: 1,
+            select: {
+              id: true,
+              status: true,
+              response_payload: true,
+              completed_at: true,
+            },
+          },
+        },
+      });
+    } else {
+      // Find most recent review job for this changeset
+      job = await prisma.llm_jobs.findFirst({
+        where: {
+          job_type: 'review',
+          config: {
+            path: ['changesetId'],
+            equals: changesetId,
+          },
+        },
+        orderBy: { created_at: 'desc' },
+        include: {
+          llm_job_items: {
+            take: 1,
+            select: {
+              id: true,
+              status: true,
+              response_payload: true,
+              completed_at: true,
+            },
+          },
+        },
+      });
     }
+
+    if (!job) {
+      return NextResponse.json(
+        { error: 'Review job not found' },
+        { status: 404 }
+      );
+    }
+
+    const item = job.llm_job_items[0];
+    const isComplete = item?.status === 'succeeded' || item?.status === 'failed';
+
+    // Parse response if available
+    let result = null;
+    if (item?.status === 'succeeded' && item.response_payload) {
+      try {
+        const payload = item.response_payload as Record<string, unknown>;
+        // The response is stored in the response_payload, which includes the AI's output
+        // We need to extract the parsed result from it
+        const outputText = (payload as any)?.output_text;
+        if (outputText) {
+          result = JSON.parse(outputText);
+        }
+      } catch {
+        // Response might not be parseable
+      }
+    }
+
+    return NextResponse.json({
+      job_id: job.id.toString(),
+      status: job.status,
+      item_status: item?.status ?? 'queued',
+      is_complete: isComplete,
+      result,
+      created_at: job.created_at.toISOString(),
+      completed_at: item?.completed_at?.toISOString() ?? null,
+    });
+  } catch (error) {
+    console.error('Error checking review job:', error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed to check job status' },
+      { status: 500 }
+    );
   }
-
-  // Add the user's current question
-  prompt += `\n## User's Question\n${userQuestion}\n`;
-
-  // Instructions for the AI
-  prompt += `
-## Your Task
-
-Based on the above context, provide a recommendation for this pending change. You should:
-
-1. Consider whether the proposed change is appropriate for this ${entityType} entry
-2. Take into account the discussion thread and the user's specific question
-3. Suggest one of the following actions:
-   - **approve**: The change looks good and should be approved as-is
-   - **reject**: The change should be rejected entirely
-   - **modify**: The change needs modifications (provide the suggested new values)
-   - **keep_as_is**: Leave the pending change unchanged for further human review
-
-If you recommend "modify", provide the exact field values you suggest in the "modifications" object.
-Be concise but thorough in your justification.
-`;
-
-  return prompt;
 }
 
+/**
+ * POST - Create a new review job for Lambda to process
+ */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json() as ChangeReviewRequest;
-    const { changeset_id, user_question, comment_history } = body;
+    const { changeset_id, user_question, comment_history, model, submitted_by } = body;
 
     if (!changeset_id) {
       return NextResponse.json(
@@ -107,15 +156,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get the OpenAI client
-    const client = getOpenAIClient();
-    if (!client) {
-      return NextResponse.json(
-        { error: 'OpenAI client is not configured' },
-        { status: 503 }
-      );
-    }
-
     // Fetch the changeset with field changes
     const changeset = await getChangeset(BigInt(changeset_id));
     if (!changeset) {
@@ -125,93 +165,91 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Build the prompt
-    const prompt = buildChangeReviewPrompt(changeset, user_question, comment_history || []);
-
-    // Call OpenAI synchronously (no background mode)
-    const response = await client.responses.create({
-      model: DEFAULT_MODEL,
-      input: prompt,
-      background: false, // Synchronous call
-      store: true,
-      text: {
-        format: {
-          type: 'json_schema',
-          name: CHANGE_REVIEW_RESPONSE_SCHEMA.name,
-          strict: CHANGE_REVIEW_RESPONSE_SCHEMA.strict,
-          schema: CHANGE_REVIEW_RESPONSE_SCHEMA.schema,
-        },
+    // Build the chat history with the new user question
+    const fullChatHistory = [
+      ...(comment_history || []).map(c => ({
+        author: c.author,
+        content: c.content,
+        createdAt: c.created_at,
+      })),
+      {
+        author: submitted_by || 'User',
+        content: user_question,
+        createdAt: new Date().toISOString(),
       },
-    });
+    ];
 
-    // Extract the response
-    if (response.status !== 'completed') {
-      return NextResponse.json(
-        { error: `AI request failed with status: ${response.status}` },
-        { status: 500 }
-      );
-    }
-
-    // Parse the output
-    const outputItem = response.output?.find(o => o.type === 'message');
-    if (!outputItem || outputItem.type !== 'message') {
-      return NextResponse.json(
-        { error: 'No message output from AI' },
-        { status: 500 }
-      );
-    }
-
-    const textContent = outputItem.content?.find(c => c.type === 'output_text');
-    if (!textContent || textContent.type !== 'output_text') {
-      return NextResponse.json(
-        { error: 'No text content in AI response' },
-        { status: 500 }
-      );
-    }
-
-    let aiResult: ChangeReviewResponse;
-    try {
-      aiResult = JSON.parse(textContent.text) as ChangeReviewResponse;
-    } catch (parseError) {
-      return NextResponse.json(
-        { error: 'Failed to parse AI response' },
-        { status: 500 }
-      );
-    }
-
-    // Post the AI's justification as a comment in the thread
-    const aiComment = await addComment({
-      changeset_id: BigInt(changeset_id),
-      author: 'LLM Agent',
-      content: aiResult.justification,
-    });
-
-    // Return the result along with current field changes for the dialog
-    return NextResponse.json({
-      action: aiResult.action,
-      modifications: aiResult.modifications || null,
-      justification: aiResult.justification,
-      confidence: aiResult.confidence,
-      currentFieldChanges: changeset.field_changes.map(fc => ({
+    // Build request payload for the Lambda
+    const requestPayload = {
+      changeset: {
+        id: changeset.id.toString(),
+        entity_type: changeset.entity_type,
+        entity_id: changeset.entity_id.toString(),
+        operation: changeset.operation,
+        before_snapshot: changeset.before_snapshot,
+        after_snapshot: changeset.after_snapshot,
+      },
+      fieldChanges: changeset.field_changes.map(fc => ({
         field_name: fc.field_name,
         old_value: fc.old_value,
         new_value: fc.new_value,
+        status: fc.status,
       })),
-      aiComment: {
-        id: aiComment.id.toString(),
-        changeset_id: aiComment.changeset_id?.toString() ?? null,
-        field_change_id: aiComment.field_change_id?.toString() ?? null,
-        author: aiComment.author,
-        content: aiComment.content,
-        created_at: aiComment.created_at.toISOString(),
+      chatHistory: fullChatHistory,
+      userQuestion: user_question,
+    };
+
+    // Job config
+    const jobConfig: Prisma.InputJsonObject = {
+      model: model || DEFAULT_MODEL,
+      changesetId: changeset_id,
+      chatHistory: fullChatHistory as unknown as Prisma.InputJsonValue,
+    };
+
+    // Create the review job
+    const job = await prisma.llm_jobs.create({
+      data: {
+        label: `Review: ${changeset.entity_type} ${changeset.entity_id}`,
+        submitted_by: submitted_by || null,
+        job_type: 'review',
+        scope_kind: 'ids',
+        scope: { kind: 'ids', pos: 'verbs', ids: [] } as unknown as Prisma.JsonObject,
+        config: jobConfig,
+        provider: 'openai',
+        llm_vendor: 'openai',
+        status: 'queued',
+        total_items: 1,
       },
     });
+
+    // Create the single job item for the review
+    await prisma.llm_job_items.create({
+      data: {
+        job_id: job.id,
+        status: 'queued',
+        request_payload: requestPayload as unknown as Prisma.InputJsonObject,
+      },
+    });
+
+    // Also post the user's question as a comment in the thread (for visibility)
+    await addComment({
+      changeset_id: BigInt(changeset_id),
+      author: submitted_by || 'User',
+      content: user_question,
+    });
+
+    return NextResponse.json({
+      success: true,
+      job_id: job.id.toString(),
+      message: 'Review job created. Poll GET /api/llm-jobs/change-review?job_id=... for results.',
+      status: 'queued',
+    }, { status: 201 });
+
   } catch (error) {
-    console.error('Error in change-review:', error);
+    console.error('Error creating review job:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to process AI review' },
+      { error: error instanceof Error ? error.message : 'Failed to create review job' },
       { status: 500 }
     );
   }
 }
-

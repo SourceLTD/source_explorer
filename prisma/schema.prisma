@@ -940,4 +940,6 @@ enum field_change_status {
 enum llm_job_type {
   moderation
   editing
+  reallocation
+  review
 }

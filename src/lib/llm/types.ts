@@ -32,6 +32,21 @@ export interface JobScopeFilters {
 
 export type JobScope = JobScopeIds | JobScopeFrameIds | JobScopeFilters;
 
+/**
+ * MCP tool approval configuration
+ * Controls which tools require user approval before execution.
+ * Can be a simple string ('never' | 'always') or a granular object config.
+ */
+export type McpApprovalConfig = 
+  | 'never'  // Tools never require approval (agentic mode ON)
+  | 'always' // Tools always require approval (agentic mode OFF - effectively disables tools in background jobs)
+  | {
+    /** Tools that never require approval */
+    never?: { tool_names: string[] };
+    /** Tools that always require approval */
+    always?: { tool_names: string[] };
+  };
+
 export interface CreateLLMJobParams {
   label?: string;
   submittedBy?: string | null;
@@ -41,12 +56,70 @@ export interface CreateLLMJobParams {
   previewOnly?: boolean;
   metadata?: Record<string, unknown>;
   serviceTier?: 'flex' | 'default' | 'priority';
-  jobType?: 'moderation' | 'editing' | 'reallocation';
+  jobType?: 'moderation' | 'editing' | 'reallocation' | 'review';
   targetFields?: string[];
   reallocationEntityTypes?: ('verbs' | 'nouns' | 'adjectives' | 'adverbs')[];
   reasoning?: {
     effort?: 'low' | 'medium' | 'high';
   };
+  /** MCP tool approval configuration - which tools require/skip approval */
+  mcpApproval?: McpApprovalConfig;
+  /** For review jobs: the changeset ID being reviewed */
+  changesetId?: string;
+  /** For review jobs: the comment history */
+  chatHistory?: Array<{
+    author: string;
+    content: string;
+    createdAt: string;
+  }>;
+}
+
+/**
+ * Structured role data for template loops
+ */
+export interface FrameRoleData {
+  type: string;
+  code: string;
+  description: string;
+  examples: string[];
+  label: string;
+  main: boolean;
+}
+
+/**
+ * Structured verb data for template loops (when iterating frame.verbs)
+ */
+export interface FrameVerbData {
+  code: string;
+  gloss: string;
+  lemmas: string[];
+  examples: string[];
+  flagged: boolean;
+}
+
+/**
+ * Structured noun data for template loops (when iterating frame.nouns)
+ */
+export interface FrameNounData {
+  code: string;
+  gloss: string;
+  lemmas: string[];
+  examples: string[];
+  flagged: boolean;
+}
+
+/**
+ * Structured frame data with nested relations for template rendering
+ */
+export interface FrameRelationData {
+  id: string;
+  label: string;
+  definition: string;
+  short_definition: string;
+  prototypical_synset: string;
+  roles: FrameRoleData[];
+  verbs: FrameVerbData[];
+  nouns: FrameNounData[];
 }
 
 export interface LexicalEntrySummary {
@@ -62,11 +135,18 @@ export interface LexicalEntrySummary {
   unverifiable_reason?: string | null;
   label?: string | null;
   lexfile?: string | null;
+  /** Flat key-value pairs for simple {{variable}} interpolation */
   additional?: Record<string, unknown>;
-  // Frame-specific fields
+  /** Structured frame data for template loops ({% for role in frame.roles %}) */
+  frame?: FrameRelationData | null;
+  // Frame-specific fields (when pos === 'frames')
   definition?: string | null;
   short_definition?: string | null;
   prototypical_synset?: string | null;
+  /** Structured relations when the entry itself is a frame */
+  roles?: FrameRoleData[];
+  verbs?: FrameVerbData[];
+  nouns?: FrameNounData[];
 }
 
 export interface RenderedPrompt {

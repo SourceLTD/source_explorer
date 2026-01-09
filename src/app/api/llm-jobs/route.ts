@@ -68,6 +68,9 @@ export async function POST(request: NextRequest) {
       targetFields: payload.targetFields,
       reallocationEntityTypes: payload.reallocationEntityTypes,
       metadata: payload.metadata ?? {},
+      mcpApproval: payload.mcpApproval,
+      changesetId: payload.changesetId,
+      chatHistory: payload.chatHistory,
     } as CreateLLMJobParams, payload.initialBatchSize);
 
     return NextResponse.json(job, { status: 201 });

@@ -15,12 +15,12 @@ import ChangeTooltip from './ChangeTooltip';
 export function getPendingRowClasses(operation: PendingChangeOperation): string {
   switch (operation) {
     case 'create':
-      return 'bg-green-50 hover:bg-green-100';
+      return 'bg-green-100 hover:bg-green-200';
     case 'delete':
-      return 'bg-red-50 hover:bg-red-100 opacity-75';
+      return 'bg-red-100 hover:bg-red-200 opacity-75';
     case 'update':
     default:
-      return 'bg-orange-50 hover:bg-orange-100';
+      return 'bg-orange-100 hover:bg-orange-200';
   }
 }
 
@@ -30,12 +30,12 @@ export function getPendingRowClasses(operation: PendingChangeOperation): string 
 export function getPendingCellClasses(operation: PendingChangeOperation): string {
   switch (operation) {
     case 'create':
-      return 'ring-2 ring-green-400 ring-inset bg-green-100';
+      return 'ring-2 ring-green-400 ring-inset bg-green-200';
     case 'delete':
-      return 'ring-2 ring-red-400 ring-inset bg-red-100 line-through';
+      return 'ring-2 ring-red-400 ring-inset bg-red-200 line-through';
     case 'update':
     default:
-      return 'ring-2 ring-orange-400 ring-inset bg-orange-100';
+      return 'ring-2 ring-orange-400 ring-inset bg-orange-200';
   }
 }
 
@@ -60,12 +60,12 @@ export function getPendingNodeStroke(operation: PendingChangeOperation): string 
 export function getPendingNodeFill(operation: PendingChangeOperation): string {
   switch (operation) {
     case 'create':
-      return '#dcfce7'; // green-100
+      return '#bbf7d0'; // green-200
     case 'delete':
-      return '#fee2e2'; // red-100
+      return '#fecaca'; // red-200
     case 'update':
     default:
-      return '#ffedd5'; // orange-100
+      return '#fed7aa'; // orange-200
   }
 }
 
@@ -128,7 +128,7 @@ export function PendingFieldIndicator({
 
   const cellClasses = isTableCell 
     ? getPendingCellClasses(operation)
-    : `rounded px-1 ${getPendingCellClasses(operation)}`;
+    : `inline-block rounded px-1 ${getPendingCellClasses(operation)}`;
 
   return (
     <>

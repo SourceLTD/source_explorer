@@ -7,6 +7,8 @@ export interface AIJobsOverlayProps {
   onClose: () => void;
   mode: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames';
   selectedIds: string[];
+  /** Email of the current user, used to track who submitted AI jobs */
+  userEmail?: string | null;
   onJobsUpdated?: (pendingJobs: number) => void;
   onUnseenCountChange?: (count: number) => void;
 }
@@ -23,3 +25,7 @@ export interface PreviewResponse {
   totalEntries: number;
 }
 
+// Re-export hook types for convenience
+export type { SubmissionProgress, UseJobCreationReturn, UseJobCreationOptions } from './hooks/useJobCreation';
+export type { UseJobPollingReturn, UseJobPollingOptions } from './hooks/useJobPolling';
+export type { UseAutocompleteReturn, UseAutocompleteOptions, AutocompleteSuggestion } from './hooks/useAutocomplete';

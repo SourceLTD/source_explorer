@@ -8,7 +8,7 @@ export const MODEL_OPTIONS = [
 export const DEFAULT_PROMPTS: Record<'moderation' | 'editing' | 'reallocation', string> = {
   moderation: `You are reviewing lexical entries for quality assurance.
 
-Entry ID: {{id}}
+Entry Code: {{code}}
 Part of Speech: {{pos}}
 Gloss: {{gloss}}
 Lemmas: {{lemmas}}
@@ -26,7 +26,7 @@ Respond using the provided JSON schema.`,
 
   editing: `You are improving the quality of lexical entry data.
 
-Entry ID: {{id}}
+Entry Code: {{code}}
 Part of Speech: {{pos}}
 Current Gloss: {{gloss}}
 Current Lemmas: {{lemmas}}
@@ -42,13 +42,13 @@ Respond using the provided JSON schema with your suggested edits.`,
 
   reallocation: `You are reviewing frame assignments for lexical entries.
 
-Entry ID: {{id}}
+Entry Code: {{code}}
 Part of Speech: {{pos}}
 Gloss: {{gloss}}
 Lemmas: {{lemmas}}
 Examples:\n{{examples}}
 Current Frame: {{label}}
-Frame Definition: {{frame_definition}}
+Frame Definition: {{frame.definition}}
 
 Evaluate whether this entry is correctly assigned to its current frame:
 - Does the entry's meaning align with the frame's semantic structure?

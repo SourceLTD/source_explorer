@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { GraphNode, Frame, RoleType, PendingChangeInfo } from '@/lib/types';
+import { GraphNode, Frame, RoleType } from '@/lib/types';
 import { Mode, OverlaySectionsState, FrameOption } from './types';
 import { EditOverlayModal } from './EditOverlayModal';
 import { ModerationButtons } from './ModerationButtons';
@@ -93,6 +93,20 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
     document.addEventListener('keydown', handleEscape);
     return () => document.removeEventListener('keydown', handleEscape);
   }, [isOpen, editor.editingField, onClose]);
+
+  // Helper to compare values for detecting revert-to-original
+  const valuesAreEqual = (a: unknown, b: unknown): boolean => {
+    // Handle arrays
+    if (Array.isArray(a) && Array.isArray(b)) {
+      if (a.length !== b.length) return false;
+      return a.every((val, idx) => valuesAreEqual(val, b[idx]));
+    }
+    // Handle nulls/undefined
+    if (a === null || a === undefined) return b === null || b === undefined;
+    if (b === null || b === undefined) return false;
+    // Handle primitives
+    return JSON.stringify(a) === JSON.stringify(b);
+  };
 
   const handleSave = async () => {
     if (!editor.editingField || !node) return;
@@ -195,6 +209,21 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
           return;
       }
       
+      // Check if there's a pending change for this field and if we're reverting to original
+      const pendingField = node.pending?.pending_fields?.[fieldName];
+      if (pendingField) {
+        const originalValue = pendingField.old_value;
+        if (valuesAreEqual(value, originalValue)) {
+          // User is reverting to original - delete the pending change instead of creating new one
+          await mutations.deleteFieldChange(pendingField.field_change_id);
+          editor.setCodeValidationMessage('✓ Change reverted');
+          await onUpdate();
+          editor.cancelEditing();
+          editor.setCodeValidationMessage('');
+          return;
+        }
+      }
+      
       await mutations.updateField(node.id, fieldName, value);
       
       editor.setCodeValidationMessage('✓ Changes saved successfully');
@@ -241,8 +270,9 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
     try {
       await mutations.deleteEntry(node.id);
       setShowDeleteConfirm(false);
+      // Trigger table refresh before closing
+      await onUpdate();
       onClose();
-      // Parent component will handle navigation after deletion
     } catch (error) {
       console.error('Error deleting entry:', error);
     } finally {
@@ -273,16 +303,33 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
         <>
           {/* Pending Changes Indicator */}
           {node.pending && (
-            <div className="mb-4 p-3 rounded-lg bg-gradient-to-r from-green-50 to-green-100 border border-green-200">
+            <div className={`mb-4 p-3 rounded-lg ${
+              node.pending.operation === 'create' 
+                ? 'bg-gradient-to-r from-green-50 to-green-100 border border-green-200'
+                : node.pending.operation === 'delete'
+                ? 'bg-gradient-to-r from-red-50 to-red-100 border border-red-200'
+                : 'bg-gradient-to-r from-orange-50 to-orange-100 border border-orange-200'
+            }`}>
               <div className="flex items-center gap-3">
                 <PendingEntityBadge pending={node.pending} size="md" />
-                <div className="text-sm text-green-800">
-                  <span className="font-medium">
-                    {Object.keys(node.pending.pending_fields).length} field{Object.keys(node.pending.pending_fields).length !== 1 ? 's' : ''} pending
-                  </span>
-                  <span className="text-green-600 ml-2">
-                    ({Object.keys(node.pending.pending_fields).join(', ')})
-                  </span>
+                <div className={`text-sm ${
+                  node.pending.operation === 'create' ? 'text-green-800' :
+                  node.pending.operation === 'delete' ? 'text-red-800' : 'text-orange-800'
+                }`}>
+                  {node.pending.operation === 'delete' ? (
+                    <span className="font-medium">pending</span>
+                  ) : (
+                    <>
+                      <span className="font-medium">
+                        {Object.keys(node.pending.pending_fields).length} field{Object.keys(node.pending.pending_fields).length !== 1 ? 's' : ''} pending
+                      </span>
+                      <span className={`ml-2 ${
+                        node.pending.operation === 'create' ? 'text-green-600' : 'text-orange-600'
+                      }`}>
+                        ({Object.keys(node.pending.pending_fields).join(', ')})
+                      </span>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
@@ -332,6 +379,7 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
               onSave={handleSave}
               onCancel={editor.cancelEditing}
               isSaving={editor.isSaving}
+              pending={node.pending}
             />
           )}
 
@@ -350,6 +398,7 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
               onSave={handleSave}
               onCancel={editor.cancelEditing}
               isSaving={editor.isSaving}
+              pending={node.pending}
             />
           )}
 

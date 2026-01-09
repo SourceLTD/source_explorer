@@ -49,6 +49,11 @@ export async function GET(request: NextRequest) {
     flagged: searchParams.get('flagged') ? searchParams.get('flagged') === 'true' : undefined,
     verifiable: searchParams.get('verifiable') ? searchParams.get('verifiable') === 'true' : undefined,
     
+    // Pending state filters
+    pendingCreate: searchParams.get('pendingCreate') === 'true' ? true : undefined,
+    pendingUpdate: searchParams.get('pendingUpdate') === 'true' ? true : undefined,
+    pendingDelete: searchParams.get('pendingDelete') === 'true' ? true : undefined,
+    
     // Numeric filters
     parentsCountMin: searchParams.get('parentsCountMin') ? parseInt(searchParams.get('parentsCountMin')!, 10) : undefined,
     parentsCountMax: searchParams.get('parentsCountMax') ? parseInt(searchParams.get('parentsCountMax')!, 10) : undefined,

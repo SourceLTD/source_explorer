@@ -1,8 +1,6 @@
 import { Prisma } from '@prisma/client';
 import type { llm_job_items } from '@prisma/client';
-import type OpenAI from 'openai';
 import { prisma } from '@/lib/prisma';
-import { FLAGGING_RESPONSE_SCHEMA, EDIT_RESPONSE_SCHEMA, REALLOCATION_RESPONSE_SCHEMA, type FlaggingResponse, type EditResponse, type ReallocationResponse } from './schema';
 import {
   CancelJobResult,
   CreateLLMJobParams,
@@ -15,65 +13,31 @@ import {
   SerializedJob,
   SerializedJobItem,
 } from './types';
-import { getOpenAIClient } from './client';
-import { translateFilterASTToPrisma } from '@/lib/filters/translate';
 import { withRetry } from '@/lib/db-utils';
-import type { BooleanFilterGroup } from '@/lib/filters/types';
-import { sortRolesByPrecedence } from '@/lib/types';
-import {
-  createChangegroup,
-  createChangesetFromUpdate,
-  EntityType,
-  Changegroup,
-  ENTITY_TYPE_TO_TABLE,
-  addComment,
-} from '@/lib/version-control';
 
-// Cache for changegroups per LLM job to avoid creating duplicates
-const jobChangegroupCache = new Map<string, bigint>();
+// Re-export from entries.ts
+export { fetchEntriesForScope } from './entries';
 
-/**
- * Get or create a changegroup for an LLM job.
- * This ensures all changesets from a single job are grouped together.
- */
-async function getOrCreateJobChangegroup(
-  jobId: bigint,
-  submittedBy: string,
-  jobLabel?: string | null
-): Promise<bigint> {
-  const cacheKey = jobId.toString();
-  
-  // Check cache first
-  if (jobChangegroupCache.has(cacheKey)) {
-    return jobChangegroupCache.get(cacheKey)!;
+// Re-export from execution.ts
+export { submitJobItemBatch } from './execution';
+
+// Import internal functions from execution.ts
+import { refreshJobItems as refreshJobItemsInternal } from './execution';
+
+// ============================================================================
+// Error Class
+// ============================================================================
+
+export class LLMJobError extends Error {
+  constructor(message: string, public statusCode = 500) {
+    super(message);
+    this.name = 'LLMJobError';
   }
-  
-  // Check if a changegroup already exists for this job
-  const existing = await prisma.changegroups.findFirst({
-    where: {
-      llm_job_id: jobId,
-      status: 'pending',
-    },
-    select: { id: true },
-  });
-  
-  if (existing) {
-    jobChangegroupCache.set(cacheKey, existing.id);
-    return existing.id;
-  }
-  
-  // Create a new changegroup
-  const changegroup = await createChangegroup({
-    source: 'llm_job',
-    label: jobLabel || `LLM Job ${jobId}`,
-    description: `Changes from LLM job processing`,
-    llm_job_id: jobId,
-    created_by: submittedBy,
-  });
-  
-  jobChangegroupCache.set(cacheKey, changegroup.id);
-  return changegroup.id;
 }
+
+// ============================================================================
+// Internal Utilities
+// ============================================================================
 
 const TERMINAL_ITEM_STATUSES = new Set(['succeeded', 'failed', 'skipped']);
 
@@ -97,13 +61,6 @@ function normalizeServiceTier(
   }
 
   return tier;
-}
-
-export class LLMJobError extends Error {
-  constructor(message: string, public statusCode = 500) {
-    super(message);
-    this.name = 'LLMJobError';
-  }
 }
 
 function getLLMJobsDelegate() {
@@ -240,14 +197,10 @@ function extractEntrySummary(item: llm_job_items): {
   };
 }
 
-function ensureOpenAIClient(): OpenAI {
-  const client = getOpenAIClient();
-  if (!client) {
-    throw new LLMJobError('OpenAI client is not configured. Please set OPENAI_API_KEY.', 503);
-  }
-  return client;
-}
-
+/**
+ * Build a flat variable map for simple {{variable}} interpolation.
+ * Used for backward compatibility and for storing in request_payload.
+ */
 function buildVariableMap(entry: LexicalEntrySummary): Record<string, string> {
   const stringify = (value: unknown): string => {
     if (Array.isArray(value)) {
@@ -263,6 +216,7 @@ function buildVariableMap(entry: LexicalEntrySummary): Record<string, string> {
   };
 
   const base: Record<string, string> = {
+    id: entry.dbId.toString(),
     code: entry.code,
     pos: entry.pos,
     gloss: entry.gloss ?? '',
@@ -296,1091 +250,69 @@ function buildVariableMap(entry: LexicalEntrySummary): Record<string, string> {
     }
   }
 
+  // Add frame_definition alias for backwards compatibility (maps to frame.definition)
+  if (entry.frame?.definition) {
+    base.frame_definition = entry.frame.definition;
+  }
+
   return base;
 }
 
-export function renderPrompt(template: string, entry: LexicalEntrySummary): RenderedPrompt {
-  const variables = buildVariableMap(entry);
-  const prompt = template.replace(/\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g, (_, key: string) => {
-    if (variables[key] !== undefined) {
-      return variables[key];
-    }
-    return '';
-  });
-
-  return { prompt, variables };
-}
-
-export async function fetchEntriesForScope(scope: JobScope): Promise<LexicalEntrySummary[]> {
-  switch (scope.kind) {
-    case 'ids':
-      return fetchEntriesByIds(scope.pos, scope.ids);
-    case 'frame_ids':
-      return fetchEntriesByFrameIds(scope.frameIds, scope.pos, scope.includeVerbs, scope.offset, scope.limit);
-    case 'filters':
-      return fetchEntriesByFilters(scope.pos, scope.filters);
-    default:
-      return [];
-  }
-}
-
-async function fetchEntriesByIds(pos: PartOfSpeech, ids: string[]): Promise<LexicalEntrySummary[]> {
-  if (ids.length === 0) return [];
-
-  const uniqueIds = Array.from(new Set(ids));
-  let entries: LexicalEntrySummary[] = [];
-
-  if (pos === 'verbs') {
-    const records = await prisma.verbs.findMany({
-      where: { code: { in: uniqueIds } },
-      select: {
-        id: true,
-        code: true,
-        gloss: true,
-        lemmas: true,
-        examples: true,
-        flagged: true,
-        flagged_reason: true,
-        lexfile: true,
-        frames: {
-          select: {
-            id: true,
-            label: true,
-            definition: true,
-            short_definition: true,
-            prototypical_synset: true,
-            frame_roles: {
-              select: {
-                id: true,
-                description: true,
-                notes: true,
-                main: true,
-                examples: true,
-                label: true,
-                role_types: {
-                  select: {
-                    label: true,
-                    code: true,
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    });
-
-    const byCode = new Map(records.map(record => [record.code, record]));
-    entries = uniqueIds
-      .map(code => byCode.get(code))
-      .filter((record): record is (typeof records)[number] => Boolean(record))
-      .map(record => {
-        const rec = record as any;
-        const frameData = rec.frames ? {
-          'frame.id': rec.frames.id.toString(),
-          'frame.label': rec.frames.label || rec.frames.frame_name,
-          'frame.definition': rec.frames.definition,
-          'frame.short_definition': rec.frames.short_definition,
-          'frame.prototypical_synset': rec.frames.prototypical_synset,
-          'frame.roles': sortRolesByPrecedence((rec.frames.frame_roles as any[]).map(fr => ({
-            role_type: fr.role_types,
-            main: fr.main ?? undefined,
-            description: fr.description,
-            examples: fr.examples,
-            label: fr.label,
-          }))).map((fr: any) => {
-            const roleType = fr.role_type.label;
-            const description = fr.description || '';
-            const examples = fr.examples && fr.examples.length > 0 ? fr.examples.join(', ') : '';
-            const label = fr.label || '';
-            return `**${roleType}**: ${description}${examples ? ` (e.g. ${examples})` : ''}${label ? `; ${label}` : ''}`;
-          }).join('\n'),
-        } : {};
-
-        return {
-          dbId: rec.id,
-          code: rec.code,
-          pos,
-          gloss: rec.gloss,
-          lemmas: rec.lemmas,
-          examples: rec.examples,
-          flagged: rec.flagged,
-          flagged_reason: rec.flagged_reason,
-          label: (rec.frames?.label || rec.frames?.frame_name) ?? null,
-          lexfile: rec.lexfile,
-          additional: frameData,
-        };
-      });
-  } else if (pos === 'nouns') {
-    const records = await prisma.nouns.findMany({
-      where: { code: { in: uniqueIds } },
-      select: {
-        id: true,
-        code: true,
-        gloss: true,
-        lemmas: true,
-        examples: true,
-        flagged: true,
-        flagged_reason: true,
-        lexfile: true,
-      },
-    });
-    const byCode = new Map(records.map(record => [record.code, record]));
-    entries = uniqueIds
-      .map(code => byCode.get(code))
-      .filter((record): record is (typeof records)[number] => Boolean(record))
-      .map(record => ({
-        dbId: record.id,
-        code: record.code,
-        pos,
-        gloss: record.gloss,
-        lemmas: record.lemmas,
-        examples: record.examples,
-        flagged: record.flagged,
-        flagged_reason: record.flagged_reason,
-        lexfile: record.lexfile,
-      }));
-  } else if (pos === 'adjectives') {
-    const records = await prisma.adjectives.findMany({
-      where: { code: { in: uniqueIds } },
-      select: {
-        id: true,
-        code: true,
-        gloss: true,
-        lemmas: true,
-        examples: true,
-        flagged: true,
-        flagged_reason: true,
-        lexfile: true,
-      },
-    });
-    const byCode = new Map(records.map(record => [record.code, record]));
-    entries = uniqueIds
-      .map(code => byCode.get(code))
-      .filter((record): record is (typeof records)[number] => Boolean(record))
-      .map(record => ({
-        dbId: record.id,
-        code: record.code,
-        pos,
-        gloss: record.gloss,
-        lemmas: record.lemmas,
-        examples: record.examples,
-        flagged: record.flagged,
-        flagged_reason: record.flagged_reason,
-        lexfile: record.lexfile,
-      }));
-  } else if (pos === 'adverbs') {
-    const records = await prisma.adverbs.findMany({
-      where: { code: { in: uniqueIds } },
-      select: {
-        id: true,
-        code: true,
-        gloss: true,
-        lemmas: true,
-        examples: true,
-        flagged: true,
-        flagged_reason: true,
-        lexfile: true,
-      },
-    });
-    const byCode = new Map(records.map(record => [record.code, record]));
-    entries = uniqueIds
-      .map(code => byCode.get(code))
-      .filter((record): record is (typeof records)[number] => Boolean(record))
-      .map(record => ({
-        dbId: record.id,
-        code: record.code,
-        pos,
-        gloss: record.gloss,
-        lemmas: record.lemmas,
-        examples: record.examples,
-        flagged: record.flagged,
-        flagged_reason: record.flagged_reason,
-        lexfile: record.lexfile,
-      }));
-  } else if (pos === 'frames') {
-    const records = await prisma.frames.findMany({
-      where: { id: { in: uniqueIds.map(id => BigInt(id)) } },
-      select: {
-        id: true,
-        label: true,
-        definition: true,
-        short_definition: true,
-        prototypical_synset: true,
-        flagged: true,
-        flagged_reason: true,
-        verifiable: true,
-        unverifiable_reason: true,
-      },
-    });
-    const byId = new Map(records.map(record => [record.id.toString(), record]));
-    entries = uniqueIds
-      .map(id => byId.get(id))
-      .filter((record): record is (typeof records)[number] => Boolean(record))
-      .map(record => ({
-        dbId: record.id,
-        code: record.id.toString(),
-        pos,
-        gloss: record.definition,
-        lemmas: [], // Frames don't have lemmas
-        examples: [], // Frames don't have examples
-        definition: record.definition,
-        short_definition: record.short_definition,
-        prototypical_synset: record.prototypical_synset,
-        flagged: record.flagged,
-        flagged_reason: record.flagged_reason,
-        verifiable: record.verifiable,
-        unverifiable_reason: record.unverifiable_reason,
-      }));
-  }
-
-  return entries;
-}
-
-async function fetchEntriesByFrameIds(
-  frameIds: string[], 
-  pos?: PartOfSpeech, 
-  includeVerbs?: boolean,
-  offset?: number,
-  limit?: number
-): Promise<LexicalEntrySummary[]> {
-  if (frameIds.length === 0) return [];
-
-  const frames = await prisma.frames.findMany({
-    where: {
-      id: { in: frameIds.filter(id => id.match(/^\d+$/)).map(id => BigInt(id)) }
-    },
-    select: {
-      id: true,
-      label: true,
-      definition: true,
-      short_definition: true,
-      prototypical_synset: true,
-      flagged: true,
-      flagged_reason: true,
-      verifiable: true,
-      unverifiable_reason: true,
-      frame_roles: {
-        select: {
-          id: true,
-          description: true,
-          notes: true,
-          main: true,
-          examples: true,
-          label: true,
-          role_types: {
-            select: {
-              label: true,
-              code: true,
-            },
-          },
-        },
-      },
-      verbs: includeVerbs ? {
-        where: {
-          deleted: false
-        },
-        select: {
-          id: true,
-          code: true,
-          gloss: true,
-          lemmas: true,
-          examples: true,
-          flagged: true,
-          flagged_reason: true,
-          lexfile: true,
-        },
-      } : false,
-    },
-  });
-
-  const entries: LexicalEntrySummary[] = [];
-  
-  // If targeting frames directly
-  if (!includeVerbs || pos === 'frames') {
-    for (const frame of frames as any[]) {
-      entries.push({
-        dbId: frame.id,
-        code: frame.id.toString(),
-        pos: 'frames',
-        gloss: frame.definition,
-        lemmas: [],
-        examples: [],
-        label: frame.label || frame.frame_name,
-        definition: frame.definition,
-        short_definition: frame.short_definition,
-        prototypical_synset: frame.prototypical_synset,
-        flagged: frame.flagged,
-        flagged_reason: frame.flagged_reason,
-        verifiable: frame.verifiable,
-        unverifiable_reason: frame.unverifiable_reason,
-      });
-    }
-  }
-  
-  // If including verbs
-  if (includeVerbs && frames.length > 0 && ('verbs' in (frames[0] as any))) {
-    for (const frame of frames as any[]) {
-      const frameVerbs = frame.verbs as Array<{
-        id: bigint;
-        code: string;
-        gloss: string;
-        lemmas: string[];
-        examples: string[];
-        flagged: boolean | null;
-        flagged_reason: string | null;
-        lexfile: string;
-      }>;
-      
-      for (const verb of frameVerbs) {
-        entries.push({
-          dbId: verb.id,
-          code: verb.code,
-          pos: 'verbs',
-          gloss: verb.gloss,
-          lemmas: verb.lemmas,
-          examples: verb.examples,
-          flagged: verb.flagged,
-          flagged_reason: verb.flagged_reason,
-          label: frame.label || frame.frame_name,
-          lexfile: verb.lexfile,
-          additional: {
-            'frame.id': frame.id.toString(),
-            'frame.label': frame.label || frame.frame_name,
-            'frame.definition': frame.definition,
-            'frame.short_definition': frame.short_definition,
-            'frame.prototypical_synset': frame.prototypical_synset,
-            'frame.roles': sortRolesByPrecedence((frame.frame_roles as any[]).map(fr => ({
-              role_type: fr.role_types,
-              main: fr.main ?? undefined,
-              description: fr.description,
-              examples: fr.examples,
-              label: fr.label,
-            }))).map((fr: any) => {
-              const roleType = fr.role_type.label;
-              const description = fr.description || '';
-              const examples = fr.examples && fr.examples.length > 0 ? fr.examples.join(', ') : '';
-              const label = fr.label || '';
-              return `**${roleType}**: ${description}${examples ? ` (e.g. ${examples})` : ''}${label ? `; ${label}` : ''}`;
-            }).join('\n'),
-          },
-        });
-      }
-    }
-  }
-
-  // Apply offset and limit if provided
-  if (offset !== undefined || limit !== undefined) {
-    const start = offset ?? 0;
-    const end = limit !== undefined ? start + limit : entries.length;
-    return entries.slice(start, end);
-  }
-
-  return entries;
-}
-
-async function fetchEntriesByFilters(pos: PartOfSpeech, filters: { limit?: number; offset?: number; where?: BooleanFilterGroup | undefined } | Record<string, unknown>): Promise<LexicalEntrySummary[]> {
-  // Backward compatibility: if filters is a plain object without 'where', try to use it as simple fields
-  const limit = typeof (filters as { limit?: unknown }).limit === 'number' ? Number((filters as { limit?: number }).limit) : undefined;
-  const offset = typeof (filters as { offset?: unknown }).offset === 'number' ? Number((filters as { offset?: number }).offset) : undefined;
-  const ast = (filters as { where?: BooleanFilterGroup }).where as BooleanFilterGroup | undefined;
-  const { where, computedFilters } = await translateFilterASTToPrisma(pos, ast);
-
-  if (pos === 'verbs') {
-    // limit=0 means fetch all, undefined means use default of 50
-    const takeArg = limit === 0 ? undefined : (limit ?? 50);
-    const skipArg = offset;
-    
-    // Ensure deleted filter is always applied
-    const verbsWhere = where as Prisma.verbsWhereInput;
-    const finalWhere: Prisma.verbsWhereInput = {
-      ...verbsWhere,
-      AND: [
-        verbsWhere,
-        {
-          deleted: false
-        }
-      ]
-    };
-    
-    const records = await prisma.verbs.findMany({
-      where: finalWhere,
-      take: takeArg,
-      skip: skipArg,
-      orderBy: { id: 'asc' }, // Ensure deterministic ordering for consistent previews
-      include: {
-        _count: {
-          select: {
-            verb_relations_verb_relations_source_idToverbs: { where: { type: 'hypernym' } },
-            verb_relations_verb_relations_target_idToverbs: { where: { type: 'hypernym' } },
-          },
-        },
-        frames: {
-          select: {
-            id: true,
-            label: true,
-            definition: true,
-            short_definition: true,
-            prototypical_synset: true,
-            frame_roles: {
-              select: {
-                id: true,
-                description: true,
-                notes: true,
-                main: true,
-                examples: true,
-                label: true,
-                role_types: {
-                  select: {
-                    label: true,
-                    code: true,
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    });
-
-    let entries = records.map(record => {
-      const rec = record as any;
-      const frameData = rec.frames ? {
-        'frame.id': rec.frames.id.toString(),
-        'frame.label': rec.frames.label || rec.frames.frame_name,
-        'frame.definition': rec.frames.definition,
-        'frame.short_definition': rec.frames.short_definition,
-        'frame.prototypical_synset': rec.frames.prototypical_synset,
-        'frame.roles': sortRolesByPrecedence((rec.frames.frame_roles as any[]).map(fr => ({
-          role_type: fr.role_types,
-          main: fr.main ?? undefined,
-          description: fr.description,
-          examples: fr.examples,
-          label: fr.label,
-        }))).map((fr: any) => {
-          const roleType = fr.role_type.label;
-          const description = fr.description || '';
-          const examples = fr.examples && fr.examples.length > 0 ? fr.examples.join(', ') : '';
-          const label = fr.label || '';
-          return `**${roleType}**: ${description}${examples ? ` (e.g. ${examples})` : ''}${label ? `; ${label}` : ''}`;
-        }).join('\n'),
-      } : {};
-
-      return {
-        dbId: rec.id,
-        code: (rec as { code: string }).code,
-        pos,
-        gloss: rec.gloss,
-        lemmas: rec.lemmas,
-        examples: rec.examples,
-        flagged: rec.flagged ?? undefined,
-        flagged_reason: (rec as { flagged_reason?: string | null }).flagged_reason ?? null,
-        label: (rec as { frames?: { label?: string; frame_name?: string } | null }).frames?.label || (rec as any).frames?.frame_name || null,
-        lexfile: rec.lexfile,
-        additional: frameData,
-        // temporary attachment for filtering only
-        _parentsCount: (rec as any)._count?.verb_relations_verb_relations_source_idToverbs ?? 0,
-        _childrenCount: (rec as any)._count?.verb_relations_verb_relations_target_idToverbs ?? 0,
-      };
-    }) as Array<LexicalEntrySummary & { _parentsCount: number; _childrenCount: number }>;
-
-    // Apply computed filters on counts
-    for (const cf of computedFilters) {
-      const field = cf.field === 'parentsCount' ? '_parentsCount' : '_childrenCount';
-      entries = entries.filter(e => compareNumber((e as any)[field] as number, cf.operator, cf.value, cf.value2));
-    }
-
-    // Strip temporary fields
-    return entries.map(entry => {
-      const { _parentsCount, _childrenCount, ...rest } = entry;
-      void _parentsCount;
-      void _childrenCount;
-      return rest;
-    });
-  }
-
-  if (pos === 'nouns') {
-    // limit=0 means fetch all, undefined means use default of 50
-    const takeArg = limit === 0 ? undefined : (limit ?? 50);
-    const skipArg = offset;
-    const records = await prisma.nouns.findMany({
-      where: where as Prisma.nounsWhereInput,
-      take: takeArg,
-      skip: skipArg,
-      orderBy: { id: 'asc' }, // Ensure deterministic ordering for consistent previews
-      select: {
-        id: true,
-        code: true,
-        gloss: true,
-        lemmas: true,
-        examples: true,
-        flagged: true,
-        flagged_reason: true,
-        lexfile: true,
-      },
-    });
-    return records.map(record => ({
-      dbId: record.id,
-      code: record.code,
-      pos,
-      gloss: record.gloss,
-      lemmas: record.lemmas,
-      examples: record.examples,
-      flagged: record.flagged,
-      flagged_reason: record.flagged_reason,
-      lexfile: record.lexfile,
-    }));
-  }
-
-  if (pos === 'adjectives') {
-    // limit=0 means fetch all, undefined means use default of 50
-    const takeArg = limit === 0 ? undefined : (limit ?? 50);
-    const skipArg = offset;
-    const records = await prisma.adjectives.findMany({
-      where: where as Prisma.adjectivesWhereInput,
-      take: takeArg,
-      skip: skipArg,
-      orderBy: { id: 'asc' }, // Ensure deterministic ordering for consistent previews
-      select: {
-        id: true,
-        code: true,
-        gloss: true,
-        lemmas: true,
-        examples: true,
-        flagged: true,
-        flagged_reason: true,
-        lexfile: true,
-      },
-    });
-    return records.map(record => ({
-      dbId: record.id,
-      code: record.code,
-      pos,
-      gloss: record.gloss,
-      lemmas: record.lemmas,
-      examples: record.examples,
-      flagged: record.flagged,
-      flagged_reason: record.flagged_reason,
-      lexfile: record.lexfile,
-    }));
-  }
-
-  if (pos === 'adverbs') {
-    // limit=0 means fetch all, undefined means use default of 50
-    const takeArg = limit === 0 ? undefined : (limit ?? 50);
-    const skipArg = offset;
-    const records = await prisma.adverbs.findMany({
-      where: where as Prisma.adverbsWhereInput,
-      take: takeArg,
-      skip: skipArg,
-      orderBy: { id: 'asc' }, // Ensure deterministic ordering for consistent previews
-      select: {
-        id: true,
-        code: true,
-        gloss: true,
-        lemmas: true,
-        examples: true,
-        flagged: true,
-        flagged_reason: true,
-        lexfile: true,
-      },
-    });
-    return records.map(record => ({
-      dbId: record.id,
-      code: record.code,
-      pos,
-      gloss: record.gloss,
-      lemmas: record.lemmas,
-      examples: record.examples,
-      flagged: record.flagged,
-      flagged_reason: record.flagged_reason,
-      lexfile: record.lexfile,
-    }));
-  }
-
-  if (pos === 'frames') {
-    // limit=0 means fetch all, undefined means use default of 50
-    const takeArg = limit === 0 ? undefined : (limit ?? 50);
-    const skipArg = offset;
-    const records = await prisma.frames.findMany({
-      where: where as Prisma.framesWhereInput,
-      take: takeArg,
-      skip: skipArg,
-      orderBy: { id: 'asc' }, // Ensure deterministic ordering for consistent previews
-      select: {
-        id: true,
-        label: true,
-        definition: true,
-        short_definition: true,
-        prototypical_synset: true,
-        flagged: true,
-        flagged_reason: true,
-        verifiable: true,
-        unverifiable_reason: true,
-      } as any,
-    });
-    return records.map(record => ({
-      dbId: record.id,
-      code: record.id.toString(),
-      pos,
-      gloss: record.definition,
-      lemmas: [],
-      examples: [],
-      label: record.label,
-      definition: record.definition,
-      short_definition: record.short_definition,
-      prototypical_synset: record.prototypical_synset,
-      flagged: record.flagged,
-      flagged_reason: record.flagged_reason,
-      verifiable: record.verifiable,
-      unverifiable_reason: record.unverifiable_reason,
-    }));
-  }
-
-  return [];
-}
-
-function compareNumber(actual: number, op: 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'between', v: number, v2?: number): boolean {
-  switch (op) {
-    case 'eq':
-      return actual === v;
-    case 'neq':
-      return actual !== v;
-    case 'gt':
-      return actual > v;
-    case 'gte':
-      return actual >= v;
-    case 'lt':
-      return actual < v;
-    case 'lte':
-      return actual <= v;
-    case 'between':
-      if (v2 === undefined) return true;
-      return actual >= v && actual <= v2;
-    default:
-      return true;
-  }
-}
-
 /**
- * Apply job result by creating changesets (version control).
- * 
- * Instead of directly updating entities, this creates changesets that
- * must be reviewed and committed by an admin before they take effect.
+ * Build a template context for nunjucks rendering.
+ * Includes both flat variables and structured objects for loop iteration.
  */
-async function applyJobResult(
-  item: llm_job_items,
-  entry: LexicalEntrySummary,
-  result: FlaggingResponse | EditResponse | ReallocationResponse,
-  jobLabel: string | null,
-  submittedBy: string,
-  jobType: 'moderation' | 'editing' | 'reallocation',
-  jobScope?: JobScope,
-  jobConfig?: Record<string, unknown>
-): Promise<void> {
-  // Get or create the changegroup for this job
-  const changegroupId = await getOrCreateJobChangegroup(item.job_id, submittedBy, jobLabel);
+function buildTemplateContext(entry: LexicalEntrySummary): Record<string, unknown> {
+  // Start with flat variables
+  const context: Record<string, unknown> = {
+    id: entry.dbId.toString(),
+    code: entry.code,
+    pos: entry.pos,
+    gloss: entry.gloss ?? '',
+    lemmas: entry.lemmas ?? [],
+    lemmas_json: JSON.stringify(entry.lemmas ?? [], null, 2),
+    examples: entry.examples ?? [],
+    examples_json: JSON.stringify(entry.examples ?? [], null, 2),
+    flagged: entry.flagged ?? false,
+    flagged_reason: entry.flagged_reason ?? '',
+    verifiable: entry.verifiable ?? false,
+    unverifiable_reason: entry.unverifiable_reason ?? '',
+    label: entry.label ?? '',
+    lexfile: entry.lexfile ?? '',
+  };
 
-  if (jobType === 'reallocation') {
-    const reallocationResult = result as ReallocationResponse;
-    const { reallocations, confidence, notes } = reallocationResult;
-    let hasEdits = false;
-
-    // Get the reallocation entity types from config (defaults to all)
-    const entityTypes = (jobConfig?.reallocationEntityTypes as string[] | undefined) ?? ['verbs', 'nouns', 'adjectives', 'adverbs'];
-
-    // Track created changesets to post notes as comments
-    const createdChangesets: { id: bigint }[] = [];
-
-    if (reallocations && Object.keys(reallocations).length > 0) {
-      let reallocationCount = 0;
-
-      for (const [entryCode, targetFrameId] of Object.entries(reallocations)) {
-        // Validate the target frame exists
-        const targetFrame = await prisma.frames.findUnique({
-          where: { id: BigInt(targetFrameId) },
-          select: { id: true },
-        });
-
-        if (!targetFrame) {
-          console.warn(`[LLM] Job ${item.job_id} suggested non-existent target frame ${targetFrameId} for entry ${entryCode}`);
-          continue;
-        }
-
-        // Find the entry by code - only check entity types that are enabled
-        const [verb, noun, adjective, adverb] = await Promise.all([
-          entityTypes.includes('verbs') ? prisma.verbs.findFirst({ where: { code: entryCode, deleted: false } }) : null,
-          entityTypes.includes('nouns') ? prisma.nouns.findFirst({ where: { code: entryCode, deleted: false } }) : null,
-          entityTypes.includes('adjectives') ? prisma.adjectives.findFirst({ where: { code: entryCode, deleted: false } }) : null,
-          entityTypes.includes('adverbs') ? prisma.adverbs.findFirst({ where: { code: entryCode, deleted: false } }) : null,
-        ]);
-
-        if (verb && verb.frame_id !== BigInt(targetFrameId)) {
-          const changeset = await createChangesetFromUpdate(
-            'verb',
-            verb.id,
-            verb as unknown as Record<string, unknown>,
-            { frame_id: BigInt(targetFrameId) },
-            submittedBy,
-            changegroupId,
-          );
-          createdChangesets.push(changeset);
-          reallocationCount++;
-          hasEdits = true;
-        } else if (noun && noun.frame_id !== BigInt(targetFrameId)) {
-          const changeset = await createChangesetFromUpdate(
-            'noun',
-            noun.id,
-            noun as unknown as Record<string, unknown>,
-            { frame_id: BigInt(targetFrameId) },
-            submittedBy,
-            changegroupId,
-          );
-          createdChangesets.push(changeset);
-          reallocationCount++;
-          hasEdits = true;
-        } else if (adjective && adjective.frame_id !== BigInt(targetFrameId)) {
-          const changeset = await createChangesetFromUpdate(
-            'adjective',
-            adjective.id,
-            adjective as unknown as Record<string, unknown>,
-            { frame_id: BigInt(targetFrameId) },
-            submittedBy,
-            changegroupId,
-          );
-          createdChangesets.push(changeset);
-          reallocationCount++;
-          hasEdits = true;
-        } else if (adverb && adverb.frame_id !== BigInt(targetFrameId)) {
-          const changeset = await createChangesetFromUpdate(
-            'adverb',
-            adverb.id,
-            adverb as unknown as Record<string, unknown>,
-            { frame_id: BigInt(targetFrameId) },
-            submittedBy,
-            changegroupId,
-          );
-          createdChangesets.push(changeset);
-          reallocationCount++;
-          hasEdits = true;
-        } else if (!verb && !noun && !adjective && !adverb) {
-          console.warn(`[LLM] Job ${item.job_id} suggested reallocation for unknown entry ${entryCode}`);
-        }
-      }
-
-      if (reallocationCount > 0) {
-        console.log(`[LLM] Job ${item.job_id} created ${reallocationCount} reallocation changesets`);
-      }
-    }
-
-    // Post AI notes as discussion comments on each created changeset
-    if (notes && notes.trim() && createdChangesets.length > 0) {
-      for (const changeset of createdChangesets) {
-        await addComment({
-          changeset_id: changeset.id,
-          author: 'system:llm-agent',
-          content: notes.trim(),
-        });
-      }
-    }
-
-    await prisma.llm_job_items.update({
-      where: { id: item.id },
-      data: {
-        status: 'succeeded',
-        has_edits: hasEdits,
-        flags: {
-          confidence,
-          notes,
-          staged_at: new Date().toISOString(),
-          changegroup_id: changegroupId.toString(),
-          reallocations: reallocations,
-        },
-        completed_at: new Date(),
-      },
-    });
-  } else if (jobType === 'editing') {
-    const editResult = result as EditResponse;
-    const { edits, frame_id, entry_reallocations, relations, confidence, notes } = editResult;
-    let hasEdits = false;
-
-    const entityType = item.verb_id ? 'verb' : 
-                     item.noun_id ? 'noun' :
-                     item.adjective_id ? 'adjective' :
-                     item.adverb_id ? 'adverb' :
-                     item.frame_id ? 'frame' : null;
-    const entityId = item.verb_id || item.noun_id || item.adjective_id || item.adverb_id || item.frame_id;
-
-    if (entityType && entityId) {
-      const table = ENTITY_TYPE_TO_TABLE[entityType as EntityType];
-      const currentEntity = await (prisma[table as keyof typeof prisma] as any).findUnique({
-        where: { id: entityId },
-      });
-
-      if (currentEntity) {
-        const validUpdates: Record<string, unknown> = {};
-
-        // 1. Handle field edits
-        if (edits && Object.keys(edits).length > 0) {
-          for (const [field, newValue] of Object.entries(edits)) {
-            if (field in currentEntity && JSON.stringify(currentEntity[field]) !== JSON.stringify(newValue)) {
-              validUpdates[field] = newValue;
-            }
-          }
-        }
-
-        // 2. Handle frame_id reallocation (for verb/noun/adjective/adverb jobs)
-        if (frame_id !== undefined && frame_id !== null && entityType !== 'frame') {
-          // Validate the frame exists
-          const targetFrame = await prisma.frames.findUnique({
-            where: { id: BigInt(frame_id) },
-            select: { id: true },
-          });
-
-          if (targetFrame) {
-            // Check if it's different from current
-            const currentFrameId = (currentEntity as any).frame_id;
-            if (currentFrameId === null || BigInt(currentFrameId) !== BigInt(frame_id)) {
-              validUpdates['frame_id'] = BigInt(frame_id);
-            }
-          } else {
-            console.warn(`[LLM] Job ${item.job_id} suggested non-existent frame_id: ${frame_id}`);
-          }
-        }
-
-        // 3. Handle entry_reallocations for frame jobs (reallocate specific entries to different frames)
-        if (entityType === 'frame' && entry_reallocations && Object.keys(entry_reallocations).length > 0) {
-          let reallocationCount = 0;
-          
-          for (const [entryCode, targetFrameId] of Object.entries(entry_reallocations)) {
-            // Validate the target frame exists
-            const targetFrame = await prisma.frames.findUnique({
-              where: { id: BigInt(targetFrameId) },
-              select: { id: true },
-            });
-
-            if (!targetFrame) {
-              console.warn(`[LLM] Job ${item.job_id} suggested non-existent target frame ${targetFrameId} for entry ${entryCode}`);
-              continue;
-            }
-
-            // Find the entry by code - check verbs, nouns, adjectives, adverbs
-            const [verb, noun, adjective, adverb] = await Promise.all([
-              prisma.verbs.findFirst({ where: { code: entryCode, frame_id: entityId, deleted: false } }),
-              prisma.nouns.findFirst({ where: { code: entryCode, frame_id: entityId, deleted: false } }),
-              prisma.adjectives.findFirst({ where: { code: entryCode, frame_id: entityId, deleted: false } }),
-              prisma.adverbs.findFirst({ where: { code: entryCode, frame_id: entityId, deleted: false } }),
-            ]);
-
-            if (verb) {
-              await createChangesetFromUpdate(
-                'verb',
-                verb.id,
-                verb as unknown as Record<string, unknown>,
-                { frame_id: BigInt(targetFrameId) },
-                submittedBy,
-                changegroupId,
-              );
-              reallocationCount++;
-              hasEdits = true;
-            } else if (noun) {
-              await createChangesetFromUpdate(
-                'noun',
-                noun.id,
-                noun as unknown as Record<string, unknown>,
-                { frame_id: BigInt(targetFrameId) },
-                submittedBy,
-                changegroupId,
-              );
-              reallocationCount++;
-              hasEdits = true;
-            } else if (adjective) {
-              await createChangesetFromUpdate(
-                'adjective',
-                adjective.id,
-                adjective as unknown as Record<string, unknown>,
-                { frame_id: BigInt(targetFrameId) },
-                submittedBy,
-                changegroupId,
-              );
-              reallocationCount++;
-              hasEdits = true;
-            } else if (adverb) {
-              await createChangesetFromUpdate(
-                'adverb',
-                adverb.id,
-                adverb as unknown as Record<string, unknown>,
-                { frame_id: BigInt(targetFrameId) },
-                submittedBy,
-                changegroupId,
-              );
-              reallocationCount++;
-              hasEdits = true;
-            } else {
-              console.warn(`[LLM] Job ${item.job_id} suggested reallocation for unknown entry ${entryCode} in frame ${entityId}`);
-            }
-          }
-
-          if (reallocationCount > 0) {
-            console.log(`[LLM] Job ${item.job_id} created ${reallocationCount} entry reallocation changesets for frame ${entityId}`);
-          }
-        }
-
-        if (Object.keys(validUpdates).length > 0) {
-          const changeset = await createChangesetFromUpdate(
-            entityType as EntityType,
-            entityId,
-            currentEntity as Record<string, unknown>,
-            validUpdates,
-            submittedBy,
-            changegroupId,
-          );
-          hasEdits = true;
-
-          // Post AI notes as the first discussion comment
-          if (notes && notes.trim()) {
-            await addComment({
-              changeset_id: changeset.id,
-              author: 'system:llm-agent',
-              content: notes.trim(),
-            });
-          }
-        }
-
-        // 4. Handle relations (simplified)
-        if (relations && Object.keys(relations).length > 0) {
-          console.log(`[LLM] Job ${item.job_id} suggested relations for ${entry.code}:`, relations);
-        }
-      }
-    }
-
-    await prisma.llm_job_items.update({
-      where: { id: item.id },
-      data: {
-        status: 'succeeded',
-        has_edits: hasEdits,
-        flags: {
-          confidence,
-          notes,
-          staged_at: new Date().toISOString(),
-          changegroup_id: changegroupId.toString(),
-          suggested_relations: relations,
-          suggested_frame_id: frame_id,
-          entry_reallocations: entry_reallocations,
-        },
-        completed_at: new Date(),
-      },
-    });
-  } else {
-    // Moderation/Flagging logic
-    const flaggingResult = result as FlaggingResponse;
-    const flagged = Boolean(flaggingResult.flagged);
-    const rawReason = (flaggingResult.flagged_reason ?? '').trim();
-    const prefixedReason = rawReason
-      ? (jobLabel ? `Via ${jobLabel}: ${rawReason}` : rawReason)
-      : null;
-
-    // Determine the flagging target for frame jobs
-    let flagTarget: 'frame' | 'verb' | 'both' = 'frame';
-    if (jobScope?.kind === 'frame_ids') {
-      flagTarget = jobScope.flagTarget ?? 'frame';
-    }
-
-    // Helper to create a changeset for an entity update
-    const createModerationChangeset = async (
-      entityType: EntityType,
-      entityId: bigint,
-      currentEntity: Record<string, unknown>
-    ) => {
-      const updates: Record<string, unknown> = {
-        flagged,
-        flagged_reason: prefixedReason,
-      };
-
-      await createChangesetFromUpdate(
-        entityType,
-        entityId,
-        currentEntity,
-        updates,
-        submittedBy,
-        changegroupId,
-      );
-    };
-
-    if (item.verb_id) {
-      const verb = await prisma.verbs.findUnique({
-        where: { id: item.verb_id },
-      });
-      if (verb) {
-        await createModerationChangeset('verb', item.verb_id, verb as unknown as Record<string, unknown>);
-      }
-    } else if (item.noun_id) {
-      const noun = await prisma.nouns.findUnique({
-        where: { id: item.noun_id },
-      });
-      if (noun) {
-        await createModerationChangeset('noun', item.noun_id, noun as unknown as Record<string, unknown>);
-      }
-    } else if (item.adjective_id) {
-      const adjective = await prisma.adjectives.findUnique({
-        where: { id: item.adjective_id },
-      });
-      if (adjective) {
-        await createModerationChangeset('adjective', item.adjective_id, adjective as unknown as Record<string, unknown>);
-      }
-    } else if (item.adverb_id) {
-      const adverb = await prisma.adverbs.findUnique({
-        where: { id: item.adverb_id },
-      });
-      if (adverb) {
-        await createModerationChangeset('adverb', item.adverb_id, adverb as unknown as Record<string, unknown>);
-      }
-    } else if (item.frame_id) {
-      // For frames, we need to handle the flagTarget option
-      const frameId = item.frame_id;
-      
-      // Flag the frame if target is 'frame' or 'both'
-      if (flagTarget === 'frame' || flagTarget === 'both') {
-        const frame = await prisma.frames.findUnique({
-          where: { id: frameId },
-        }) as any;
-        if (frame) {
-          await createModerationChangeset('frame', frameId, frame as Record<string, unknown>);
-        }
-      }
-      
-      // Flag associated verbs if target is 'verb' or 'both'
-      if (flagTarget === 'verb' || flagTarget === 'both') {
-        const verbs = await prisma.verbs.findMany({
-          where: { 
-            frame_id: frameId,
-            deleted: false,
-          },
-        });
-        for (const verb of verbs) {
-          await createModerationChangeset('verb', verb.id, verb as unknown as Record<string, unknown>);
-        }
-      }
-    }
-
-    // Update the job item status
-    await prisma.llm_job_items.update({
-      where: { id: item.id },
-      data: {
-        status: 'succeeded',
-        flagged,
-        flags: {
-          flagged,
-          flagged_reason: prefixedReason,
-          confidence: flaggingResult.confidence ?? null,
-          notes: flaggingResult.notes ?? null,
-          staged_at: new Date().toISOString(),
-          changegroup_id: changegroupId.toString(),
-        },
-        completed_at: new Date(),
-      },
-    });
+  // Frame-specific fields (when pos === 'frames')
+  if (entry.pos === 'frames') {
+    context.definition = entry.definition ?? '';
+    context.short_definition = entry.short_definition ?? '';
+    context.prototypical_synset = entry.prototypical_synset ?? '';
+    // Direct access to roles, verbs, nouns for frames
+    context.roles = entry.roles ?? [];
+    context.verbs = entry.verbs ?? [];
+    context.nouns = entry.nouns ?? [];
   }
+
+  // Add structured frame object for verbs (enables {% for role in frame.roles %})
+  if (entry.frame) {
+    context.frame = entry.frame;
+  }
+
+  // Add flat additional fields for backward compatibility
+  if (entry.additional) {
+    for (const [key, value] of Object.entries(entry.additional)) {
+      // Only add if not already a structured object (avoid overwriting frame.*)
+      if (!key.startsWith('frame.') || typeof value === 'string') {
+        context[key] = value;
+      }
+    }
+  }
+
+  // Add frame_definition alias for backwards compatibility (maps to frame.definition)
+  if (entry.frame?.definition) {
+    context.frame_definition = entry.frame.definition;
+  }
+
+  return context;
 }
 
 async function updateJobAggregates(jobId: bigint) {
@@ -1447,6 +379,70 @@ async function updateJobAggregates(jobId: bigint) {
   });
 }
 
+// Wrapper for refreshJobItems that provides the required callback functions
+async function refreshJobItems(job: SerializedJob, options: { limit?: number } = {}): Promise<SerializedJob> {
+  return refreshJobItemsInternal(job, {
+    limit: options.limit,
+    fetchJobRecordFn: (jobId) => fetchJobRecord(jobId, { includeItems: true }),
+    updateJobAggregatesFn: updateJobAggregates,
+  });
+}
+
+// ============================================================================
+// Public API - Prompt Rendering
+// ============================================================================
+
+import { renderTemplate, hasLoopSyntax } from './template-renderer';
+
+/**
+ * Render a prompt template with entry data.
+ * Supports both simple {{variable}} interpolation and Jinja-style {% for %} loops.
+ */
+export function renderPrompt(template: string, entry: LexicalEntrySummary): RenderedPrompt {
+  // Build flat variable map for storage/display
+  const variables = buildVariableMap(entry);
+  
+  // Check if template uses loop syntax
+  const usesLoops = hasLoopSyntax(template);
+  
+  let prompt: string;
+  
+  if (usesLoops) {
+    // Use nunjucks for templates with loops
+    const context = buildTemplateContext(entry);
+    const result = renderTemplate(template, context);
+    
+    if (!result.success) {
+      console.error('[renderPrompt] Template render error:', result.error);
+      // Fall back to simple replacement on error
+      prompt = template.replace(/\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g, (_, key: string) => {
+        if (variables[key] !== undefined) {
+          return variables[key];
+        }
+        return '';
+      });
+    } else {
+      prompt = result.prompt;
+    }
+  } else {
+    // Use simple regex replacement for templates without loops (faster)
+    prompt = template.replace(/\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g, (_, key: string) => {
+      if (variables[key] !== undefined) {
+        return variables[key];
+      }
+      return '';
+    });
+  }
+
+  return { prompt, variables };
+}
+
+// ============================================================================
+// Public API - Job Preview and Creation
+// ============================================================================
+
+import { fetchEntriesForScope } from './entries';
+
 export async function previewLLMJob(params: CreateLLMJobParams) {
   const entries = await fetchEntriesForScope(params.scope);
   if (entries.length === 0) {
@@ -1492,14 +488,20 @@ export async function createLLMJob(
   }
 
   // 2. Prepare job config BEFORE transaction
+  // Use userPromptTemplate as the canonical field name (matches source-llm JobConfig)
   const jobConfig: Prisma.InputJsonObject = {
     model: params.model,
-    promptTemplate: params.promptTemplate,
+    userPromptTemplate: params.promptTemplate,
     serviceTier: params.serviceTier ?? null,
     reasoning: params.reasoning ?? null,
     targetFields: (params.targetFields ?? []) as Prisma.InputJsonValue,
     reallocationEntityTypes: (params.reallocationEntityTypes ?? []) as Prisma.InputJsonValue,
     metadata: (params.metadata ?? {}) as Prisma.InputJsonObject,
+    // MCP tool approval configuration
+    mcpApproval: params.mcpApproval ? (params.mcpApproval as unknown as Prisma.InputJsonValue) : null,
+    // Review job specific fields
+    changesetId: params.changesetId ?? null,
+    chatHistory: params.chatHistory ? (params.chatHistory as unknown as Prisma.InputJsonValue) : null,
   };
 
   // 3. Prepare job items data BEFORE transaction (only for the batch we're creating)
@@ -1549,7 +551,7 @@ export async function createLLMJob(
           llm_vendor: 'openai',
           status: 'queued',
           total_items: totalEntries, // Use total scope size, not just this batch
-        },
+        } as any,
       });
 
       // Create all job items in bulk with the job_id
@@ -1579,551 +581,9 @@ export async function createLLMJob(
   return result;
 }
 
-export async function submitJobItemBatch(
-  jobId: bigint,
-  batchSize: number = 100
-): Promise<{
-  submitted: number;
-  failed: number;
-  remaining: number;
-  errors: Array<{ itemId: string; error: string }>;
-}> {
-  const batchStartTime = Date.now();
-  const TIMEOUT_MS = 290000; // Stop at 290s (with 10s buffer before 300s route timeout)
-  
-  // 1. Fetch next batch of queued items that haven't been submitted yet
-  const items = await prisma.llm_job_items.findMany({
-    where: { 
-      job_id: jobId, 
-      status: 'queued',
-      provider_task_id: null  // Not yet submitted to OpenAI
-    },
-    take: batchSize,
-    orderBy: { id: 'asc' },
-  });
-
-  if (items.length === 0) {
-    return { submitted: 0, failed: 0, remaining: 0, errors: [] };
-  }
-
-  // 2. Update job status to 'running' if this is the first batch
-  const job = await getLLMJobsDelegate().findUnique({
-    where: { id: jobId },
-    select: { status: true, config: true, job_type: true },
-  });
-  
-  if (job?.status === 'queued') {
-    await getLLMJobsDelegate().update({
-      where: { id: jobId },
-      data: { status: 'running', started_at: new Date() },
-    });
-  }
-
-  const config = job?.config as { model: string; serviceTier?: string; reasoning?: unknown } | null;
-  const jobType = job?.job_type ?? 'moderation';
-  const responseSchema = jobType === 'editing' 
-    ? EDIT_RESPONSE_SCHEMA 
-    : jobType === 'reallocation' 
-      ? REALLOCATION_RESPONSE_SCHEMA 
-      : FLAGGING_RESPONSE_SCHEMA;
-  const client = ensureOpenAIClient();
-  const openAIServiceTier = normalizeServiceTier(config?.serviceTier as CreateLLMJobParams['serviceTier']);
-  
-  // Helper function to submit a single item with retry logic
-  const submitItem = async (item: typeof items[number], retries = 3): Promise<{ success: boolean; itemId: bigint; error?: string }> => {
-    const payload = item.request_payload as Prisma.JsonObject;
-    const renderedPrompt = String(payload.renderedPrompt ?? '');
-    
-    for (let attempt = 0; attempt <= retries; attempt++) {
-      // Check timeout
-      if (Date.now() - batchStartTime > TIMEOUT_MS) {
-        return { 
-          success: false, 
-          itemId: item.id, 
-          error: 'Batch timeout - will retry in next batch' 
-        };
-      }
-      
-      try {
-        const response = await client.responses.create({
-          model: config?.model ?? 'gpt-5-nano',
-          input: renderedPrompt,
-          background: true,
-          store: true,
-          metadata: {
-            job_id: jobId.toString(),
-            job_item_id: item.id.toString(),
-          },
-          service_tier: openAIServiceTier,
-          reasoning: config?.reasoning as CreateLLMJobParams['reasoning'],
-          text: {
-            format: {
-              type: 'json_schema',
-              name: responseSchema.name,
-              strict: responseSchema.strict,
-              schema: responseSchema.schema,
-            },
-          },
-        });
-
-        await prisma.llm_job_items.update({
-          where: { id: item.id },
-          data: {
-            status: 'processing',
-            provider_task_id: response.id,
-            llm_request_id: response.id,
-            started_at: new Date(),
-          },
-        });
-        
-        return { success: true, itemId: item.id };
-      } catch (error: any) {
-        // Categorize errors based on OpenAI documentation
-        const status = error?.status || error?.response?.status;
-        const code = error?.code;
-        
-        // Transient errors that should be retried
-        const isRateLimit = status === 429 && !error?.message?.includes('quota');
-        const isServerError = status === 500 || code === 'internal_server_error';
-        const isServiceUnavailable = status === 503 || code === 'service_unavailable';
-        const isTimeout = code === 'timeout' || error?.name === 'APITimeoutError';
-        const isConnectionError = code === 'connection_error' || error?.name === 'APIConnectionError';
-        
-        const isRetryable = isRateLimit || isServerError || isServiceUnavailable || isTimeout || isConnectionError;
-        
-        if (isRetryable && attempt < retries) {
-          // Exponential backoff: 1s, 2s, 4s
-          const delayMs = Math.pow(2, attempt) * 1000;
-          console.log(`[LLM] Retrying item ${item.id} after ${delayMs}ms (attempt ${attempt + 1}/${retries}) - Error: ${error?.message || 'Unknown'}`);
-          await new Promise(resolve => setTimeout(resolve, delayMs));
-          continue;
-        }
-        
-        // Final failure - categorize the error type for better debugging
-        let errorMessage = error instanceof Error ? error.message : 'Submission failed';
-        
-        // Add context about error type for non-retryable errors
-        if (status === 401) {
-          errorMessage = `Authentication error: ${errorMessage}`;
-        } else if (status === 403) {
-          errorMessage = `Permission denied: ${errorMessage}`;
-        } else if (status === 429 && error?.message?.includes('quota')) {
-          errorMessage = `Quota exceeded: ${errorMessage}`;
-        } else if (status === 400 || code === 'invalid_request_error') {
-          errorMessage = `Invalid request: ${errorMessage}`;
-        }
-        
-        await prisma.llm_job_items.update({
-          where: { id: item.id },
-          data: {
-            status: 'failed',
-            last_error: errorMessage,
-            completed_at: new Date(),
-          },
-        });
-        
-        return { 
-          success: false, 
-          itemId: item.id, 
-          error: errorMessage
-        };
-      }
-    }
-    
-    return { 
-      success: false, 
-      itemId: item.id, 
-      error: 'Max retries exceeded' 
-    };
-  };
-  
-  // 3. Submit all items in parallel using Promise.allSettled
-  const submissions = items.map(item => submitItem(item));
-
-  const results = await Promise.allSettled(submissions);
-  
-  // 4. Count successes and failures
-  let submitted = 0;
-  let failed = 0;
-  const errors: Array<{ itemId: string; error: string }> = [];
-  
-  for (const result of results) {
-    if (result.status === 'fulfilled') {
-      if (result.value.success) {
-        submitted++;
-      } else {
-        failed++;
-        errors.push({ itemId: result.value.itemId.toString(), error: result.value.error ?? 'Unknown error' });
-      }
-    } else {
-      failed++;
-      errors.push({ itemId: 'unknown', error: result.reason?.message ?? 'Promise rejected' });
-    }
-  }
-
-  // 5. Update job submitted_items counter
-  await getLLMJobsDelegate().update({
-    where: { id: jobId },
-    data: {
-      submitted_items: { increment: submitted },
-    },
-  });
-
-  await updateJobAggregates(jobId);
-  
-  // 6. Calculate remaining items to submit
-  const remaining = await prisma.llm_job_items.count({
-    where: { 
-      job_id: jobId, 
-      status: 'queued',
-      provider_task_id: null,
-    },
-  });
-
-  return { submitted, failed, remaining, errors };
-}
-
-/**
- * Refresh a single job item by polling OpenAI and updating the database
- */
-async function refreshSingleItem(item: SerializedJob['items'][number], jobId: string, jobLabel: string | null): Promise<void> {
-  if (!item.provider_task_id) return;
-
-  const client = ensureOpenAIClient();
-
-  try {
-    const response = await client.responses.retrieve(item.provider_task_id);
-    const responsePayload = JSON.parse(JSON.stringify(response));
-
-    if (response.status === 'queued' || response.status === 'in_progress') {
-      await prisma.llm_job_items.update({
-        where: { id: BigInt(item.id) },
-        data: {
-          status: 'processing',
-          response_payload: responsePayload,
-        },
-      });
-      return;
-    }
-
-    if (response.status === 'cancelled') {
-      await prisma.llm_job_items.update({
-        where: { id: BigInt(item.id) },
-        data: {
-          status: 'failed',
-          last_error: 'Cancelled at provider',
-          response_payload: responsePayload,
-          completed_at: new Date(),
-        },
-      });
-      return;
-    }
-
-    if (response.status === 'failed') {
-      await prisma.llm_job_items.update({
-        where: { id: BigInt(item.id) },
-        data: {
-          status: 'failed',
-          last_error: response.error?.message ?? 'Provider error',
-          response_payload: responsePayload,
-          completed_at: new Date(),
-        },
-      });
-      return;
-    }
-
-    if (response.status === 'completed') {
-      // The Responses API may omit convenience fields on retrieve calls, so we
-      // normalize the output shape here.
-      const outputItems = Array.isArray((response as any).output)
-        ? ((response as any).output as Array<{ content?: unknown }>)
-        : [];
-      const contentParts = outputItems.flatMap(part =>
-        Array.isArray((part as { content?: unknown }).content)
-          ? ((part as { content: unknown[] }).content as Array<Record<string, unknown>>)
-          : []
-      );
-      const textPart = contentParts.find(
-        part => typeof part?.type === 'string' && part.type === 'output_text' && typeof part.text === 'string'
-      ) as ({ text: string } & Record<string, unknown>) | undefined;
-      const jsonSchemaPart = contentParts.find(
-        part => typeof part?.type === 'string' && part.type === 'output_json_schema'
-      ) as ({ json_schema?: unknown } & Record<string, unknown>) | undefined;
-
-      let outputText: string | undefined = (response as any).output_text;
-      if (!outputText && jsonSchemaPart?.json_schema) {
-        outputText = typeof jsonSchemaPart.json_schema === 'string'
-          ? jsonSchemaPart.json_schema
-          : JSON.stringify(jsonSchemaPart.json_schema);
-      }
-      if (!outputText && textPart?.text) {
-        outputText = textPart.text;
-      }
-
-      if (!outputText) {
-        console.warn(
-          `[LLM] Completed response ${response.id} missing output content; will retry on next poll.`
-        );
-        await prisma.llm_job_items.update({
-          where: { id: BigInt(item.id) },
-          data: {
-            status: 'processing',
-            response_payload: responsePayload,
-          },
-        });
-        return;
-      }
-
-      let parsed: FlaggingResponse | null = null;
-      try {
-        parsed = JSON.parse(outputText) as FlaggingResponse;
-      } catch (error) {
-        console.error('[LLM] Failed to parse response JSON:', error);
-        console.error('[LLM] Output text was:', outputText);
-        console.error('[LLM] Response status:', response.status);
-      }
-
-      if (!parsed) {
-        await prisma.llm_job_items.update({
-          where: { id: BigInt(item.id) },
-          data: {
-            status: 'failed',
-            last_error: `Unable to parse JSON response from model. Output: ${outputText.substring(0, 100)}`,
-            response_payload: responsePayload,
-            completed_at: new Date(),
-          },
-        });
-        return;
-      }
-
-      const entry = await fetchEntryForItem(item);
-      if (!entry) {
-        await prisma.llm_job_items.update({
-          where: { id: BigInt(item.id) },
-          data: {
-            status: 'failed',
-            last_error: 'Entry not found when applying result',
-            response_payload: responsePayload,
-            completed_at: new Date(),
-          },
-        });
-        return;
-      }
-
-      const jobRecord = await getLLMJobsDelegate().findUnique({
-        where: { id: BigInt(jobId) },
-        select: { scope: true, submitted_by: true, job_type: true, config: true },
-      });
-      
-      await applyJobResult(
-        await prisma.llm_job_items.findUniqueOrThrow({ where: { id: BigInt(item.id) } }),
-        entry,
-        parsed as any,
-        jobLabel,
-        jobRecord?.submitted_by ?? 'system:llm-agent',
-        (jobRecord?.job_type as any) ?? 'moderation',
-        jobRecord?.scope as JobScope | undefined,
-        jobRecord?.config as Record<string, unknown> | undefined
-      );
-
-      await prisma.llm_job_items.update({
-        where: { id: BigInt(item.id) },
-        data: {
-          response_payload: responsePayload,
-          input_tokens: response.usage?.input_tokens ?? 0,
-          output_tokens: response.usage?.output_tokens ?? 0,
-        },
-      });
-    }
-  } catch (error) {
-    console.error('[LLM] Error refreshing job item:', error);
-    await prisma.llm_job_items.update({
-      where: { id: BigInt(item.id) },
-      data: {
-        last_error: error instanceof Error ? error.message : 'Unexpected refresh error',
-      },
-    });
-  }
-}
-
-/**
- * Refresh job items by polling OpenAI in parallel batches
- * @param job The job to refresh
- * @param options.limit Maximum number of items to refresh per call (default 40)
- */
-async function refreshJobItems(job: SerializedJob, options: { limit?: number } = {}): Promise<SerializedJob> {
-  const limit = options.limit ?? 40;
-  const staleItems = job.items
-    .filter(item => !TERMINAL_ITEM_STATUSES.has(item.status))
-    .slice(0, limit); // Only process first N items to avoid long-running polls
-
-  if (staleItems.length === 0) {
-    return job;
-  }
-
-  const CONCURRENT_BATCH_SIZE = 20;
-
-  // Process items in parallel batches to improve performance
-  for (let i = 0; i < staleItems.length; i += CONCURRENT_BATCH_SIZE) {
-    const batch = staleItems.slice(i, i + CONCURRENT_BATCH_SIZE);
-    await Promise.allSettled(
-      batch.map(item => refreshSingleItem(item, job.id, job.label ?? null))
-    );
-  }
-
-  await updateJobAggregates(BigInt(job.id));
-  const refreshedJob = await fetchJobRecord(BigInt(job.id), { includeItems: true });
-  if (!refreshedJob) {
-    throw new LLMJobError('Failed to fetch job after refresh', 500);
-  }
-  return refreshedJob;
-}
-
-async function fetchEntryForItem(item: SerializedJob['items'][number]): Promise<LexicalEntrySummary | null> {
-  if (item.verb_id) {
-    const record = await prisma.verbs.findUnique({
-      where: { id: BigInt(item.verb_id) },
-      select: {
-        id: true,
-        code: true,
-        gloss: true,
-        lemmas: true,
-        examples: true,
-        flagged: true,
-        flagged_reason: true,
-        lexfile: true,
-        frames: {
-          select: { label: true },
-        },
-      },
-    });
-    if (!record) return null;
-    return {
-      dbId: record.id,
-      code: record.code,
-      pos: 'verbs',
-      gloss: record.gloss,
-      lemmas: record.lemmas,
-      examples: record.examples,
-      flagged: record.flagged,
-      flagged_reason: record.flagged_reason,
-      label: record.frames?.label ?? null,
-      lexfile: record.lexfile,
-    };
-  }
-
-  if (item.noun_id) {
-    const record = await prisma.nouns.findUnique({
-      where: { id: BigInt(item.noun_id) },
-      select: {
-        id: true,
-        code: true,
-        gloss: true,
-        lemmas: true,
-        examples: true,
-        flagged: true,
-        flagged_reason: true,
-        lexfile: true,
-      },
-    });
-    if (!record) return null;
-    return {
-      dbId: record.id,
-      code: record.code,
-      pos: 'nouns',
-      gloss: record.gloss,
-      lemmas: record.lemmas,
-      examples: record.examples,
-      flagged: record.flagged,
-      flagged_reason: record.flagged_reason,
-      lexfile: record.lexfile,
-    };
-  }
-
-  if (item.adjective_id) {
-    const record = await prisma.adjectives.findUnique({
-      where: { id: BigInt(item.adjective_id) },
-      select: {
-        id: true,
-        code: true,
-        gloss: true,
-        lemmas: true,
-        examples: true,
-        flagged: true,
-        flagged_reason: true,
-        lexfile: true,
-      },
-    });
-    if (!record) return null;
-    return {
-      dbId: record.id,
-      code: record.code,
-      pos: 'adjectives',
-      gloss: record.gloss,
-      lemmas: record.lemmas,
-      examples: record.examples,
-      flagged: record.flagged,
-      flagged_reason: record.flagged_reason,
-      lexfile: record.lexfile,
-    };
-  }
-
-  if (item.adverb_id) {
-    const record = await prisma.adverbs.findUnique({
-      where: { id: BigInt(item.adverb_id) },
-      select: {
-        id: true,
-        code: true,
-        gloss: true,
-        lemmas: true,
-        examples: true,
-        flagged: true,
-        flagged_reason: true,
-        lexfile: true,
-      },
-    });
-    if (!record) return null;
-    return {
-      dbId: record.id,
-      code: record.code,
-      pos: 'adverbs',
-      gloss: record.gloss,
-      lemmas: record.lemmas,
-      examples: record.examples,
-      flagged: record.flagged,
-      flagged_reason: record.flagged_reason,
-      lexfile: record.lexfile,
-    };
-  }
-
-  if (item.frame_id) {
-    const record = await prisma.frames.findUnique({
-      where: { id: BigInt(item.frame_id) },
-      select: {
-        id: true,
-        label: true,
-        definition: true,
-        short_definition: true,
-        prototypical_synset: true,
-      },
-    });
-    if (!record) return null;
-    return {
-      dbId: record.id,
-      code: record.id.toString(),
-      pos: 'frames',
-      gloss: record.definition,
-      lemmas: [],
-      examples: [],
-      label: record.label,
-      definition: record.definition,
-      short_definition: record.short_definition,
-      prototypical_synset: record.prototypical_synset,
-    };
-  }
-
-  return null;
-}
+// ============================================================================
+// Public API - Job Listing and Retrieval
+// ============================================================================
 
 export async function listLLMJobs(options: JobListOptions = {}): Promise<SerializedJob[]> {
   let jobs: any[];
@@ -2230,6 +690,10 @@ export async function getLLMJob(jobId: number | string, options: JobDetailOption
   return job;
 }
 
+// ============================================================================
+// Public API - Job Management
+// ============================================================================
+
 export async function cancelLLMJob(jobId: number | string): Promise<CancelJobResult> {
   const job = await getLLMJob(jobId, { refresh: false });
 
@@ -2307,4 +771,3 @@ export async function getUnseenJobsCount(pos?: PartOfSpeech): Promise<number> {
     throw error;
   }
 }
-

@@ -6,7 +6,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  return handleGetGraph(id, 'nouns', `GET /api/nouns/${id}/graph`);
+  return handleGetGraph(id, 'nouns', `GET /api/nouns/${id}/graph`, request.nextUrl.searchParams);
 }
 
 

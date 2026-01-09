@@ -137,13 +137,50 @@ function buildCommonWhereConditions(
 }
 
 /**
+ * Map lexical type to entity type for changesets table
+ */
+function lexicalTypeToEntityType(lexicalType: LexicalType): string {
+  const mapping: Record<LexicalType, string> = {
+    verbs: 'verb',
+    nouns: 'noun',
+    adjectives: 'adjective',
+    adverbs: 'adverb',
+  };
+  return mapping[lexicalType];
+}
+
+/**
+ * Get entity IDs that have pending changesets of a specific operation type
+ */
+async function getPendingEntityIds(
+  entityType: string,
+  operations: string[]
+): Promise<bigint[]> {
+  const changesets = await prisma.changesets.findMany({
+    where: {
+      entity_type: entityType,
+      operation: { in: operations },
+      status: 'pending',
+      entity_id: { not: null }, // Exclude creates which have null entity_id
+    },
+    select: {
+      entity_id: true,
+    },
+  });
+  
+  return changesets
+    .filter(cs => cs.entity_id !== null)
+    .map(cs => cs.entity_id!);
+}
+
+/**
  * Build advanced WHERE conditions (frames, jobs) common to multiple entity types
  */
 async function buildAdvancedWhereConditions(
   params: PaginationParams,
   config: EntityConfig
 ): Promise<Record<string, unknown>[]> {
-  const { pos, frame_id, flaggedByJobId } = params;
+  const { pos, frame_id, flaggedByJobId, pendingCreate, pendingUpdate, pendingDelete } = params;
   const conditions: Record<string, unknown>[] = [];
 
   // POS filter (only if relevant to the entity)
@@ -205,6 +242,38 @@ async function buildAdvancedWhereConditions(
       });
     } catch {
       // ignore invalid job id values
+    }
+  }
+
+  // Pending state filters
+  const hasPendingFilter = pendingCreate || pendingUpdate || pendingDelete;
+  if (hasPendingFilter) {
+    const entityType = lexicalTypeToEntityType(config.tableName as LexicalType);
+    const pendingOps: string[] = [];
+    
+    // Note: pendingCreate won't work for filtering existing entities because
+    // creates have entity_id = null (they're virtual entities not yet in the table).
+    // The pendingCreate filter only makes sense when combined with the merge system
+    // that injects virtual entities. For now, we'll treat it as "no results" if only
+    // pendingCreate is selected without update/delete.
+    
+    if (pendingUpdate) pendingOps.push('update');
+    if (pendingDelete) pendingOps.push('delete');
+    
+    if (pendingOps.length > 0) {
+      const pendingIds = await getPendingEntityIds(entityType, pendingOps);
+      
+      if (pendingIds.length > 0) {
+        conditions.push({ id: { in: pendingIds } });
+      } else {
+        // No entities have the requested pending operations - return empty result
+        // Use an impossible condition
+        conditions.push({ id: { equals: BigInt(-1) } });
+      }
+    } else if (pendingCreate) {
+      // Only pendingCreate was selected, but creates don't exist in the table yet
+      // Return empty result
+      conditions.push({ id: { equals: BigInt(-1) } });
     }
   }
 

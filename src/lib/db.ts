@@ -1,7 +1,7 @@
 import { unstable_cache, revalidateTag } from 'next/cache';
 import { prisma } from './prisma';
 import { withRetry } from './db-utils'; 
-import { RelationType, type LexicalType, type Verb, type VerbWithRelations, type VerbRelation, type GraphNode, type SearchResult, type PaginationParams, type PaginatedResult, type TableEntry, type EntryRecipes, type Recipe, type RecipePredicateNode, type RecipePredicateRoleMapping, type LogicNode, type LogicNodeKind, type Frame, type FramePaginationParams } from './types';
+import { RelationType, NounRelationType, AdjectiveRelationType, type LexicalType, type Noun, type Adjective, type Adverb, type Verb, type VerbWithRelations, type VerbRelation, type GraphNode, type SearchResult, type PaginationParams, type PaginatedResult, type TableEntry, type EntryRecipes, type Recipe, type RecipePredicateNode, type RecipePredicateRoleMapping, type LogicNode, type LogicNodeKind, type Frame, type FramePaginationParams, type NounWithRelations, type AdjectiveWithRelations, type AdverbWithRelations } from './types';
 import type { verbs as PrismaVerb, verb_relations as PrismaVerbRelation } from '@prisma/client';
 import { Prisma } from '@prisma/client';
 
@@ -74,13 +74,34 @@ type PrismaEntryWithCounts = {
   };
 };
 
+/**
+ * Check if an entryId is a numeric ID (as opposed to a code like "say.v.04")
+ * Returns the bigint if numeric, null otherwise
+ */
+function parseNumericEntryId(entryId: string): bigint | null {
+  // Check if the entryId is all digits (possibly with leading zeros)
+  if (/^\d+$/.test(entryId)) {
+    try {
+      return BigInt(entryId);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
 async function getNounById(id: string): Promise<NounWithRelations | null> {
+  // Check if id is a numeric ID or a code
+  const numericId = parseNumericEntryId(id);
+  
+  // Build where clause to handle both code and numeric ID lookups
+  const whereClause: Prisma.nounsWhereInput = numericId
+    ? { id: numericId, deleted: { not: true } }
+    : { code: id, deleted: { not: true } };
+
   const entry = await withRetry(
     () => prisma.nouns.findFirst({
-      where: { 
-        code: id,
-        deleted: { not: true }
-      } as Prisma.nounsWhereInput,
+      where: whereClause,
       include: {
         noun_relations_noun_relations_source_idTonouns: {
           include: {
@@ -147,12 +168,17 @@ async function getNounById(id: string): Promise<NounWithRelations | null> {
 }
 
 async function getAdjectiveById(id: string): Promise<AdjectiveWithRelations | null> {
+  // Check if id is a numeric ID or a code
+  const numericId = parseNumericEntryId(id);
+  
+  // Build where clause to handle both code and numeric ID lookups
+  const whereClause: Prisma.adjectivesWhereInput = numericId
+    ? { id: numericId, deleted: { not: true } }
+    : { code: id, deleted: { not: true } };
+
   const entry = await withRetry(
     () => prisma.adjectives.findFirst({
-      where: { 
-        code: id,
-        deleted: { not: true }
-      } as Prisma.adjectivesWhereInput,
+      where: whereClause,
       include: {
         adjective_relations_adjective_relations_source_idToadjectives: {
           include: {
@@ -220,12 +246,17 @@ async function getAdjectiveById(id: string): Promise<AdjectiveWithRelations | nu
 }
 
 async function getAdverbById(id: string): Promise<AdverbWithRelations | null> {
+  // Check if id is a numeric ID or a code
+  const numericId = parseNumericEntryId(id);
+  
+  // Build where clause to handle both code and numeric ID lookups
+  const whereClause: Prisma.adverbsWhereInput = numericId
+    ? { id: numericId, deleted: { not: true } }
+    : { code: id, deleted: { not: true } };
+
   const entry = await withRetry(
     () => prisma.adverbs.findFirst({
-      where: { 
-        code: id,
-        deleted: { not: true }
-      } as Prisma.adverbsWhereInput,
+      where: whereClause,
       include: {
         adverb_relations_adverb_relations_source_idToadverbs: {
           include: {
@@ -309,12 +340,17 @@ export async function getEntryById(id: string): Promise<any | null> {
     return getAdverbById(id);
   }
 
+  // Check if id is a numeric ID or a code
+  const numericId = parseNumericEntryId(id);
+  
+  // Build where clause to handle both code and numeric ID lookups
+  const whereClause: Prisma.verbsWhereInput = numericId
+    ? { id: numericId, deleted: { not: true } }
+    : { code: id, deleted: { not: true } };
+
   const entry = await withRetry(
     () => prisma.verbs.findFirst({
-      where: { 
-        code: id,
-        deleted: { not: true }
-      } as Prisma.verbsWhereInput, // Query by code (human-readable ID)
+      where: whereClause, // Query by code or numeric ID
       include: {
         verb_relations_verb_relations_source_idToverbs: {
           include: {
@@ -1286,13 +1322,18 @@ async function updateEntryRoleGroups(entryId: string, roleGroups?: unknown[]) {
 
 // Internal implementation without caching
 async function getVerbGraphNode(entryId: string): Promise<GraphNode | null> {
+  // Check if entryId is a numeric ID or a code
+  const numericId = parseNumericEntryId(entryId);
+  
+  // Build where clause to handle both code and numeric ID lookups
+  const whereClause: Prisma.verbsWhereInput = numericId
+    ? { id: numericId, deleted: { not: true } }
+    : { code: entryId, deleted: { not: true } };
+  
   // Use a more efficient query that only fetches what we need
   const entry = await withRetry(
     () => prisma.verbs.findFirst({
-      where: { 
-        code: entryId,
-        deleted: { not: true }
-      } as Prisma.verbsWhereInput, // Query by code (human-readable ID)
+      where: whereClause, // Query by code or numeric ID
       include: {
         frames: {
           select: {
@@ -1373,13 +1414,13 @@ async function getVerbGraphNode(entryId: string): Promise<GraphNode | null> {
   if (!entry) return null;
 
   // First get the numeric ID from the entry
-  const numericId = entry ? (entry as unknown as { id?: bigint }).id : null;
-  if (!numericId) return null;
+  const verbId = (entry as unknown as { id?: bigint }).id ?? null;
+  if (!verbId) return null;
 
   // Fetch roles separately to avoid type issues
   const rolesData = await withRetry(
     () => (prisma as any).roles.findMany({
-      where: { verb_id: numericId },
+      where: { verb_id: verbId },
       include: {
         role_types: {
           select: {
@@ -1882,9 +1923,17 @@ function mapAdjectiveToGraphNode(adjective: {
 }
 
 async function getNounGraphNode(entryId: string): Promise<GraphNode | null> {
+  // Check if entryId is a numeric ID or a code
+  const numericId = parseNumericEntryId(entryId);
+  
+  // Build where clause to handle both code and numeric ID lookups
+  const whereClause: Prisma.nounsWhereInput = numericId
+    ? { id: numericId, deleted: false }
+    : { code: entryId, deleted: false };
+  
   const entry = await withRetry(
-    () => prisma.nouns.findUnique({
-      where: { code: entryId, deleted: false } as Prisma.nounsWhereUniqueInput,
+    () => prisma.nouns.findFirst({
+      where: whereClause,
       include: {
         noun_relations_noun_relations_source_idTonouns: {
           include: {
@@ -1956,9 +2005,17 @@ async function getNounGraphNode(entryId: string): Promise<GraphNode | null> {
 }
 
 async function getAdjectiveGraphNode(entryId: string): Promise<GraphNode | null> {
+  // Check if entryId is a numeric ID or a code
+  const numericId = parseNumericEntryId(entryId);
+  
+  // Build where clause to handle both code and numeric ID lookups
+  const whereClause: Prisma.adjectivesWhereInput = numericId
+    ? { id: numericId, deleted: false }
+    : { code: entryId, deleted: false };
+  
   const entry = await withRetry(
-    () => prisma.adjectives.findUnique({
-      where: { code: entryId, deleted: false } as Prisma.adjectivesWhereUniqueInput,
+    () => prisma.adjectives.findFirst({
+      where: whereClause,
       include: {
         adjective_relations_adjective_relations_source_idToadjectives: {
           include: {
@@ -2079,9 +2136,17 @@ function mapAdverbToGraphNode(adverb: {
 }
 
 async function getAdverbGraphNode(entryId: string): Promise<GraphNode | null> {
+  // Check if entryId is a numeric ID or a code
+  const numericId = parseNumericEntryId(entryId);
+  
+  // Build where clause to handle both code and numeric ID lookups
+  const whereClause: Prisma.adverbsWhereInput = numericId
+    ? { id: numericId, deleted: false }
+    : { code: entryId, deleted: false };
+  
   const entry = await withRetry(
-    () => prisma.adverbs.findUnique({
-      where: { code: entryId, deleted: false } as Prisma.adverbsWhereUniqueInput,
+    () => prisma.adverbs.findFirst({
+      where: whereClause,
       include: {
         adverb_relations_adverb_relations_source_idToadverbs: {
           include: {
@@ -2090,7 +2155,7 @@ async function getAdverbGraphNode(entryId: string): Promise<GraphNode | null> {
         },
         adverb_relations_adverb_relations_target_idToadverbs: {
           include: {
-            adverb_relations_adverb_relations_source_idToadverbs: true,
+            adverbs_adverb_relations_source_idToadverbs: true,
           },
         },
         frames: {

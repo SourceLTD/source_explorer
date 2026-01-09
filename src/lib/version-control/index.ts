@@ -7,9 +7,12 @@
  * 
  * ## Key Concepts
  * 
- * - **Changegroup**: Groups related changesets together (e.g., all changes from one LLM job)
  * - **Changeset**: All pending changes to a single entity (like a "modified file" in git)
  * - **FieldChange**: A change to a single field (like a "hunk" in a diff)
+ * 
+ * Changesets are grouped by:
+ * - **llm_job_id**: If set, the changeset belongs to an LLM job batch
+ * - **created_by**: Manual changes (llm_job_id is null) are grouped by user in the UI
  * 
  * ## Usage
  * 
@@ -52,29 +55,24 @@
 // Types
 export type {
   // Enums
-  ChangegroupSource,
   EntityType,
   ChangeOperation,
   ChangesetStatus,
   FieldChangeStatus,
   // Database records
-  Changegroup,
   Changeset,
   FieldChange,
   AuditLogEntry,
   ChangeComment,
   CommentRead,
   // Input types
-  CreateChangegroupInput,
   CreateChangesetInput,
   CreateFieldChangeInput,
   CreateCommentInput,
   // Response types
-  ChangegroupWithChangesets,
   ChangesetWithFieldChanges,
   UnreadChangesetInfo,
   // Query types
-  ChangegroupFilters,
   ChangesetFilters,
   // Commit types
   CommitResult,
@@ -84,7 +82,6 @@ export type {
   WithPendingChanges,
   PendingFieldInfo,
   // Pagination types
-  PaginatedChangegroups,
   PaginatedChangesets,
 } from './types';
 
@@ -97,10 +94,6 @@ export {
 
 // Create operations
 export {
-  // Changegroup operations
-  createChangegroup,
-  getChangegroup,
-  updateChangegroupStats,
   // Changeset operations
   createChangeset,
   getChangeset,
@@ -112,6 +105,8 @@ export {
   updateFieldChangeStatus,
   approveAllFieldChanges,
   rejectAllFieldChanges,
+  deleteFieldChange,
+  checkAndAutoDiscard,
   // High-level helpers
   createChangesetFromUpdate,
   createChangesetFromCreate,
@@ -140,10 +135,20 @@ export {
 // Commit operations
 export {
   commitChangeset,
-  commitChangegroup,
   discardChangeset,
-  discardChangegroup,
+  // Batch operations by LLM job
+  commitByLlmJob,
+  discardByLlmJob,
+  // Batch operations by user (manual changes)
+  commitByUser,
+  discardByUser,
+  // Bulk operations by IDs
+  bulkApproveAndCommit,
+  bulkReject,
+  bulkDiscard,
 } from './commit';
+
+export type { BulkOperationResult } from './commit';
 
 // Staging operations (for API routes)
 export {
@@ -165,4 +170,3 @@ export {
   getUnreadComments,
   getUnreadStatusForChangesets,
 } from './comments';
-

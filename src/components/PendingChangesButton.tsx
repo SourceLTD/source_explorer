@@ -17,7 +17,7 @@ export default function PendingChangesButton({ className, isActive = false }: Pe
 
   const fetchPendingCount = async () => {
     try {
-      const response = await fetch('/api/changegroups/pending');
+      const response = await fetch('/api/changesets/pending');
       if (response.ok) {
         const data = await response.json();
         setPendingCount(data.total_pending_changesets || 0);

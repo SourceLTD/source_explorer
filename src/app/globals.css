@@ -53,6 +53,21 @@ body {
   background: #9ca3af;
 }
 
+/* Button cursor styles */
+button,
+[role="button"],
+[type="button"],
+[type="submit"],
+[type="reset"],
+.cursor-pointer {
+  cursor: pointer;
+}
+
+button:disabled,
+[role="button"][aria-disabled="true"] {
+  cursor: not-allowed;
+}
+
 /* Focus styles */
 button:focus-visible,
 input:focus-visible {

@@ -1,7 +1,7 @@
 /**
  * Version Control - Create Utilities
  * 
- * Functions for creating changegroups, changesets, and field_changes.
+ * Functions for creating changesets and field_changes.
  */
 
 import { prisma } from '@/lib/prisma';
@@ -9,11 +9,8 @@ import { Prisma } from '@prisma/client';
 import {
   EntityType,
   ChangeOperation,
-  ChangegroupSource,
-  CreateChangegroupInput,
   CreateChangesetInput,
   CreateFieldChangeInput,
-  Changegroup,
   Changeset,
   FieldChange,
   ChangesetWithFieldChanges,
@@ -23,53 +20,6 @@ import {
 function toJsonValue(value: unknown): Prisma.InputJsonValue | typeof Prisma.DbNull {
   if (value === null || value === undefined) return Prisma.DbNull;
   return value as Prisma.InputJsonValue;
-}
-
-// ============================================
-// Changegroup Operations
-// ============================================
-
-/**
- * Create a new changegroup to group related changesets together.
- */
-export async function createChangegroup(
-  input: CreateChangegroupInput
-): Promise<Changegroup> {
-  const result = await prisma.changegroups.create({
-    data: {
-      source: input.source,
-      label: input.label ?? null,
-      description: input.description ?? null,
-      llm_job_id: input.llm_job_id ?? null,
-      created_by: input.created_by,
-      status: 'pending',
-      total_changesets: 0,
-      approved_changesets: 0,
-      rejected_changesets: 0,
-    },
-  });
-
-  return transformChangegroup(result);
-}
-
-/**
- * Get a changegroup by ID.
- */
-export async function getChangegroup(id: bigint): Promise<Changegroup | null> {
-  const result = await prisma.changegroups.findUnique({
-    where: { id },
-  });
-
-  return result ? transformChangegroup(result) : null;
-}
-
-
-/**
- * Update changegroup stats (call after modifying changesets).
- */
-export async function updateChangegroupStats(changegroupId: bigint): Promise<void> {
-  // Use raw query to call the database function
-  await prisma.$executeRaw`SELECT update_changegroup_stats(${changegroupId})`;
 }
 
 // ============================================
@@ -87,7 +37,7 @@ export async function createChangeset(
 ): Promise<Changeset> {
   const result = await prisma.changesets.create({
     data: {
-      changegroups: input.changegroup_id ? { connect: { id: input.changegroup_id } } : undefined,
+      llm_jobs: input.llm_job_id ? { connect: { id: input.llm_job_id } } : undefined,
       entity_type: input.entity_type,
       entity_id: input.entity_id ?? null,
       operation: input.operation,
@@ -98,11 +48,6 @@ export async function createChangeset(
       status: 'pending',
     },
   });
-
-  // Update changegroup stats if this changeset belongs to one
-  if (input.changegroup_id) {
-    await updateChangegroupStats(input.changegroup_id);
-  }
 
   return transformChangeset(result);
 }
@@ -254,16 +199,49 @@ export async function upsertFieldChange(
 }
 
 /**
+ * Check if all field changes in a changeset are rejected, and auto-discard if so.
+ * @param changesetId - The ID of the changeset to check
+ * @returns true if the changeset was auto-discarded
+ */
+export async function checkAndAutoDiscard(changesetId: bigint): Promise<boolean> {
+  // Count field changes by status
+  const fieldChanges = await prisma.field_changes.findMany({
+    where: { changeset_id: changesetId },
+    select: { status: true },
+  });
+
+  if (fieldChanges.length === 0) {
+    return false;
+  }
+
+  // Check if ALL field changes are rejected
+  const allRejected = fieldChanges.every(fc => fc.status === 'rejected');
+
+  if (allRejected) {
+    // Auto-discard the changeset
+    await prisma.changesets.update({
+      where: { id: changesetId },
+      data: { status: 'discarded' },
+    });
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * Update the status of a field change (approve/reject).
+ * If rejecting and all field changes become rejected, auto-discards the changeset.
  * @param fieldChangeId - The ID of the field change
  * @param status - The new status
  * @param userId - The user making the change (required for approve/reject)
+ * @returns The updated field change and whether the changeset was auto-discarded
  */
 export async function updateFieldChangeStatus(
   fieldChangeId: bigint,
   status: 'pending' | 'approved' | 'rejected',
   userId?: string
-): Promise<FieldChange> {
+): Promise<FieldChange & { changeset_discarded?: boolean }> {
   const updateData: Record<string, unknown> = { status };
   
   if (status === 'approved') {
@@ -291,7 +269,15 @@ export async function updateFieldChangeStatus(
     data: updateData,
   });
 
-  return transformFieldChange(result);
+  const fieldChange = transformFieldChange(result);
+
+  // If we just rejected a field, check if all fields are now rejected
+  let changeset_discarded = false;
+  if (status === 'rejected') {
+    changeset_discarded = await checkAndAutoDiscard(result.changeset_id);
+  }
+
+  return { ...fieldChange, changeset_discarded };
 }
 
 /**
@@ -322,13 +308,15 @@ export async function approveAllFieldChanges(
 
 /**
  * Reject all pending field changes in a changeset.
+ * If all field changes become rejected, auto-discards the changeset.
  * @param changesetId - The ID of the changeset
  * @param userId - The user rejecting the changes
+ * @returns Object with count of rejected changes and whether changeset was auto-discarded
  */
 export async function rejectAllFieldChanges(
   changesetId: bigint,
   userId: string
-): Promise<number> {
+): Promise<{ count: number; changeset_discarded: boolean }> {
   const result = await prisma.field_changes.updateMany({
     where: {
       changeset_id: changesetId,
@@ -343,7 +331,53 @@ export async function rejectAllFieldChanges(
     },
   });
 
-  return result.count;
+  // Check if all fields are now rejected and auto-discard if so
+  const changeset_discarded = await checkAndAutoDiscard(changesetId);
+
+  return { count: result.count, changeset_discarded };
+}
+
+/**
+ * Delete a single field change.
+ * If it's the last field change in the changeset, discard the changeset too.
+ * @param fieldChangeId - The ID of the field change to delete
+ * @returns Object with deleted field info and whether the changeset was also discarded
+ */
+export async function deleteFieldChange(
+  fieldChangeId: bigint
+): Promise<{ deleted: boolean; changesetDiscarded: boolean }> {
+  // First get the field change to find its changeset
+  const fieldChange = await prisma.field_changes.findUnique({
+    where: { id: fieldChangeId },
+    select: { changeset_id: true },
+  });
+
+  if (!fieldChange) {
+    return { deleted: false, changesetDiscarded: false };
+  }
+
+  const changesetId = fieldChange.changeset_id;
+
+  // Delete the field change
+  await prisma.field_changes.delete({
+    where: { id: fieldChangeId },
+  });
+
+  // Check if there are any remaining field changes in the changeset
+  const remainingCount = await prisma.field_changes.count({
+    where: { changeset_id: changesetId },
+  });
+
+  // If no remaining field changes, discard the changeset
+  if (remainingCount === 0) {
+    await prisma.changesets.update({
+      where: { id: changesetId },
+      data: { status: 'discarded' },
+    });
+    return { deleted: true, changesetDiscarded: true };
+  }
+
+  return { deleted: true, changesetDiscarded: false };
 }
 
 // ============================================
@@ -359,7 +393,7 @@ export async function rejectAllFieldChanges(
  * @param currentEntity - The current state of the entity (for before_snapshot)
  * @param updates - The proposed changes (field name -> new value)
  * @param createdBy - The user making the change
- * @param changegroupId - Optional changegroup to add this changeset to
+ * @param llmJobId - Optional LLM job ID if this is part of an LLM batch
  */
 export async function createChangesetFromUpdate(
   entityType: EntityType,
@@ -367,7 +401,7 @@ export async function createChangesetFromUpdate(
   currentEntity: Record<string, unknown>,
   updates: Record<string, unknown>,
   createdBy: string,
-  changegroupId?: bigint,
+  llmJobId?: bigint,
 ): Promise<ChangesetWithFieldChanges> {
   // Check if there's already a pending changeset for this entity
   let changeset = await findPendingChangeset(entityType, entityId);
@@ -398,7 +432,7 @@ export async function createChangesetFromUpdate(
   
   // Create a new changeset
   const newChangeset = await createChangeset({
-    changegroup_id: changegroupId,
+    llm_job_id: llmJobId,
     entity_type: entityType,
     entity_id: entityId,
     operation: 'update',
@@ -437,17 +471,17 @@ export async function createChangesetFromUpdate(
  * @param entityType - The type of entity being created
  * @param entityData - The full entity data
  * @param createdBy - The user creating the entity
- * @param changegroupId - Optional changegroup to add this changeset to
+ * @param llmJobId - Optional LLM job ID if this is part of an LLM batch
  */
 export async function createChangesetFromCreate(
   entityType: EntityType,
   entityData: Record<string, unknown>,
   createdBy: string,
-  changegroupId?: bigint,
+  llmJobId?: bigint,
 ): Promise<ChangesetWithFieldChanges> {
   // Create the changeset with after_snapshot containing the full entity
   const changeset = await createChangeset({
-    changegroup_id: changegroupId,
+    llm_job_id: llmJobId,
     entity_type: entityType,
     entity_id: undefined,  // No ID yet
     operation: 'create',
@@ -472,17 +506,17 @@ export async function createChangesetFromCreate(
  * @param entityId - The ID of the entity
  * @param currentEntity - The current state of the entity (for audit purposes)
  * @param createdBy - The user deleting the entity
- * @param changegroupId - Optional changegroup to add this changeset to
+ * @param llmJobId - Optional LLM job ID if this is part of an LLM batch
  */
 export async function createChangesetFromDelete(
   entityType: EntityType,
   entityId: bigint,
   currentEntity: Record<string, unknown>,
   createdBy: string,
-  changegroupId?: bigint,
+  llmJobId?: bigint,
 ): Promise<ChangesetWithFieldChanges> {
   const changeset = await createChangeset({
-    changegroup_id: changegroupId,
+    llm_job_id: llmJobId,
     entity_type: entityType,
     entity_id: entityId,
     operation: 'delete',
@@ -502,29 +536,9 @@ export async function createChangesetFromDelete(
 // ============================================
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function transformChangegroup(result: any): Changegroup {
-  return {
-    id: result.id,
-    source: result.source as ChangegroupSource,
-    label: result.label,
-    description: result.description,
-    llm_job_id: result.llm_job_id,
-    status: result.status,
-    created_by: result.created_by,
-    created_at: result.created_at,
-    committed_by: result.committed_by,
-    committed_at: result.committed_at,
-    total_changesets: result.total_changesets,
-    approved_changesets: result.approved_changesets,
-    rejected_changesets: result.rejected_changesets,
-  };
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function transformChangeset(result: any): Changeset {
   return {
     id: result.id,
-    changegroup_id: result.changegroup_id,
     entity_type: result.entity_type as EntityType,
     entity_id: result.entity_id,
     operation: result.operation as ChangeOperation,
@@ -537,6 +551,7 @@ function transformChangeset(result: any): Changeset {
     reviewed_by: result.reviewed_by,
     reviewed_at: result.reviewed_at,
     committed_at: result.committed_at,
+    llm_job_id: result.llm_job_id,
   };
 }
 
@@ -555,4 +570,3 @@ function transformFieldChange(result: any): FieldChange {
     rejected_at: result.rejected_at,
   };
 }
-

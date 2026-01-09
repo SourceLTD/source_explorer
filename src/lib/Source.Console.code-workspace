@@ -1,0 +1,17 @@
+{
+	"folders": [
+		{
+			"path": "../.."
+		},
+		{
+			"path": "../../../source-mcp"
+		},
+		{
+			"path": "../../../source-llm"
+		},
+		{
+			"path": "../../../source-embeddings"
+		}
+	],
+	"settings": {}
+}

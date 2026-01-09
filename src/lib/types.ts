@@ -220,6 +220,9 @@ export interface Frame {
   createdAt: Date;
   updatedAt: Date;
   frame_roles?: FrameRole[];
+  // Counts from related entities
+  roles_count?: number;
+  verbs_count?: number;
   // Pending changes info (optional, included when there are uncommitted changes)
   pending?: PendingChangeInfo | null;
 }
@@ -366,6 +369,11 @@ export interface PaginationParams {
   isMwe?: boolean;
   flagged?: boolean;
   verifiable?: boolean;
+  
+  // Pending state filters
+  pendingCreate?: boolean;
+  pendingUpdate?: boolean;
+  pendingDelete?: boolean;
   
   // Numeric filters
   parentsCountMin?: number;

@@ -9,8 +9,6 @@
 // Enums (matching database enums)
 // ============================================
 
-export type ChangegroupSource = 'llm_job' | 'manual' | 'import' | 'migration';
-
 export type EntityType = 
   | 'verb'
   | 'noun'
@@ -37,33 +35,15 @@ export type FieldChangeStatus = 'pending' | 'approved' | 'rejected';
 // ============================================
 
 /**
- * A changegroup groups related changesets together.
- * E.g., all changes from a single LLM job, or a manual editing session.
- */
-export interface Changegroup {
-  id: bigint;
-  source: ChangegroupSource;
-  label: string | null;
-  description: string | null;
-  llm_job_id: bigint | null;
-  status: ChangesetStatus;
-  created_by: string;
-  created_at: Date;
-  /** Who committed the changegroup (distinct from who reviewed individual changesets) */
-  committed_by: string | null;
-  committed_at: Date | null;
-  total_changesets: number;
-  approved_changesets: number;
-  rejected_changesets: number;
-}
-
-/**
  * A changeset represents all pending changes to a single entity (row).
  * Like a "modified file" in git.
+ * 
+ * Grouping:
+ * - If llm_job_id is set, this changeset belongs to an LLM job batch
+ * - If llm_job_id is null, this is a manual change (group by created_by in UI)
  */
 export interface Changeset {
   id: bigint;
-  changegroup_id: bigint | null;
   entity_type: EntityType;
   entity_id: bigint | null;  // null for CREATE operations
   operation: ChangeOperation;
@@ -73,10 +53,12 @@ export interface Changeset {
   status: ChangesetStatus;
   created_by: string;
   created_at: Date;
-  /** Who reviewed the changeset (distinct from who committed the changegroup) */
+  /** Who reviewed the changeset */
   reviewed_by: string | null;
   reviewed_at: Date | null;
   committed_at: Date | null;
+  /** If set, this changeset belongs to an LLM job batch */
+  llm_job_id: bigint | null;
 }
 
 /**
@@ -134,26 +116,13 @@ export interface AuditLogEntry {
   changed_by: string;
   changed_at: Date;
   changeset_id: bigint | null;
-  changegroup_id: bigint | null;
-  source: ChangegroupSource;
-  proposed_by: string | null;
-  comment: string | null;
 }
 
 // ============================================
 // Input Types (for creating/updating records)
 // ============================================
 
-export interface CreateChangegroupInput {
-  source: ChangegroupSource;
-  label?: string;
-  description?: string;
-  llm_job_id?: bigint;
-  created_by: string;
-}
-
 export interface CreateChangesetInput {
-  changegroup_id?: bigint;
   entity_type: EntityType;
   entity_id?: bigint;  // Required for update/delete, omit for create
   operation: ChangeOperation;
@@ -161,6 +130,8 @@ export interface CreateChangesetInput {
   before_snapshot?: Record<string, unknown>;
   after_snapshot?: Record<string, unknown>;  // For CREATE operations
   created_by: string;
+  /** Optional LLM job ID if this changeset is part of an LLM batch */
+  llm_job_id?: bigint;
 }
 
 export interface CreateFieldChangeInput {
@@ -181,10 +152,6 @@ export interface CreateCommentInput {
 // Response Types (with relations loaded)
 // ============================================
 
-export interface ChangegroupWithChangesets extends Changegroup {
-  changesets: ChangesetWithFieldChanges[];
-}
-
 export interface ChangesetWithFieldChanges extends Changeset {
   field_changes: FieldChange[];
 }
@@ -193,20 +160,13 @@ export interface ChangesetWithFieldChanges extends Changeset {
 // Query Types
 // ============================================
 
-export interface ChangegroupFilters {
-  source?: ChangegroupSource;
-  status?: ChangesetStatus;
-  created_by?: string;
-  llm_job_id?: bigint;
-}
-
 export interface ChangesetFilters {
-  changegroup_id?: bigint;
   entity_type?: EntityType;
   entity_id?: bigint;
   operation?: ChangeOperation;
   status?: ChangesetStatus;
   created_by?: string;
+  llm_job_id?: bigint;
 }
 
 // ============================================
@@ -272,14 +232,6 @@ export interface PendingFieldInfo {
 // ============================================
 // API Response Types
 // ============================================
-
-export interface PaginatedChangegroups {
-  data: Changegroup[];
-  total: number;
-  page: number;
-  page_size: number;
-  total_pages: number;
-}
 
 export interface PaginatedChangesets {
   data: ChangesetWithFieldChanges[];
@@ -353,4 +305,3 @@ export const MAIN_ENTITY_TYPES: EntityType[] = [
   'adverb',
   'frame',
 ];
-

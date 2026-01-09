@@ -12,10 +12,15 @@ import {
   ChangesetWithFieldChanges,
   CommitResult,
   CommitError,
-  ConflictInfo,
   ENTITY_TYPE_TO_TABLE,
 } from './types';
-import { getChangeset, updateChangegroupStats } from './create';
+import { getChangeset, createChangesetFromUpdate } from './create';
+import { addComment } from './comments';
+
+// Convert camelCase field names to snake_case for Prisma
+function camelToSnake(str: string): string {
+  return str.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
+}
 
 // ============================================
 // Commit Single Changeset
@@ -200,13 +205,6 @@ async function commitCreate(
       },
     });
 
-    // Fetch changegroup to get source info
-    const changegroup = changeset.changegroup_id
-      ? await tx.changegroups.findUnique({ where: { id: changeset.changegroup_id } })
-      : null;
-    const source = changegroup?.source ?? 'manual';
-    const proposedBy = changeset.created_by;
-
     // Create audit log entry
     await tx.audit_log.create({
       data: {
@@ -218,17 +216,11 @@ async function commitCreate(
         new_value: entityData as Prisma.InputJsonValue,
         changed_by: committedBy,
         changesets: changeset.id ? { connect: { id: changeset.id } } : undefined,
-        changegroups: changeset.changegroup_id ? { connect: { id: changeset.changegroup_id } } : undefined,
       },
     });
 
     return newEntityId;
   });
-
-  // Update changegroup stats if applicable
-  if (changeset.changegroup_id) {
-    await updateChangegroupStats(changeset.changegroup_id);
-  }
 
   return {
     success: true,
@@ -239,7 +231,7 @@ async function commitCreate(
 }
 
 // Special fields that require separate table updates instead of direct field updates
-const COMPLEX_FIELDS = ['roles', 'role_groups', 'frame_roles'];
+const COMPLEX_FIELDS = ['roles', 'role_groups', 'frame_roles', 'hypernym'];
 
 async function commitUpdate(
   changeset: ChangesetWithFieldChanges,
@@ -276,9 +268,10 @@ async function commitUpdate(
   const complexChanges = approvedChanges.filter(fc => COMPLEX_FIELDS.includes(fc.field_name));
 
   // Build the update data for simple fields only
+  // Convert camelCase field names to snake_case for Prisma
   const updateData: Record<string, unknown> = {};
   for (const fc of simpleChanges) {
-    updateData[fc.field_name] = fc.new_value;
+    updateData[camelToSnake(fc.field_name)] = fc.new_value;
   }
 
   // Use a transaction
@@ -372,13 +365,6 @@ async function commitUpdate(
       },
     });
 
-    // Fetch changegroup to get source info
-    const changegroup = changeset.changegroup_id
-      ? await tx.changegroups.findUnique({ where: { id: changeset.changegroup_id } })
-      : null;
-    const source = changegroup?.source ?? 'manual';
-    const proposedBy = changeset.created_by;
-
     // Create audit log entries for each field change
     for (const fc of approvedChanges) {
       await tx.audit_log.create({
@@ -391,16 +377,10 @@ async function commitUpdate(
           new_value: fc.new_value === null ? Prisma.DbNull : fc.new_value as Prisma.InputJsonValue,
           changed_by: committedBy,
           changesets: changeset.id ? { connect: { id: changeset.id } } : undefined,
-          changegroups: changeset.changegroup_id ? { connect: { id: changeset.changegroup_id } } : undefined,
         },
       });
     }
   });
-
-  // Update changegroup stats if applicable
-  if (changeset.changegroup_id) {
-    await updateChangegroupStats(changeset.changegroup_id);
-  }
 
   const skippedCount = changeset.field_changes.length - approvedChanges.length;
   
@@ -518,6 +498,44 @@ async function commitComplexFieldChange(
       }
       break;
 
+    case 'hypernym':
+      // Handle hypernym relation changes for verbs
+      // newValue is { old_hypernym_id: bigint | null, new_hypernym_id: bigint | null }
+      const hypernymData = newValue as { old_hypernym_id: bigint | null; new_hypernym_id: bigint | null } | null;
+      
+      if (hypernymData) {
+        // Delete the old hypernym relation if it exists
+        if (hypernymData.old_hypernym_id) {
+          await tx.verb_relations.deleteMany({
+            where: {
+              source_id: entityId,
+              target_id: hypernymData.old_hypernym_id,
+              type: 'hypernym',
+            },
+          });
+        }
+        
+        // Create new hypernym relation if there's a new hypernym
+        if (hypernymData.new_hypernym_id) {
+          await tx.verb_relations.upsert({
+            where: {
+              source_id_type_target_id: {
+                source_id: entityId,
+                target_id: hypernymData.new_hypernym_id,
+                type: 'hypernym',
+              },
+            },
+            create: {
+              source_id: entityId,
+              target_id: hypernymData.new_hypernym_id,
+              type: 'hypernym',
+            },
+            update: {},
+          });
+        }
+      }
+      break;
+
     default:
       throw new Error(`Unknown complex field: ${fc.field_name}`);
   }
@@ -550,6 +568,11 @@ async function commitDelete(
       skipped_count: 0,
       errors: [conflictResult],
     };
+  }
+
+  // For verb deletions, handle hyponym reassignment first (outside transaction)
+  if (changeset.entity_type === 'verb') {
+    await handleVerbDeletionHyponymReassignment(changeset, committedBy);
   }
 
   await prisma.$transaction(async (tx) => {
@@ -599,13 +622,6 @@ async function commitDelete(
       },
     });
 
-    // Fetch changegroup to get source info
-    const changegroup = changeset.changegroup_id
-      ? await tx.changegroups.findUnique({ where: { id: changeset.changegroup_id } })
-      : null;
-    const source = changegroup?.source ?? 'manual';
-    const proposedBy = changeset.created_by;
-
     // Create audit log entry
     await tx.audit_log.create({
       data: {
@@ -617,15 +633,9 @@ async function commitDelete(
         new_value: Prisma.DbNull,
         changed_by: committedBy,
         changesets: changeset.id ? { connect: { id: changeset.id } } : undefined,
-        changegroups: changeset.changegroup_id ? { connect: { id: changeset.changegroup_id } } : undefined,
       },
     });
   });
-
-  // Update changegroup stats if applicable
-  if (changeset.changegroup_id) {
-    await updateChangegroupStats(changeset.changegroup_id);
-  }
 
   return {
     success: true,
@@ -633,6 +643,116 @@ async function commitDelete(
     skipped_count: 0,
     errors: [],
   };
+}
+
+// ============================================
+// Verb Deletion - Hyponym Reassignment
+// ============================================
+
+/**
+ * Handle hyponym reassignment when a verb is deleted.
+ * Creates pending changesets for each hyponym that needs to be reassigned.
+ * Each changeset gets an explanatory comment.
+ * 
+ * @param changeset - The delete changeset for the verb being deleted
+ * @param committedBy - The user committing the deletion
+ */
+async function handleVerbDeletionHyponymReassignment(
+  changeset: ChangesetWithFieldChanges,
+  committedBy: string
+): Promise<void> {
+  const deletedVerbId = changeset.entity_id!;
+  
+  // Get the deleted verb's details for the comment
+  const deletedVerb = await prisma.verbs.findUnique({
+    where: { id: deletedVerbId },
+    select: { id: true, code: true },
+  });
+  
+  if (!deletedVerb) {
+    return; // Verb already deleted or doesn't exist
+  }
+  
+  // Find the deleted verb's hypernym (parent)
+  const hypernymRelation = await prisma.verb_relations.findFirst({
+    where: {
+      source_id: deletedVerbId,
+      type: 'hypernym',
+    },
+    select: {
+      target_id: true,
+    },
+  });
+  
+  // Find all hyponyms (children) pointing to this verb
+  const hyponymRelations = await prisma.verb_relations.findMany({
+    where: {
+      target_id: deletedVerbId,
+      type: 'hypernym',
+    },
+    select: {
+      source_id: true,
+    },
+  });
+  
+  if (hyponymRelations.length === 0) {
+    // No hyponyms to reassign
+    return;
+  }
+  
+  // Get the new hypernym info for the comment (if any)
+  let newHypernymCode: string | null = null;
+  if (hypernymRelation) {
+    const newHypernym = await prisma.verbs.findUnique({
+      where: { id: hypernymRelation.target_id },
+      select: { code: true },
+    });
+    newHypernymCode = newHypernym?.code ?? null;
+  }
+  
+  // For each hyponym, create a pending changeset for the hypernym reassignment
+  for (const rel of hyponymRelations) {
+    const hyponymId = rel.source_id;
+    
+    // Get the full hyponym entity
+    const hyponymVerb = await prisma.verbs.findUnique({
+      where: { id: hyponymId },
+    });
+    
+    if (!hyponymVerb || hyponymVerb.deleted) {
+      continue; // Skip if hyponym is already deleted
+    }
+    
+    // Create the hypernym field change data
+    const hypernymChangeData = {
+      old_hypernym_id: deletedVerbId,
+      new_hypernym_id: hypernymRelation?.target_id ?? null,
+    };
+    
+    // Create a pending changeset for this hyponym's hypernym reassignment
+    const hyponymChangeset = await createChangesetFromUpdate(
+      'verb',
+      hyponymId,
+      hyponymVerb as unknown as Record<string, unknown>,
+      { hypernym: hypernymChangeData },
+      committedBy, // Use the same user who committed the deletion
+    );
+    
+    // Build the explanatory comment
+    let commentContent: string;
+    if (newHypernymCode) {
+      commentContent = `Hypernym automatically reassigned from "${deletedVerb.code}" to "${newHypernymCode}" due to deletion of "${deletedVerb.code}".`;
+    } else {
+      commentContent = `Hypernym relation removed (verb becomes a root) due to deletion of parent verb "${deletedVerb.code}".`;
+    }
+    
+    // Add the auto-comment to the changeset
+    await addComment({
+      changeset_id: hyponymChangeset.id,
+      author: 'system',
+      content: commentContent,
+    });
+  }
 }
 
 // ============================================
@@ -715,20 +835,20 @@ async function checkVersionConflict(
 }
 
 // ============================================
-// Commit Changegroup
+// Batch Operations by LLM Job
 // ============================================
 
 /**
- * Commit all approved changesets in a changegroup.
+ * Commit all pending changesets for an LLM job.
  */
-export async function commitChangegroup(
-  changegroupId: bigint,
+export async function commitByLlmJob(
+  llmJobId: bigint,
   committedBy: string
 ): Promise<CommitResult> {
-  // Get all pending changesets in the group
+  // Get all pending changesets for this job
   const changesets = await prisma.changesets.findMany({
     where: {
-      changegroup_id: changegroupId,
+      llm_job_id: llmJobId,
       status: 'pending',
     },
     include: {
@@ -765,16 +885,55 @@ export async function commitChangegroup(
     }
   }
 
-  // Update changegroup status
-  if (results.success && results.errors.length === 0) {
-    await prisma.changegroups.update({
-      where: { id: changegroupId },
-      data: {
-        status: 'committed',
-        committed_by: committedBy,
-        committed_at: new Date(),
-      },
-    });
+  return results;
+}
+
+/**
+ * Commit all pending manual changesets for a user.
+ */
+export async function commitByUser(
+  createdBy: string,
+  committedBy: string
+): Promise<CommitResult> {
+  // Get all pending manual changesets (llm_job_id is null) for this user
+  const changesets = await prisma.changesets.findMany({
+    where: {
+      created_by: createdBy,
+      llm_job_id: null,
+      status: 'pending',
+    },
+    include: {
+      field_changes: true,
+    },
+  });
+
+  if (changesets.length === 0) {
+    return {
+      success: true,
+      committed_count: 0,
+      skipped_count: 0,
+      errors: [],
+    };
+  }
+
+  const results: CommitResult = {
+    success: true,
+    committed_count: 0,
+    skipped_count: 0,
+    errors: [],
+  };
+
+  // Commit each changeset
+  for (const cs of changesets) {
+    const result = await commitChangeset(cs.id, committedBy);
+    
+    results.committed_count += result.committed_count;
+    results.skipped_count += result.skipped_count;
+    results.errors.push(...result.errors);
+    
+    if (!result.success) {
+      results.success = false;
+    }
   }
 
   return results;
@@ -788,42 +947,232 @@ export async function commitChangegroup(
  * Discard a changeset (mark it as discarded, don't apply changes).
  */
 export async function discardChangeset(changesetId: bigint): Promise<void> {
-  const changeset = await prisma.changesets.findUnique({
-    where: { id: changesetId },
-    select: { changegroup_id: true },
-  });
-
   await prisma.changesets.update({
     where: { id: changesetId },
     data: {
       status: 'discarded',
     },
   });
-
-  if (changeset?.changegroup_id) {
-    await updateChangegroupStats(changeset.changegroup_id);
-  }
 }
 
 /**
- * Discard all changesets in a changegroup.
+ * Discard all pending changesets for an LLM job.
  */
-export async function discardChangegroup(changegroupId: bigint): Promise<void> {
+export async function discardByLlmJob(llmJobId: bigint): Promise<void> {
   await prisma.changesets.updateMany({
     where: {
-      changegroup_id: changegroupId,
+      llm_job_id: llmJobId,
       status: 'pending',
     },
     data: {
       status: 'discarded',
     },
   });
+}
 
-  await prisma.changegroups.update({
-    where: { id: changegroupId },
+/**
+ * Discard all pending manual changesets for a user.
+ */
+export async function discardByUser(createdBy: string): Promise<void> {
+  await prisma.changesets.updateMany({
+    where: {
+      created_by: createdBy,
+      llm_job_id: null,
+      status: 'pending',
+    },
     data: {
       status: 'discarded',
     },
   });
 }
 
+// ============================================
+// Bulk Operations by IDs
+// ============================================
+
+export interface BulkOperationResult {
+  success: boolean;
+  processed: number;
+  committed?: number;
+  rejected?: number;
+  discarded?: number;
+  errors: Array<{
+    changeset_id: string;
+    error: string;
+  }>;
+  // If there's a conflict, we stop and return info about it
+  conflict?: {
+    changeset_id: string;
+    errors: CommitError[];
+  };
+}
+
+/**
+ * Bulk approve all fields and commit multiple changesets.
+ * Stops on first conflict and returns conflict info.
+ */
+export async function bulkApproveAndCommit(
+  changesetIds: bigint[],
+  userId: string
+): Promise<BulkOperationResult> {
+  const result: BulkOperationResult = {
+    success: true,
+    processed: 0,
+    committed: 0,
+    errors: [],
+  };
+
+  // Process in a transaction for field approvals (but commits must be separate due to conflict detection)
+  await prisma.$transaction(async (tx) => {
+    // Bulk approve all pending field changes for all changesets at once
+    await tx.field_changes.updateMany({
+      where: {
+        changeset_id: { in: changesetIds },
+        status: 'pending',
+      },
+      data: {
+        status: 'approved',
+        approved_by: userId,
+        approved_at: new Date(),
+        rejected_by: null,
+        rejected_at: null,
+      },
+    });
+  });
+
+  // Now commit each changeset (must be done individually due to conflict detection)
+  for (const changesetId of changesetIds) {
+    const commitResult = await commitChangeset(changesetId, userId);
+    result.processed++;
+
+    if (!commitResult.success) {
+      // Check if this is a conflict (not just an error like "no approved changes")
+      const hasConflict = commitResult.errors.some(e => 
+        e.error.includes('Version conflict') || e.error.includes('has been modified')
+      );
+      
+      if (hasConflict) {
+        result.success = false;
+        result.conflict = {
+          changeset_id: changesetId.toString(),
+          errors: commitResult.errors,
+        };
+        // Stop processing on conflict
+        return result;
+      }
+      
+      // Non-conflict error, continue processing but log it
+      result.errors.push({
+        changeset_id: changesetId.toString(),
+        error: commitResult.errors.map(e => e.error).join('; '),
+      });
+    } else {
+      result.committed = (result.committed || 0) + commitResult.committed_count;
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Bulk reject all fields for multiple changesets.
+ * For DELETE/CREATE operations, discards the changeset entirely.
+ * For UPDATE operations, rejects all fields then auto-discards if all are rejected.
+ */
+export async function bulkReject(
+  changesetIds: bigint[],
+  userId: string
+): Promise<BulkOperationResult> {
+  const result: BulkOperationResult = {
+    success: true,
+    processed: 0,
+    rejected: 0,
+    discarded: 0,
+    errors: [],
+  };
+
+  // Get changesets to determine operation type
+  const changesets = await prisma.changesets.findMany({
+    where: { id: { in: changesetIds } },
+    select: { id: true, operation: true },
+  });
+
+  const discardIds: bigint[] = [];
+  const rejectIds: bigint[] = [];
+
+  for (const cs of changesets) {
+    if (cs.operation === 'delete' || cs.operation === 'create') {
+      discardIds.push(cs.id);
+    } else {
+      rejectIds.push(cs.id);
+    }
+  }
+
+  // Bulk discard DELETE/CREATE changesets
+  if (discardIds.length > 0) {
+    await prisma.changesets.updateMany({
+      where: { id: { in: discardIds } },
+      data: { status: 'discarded' },
+    });
+    result.discarded = discardIds.length;
+    result.processed += discardIds.length;
+  }
+
+  // Bulk reject UPDATE changesets - reject all pending fields
+  if (rejectIds.length > 0) {
+    const updateResult = await prisma.field_changes.updateMany({
+      where: {
+        changeset_id: { in: rejectIds },
+        status: 'pending',
+      },
+      data: {
+        status: 'rejected',
+        rejected_by: userId,
+        rejected_at: new Date(),
+        approved_by: null,
+        approved_at: null,
+      },
+    });
+    result.rejected = updateResult.count;
+    result.processed += rejectIds.length;
+
+    // Now check each UPDATE changeset - if all fields are rejected, auto-discard
+    // This handles the case where some fields were already approved before this bulk action
+    for (const changesetId of rejectIds) {
+      const fieldChanges = await prisma.field_changes.findMany({
+        where: { changeset_id: changesetId },
+        select: { status: true },
+      });
+
+      const allRejected = fieldChanges.every(fc => fc.status === 'rejected');
+      if (allRejected) {
+        await prisma.changesets.update({
+          where: { id: changesetId },
+          data: { status: 'discarded' },
+        });
+        result.discarded = (result.discarded || 0) + 1;
+      }
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Bulk discard multiple changesets.
+ */
+export async function bulkDiscard(
+  changesetIds: bigint[]
+): Promise<BulkOperationResult> {
+  const updateResult = await prisma.changesets.updateMany({
+    where: { id: { in: changesetIds } },
+    data: { status: 'discarded' },
+  });
+
+  return {
+    success: true,
+    processed: updateResult.count,
+    discarded: updateResult.count,
+    errors: [],
+  };
+}

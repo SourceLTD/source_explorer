@@ -3,6 +3,7 @@ import {
   getEntryById, 
   searchEntries,
   getGraphNode,
+  getGraphNodeUncached,
   updateModerationStatus,
 } from './db';
 import { getPaginatedEntities } from './db/entities';
@@ -132,6 +133,11 @@ function parsePaginationParams(searchParams: URLSearchParams): {
       isMwe: searchParams.get('isMwe') === 'true' ? true : searchParams.get('isMwe') === 'false' ? false : undefined,
       flagged: searchParams.get('flagged') === 'true' ? true : searchParams.get('flagged') === 'false' ? false : undefined,
       verifiable: searchParams.get('verifiable') === 'true' ? true : searchParams.get('verifiable') === 'false' ? false : undefined,
+      
+      // Pending state filters
+      pendingCreate: searchParams.get('pendingCreate') === 'true' ? true : undefined,
+      pendingUpdate: searchParams.get('pendingUpdate') === 'true' ? true : undefined,
+      pendingDelete: searchParams.get('pendingDelete') === 'true' ? true : undefined,
       
       // Numeric filters
       parentsCountMin: searchParams.get('parentsCountMin') ? parseInt(searchParams.get('parentsCountMin')!) : undefined,
@@ -498,10 +504,15 @@ export async function handleGetRelations(
 export async function handleGetGraph(
   id: string,
   lexicalType: LexicalType,
-  routePath: string
+  routePath: string,
+  searchParams?: URLSearchParams
 ): Promise<NextResponse> {
   try {
-    const node = await getGraphNode(id);
+    // Use uncached version when invalidate=true is passed
+    const shouldInvalidate = searchParams?.get('invalidate') === 'true';
+    const node = shouldInvalidate 
+      ? await getGraphNodeUncached(id)
+      : await getGraphNode(id);
     
     if (!node) {
       return NextResponse.json(

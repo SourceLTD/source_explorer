@@ -223,6 +223,20 @@ export function useEntryMutations(mode: Mode) {
     }
   }, [apiPrefix]);
 
+  /**
+   * Delete a pending field change (used when user reverts to original value)
+   */
+  const deleteFieldChange = useCallback(async (fieldChangeId: string): Promise<void> => {
+    const response = await fetch(`/api/field-changes/${fieldChangeId}`, {
+      method: 'DELETE',
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Failed to delete field change');
+    }
+  }, []);
+
   return {
     updateCode,
     updateHypernym,
@@ -232,6 +246,7 @@ export function useEntryMutations(mode: Mode) {
     deleteEntry,
     toggleFlag,
     toggleVerifiable,
+    deleteFieldChange,
   };
 }
 

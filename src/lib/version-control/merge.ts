@@ -146,7 +146,6 @@ async function getPendingChangesetsMap(
       // Only take the most recent changeset per entity
       map.set(result.entity_id, {
         id: result.id,
-        changegroup_id: result.changegroup_id,
         entity_type: result.entity_type as EntityType,
         entity_id: result.entity_id,
         operation: result.operation as 'create' | 'update' | 'delete',
@@ -159,6 +158,7 @@ async function getPendingChangesetsMap(
         reviewed_by: result.reviewed_by,
         reviewed_at: result.reviewed_at,
         committed_at: result.committed_at,
+        llm_job_id: result.llm_job_id,
         field_changes: result.field_changes.map(fc => ({
           id: fc.id,
           changeset_id: fc.changeset_id,
@@ -194,7 +194,7 @@ export async function getPendingCreates(
   entityType: EntityType,
   filters?: {
     created_by?: string;
-    changegroup_id?: bigint;
+    llm_job_id?: bigint;
   }
 ): Promise<ChangesetWithFieldChanges[]> {
   const results = await prisma.changesets.findMany({
@@ -203,7 +203,7 @@ export async function getPendingCreates(
       operation: 'create',
       status: 'pending',
       ...(filters?.created_by && { created_by: filters.created_by }),
-      ...(filters?.changegroup_id && { changegroup_id: filters.changegroup_id }),
+      ...(filters?.llm_job_id && { llm_job_id: filters.llm_job_id }),
     },
     include: {
       field_changes: true,
@@ -215,7 +215,6 @@ export async function getPendingCreates(
 
   return results.map(result => ({
     id: result.id,
-    changegroup_id: result.changegroup_id,
     entity_type: result.entity_type as EntityType,
     entity_id: result.entity_id,
     operation: result.operation as 'create' | 'update' | 'delete',
@@ -228,6 +227,7 @@ export async function getPendingCreates(
     reviewed_by: result.reviewed_by,
     reviewed_at: result.reviewed_at,
     committed_at: result.committed_at,
+    llm_job_id: result.llm_job_id,
     field_changes: result.field_changes.map(fc => ({
       id: fc.id,
       changeset_id: fc.changeset_id,
@@ -494,7 +494,6 @@ export async function getPendingInfoForEntity(
 
   return toPendingChangeInfo({
     id: changeset.id,
-    changegroup_id: changeset.changegroup_id,
     entity_type: changeset.entity_type as EntityType,
     entity_id: changeset.entity_id,
     operation: changeset.operation as 'create' | 'update' | 'delete',
@@ -507,6 +506,7 @@ export async function getPendingInfoForEntity(
     reviewed_by: changeset.reviewed_by,
     reviewed_at: changeset.reviewed_at,
     committed_at: changeset.committed_at,
+    llm_job_id: changeset.llm_job_id,
     field_changes: changeset.field_changes.map(fc => ({
       id: fc.id,
       changeset_id: fc.changeset_id,
@@ -560,7 +560,6 @@ export async function applyPendingToEntity<T extends object>(
 
   const pendingInfo = toPendingChangeInfo({
     id: changeset.id,
-    changegroup_id: changeset.changegroup_id,
     entity_type: changeset.entity_type as EntityType,
     entity_id: changeset.entity_id,
     operation: changeset.operation as 'create' | 'update' | 'delete',
@@ -573,6 +572,7 @@ export async function applyPendingToEntity<T extends object>(
     reviewed_by: changeset.reviewed_by,
     reviewed_at: changeset.reviewed_at,
     committed_at: changeset.committed_at,
+    llm_job_id: changeset.llm_job_id,
     field_changes: changeset.field_changes.map(fc => ({
       id: fc.id,
       changeset_id: fc.changeset_id,

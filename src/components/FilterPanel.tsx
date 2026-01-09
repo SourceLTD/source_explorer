@@ -42,6 +42,11 @@ export interface FilterState {
   flagged?: boolean;
   verifiable?: boolean;
   
+  // Pending state filters
+  pendingCreate?: boolean;
+  pendingUpdate?: boolean;
+  pendingDelete?: boolean;
+  
   // Numeric filters
   parentsCountMin?: number;
   parentsCountMax?: number;
@@ -112,7 +117,7 @@ export default function FilterPanel({
   className,
   mode = 'verbs'
 }: FilterPanelProps) {
-  const [openSections, setOpenSections] = useState<Set<string>>(new Set(['text']));
+  const [openSections, setOpenSections] = useState<Set<string>>(new Set());
   const [frames, setFrames] = useState<Frame[]>([]);
   const [loadingFrames, setLoadingFrames] = useState(false);
   const [frameSearchQuery, setFrameSearchQuery] = useState('');
@@ -123,9 +128,12 @@ export default function FilterPanel({
   const [posDropdownOpen, setPosDropdownOpen] = useState(false);
   const [jobs, setJobs] = useState<Array<{ id: string; label: string | null; status: string; flagged_items: number; created_at: string }>>([]);
   const [jobsLoading, setJobsLoading] = useState(false);
+  const [jobSearchQuery, setJobSearchQuery] = useState('');
+  const [jobDropdownOpen, setJobDropdownOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const frameDropdownContainerRef = useRef<HTMLDivElement>(null);
+  const jobDropdownContainerRef = useRef<HTMLDivElement>(null);
   
   const toggleSection = (section: string) => {
     setOpenSections(prev => {
@@ -345,6 +353,22 @@ export default function FilterPanel({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [frameDropdownOpen]);
 
+  useEffect(() => {
+    if (!jobDropdownOpen) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        jobDropdownContainerRef.current &&
+        !jobDropdownContainerRef.current.contains(event.target as Node)
+      ) {
+        setJobDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [jobDropdownOpen]);
+
   const hasActiveFilters = Object.values(filters).some(value => 
     value !== undefined && value !== ''
   );
@@ -385,6 +409,14 @@ export default function FilterPanel({
         pos.toLowerCase().includes(posSearchQuery.toLowerCase())
       )
     : posOptions;
+
+  const filteredJobs = jobSearchQuery
+    ? jobs.filter(job => {
+        const query = jobSearchQuery.toLowerCase();
+        const displayLabel = job.label ?? `Job ${job.id}`;
+        return displayLabel.toLowerCase().includes(query) || job.id.includes(query);
+      })
+    : jobs;
 
   return (
     <>
@@ -560,33 +592,67 @@ export default function FilterPanel({
               isOpen={openSections.has('ai-jobs')}
               onToggle={() => toggleSection('ai-jobs')}
             >
-              <div>
+              <div className="relative" ref={jobDropdownContainerRef}>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Flagged by (Job)</label>
                 {jobsLoading ? (
                   <LoadingSpinner size="sm" label="Loading jobs…" className="!flex-row !gap-2 !py-2" />
                 ) : (
-                  <div className="flex items-center gap-2">
-                    <select
-                      value={filters.flaggedByJobId || ''}
-                      onChange={(e) => updateFilter('flaggedByJobId', e.target.value || undefined)}
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
-                    >
-                      <option value="">Any job</option>
-                      {jobs.map(job => (
-                        <option key={job.id} value={job.id}>
-                          {(job.label ?? `Job ${job.id}`)}{job.flagged_items ? ` · ${job.flagged_items} flagged` : ''}
-                        </option>
-                      ))}
-                    </select>
-                    {filters.flaggedByJobId && (
-                      <button
-                        onClick={() => updateFilter('flaggedByJobId', undefined)}
-                        className="text-sm text-red-600 hover:text-red-700 font-medium cursor-pointer"
-                      >
-                        Clear
-                      </button>
+                  <>
+                    <input
+                      type="text"
+                      value={jobSearchQuery}
+                      onChange={(e) => setJobSearchQuery(e.target.value)}
+                      onFocus={() => setJobDropdownOpen(true)}
+                      placeholder="Search jobs..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 mb-2"
+                    />
+                    {jobDropdownOpen && (
+                      <div className="max-h-48 overflow-y-auto border border-gray-300 rounded-xl bg-white">
+                        {filteredJobs.length === 0 ? (
+                          <div className="px-3 py-2 text-sm text-gray-500">No jobs found</div>
+                        ) : (
+                          filteredJobs.map((job) => (
+                            <label
+                              key={job.id}
+                              className="flex items-start px-3 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                            >
+                              <input
+                                type="radio"
+                                name="flaggedByJobId"
+                                checked={filters.flaggedByJobId === job.id}
+                                onChange={() => {
+                                  updateFilter('flaggedByJobId', job.id);
+                                  setJobDropdownOpen(false);
+                                }}
+                                className="mt-0.5 mr-3 border-gray-300 text-blue-600 focus:ring-blue-500"
+                              />
+                              <div className="flex-1 min-w-0">
+                                <div className="text-sm font-medium text-gray-900 truncate">
+                                  {job.label ?? `Job ${job.id}`}
+                                </div>
+                                <div className="text-xs text-gray-500 font-mono truncate">
+                                  ID: {job.id}{job.flagged_items ? ` · ${job.flagged_items} flagged` : ''}
+                                </div>
+                              </div>
+                            </label>
+                          ))
+                        )}
+                      </div>
                     )}
-                  </div>
+                    {filters.flaggedByJobId && (
+                      <div className="mt-2 flex items-center justify-between">
+                        <span className="text-xs text-gray-600">
+                          1 job selected
+                        </span>
+                        <button
+                          onClick={() => updateFilter('flaggedByJobId', undefined)}
+                          className="text-xs text-red-600 hover:text-red-700 font-medium cursor-pointer"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    )}
+                  </>
                 )}
                 <p className="mt-1 text-xs text-gray-500">Show entries the AI flagged in a specific job.</p>
               </div>
@@ -821,6 +887,43 @@ export default function FilterPanel({
                     }`}
                   >
                     No
+                  </button>
+                </div>
+              </div>
+              
+              {/* Pending State Filters */}
+              <div className="pt-3 border-t border-gray-200">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Pending Changes</label>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => updateFilter('pendingCreate', filters.pendingCreate === true ? undefined : true)}
+                    className={`px-3 py-1 rounded-xl text-sm font-medium transition-colors cursor-pointer ${
+                      filters.pendingCreate === true 
+                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' 
+                        : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
+                    }`}
+                  >
+                    Pending Creation
+                  </button>
+                  <button
+                    onClick={() => updateFilter('pendingUpdate', filters.pendingUpdate === true ? undefined : true)}
+                    className={`px-3 py-1 rounded-xl text-sm font-medium transition-colors cursor-pointer ${
+                      filters.pendingUpdate === true 
+                        ? 'bg-amber-100 text-amber-800 border border-amber-200' 
+                        : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
+                    }`}
+                  >
+                    Pending Update
+                  </button>
+                  <button
+                    onClick={() => updateFilter('pendingDelete', filters.pendingDelete === true ? undefined : true)}
+                    className={`px-3 py-1 rounded-xl text-sm font-medium transition-colors cursor-pointer ${
+                      filters.pendingDelete === true 
+                        ? 'bg-red-100 text-red-800 border border-red-200' 
+                        : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
+                    }`}
+                  >
+                    Pending Deletion
                   </button>
                 </div>
               </div>

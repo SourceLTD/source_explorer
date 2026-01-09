@@ -1,7 +1,8 @@
 import React from 'react';
-import { Frame } from '@/lib/types';
+import { Frame, PendingChangeInfo } from '@/lib/types';
 import { EditableField } from './types';
 import { OverlaySection } from './OverlaySection';
+import { PendingFieldIndicator } from '@/components/PendingChangeIndicator';
 
 interface FramePropertiesSectionProps {
   frame: Frame;
@@ -14,6 +15,7 @@ interface FramePropertiesSectionProps {
   onSave: () => void;
   onCancel: () => void;
   isSaving: boolean;
+  pending?: PendingChangeInfo | null;
 }
 
 export function FramePropertiesSection({
@@ -26,8 +28,23 @@ export function FramePropertiesSection({
   onValueChange,
   onSave,
   onCancel,
-  isSaving
+  isSaving,
+  pending
 }: FramePropertiesSectionProps) {
+  // Helper to check if a field has pending changes
+  const hasPendingField = (fieldName: string) => {
+    return !!pending?.pending_fields?.[fieldName];
+  };
+
+  // Helper to get the display value for a field (pending new_value if exists, otherwise current value)
+  const getDisplayValue = <T,>(fieldName: string, currentValue: T): T => {
+    const pendingField = pending?.pending_fields?.[fieldName];
+    if (pendingField) {
+      return pendingField.new_value as T;
+    }
+    return currentValue;
+  };
+
   return (
     <OverlaySection
       title="Frame Properties"
@@ -42,7 +59,12 @@ export function FramePropertiesSection({
       {/* Frame Name */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <h3 className="text-sm font-medium text-gray-700">Frame Name</h3>
+          <h3 className="text-sm font-medium text-gray-700">
+            Frame Name
+            {hasPendingField('label') && (
+              <span className="ml-2 text-xs text-orange-600 font-normal">(pending)</span>
+            )}
+          </h3>
           {editingField !== 'label' && (
             <button
               onClick={() => onStartEdit('label')}
@@ -79,14 +101,21 @@ export function FramePropertiesSection({
             </div>
           </div>
         ) : (
-          <p className="text-gray-900 text-sm font-semibold">{frame.label}</p>
+          <PendingFieldIndicator fieldName="label" pending={pending}>
+            <span className="text-gray-900 text-sm font-semibold">{getDisplayValue('label', frame.label)}</span>
+          </PendingFieldIndicator>
         )}
       </div>
 
       {/* Definition */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <h3 className="text-sm font-medium text-gray-700">Definition</h3>
+          <h3 className="text-sm font-medium text-gray-700">
+            Definition
+            {hasPendingField('definition') && (
+              <span className="ml-2 text-xs text-orange-600 font-normal">(pending)</span>
+            )}
+          </h3>
           {editingField !== 'definition' && (
             <button
               onClick={() => onStartEdit('definition')}
@@ -123,14 +152,21 @@ export function FramePropertiesSection({
             </div>
           </div>
         ) : (
-          <p className="text-gray-900 text-sm">{frame.definition}</p>
+          <PendingFieldIndicator fieldName="definition" pending={pending}>
+            <span className="text-gray-900 text-sm">{getDisplayValue('definition', frame.definition)}</span>
+          </PendingFieldIndicator>
         )}
       </div>
 
       {/* Short Definition */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <h3 className="text-sm font-medium text-gray-700">Short Definition</h3>
+          <h3 className="text-sm font-medium text-gray-700">
+            Short Definition
+            {hasPendingField('short_definition') && (
+              <span className="ml-2 text-xs text-orange-600 font-normal">(pending)</span>
+            )}
+          </h3>
           {editingField !== 'short_definition' && (
             <button
               onClick={() => onStartEdit('short_definition')}
@@ -167,14 +203,21 @@ export function FramePropertiesSection({
             </div>
           </div>
         ) : (
-          <p className="text-gray-900 text-sm">{frame.short_definition}</p>
+          <PendingFieldIndicator fieldName="short_definition" pending={pending}>
+            <span className="text-gray-900 text-sm">{getDisplayValue('short_definition', frame.short_definition)}</span>
+          </PendingFieldIndicator>
         )}
       </div>
 
       {/* Prototypical Synset */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <h3 className="text-sm font-medium text-gray-700">Prototypical Synset</h3>
+          <h3 className="text-sm font-medium text-gray-700">
+            Prototypical Synset
+            {hasPendingField('prototypical_synset') && (
+              <span className="ml-2 text-xs text-orange-600 font-normal">(pending)</span>
+            )}
+          </h3>
           {editingField !== 'prototypical_synset' && (
             <button
               onClick={() => onStartEdit('prototypical_synset')}
@@ -211,7 +254,9 @@ export function FramePropertiesSection({
             </div>
           </div>
         ) : (
-          <p className="text-gray-900 text-sm font-mono">{frame.prototypical_synset}</p>
+          <PendingFieldIndicator fieldName="prototypical_synset" pending={pending}>
+            <span className="text-gray-900 text-sm font-mono">{getDisplayValue('prototypical_synset', frame.prototypical_synset)}</span>
+          </PendingFieldIndicator>
         )}
       </div>
     </OverlaySection>

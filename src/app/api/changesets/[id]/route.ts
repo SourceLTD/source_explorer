@@ -39,7 +39,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json({
       ...changeset,
       id: changeset.id.toString(),
-      changegroup_id: changeset.changegroup_id?.toString() ?? null,
+      llm_job_id: changeset.llm_job_id?.toString() ?? null,
       entity_id: changeset.entity_id?.toString() ?? null,
       field_changes: changeset.field_changes.map(fc => ({
         ...fc,
@@ -75,17 +75,20 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         );
       }
 
-      let count: number;
       if (action === 'approve_all') {
-        count = await approveAllFieldChanges(changesetId, userId);
+        const count = await approveAllFieldChanges(changesetId, userId);
+        return NextResponse.json({
+          success: true,
+          field_changes_affected: count,
+        });
       } else {
-        count = await rejectAllFieldChanges(changesetId, userId);
+        const result = await rejectAllFieldChanges(changesetId, userId);
+        return NextResponse.json({
+          success: true,
+          field_changes_affected: result.count,
+          changeset_discarded: result.changeset_discarded,
+        });
       }
-
-      return NextResponse.json({
-        success: true,
-        field_changes_affected: count,
-      });
     }
 
     // Option 2: Update a single field change
@@ -108,6 +111,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         ...updated,
         id: updated.id.toString(),
         changeset_id: updated.changeset_id.toString(),
+        changeset_discarded: updated.changeset_discarded || false,
       });
     }
 

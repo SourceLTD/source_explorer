@@ -51,6 +51,16 @@ export function BasicInfoSection({
   const hasPendingField = (fieldName: string) => {
     return !!pending?.pending_fields?.[fieldName];
   };
+
+  // Helper to get the display value for a field (pending new_value if exists, otherwise current value)
+  const getDisplayValue = <T,>(fieldName: string, currentValue: T): T => {
+    const pendingField = pending?.pending_fields?.[fieldName];
+    if (pendingField) {
+      return pendingField.new_value as T;
+    }
+    return currentValue;
+  };
+
   return (
     <OverlaySection
       title="Basic Information"
@@ -65,7 +75,12 @@ export function BasicInfoSection({
       {/* Code (ID) - Lemma Part Only */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <h3 className="text-sm font-medium text-gray-700">Entry Code (Lemma Part)</h3>
+          <h3 className="text-sm font-medium text-gray-700">
+            Entry Code (Lemma Part)
+            {hasPendingField('id') && (
+              <span className="ml-2 text-xs text-orange-600 font-normal">(pending)</span>
+            )}
+          </h3>
           {editingField !== 'code' && (
             <button
               onClick={() => onStartEdit('code')}
@@ -86,9 +101,11 @@ export function BasicInfoSection({
             isSaving={isSaving}
           />
         ) : (
-          <div className="text-sm text-gray-900 font-mono">
-            {node.id}
-          </div>
+          <PendingFieldIndicator fieldName="id" pending={pending}>
+            <span className="text-sm text-gray-900 font-mono">
+              {getDisplayValue('id', node.id)}
+            </span>
+          </PendingFieldIndicator>
         )}
       </div>
 
@@ -98,7 +115,7 @@ export function BasicInfoSection({
           <h3 className="text-sm font-medium text-gray-700">
             Source Lemmas
             {hasPendingField('src_lemmas') && (
-              <span className="ml-2 text-xs text-green-600 font-normal">(pending)</span>
+              <span className="ml-2 text-xs text-orange-600 font-normal">(pending)</span>
             )}
           </h3>
           {editingField !== 'src_lemmas' && (
@@ -126,17 +143,20 @@ export function BasicInfoSection({
         ) : (
           <PendingFieldIndicator fieldName="src_lemmas" pending={pending}>
             <div className="text-sm text-gray-900">
-              {node.src_lemmas && node.src_lemmas.length > 0 ? (
-                <div className="flex flex-wrap gap-1">
-                  {node.src_lemmas.map((lemma, idx) => (
-                    <span key={idx} className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-semibold">
-                      {lemma}
-                    </span>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-gray-500 text-sm italic">No source lemmas</p>
-              )}
+              {(() => {
+                const srcLemmas = getDisplayValue('src_lemmas', node.src_lemmas);
+                return srcLemmas && srcLemmas.length > 0 ? (
+                  <div className="flex flex-wrap gap-1">
+                    {srcLemmas.map((lemma, idx) => (
+                      <span key={idx} className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-semibold">
+                        {lemma}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-gray-500 text-sm italic">No source lemmas</p>
+                );
+              })()}
             </div>
           </PendingFieldIndicator>
         )}
@@ -148,7 +168,7 @@ export function BasicInfoSection({
           <h3 className="text-sm font-medium text-gray-700">
             Definition
             {hasPendingField('gloss') && (
-              <span className="ml-2 text-xs text-green-600 font-normal">(pending)</span>
+              <span className="ml-2 text-xs text-orange-600 font-normal">(pending)</span>
             )}
           </h3>
           {editingField !== 'gloss' && (
@@ -170,9 +190,9 @@ export function BasicInfoSection({
           />
         ) : (
           <PendingFieldIndicator fieldName="gloss" pending={pending}>
-            <p className="text-gray-900 text-sm leading-relaxed">
-              {node.gloss}
-            </p>
+            <span className="text-gray-900 text-sm leading-relaxed">
+              {getDisplayValue('gloss', node.gloss)}
+            </span>
           </PendingFieldIndicator>
         )}
       </div>
@@ -183,7 +203,7 @@ export function BasicInfoSection({
           <h3 className="text-sm font-medium text-gray-700">
             Examples
             {hasPendingField('examples') && (
-              <span className="ml-2 text-xs text-green-600 font-normal">(pending)</span>
+              <span className="ml-2 text-xs text-orange-600 font-normal">(pending)</span>
             )}
           </h3>
           {editingField !== 'examples' && (
@@ -211,17 +231,20 @@ export function BasicInfoSection({
         ) : (
           <PendingFieldIndicator fieldName="examples" pending={pending}>
             <div>
-              {node.examples && node.examples.length > 0 ? (
-                <div className="space-y-1">
-                  {node.examples.map((example, index) => (
-                    <p key={index} className="text-gray-900 text-sm italic">
-                      &quot;{example}&quot;
-                    </p>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-gray-500 text-sm italic">No examples</p>
-              )}
+              {(() => {
+                const examples = getDisplayValue('examples', node.examples);
+                return examples && examples.length > 0 ? (
+                  <div className="space-y-1">
+                    {examples.map((example, index) => (
+                      <p key={index} className="text-gray-900 text-sm italic">
+                        &quot;{example}&quot;
+                      </p>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-gray-500 text-sm italic">No examples</p>
+                );
+              })()}
             </div>
           </PendingFieldIndicator>
         )}
@@ -231,7 +254,12 @@ export function BasicInfoSection({
       {mode === 'adjectives' && (
         <div>
           <div className="flex items-center justify-between mb-2">
-            <h3 className="text-sm font-medium text-gray-700">Category</h3>
+            <h3 className="text-sm font-medium text-gray-700">
+              Category
+              {hasPendingField('lexfile') && (
+                <span className="ml-2 text-xs text-orange-600 font-normal">(pending)</span>
+              )}
+            </h3>
             {editingField !== 'lexfile' && (
               <button
                 onClick={() => onStartEdit('lexfile')}
@@ -251,7 +279,9 @@ export function BasicInfoSection({
               isSaving={isSaving}
             />
           ) : (
-            <p className="text-gray-900 text-sm">{node.lexfile}</p>
+            <PendingFieldIndicator fieldName="lexfile" pending={pending}>
+              <span className="text-gray-900 text-sm">{getDisplayValue('lexfile', node.lexfile)}</span>
+            </PendingFieldIndicator>
           )}
         </div>
       )}

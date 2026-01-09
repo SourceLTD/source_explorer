@@ -16,7 +16,8 @@ import ChangeCommentsBoard from './comments/ChangeCommentsBoard';
 import PageSizeSelector from './PageSizeSelector';
 import Pagination from './Pagination';
 import ColumnVisibilityPanel, { ColumnConfig, ColumnVisibilityState } from './ColumnVisibilityPanel';
-import { Modal, EmptyState } from './ui';
+import { Modal, EmptyState, ConflictDialog } from './ui';
+import type { ConflictError } from './ui';
 import { useTableSelection } from '@/hooks/useTableSelection';
 
 // --- Types ---
@@ -53,51 +54,34 @@ interface Changeset {
 
 interface ChangesetsByType {
   entity_type: string;
-  count: number;
   changesets: Changeset[];
 }
 
-interface Changegroup {
-  id: string;
-  source: string;
-  label: string | null;
-  description: string | null;
-  llm_job_id: string | null;
+interface LlmJobGroup {
+  type: 'llm_job';
+  llm_job_id: string;
   llm_job: {
     id: string;
     label: string | null;
     status: string;
     submitted_by: string | null;
   } | null;
-  status: string;
-  created_by: string;
-  created_at: string;
-  committed_by: string | null;
-  committed_at: string | null;
-  total_changesets: number;
-  approved_changesets: number;
-  rejected_changesets: number;
   changesets_by_type: ChangesetsByType[];
+  total_changesets: number;
 }
+
+interface ManualGroup {
+  type: 'manual';
+  created_by: string;
+  changesets_by_type: ChangesetsByType[];
+  total_changesets: number;
+}
+
+type ChangeGroup = LlmJobGroup | ManualGroup;
 
 interface PendingChangesData {
-  changegroups: Changegroup[];
-  ungrouped_changesets_by_type: ChangesetsByType[];
+  groups: ChangeGroup[];
   total_pending_changesets: number;
-  total_changegroups: number;
-}
-
-// Flat versions for the table
-interface FlatFieldChange extends FieldChange {
-  entity_type: string;
-  entity_id: string | null;
-  entity_display: string;
-  operation: string;
-  group_label: string;
-  group_source: string;
-  group_id: string | null;
-  created_at: string;
-  created_by: string;
 }
 
 interface FlatChangeset extends Omit<Changeset, 'field_changes'> {
@@ -106,32 +90,8 @@ interface FlatChangeset extends Omit<Changeset, 'field_changes'> {
   group_source: string;
   group_id: string | null;
   field_count: number;
-  field_changes: FieldChange[]; // Keep them for preview
+  field_changes: FieldChange[];
 }
-
-interface FlatJob {
-  id: string;
-  label: string;
-  source: string;
-  description: string | null;
-  llm_job_id: string | null;
-  llm_job_label: string | null;
-  status: string;
-  created_by: string;
-  created_at: string;
-  total_changesets: number;
-  approved_changesets: number;
-  rejected_changesets: number;
-  entity_types: string[];
-  changesets: Changeset[];
-}
-
-type ViewGranularity = 'fields' | 'changesets' | 'jobs';
-
-type DetailSelection = 
-  | { type: 'field'; item: FlatFieldChange }
-  | { type: 'changeset'; item: FlatChangeset }
-  | { type: 'job'; item: FlatJob };
 
 interface PendingChangesFilter {
   search: string;
@@ -166,8 +126,21 @@ function formatValue(value: unknown): string {
 function getEntityDisplayName(changeset: Changeset): string {
   const snapshot = changeset.before_snapshot || changeset.after_snapshot;
   if (snapshot) {
-    const name = snapshot.word || snapshot.name || snapshot.code || snapshot.gloss || snapshot.label;
-    if (name) return `"${String(name).substring(0, 30)}${String(name).length > 30 ? '...' : ''}"`;
+    // For frames, show label (id); for verbs/nouns/adjectives/adverbs, show code
+    if (changeset.entity_type === 'frame') {
+      const label = snapshot.label;
+      const id = changeset.entity_id;
+      if (label && id) {
+        const truncatedLabel = String(label).substring(0, 25) + (String(label).length > 25 ? '...' : '');
+        return `${truncatedLabel} (${id})`;
+      } else if (label) {
+        return `${String(label).substring(0, 30)}${String(label).length > 30 ? '...' : ''}`;
+      }
+    } else {
+      // verbs, nouns, adjectives, adverbs - use code
+      const code = snapshot.code;
+      if (code) return `${String(code).substring(0, 30)}${String(code).length > 30 ? '...' : ''}`;
+    }
   }
   return changeset.entity_id ? `#${changeset.entity_id}` : 'New';
 }
@@ -181,12 +154,17 @@ function getOperationColor(operation: string): string {
   }
 }
 
+function capitalizeFirst(str: string): string {
+  if (!str) return str;
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
 function formatUserName(user: string | null): string {
-  if (!user) return 'unknown';
-  if (user === 'current-user') return 'current user';
+  if (!user) return 'Unknown';
+  if (user === 'current-user') return 'Current user';
   if (user === 'system:llm-agent') return 'LLM Agent';
-  if (user.includes('@')) return user.split('@')[0];
-  return user;
+  if (user.includes('@')) return capitalizeFirst(user.split('@')[0]);
+  return capitalizeFirst(user);
 }
 
 function getInitials(user: string | null): string {
@@ -196,23 +174,9 @@ function getInitials(user: string | null): string {
   return formatted.slice(0, 2).toUpperCase();
 }
 
-// --- Column Configurations ---
+// --- Column Configuration ---
 
-// Fields view columns
-const FIELDS_COLUMNS: ColumnConfig[] = [
-  { key: 'type', label: 'Type', visible: true },
-  { key: 'entity', label: 'Entity', visible: true },
-  { key: 'op', label: 'Op', visible: true },
-  { key: 'field', label: 'Field', visible: true },
-  { key: 'oldValue', label: 'Old Value', visible: true },
-  { key: 'newValue', label: 'New Value', visible: true },
-  { key: 'source', label: 'Source / Job', visible: true },
-  { key: 'author', label: 'Author', visible: true },
-  { key: 'date', label: 'Date', visible: true },
-];
-
-// Changesets view columns
-const CHANGESETS_COLUMNS: ColumnConfig[] = [
+const COLUMNS: ColumnConfig[] = [
   { key: 'type', label: 'Type', visible: true },
   { key: 'entity', label: 'Entity', visible: true },
   { key: 'op', label: 'Op', visible: true },
@@ -222,37 +186,20 @@ const CHANGESETS_COLUMNS: ColumnConfig[] = [
   { key: 'date', label: 'Date', visible: true },
 ];
 
-// Jobs view columns
-const JOBS_COLUMNS: ColumnConfig[] = [
-  { key: 'label', label: 'Job / Label', visible: true },
-  { key: 'source', label: 'Source', visible: true },
-  { key: 'entityTypes', label: 'Entity Types', visible: true },
-  { key: 'rows', label: 'Rows', visible: true },
-  { key: 'author', label: 'Author', visible: true },
-  { key: 'date', label: 'Date', visible: true },
-];
-
 // Default column widths
 const DEFAULT_COLUMN_WIDTHS: Record<string, number> = {
   type: 80,
   entity: 180,
   op: 70,
-  field: 120,
-  oldValue: 150,
-  newValue: 150,
   changes: 500,
   source: 150,
   author: 50,
   date: 100,
-  label: 200,
-  entityTypes: 150,
-  rows: 80,
 };
 
-function getDefaultVisibility(view: ViewGranularity): ColumnVisibilityState {
-  const columns = view === 'fields' ? FIELDS_COLUMNS : view === 'changesets' ? CHANGESETS_COLUMNS : JOBS_COLUMNS;
+function getDefaultVisibility(): ColumnVisibilityState {
   const visibility: ColumnVisibilityState = {};
-  columns.forEach(col => {
+  COLUMNS.forEach(col => {
     visibility[col.key] = col.visible;
   });
   return visibility;
@@ -265,11 +212,10 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
   const [isLoading, setIsLoading] = useState(true);
   const [isCommitting, setIsCommitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [view, setView] = useState<ViewGranularity>('fields');
   const [expandedComments, setExpandedComments] = useState<string | null>(null);
   const [unreadChangesetIds, setUnreadChangesetIds] = useState<Set<string>>(new Set());
-  const [unreadKey, setUnreadKey] = useState(0); // To force refresh of unread panel
-  const [selectedDetail, setSelectedDetail] = useState<DetailSelection | null>(null);
+  const [unreadKey, setUnreadKey] = useState(0);
+  const [selectedDetail, setSelectedDetail] = useState<FlatChangeset | null>(null);
   const [filter, setFilter] = useState<PendingChangesFilter>(defaultFilter);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [page, setPage] = useState(1);
@@ -277,20 +223,21 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
   const [isPageSizeSelectorOpen, setIsPageSizeSelectorOpen] = useState(false);
   
   // Column visibility and width state
-  const [columnVisibility, setColumnVisibility] = useState<Record<ViewGranularity, ColumnVisibilityState>>(() => {
+  const [columnVisibility, setColumnVisibility] = useState<ColumnVisibilityState>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('pending-changes-column-visibility');
       if (saved) {
         try {
-          return JSON.parse(saved);
+          const parsed = JSON.parse(saved);
+          // Handle migration from old format (which had nested views)
+          if (parsed.changesets) {
+            return parsed.changesets;
+          }
+          return parsed;
         } catch {}
       }
     }
-    return {
-      fields: getDefaultVisibility('fields'),
-      changesets: getDefaultVisibility('changesets'),
-      jobs: getDefaultVisibility('jobs'),
-    };
+    return getDefaultVisibility();
   });
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>(() => {
     if (typeof window !== 'undefined') {
@@ -306,12 +253,25 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
   const [isColumnPanelOpen, setIsColumnPanelOpen] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const resizingColumnRef = useRef<string | null>(null);
+  
+  // Conflict dialog state
+  const [conflictDialog, setConflictDialog] = useState<{
+    isOpen: boolean;
+    errors: ConflictError[];
+    changesetId: string | null;
+    entityDisplay: string | null;
+  }>({ isOpen: false, errors: [], changesetId: null, entityDisplay: null });
+  const [isDiscarding, setIsDiscarding] = useState(false);
+  
+  // Track field change statuses in the detail modal (for optimistic updates)
+  const [detailFieldChanges, setDetailFieldChanges] = useState<FieldChange[]>([]);
+  const [isUpdatingField, setIsUpdatingField] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await fetch('/api/changegroups/pending');
+      const response = await fetch('/api/changesets/pending');
       if (!response.ok) throw new Error('Failed to fetch pending changes');
       const result = await response.json();
       setData(result);
@@ -344,17 +304,60 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
   useEffect(() => {
     if (data) {
       const allChangesetIds: string[] = [];
-      data.changegroups.forEach(cg => {
-        cg.changesets_by_type.forEach(et => {
+      data.groups.forEach(group => {
+        group.changesets_by_type.forEach(et => {
           et.changesets.forEach(cs => allChangesetIds.push(cs.id));
         });
-      });
-      data.ungrouped_changesets_by_type.forEach(et => {
-        et.changesets.forEach(cs => allChangesetIds.push(cs.id));
       });
       fetchUnreadStatus(allChangesetIds);
     }
   }, [data, fetchUnreadStatus]);
+
+  // Sync detail field changes when selectedDetail changes
+  useEffect(() => {
+    if (selectedDetail) {
+      setDetailFieldChanges(selectedDetail.field_changes);
+    } else {
+      setDetailFieldChanges([]);
+    }
+  }, [selectedDetail]);
+
+  // Handler for updating individual field change status
+  const handleFieldChangeStatus = async (fieldChangeId: string, status: 'approved' | 'rejected') => {
+    if (!selectedDetail) return;
+    
+    setIsUpdatingField(fieldChangeId);
+    try {
+      const response = await fetch(`/api/changesets/${selectedDetail.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ field_change_id: fieldChangeId, status }),
+      });
+      
+      if (!response.ok) throw new Error('Failed to update field change');
+      
+      const result = await response.json();
+      
+      // Update local state optimistically
+      setDetailFieldChanges(prev => 
+        prev.map(fc => 
+          fc.id === fieldChangeId 
+            ? { ...fc, status } 
+            : fc
+        )
+      );
+      
+      // If changeset was auto-discarded (all fields rejected), close modal and refresh
+      if (result.changeset_discarded) {
+        setSelectedDetail(null);
+        await fetchData();
+      }
+    } catch (err) {
+      console.error('Failed to update field change:', err);
+    } finally {
+      setIsUpdatingField(null);
+    }
+  };
 
   // Handle click on unread comment notification
   const handleUnreadChangesetClick = (changesetId: string) => {
@@ -369,126 +372,61 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
 
   // --- Flattening Logic ---
 
-  const { flatFieldChanges, flatChangesets, flatJobs } = useMemo(() => {
-    const fields: FlatFieldChange[] = [];
+  const flatChangesets = useMemo(() => {
     const sets: FlatChangeset[] = [];
-    const jobs: FlatJob[] = [];
 
-    if (!data) return { flatFieldChanges: fields, flatChangesets: sets, flatJobs: jobs };
+    if (!data) return sets;
 
-    const processChangeset = (cs: Changeset, cg?: Changegroup) => {
+    const processChangeset = (cs: Changeset, group?: ChangeGroup) => {
       // Skip changesets with no field changes - nothing to review
+      // UNLESS it's a delete or create operation (these have no field_changes by design)
       if (!cs.field_changes || cs.field_changes.length === 0) {
-        return;
+        if (cs.operation !== 'delete' && cs.operation !== 'create') {
+          return;
+        }
       }
 
       const entityDisplay = getEntityDisplayName(cs);
-      const groupLabel = cg ? (cg.label || (cg.llm_job ? cg.llm_job.label || cg.llm_job.id : cg.source)) : 'Manual';
-      const groupSource = cg ? cg.source : '';
-      const groupId = cg ? cg.id : null;
+      let groupLabel: string;
+      let groupSource: string;
+      let groupId: string | null;
+      
+      if (group) {
+        if (group.type === 'llm_job') {
+          groupLabel = group.llm_job?.label || `LLM Job ${group.llm_job_id}`;
+          groupSource = 'llm_job';
+          groupId = group.llm_job_id;
+        } else {
+          groupLabel = `${formatUserName(group.created_by)}'s manual work`;
+          groupSource = 'manual';
+          groupId = group.created_by;
+        }
+      } else {
+        groupLabel = 'Manual work';
+        groupSource = 'manual';
+        groupId = null;
+      }
 
-      // Add to flatChangesets
+      // Count pending field changes for display
+      const pendingFieldCount = cs.field_changes.filter(fc => fc.status === 'pending').length;
       sets.push({
         ...cs,
         entity_display: entityDisplay,
         group_label: groupLabel,
         group_source: groupSource,
         group_id: groupId,
-        field_count: cs.field_changes.length,
-      });
-
-      // Add to flatFieldChanges
-      cs.field_changes.forEach(fc => {
-        fields.push({
-          ...fc,
-          entity_type: cs.entity_type,
-          entity_id: cs.entity_id,
-          entity_display: entityDisplay,
-          operation: cs.operation,
-          group_label: groupLabel,
-          group_source: groupSource,
-          group_id: groupId,
-          created_at: cs.created_at,
-          created_by: cs.created_by,
-        });
+        field_count: pendingFieldCount,
       });
     };
 
-    // Process Changegroups
-    data.changegroups.forEach(cg => {
-      cg.changesets_by_type.forEach(et => {
-        et.changesets.forEach(cs => processChangeset(cs, cg));
-      });
-
-      // Collect only changesets with field_changes for this job
-      const reviewableChangesets: Changeset[] = [];
-      const entityTypes = new Set<string>();
-      cg.changesets_by_type.forEach(et => {
-        et.changesets.forEach(cs => {
-          if (cs.field_changes && cs.field_changes.length > 0) {
-            reviewableChangesets.push(cs);
-            entityTypes.add(et.entity_type);
-          }
-        });
-      });
-
-      // Only add job if it has reviewable changesets
-      if (reviewableChangesets.length > 0) {
-        jobs.push({
-          id: cg.id,
-          label: cg.label || (cg.llm_job ? cg.llm_job.label || cg.llm_job.id : cg.source),
-          source: cg.source,
-          description: cg.description,
-          llm_job_id: cg.llm_job_id,
-          llm_job_label: cg.llm_job?.label || null,
-          status: cg.status,
-          created_by: cg.created_by,
-          created_at: cg.created_at,
-          total_changesets: reviewableChangesets.length,
-          approved_changesets: cg.approved_changesets,
-          rejected_changesets: cg.rejected_changesets,
-          entity_types: Array.from(entityTypes),
-          changesets: reviewableChangesets,
-        });
-      }
-    });
-
-    // Process Ungrouped
-    data.ungrouped_changesets_by_type.forEach(et => {
-      et.changesets.forEach(cs => processChangeset(cs));
-    });
-
-    // Add ungrouped as a virtual job if there are any reviewable changesets
-    const ungroupedChangesets: Changeset[] = [];
-    const ungroupedEntityTypes = new Set<string>();
-    data.ungrouped_changesets_by_type.forEach(et => {
-      et.changesets.forEach(cs => {
-        if (cs.field_changes && cs.field_changes.length > 0) {
-          ungroupedChangesets.push(cs);
-          ungroupedEntityTypes.add(et.entity_type);
-        }
+    // Process all groups (both LLM jobs and manual user groups)
+    data.groups.forEach(group => {
+      group.changesets_by_type.forEach(et => {
+        et.changesets.forEach(cs => processChangeset(cs, group));
       });
     });
-    if (ungroupedChangesets.length > 0) {
-      jobs.push({
-        id: 'ungrouped',
-        label: 'Manual Changes',
-        source: 'manual',
-        description: null,
-        llm_job_id: null,
-        llm_job_label: null,
-        status: 'pending',
-        created_by: ungroupedChangesets[0]?.created_by || 'unknown',
-        created_at: ungroupedChangesets[0]?.created_at || new Date().toISOString(),
-        total_changesets: ungroupedChangesets.length,
-        approved_changesets: 0,
-        rejected_changesets: 0,
-        entity_types: Array.from(ungroupedEntityTypes),
-        changesets: ungroupedChangesets,
-      });
-    }
 
-    return { flatFieldChanges: fields, flatChangesets: sets, flatJobs: jobs };
+    return sets;
   }, [data]);
 
   // --- Filter Options ---
@@ -502,11 +440,11 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
       entityTypes.add(cs.entity_type);
       operations.add(cs.operation);
       if (cs.group_source) sources.add(cs.group_source);
-    });
-
-    flatJobs.forEach(job => {
-      sources.add(job.source);
-      jobs.push({ id: job.id, label: job.label });
+      if (cs.group_id && cs.group_source === 'llm_job') {
+        if (!jobs.some(j => j.id === cs.group_id)) {
+          jobs.push({ id: cs.group_id!, label: cs.group_label });
+        }
+      }
     });
 
     return {
@@ -515,35 +453,9 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
       sources: Array.from(sources).sort(),
       jobs,
     };
-  }, [flatChangesets, flatJobs]);
+  }, [flatChangesets]);
 
-  // --- Filtered Lists ---
-  const filteredFieldChanges = useMemo(() => {
-    return flatFieldChanges.filter(fc => {
-      // Text search
-      if (filter.search) {
-        const searchLower = filter.search.toLowerCase();
-        const matches = 
-          fc.entity_type.toLowerCase().includes(searchLower) ||
-          fc.entity_display.toLowerCase().includes(searchLower) ||
-          fc.field_name.toLowerCase().includes(searchLower) ||
-          formatValue(fc.old_value).toLowerCase().includes(searchLower) ||
-          formatValue(fc.new_value).toLowerCase().includes(searchLower) ||
-          fc.group_label.toLowerCase().includes(searchLower);
-        if (!matches) return false;
-      }
-      // Entity type filter
-      if (filter.entityTypes.length > 0 && !filter.entityTypes.includes(fc.entity_type)) return false;
-      // Operation filter
-      if (filter.operations.length > 0 && !filter.operations.includes(fc.operation)) return false;
-      // Source filter
-      if (filter.sources.length > 0 && !filter.sources.includes(fc.group_source)) return false;
-      // Job filter
-      if (filter.jobIds.length > 0 && fc.group_id && !filter.jobIds.includes(fc.group_id)) return false;
-      return true;
-    });
-  }, [flatFieldChanges, filter]);
-
+  // --- Filtered List ---
   const filteredChangesets = useMemo(() => {
     return flatChangesets.filter(cs => {
       // Text search
@@ -573,106 +485,54 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
     });
   }, [flatChangesets, filter]);
 
-  const filteredJobs = useMemo(() => {
-    return flatJobs.filter(job => {
-      // Text search
-      if (filter.search) {
-        const searchLower = filter.search.toLowerCase();
-        const matches = 
-          job.label.toLowerCase().includes(searchLower) ||
-          job.source.toLowerCase().includes(searchLower) ||
-          (job.description?.toLowerCase().includes(searchLower) ?? false) ||
-          job.entity_types.some(et => et.toLowerCase().includes(searchLower));
-        if (!matches) return false;
-      }
-      // Entity type filter - job matches if any of its entity types match
-      if (filter.entityTypes.length > 0 && !job.entity_types.some(et => filter.entityTypes.includes(et))) return false;
-      // Source filter
-      if (filter.sources.length > 0 && !filter.sources.includes(job.source)) return false;
-      // Job filter
-      if (filter.jobIds.length > 0 && !filter.jobIds.includes(job.id)) return false;
-      return true;
-    });
-  }, [flatJobs, filter]);
-
   const hasActiveFilters = filter.search || filter.entityTypes.length > 0 || filter.operations.length > 0 || filter.sources.length > 0 || filter.jobIds.length > 0;
   const activeFilterCount = (filter.search ? 1 : 0) + filter.entityTypes.length + filter.operations.length + filter.sources.length + filter.jobIds.length;
 
-  // Reset page when filters or view changes
+  // Reset page when filters change
   useEffect(() => {
     setPage(1);
-  }, [filter, view]);
+  }, [filter]);
 
-  // --- Paginated Lists ---
-  const paginatedFieldChanges = useMemo(() => {
-    const start = (page - 1) * pageSize;
-    return filteredFieldChanges.slice(start, start + pageSize);
-  }, [filteredFieldChanges, page, pageSize]);
-
+  // --- Paginated List ---
   const paginatedChangesets = useMemo(() => {
     const start = (page - 1) * pageSize;
     return filteredChangesets.slice(start, start + pageSize);
   }, [filteredChangesets, page, pageSize]);
 
-  const paginatedJobs = useMemo(() => {
-    const start = (page - 1) * pageSize;
-    return filteredJobs.slice(start, start + pageSize);
-  }, [filteredJobs, page, pageSize]);
-
   // Pagination info
-  const currentFilteredList = view === 'fields' ? filteredFieldChanges : view === 'changesets' ? filteredChangesets : filteredJobs;
-  const totalItems = currentFilteredList.length;
+  const totalItems = filteredChangesets.length;
   const totalPages = Math.ceil(totalItems / pageSize);
-
-  // Current page items for selection - cast to common base type for the hook
-  const currentPageItems = useMemo((): Array<{ id: string }> => {
-    return view === 'fields' ? paginatedFieldChanges : view === 'changesets' ? paginatedChangesets : paginatedJobs;
-  }, [view, paginatedFieldChanges, paginatedChangesets, paginatedJobs]);
 
   // --- Selection Hook ---
   const selection = useTableSelection({
-    pageItems: currentPageItems,
+    pageItems: paginatedChangesets,
   });
-
-  // Clear selection when view changes
-  useEffect(() => {
-    selection.clearSelection();
-  }, [view]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Column Visibility & Resizing ---
 
   const currentColumns = useMemo(() => {
-    const base = view === 'fields' ? FIELDS_COLUMNS : view === 'changesets' ? CHANGESETS_COLUMNS : JOBS_COLUMNS;
-    const visibility = columnVisibility[view];
-    return base.map(col => ({
+    return COLUMNS.map(col => ({
       ...col,
-      visible: visibility[col.key] ?? col.visible,
+      visible: columnVisibility[col.key] ?? col.visible,
     }));
-  }, [view, columnVisibility]);
+  }, [columnVisibility]);
 
   const visibleColumns = useMemo(() => {
     return currentColumns.filter(col => col.visible);
   }, [currentColumns]);
 
   const handleColumnVisibilityChange = useCallback((newVisibility: ColumnVisibilityState) => {
-    setColumnVisibility(prev => ({
-      ...prev,
-      [view]: newVisibility,
-    }));
+    setColumnVisibility(newVisibility);
     // Save to localStorage
     if (typeof window !== 'undefined') {
-      const updated = { ...columnVisibility, [view]: newVisibility };
-      localStorage.setItem('pending-changes-column-visibility', JSON.stringify(updated));
+      localStorage.setItem('pending-changes-column-visibility', JSON.stringify(newVisibility));
     }
-  }, [view, columnVisibility]);
+  }, []);
 
   const handleResetColumnVisibility = useCallback(() => {
-    const defaultVis = getDefaultVisibility(view);
-    setColumnVisibility(prev => ({
-      ...prev,
-      [view]: defaultVis,
-    }));
-  }, [view]);
+    const defaultVis = getDefaultVisibility();
+    setColumnVisibility(defaultVis);
+  }, []);
 
   const handleColumnWidthChange = useCallback((columnKey: string, width: number) => {
     const newWidths = { ...columnWidths, [columnKey]: Math.max(50, width) };
@@ -718,233 +578,175 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
     return `${width}px`;
   }, [columnWidths]);
 
-  // Helper to check if a column is visible
-  const isColumnVisible = useCallback((columnKey: string) => {
-    return visibleColumns.some(col => col.key === columnKey);
-  }, [visibleColumns]);
-
-  // Render cell content based on column key and item
-  const renderCellContent = useCallback((columnKey: string, item: FlatFieldChange | FlatChangeset | FlatJob) => {
-    // Jobs view
-    if (view === 'jobs') {
-      const job = item as FlatJob;
-      switch (columnKey) {
-        case 'label':
-          return (
-            <div className="flex flex-col">
-              <span className="text-sm font-medium text-gray-900">{job.label}</span>
-              {job.description && (
-                <span className="text-xs text-gray-500 truncate max-w-[200px]">{job.description}</span>
-              )}
-              {job.llm_job_id && (
-                <span className="text-[10px] text-gray-400 font-mono">LLM Job: {job.llm_job_id.slice(0, 8)}...</span>
-              )}
-            </div>
-          );
-        case 'source':
-          return <span className="text-xs font-semibold text-gray-500 uppercase">{job.source}</span>;
-        case 'entityTypes':
-          return (
-            <div className="flex flex-wrap gap-1 max-w-[200px]">
-              {job.entity_types.slice(0, 3).map(et => (
-                <span key={et} className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded border border-gray-200 uppercase">
-                  {et}
-                </span>
-              ))}
-              {job.entity_types.length > 3 && (
-                <span className="text-[10px] text-gray-400">
-                  +{job.entity_types.length - 3} more
-                </span>
-              )}
-            </div>
-          );
-        case 'rows':
-          return (
-            <div className="flex flex-col">
-              <span className="text-sm font-medium text-gray-900">{job.total_changesets}</span>
-              {(job.approved_changesets > 0 || job.rejected_changesets > 0) && (
-                <span className="text-[10px] text-gray-400">
-                  {job.approved_changesets} approved, {job.rejected_changesets} rejected
-                </span>
-              )}
-            </div>
-          );
-        case 'author':
-          return (
-            <div 
-              className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-[10px] font-bold shadow-sm"
-              title={formatUserName(job.created_by)}
-            >
-              {getInitials(job.created_by)}
-            </div>
-          );
-        case 'date':
-          return <span className="text-sm text-gray-500">{new Date(job.created_at).toLocaleDateString()}</span>;
-        default:
-          return null;
-      }
-    }
-
-    // Fields and Changesets view
-    const fc = item as FlatFieldChange | FlatChangeset;
+  // Render cell content based on column key
+  const renderCellContent = useCallback((columnKey: string, cs: FlatChangeset) => {
     switch (columnKey) {
       case 'type':
-        return <span className="text-xs font-semibold text-gray-500 uppercase">{fc.entity_type}</span>;
+        return <span className="text-xs font-semibold text-gray-500 uppercase">{cs.entity_type}</span>;
       case 'entity':
-        return <span className="text-sm font-medium text-gray-900">{fc.entity_display}</span>;
+        return <span className="text-sm font-medium text-gray-900">{cs.entity_display}</span>;
       case 'op':
         return (
-          <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase ${getOperationColor(fc.operation)}`}>
-            {fc.operation}
+          <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase ${getOperationColor(cs.operation)}`}>
+            {cs.operation}
           </span>
         );
-      case 'field':
-        if (view === 'fields') {
-          return <span className="text-sm font-mono text-blue-600 font-medium">{(item as FlatFieldChange).field_name}</span>;
-        }
-        return null;
-      case 'oldValue':
-        if (view === 'fields') {
-          const val = formatValue((item as FlatFieldChange).old_value);
-          return <span className="text-sm text-gray-500 truncate" title={val}>{val}</span>;
-        }
-        return null;
-      case 'newValue':
-        if (view === 'fields') {
-          const val = formatValue((item as FlatFieldChange).new_value);
-          return <span className="text-sm text-gray-900 font-medium truncate" title={val}>{val}</span>;
-        }
-        return null;
       case 'changes':
-        if (view === 'changesets') {
-          const cs = item as FlatChangeset;
+        // Handle delete operations - show what's being deleted
+        if (cs.operation === 'delete') {
+          const snapshot = cs.before_snapshot;
           return (
             <div className="space-y-1">
-              {cs.field_changes.map(f => (
-                <div key={f.id} className="flex items-baseline gap-2 text-xs">
-                  <span className="font-mono text-blue-600 flex-shrink-0">{f.field_name}</span>
-                  <span className="text-gray-400 line-through whitespace-pre-wrap break-words">{formatValue(f.old_value)}</span>
-                  <span className="text-gray-300 flex-shrink-0">→</span>
-                  <span className="text-gray-900 whitespace-pre-wrap break-words">{formatValue(f.new_value)}</span>
+              <span className="text-xs text-red-600 font-semibold">Entire entity will be deleted</span>
+              {snapshot && (
+                <div className="text-xs text-gray-500 mt-1">
+                  {Object.entries(snapshot)
+                    .filter(([key]) => !['id', 'created_at', 'updated_at', 'version', 'deleted'].includes(key))
+                    .slice(0, 4)
+                    .map(([key, value]) => (
+                      <div key={key} className="truncate">
+                        <span className="font-mono text-gray-400">{key}:</span>{' '}
+                        <span className="text-gray-500">{formatValue(value)}</span>
+                      </div>
+                    ))}
+                  {Object.keys(snapshot).filter(k => !['id', 'created_at', 'updated_at', 'version', 'deleted'].includes(k)).length > 4 && (
+                    <span className="text-gray-400">...</span>
+                  )}
                 </div>
-              ))}
+              )}
             </div>
           );
         }
-        return null;
+        
+        // Handle create operations - show what's being created
+        if (cs.operation === 'create') {
+          const snapshot = cs.after_snapshot;
+          return (
+            <div className="space-y-1">
+              <span className="text-xs text-green-600 font-semibold">New entity will be created</span>
+              {snapshot && (
+                <div className="text-xs text-gray-500 mt-1">
+                  {Object.entries(snapshot)
+                    .filter(([key]) => !['id', 'created_at', 'updated_at', 'version', 'deleted'].includes(key))
+                    .slice(0, 4)
+                    .map(([key, value]) => (
+                      <div key={key} className="truncate">
+                        <span className="font-mono text-gray-400">{key}:</span>{' '}
+                        <span className="text-gray-900">{formatValue(value)}</span>
+                      </div>
+                    ))}
+                  {Object.keys(snapshot).filter(k => !['id', 'created_at', 'updated_at', 'version', 'deleted'].includes(k)).length > 4 && (
+                    <span className="text-gray-400">...</span>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        }
+        
+        // Handle update operations with field changes
+        const pendingChanges = cs.field_changes.filter(f => f.status === 'pending');
+        const approvedCount = cs.field_changes.filter(f => f.status === 'approved').length;
+        const rejectedCount = cs.field_changes.filter(f => f.status === 'rejected').length;
+        return (
+          <div className="space-y-1">
+            {/* Show counts of approved/rejected if any */}
+            {(approvedCount > 0 || rejectedCount > 0) && (
+              <div className="flex gap-2 text-[10px] mb-1">
+                {approvedCount > 0 && (
+                  <span className="text-green-600 font-medium">{approvedCount} approved</span>
+                )}
+                {rejectedCount > 0 && (
+                  <span className="text-red-600 font-medium">{rejectedCount} rejected</span>
+                )}
+              </div>
+            )}
+            {/* Only show pending field changes */}
+            {pendingChanges.map(f => (
+              <div key={f.id} className="flex items-baseline gap-2 text-xs">
+                <span className="font-mono text-blue-600 flex-shrink-0">{f.field_name}</span>
+                <span className="text-gray-400 line-through whitespace-pre-wrap break-words">{formatValue(f.old_value)}</span>
+                <span className="text-gray-300 flex-shrink-0">→</span>
+                <span className="text-gray-900 whitespace-pre-wrap break-words">{formatValue(f.new_value)}</span>
+              </div>
+            ))}
+            {pendingChanges.length === 0 && (approvedCount > 0 || rejectedCount > 0) && (
+              <span className="text-xs text-gray-400 italic">All fields reviewed</span>
+            )}
+          </div>
+        );
       case 'source':
         return (
           <div className="flex flex-col">
-            <span className="text-sm text-gray-700">{fc.group_label}</span>
-            {fc.group_source && (
-              <span className="text-[10px] text-gray-400 uppercase">{fc.group_source}</span>
+            <span className="text-sm text-gray-700">{cs.group_label}</span>
+            {cs.group_source && (
+              <span className="text-[10px] text-gray-400 uppercase">{cs.group_source}</span>
             )}
           </div>
         );
       case 'author':
         return (
-          <div 
-            className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-[10px] font-bold shadow-sm"
-            title={formatUserName(fc.created_by)}
-          >
-            {getInitials(fc.created_by)}
+          <div className="flex justify-start">
+            <div 
+              className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-[10px] font-bold shadow-sm"
+              title={formatUserName(cs.created_by)}
+            >
+              {getInitials(cs.created_by)}
+            </div>
           </div>
         );
       case 'date':
-        return <span className="text-sm text-gray-500">{new Date(fc.created_at).toLocaleDateString()}</span>;
+        return <span className="text-sm text-gray-500">{new Date(cs.created_at).toLocaleDateString()}</span>;
       default:
         return null;
     }
-  }, [view]);
+  }, []);
 
   // --- Actions ---
 
-  const updateFieldStatus = async (fieldChangeId: string, status: 'approved' | 'rejected') => {
-    const fc = flatFieldChanges.find(x => x.id === fieldChangeId);
-    if (!fc) return;
-
-    // We need the changeset ID for the API call
-    let changesetId = fc.changeset_id;
-
-    try {
-      const response = await fetch(`/api/changesets/${changesetId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ field_change_id: fieldChangeId, status }),
-      });
-      if (!response.ok) throw new Error('Failed to update status');
-      return true;
-    } catch (err) {
-      console.error(err);
-      return false;
-    }
-  };
-
-  const commitChangeset = async (changesetId: string) => {
+  const commitChangeset = async (changesetId: string, entityDisplay?: string): Promise<{ success: boolean; conflict?: boolean }> => {
     try {
       const response = await fetch(`/api/changesets/${changesetId}/commit`, {
         method: 'POST',
       });
+      
+      if (response.status === 409) {
+        // Version conflict
+        const result = await response.json();
+        setConflictDialog({
+          isOpen: true,
+          errors: result.errors || [],
+          changesetId,
+          entityDisplay: entityDisplay || null,
+        });
+        return { success: false, conflict: true };
+      }
+      
       if (!response.ok) throw new Error('Failed to commit');
-      return true;
+      return { success: true };
     } catch (err) {
       console.error(err);
-      return false;
-    }
-  };
-
-  const commitChangegroup = async (changegroupId: string) => {
-    try {
-      const response = await fetch(`/api/changegroups/${changegroupId}/commit`, {
-        method: 'POST',
-      });
-      if (!response.ok) throw new Error('Failed to commit changegroup');
-      return true;
-    } catch (err) {
-      console.error(err);
-      return false;
+      return { success: false };
     }
   };
 
   const handleSingleCommit = async (id: string) => {
     setIsCommitting(true);
-    if (view === 'fields') {
-      const success = await updateFieldStatus(id, 'approved');
-      if (success) {
-        // Find changeset to commit
-        const fc = flatFieldChanges.find(x => x.id === id);
-        if (fc) await commitChangeset(fc.changeset_id);
+    const changeset = flatChangesets.find(cs => cs.id === id);
+    try {
+      await fetch(`/api/changesets/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'approve_all' }),
+      });
+      const result = await commitChangeset(id, changeset?.entity_display);
+      if (result.conflict) {
+        // Conflict dialog is shown, don't refresh data yet
+        setIsCommitting(false);
+        return;
       }
-    } else if (view === 'changesets') {
-      // Approve all in changeset then commit
-      try {
-        await fetch(`/api/changesets/${id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'approve_all' }),
-        });
-        await commitChangeset(id);
-      } catch (err) {
-        console.error(err);
-      }
-    } else if (view === 'jobs') {
-      // Commit entire changegroup
-      if (id === 'ungrouped') {
-        // For ungrouped, commit each changeset individually
-        const job = flatJobs.find(j => j.id === id);
-        if (job) {
-          for (const cs of job.changesets) {
-            await fetch(`/api/changesets/${cs.id}`, {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ action: 'approve_all' }),
-            });
-            await commitChangeset(cs.id);
-          }
-        }
-      } else {
-        await commitChangegroup(id);
-      }
+    } catch (err) {
+      console.error(err);
     }
     await fetchData();
     setIsCommitting(false);
@@ -953,70 +755,109 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
   const handleBulkCommit = async () => {
     setIsCommitting(true);
     const ids = Array.from(selection.selectedIds);
-    for (const id of ids) {
-      if (view === 'fields') {
-        const fc = flatFieldChanges.find(x => x.id === id);
-        if (fc) {
-          await updateFieldStatus(id, 'approved');
-          await commitChangeset(fc.changeset_id);
+    
+    try {
+      const response = await fetch('/api/changesets/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids, action: 'approve_and_commit' }),
+      });
+      
+      if (response.status === 409) {
+        // Version conflict
+        const result = await response.json();
+        if (result.conflict) {
+          const conflictedChangeset = flatChangesets.find(cs => cs.id === result.conflict.changeset_id);
+          setConflictDialog({
+            isOpen: true,
+            errors: result.conflict.errors || [],
+            changesetId: result.conflict.changeset_id,
+            entityDisplay: conflictedChangeset?.entity_display || null,
+          });
         }
-      } else if (view === 'changesets') {
-        await fetch(`/api/changesets/${id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'approve_all' }),
-        });
-        await commitChangeset(id);
-      } else if (view === 'jobs') {
-        if (id === 'ungrouped') {
-          const job = flatJobs.find(j => j.id === id);
-          if (job) {
-            for (const cs of job.changesets) {
-              await fetch(`/api/changesets/${cs.id}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'approve_all' }),
-              });
-              await commitChangeset(cs.id);
-            }
-          }
-        } else {
-          await commitChangegroup(id);
-        }
+        setIsCommitting(false);
+        return;
       }
+      
+      if (!response.ok) throw new Error('Failed to commit');
+    } catch (err) {
+      console.error('Bulk commit failed:', err);
     }
+    
     selection.clearSelection();
     await fetchData();
     setIsCommitting(false);
   };
 
   const handleBulkReject = async () => {
+    setIsCommitting(true);
     const ids = Array.from(selection.selectedIds);
-    for (const id of ids) {
-      if (view === 'fields') {
-        await updateFieldStatus(id, 'rejected');
-      } else if (view === 'changesets') {
+    
+    try {
+      await fetch('/api/changesets/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids, action: 'reject' }),
+      });
+    } catch (err) {
+      console.error('Bulk reject failed:', err);
+    }
+    
+    selection.clearSelection();
+    await fetchData();
+    setIsCommitting(false);
+  };
+
+  const handleSingleReject = async (id: string) => {
+    setIsCommitting(true);
+    try {
+      const changeset = flatChangesets.find(cs => cs.id === id);
+      // For DELETE/CREATE operations, discard the changeset entirely
+      if (changeset && (changeset.operation === 'delete' || changeset.operation === 'create')) {
+        await fetch(`/api/changesets/${id}`, {
+          method: 'DELETE',
+        });
+      } else {
         await fetch(`/api/changesets/${id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action: 'reject_all' }),
         });
-      } else if (view === 'jobs') {
-        // Reject all changesets in the job
-        const job = flatJobs.find(j => j.id === id);
-        if (job) {
-          for (const cs of job.changesets) {
-            await fetch(`/api/changesets/${cs.id}`, {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ action: 'reject_all' }),
-            });
-          }
-        }
       }
+    } catch (err) {
+      console.error('Failed to reject:', err);
     }
-    selection.clearSelection();
     await fetchData();
+    setIsCommitting(false);
+  };
+
+  // --- Conflict Dialog Handlers ---
+  
+  const handleCloseConflictDialog = () => {
+    setConflictDialog({ isOpen: false, errors: [], changesetId: null, entityDisplay: null });
+    // Refresh data to show updated state
+    fetchData();
+  };
+
+  const handleDiscardConflictedChangeset = async () => {
+    if (!conflictDialog.changesetId) return;
+    
+    setIsDiscarding(true);
+    try {
+      const response = await fetch(`/api/changesets/${conflictDialog.changesetId}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) throw new Error('Failed to discard changeset');
+      
+      // Close dialog and refresh
+      setConflictDialog({ isOpen: false, errors: [], changesetId: null, entityDisplay: null });
+      await fetchData();
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      console.error('Failed to discard changeset:', err);
+    } finally {
+      setIsDiscarding(false);
+    }
   };
 
   // --- Render ---
@@ -1036,7 +877,6 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
     );
   }
 
-  const currentList = view === 'fields' ? paginatedFieldChanges : view === 'changesets' ? paginatedChangesets : paginatedJobs;
   const hasPending = data && data.total_pending_changesets > 0;
 
   return (
@@ -1114,90 +954,184 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
         <Modal
           isOpen={true}
           onClose={() => setSelectedDetail(null)}
-          title={
-            selectedDetail.type === 'field' 
-              ? <span className="flex items-center gap-2">
-                  <span className="font-mono text-blue-600">{(selectedDetail.item as FlatFieldChange).field_name}</span>
-                  <span className="text-gray-400 font-normal">on</span>
-                  <span>{(selectedDetail.item as FlatFieldChange).entity_display}</span>
+          customHeader={
+            <div className="flex-1">
+              <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <span>{selectedDetail.entity_display}</span>
+                <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${getOperationColor(selectedDetail.operation)}`}>
+                  {selectedDetail.operation}
                 </span>
-              : selectedDetail.type === 'changeset'
-              ? <span className="flex items-center gap-2">
-                  <span>{(selectedDetail.item as FlatChangeset).entity_display}</span>
-                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${getOperationColor((selectedDetail.item as FlatChangeset).operation)}`}>
-                    {(selectedDetail.item as FlatChangeset).operation}
-                  </span>
-                </span>
-              : (selectedDetail.item as FlatJob).label
+              </h3>
+            </div>
           }
           maxWidth="lg"
           footer={
             <div className="flex items-center justify-between">
               <span className="text-xs text-gray-400">
-                {formatUserName(selectedDetail.item.created_by)} · {new Date(selectedDetail.item.created_at).toLocaleDateString()}
+                {formatUserName(selectedDetail.created_by)} · {new Date(selectedDetail.created_at).toLocaleDateString()}
               </span>
-              <button
-                onClick={() => {
-                  handleSingleCommit(selectedDetail.item.id);
-                  setSelectedDetail(null);
-                }}
-                disabled={isCommitting}
-                className="px-4 py-1.5 bg-green-600 hover:bg-green-500 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 cursor-pointer"
-              >
-                Commit
-              </button>
+              <div className="flex items-center gap-2">
+                {selectedDetail.operation === 'update' && (
+                  <button
+                    onClick={async () => {
+                      await handleSingleReject(selectedDetail.id);
+                      setSelectedDetail(null);
+                    }}
+                    disabled={isCommitting}
+                    className="px-4 py-1.5 bg-red-600 hover:bg-red-500 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 cursor-pointer"
+                  >
+                    Reject All
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    handleSingleCommit(selectedDetail.id);
+                    setSelectedDetail(null);
+                  }}
+                  disabled={isCommitting || (selectedDetail.operation === 'update' && detailFieldChanges.every(fc => fc.status === 'rejected'))}
+                  className="px-4 py-1.5 bg-green-600 hover:bg-green-500 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 cursor-pointer"
+                >
+                  {selectedDetail.operation === 'update' 
+                    ? `Commit${detailFieldChanges.filter(fc => fc.status === 'approved').length > 0 ? ` (${detailFieldChanges.filter(fc => fc.status === 'approved').length})` : ''}`
+                    : 'Commit'
+                  }
+                </button>
+              </div>
             </div>
           }
         >
           <div className="px-5 py-4">
-            {selectedDetail.type === 'field' && (() => {
-              const fc = selectedDetail.item;
+            {/* Handle delete operation */}
+            {selectedDetail.operation === 'delete' && (() => {
+              const snapshot = selectedDetail.before_snapshot;
               return (
                 <div className="space-y-3">
-                  <div className="text-sm text-gray-500 line-through">{formatValue(fc.old_value)}</div>
-                  <div className="text-sm text-gray-900">{formatValue(fc.new_value)}</div>
-                </div>
-              );
-            })()}
-
-            {selectedDetail.type === 'changeset' && (() => {
-              const cs = selectedDetail.item;
-              return (
-                <div className="space-y-2">
-                  {cs.field_changes.map(fc => (
-                    <div key={fc.id} className="flex items-baseline gap-3 text-sm">
-                      <span className="font-mono text-blue-600 w-28 flex-shrink-0 truncate">{fc.field_name}</span>
-                      <span className="text-gray-400 line-through truncate flex-1">{formatValue(fc.old_value)}</span>
-                      <span className="text-gray-300">→</span>
-                      <span className="text-gray-900 truncate flex-1">{formatValue(fc.new_value)}</span>
+                  <div className="text-sm text-red-600 font-semibold">This entity will be permanently deleted</div>
+                  {snapshot && (
+                    <div className="space-y-2 text-sm">
+                      {Object.entries(snapshot)
+                        .filter(([key]) => !['id', 'created_at', 'updated_at', 'version', 'deleted'].includes(key))
+                        .map(([key, value]) => (
+                          <div key={key} className="flex items-baseline gap-3">
+                            <span className="font-mono text-gray-500 w-28 flex-shrink-0 truncate">{key}</span>
+                            <span className="text-gray-600 break-all">{formatValue(value)}</span>
+                          </div>
+                        ))}
                     </div>
-                  ))}
+                  )}
                 </div>
               );
             })()}
-
-            {selectedDetail.type === 'job' && (() => {
-              const job = selectedDetail.item;
+            
+            {/* Handle create operation */}
+            {selectedDetail.operation === 'create' && (() => {
+              const snapshot = selectedDetail.after_snapshot;
               return (
                 <div className="space-y-3">
-                  <div className="text-sm text-gray-500">
-                    {job.total_changesets} rows · {job.entity_types.join(', ')}
-                  </div>
-                  <div className="max-h-60 overflow-y-auto space-y-1">
-                    {job.changesets.map(cs => (
-                      <div key={cs.id} className="text-sm flex items-center gap-2">
-                        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-                          cs.operation === 'create' ? 'bg-green-500' :
-                          cs.operation === 'delete' ? 'bg-red-500' : 'bg-blue-500'
-                        }`} />
-                        <span className="text-gray-900 truncate">{getEntityDisplayName(cs)}</span>
-                        <span className="text-gray-400 text-xs">{cs.field_changes.length} fields</span>
-                      </div>
-                    ))}
-                  </div>
+                  <div className="text-sm text-green-600 font-semibold">New entity will be created</div>
+                  {snapshot && (
+                    <div className="space-y-2 text-sm">
+                      {Object.entries(snapshot)
+                        .filter(([key]) => !['id', 'created_at', 'updated_at', 'version', 'deleted'].includes(key))
+                        .map(([key, value]) => (
+                          <div key={key} className="flex items-baseline gap-3">
+                            <span className="font-mono text-gray-500 w-28 flex-shrink-0 truncate">{key}</span>
+                            <span className="text-gray-900 break-all">{formatValue(value)}</span>
+                          </div>
+                        ))}
+                    </div>
+                  )}
                 </div>
               );
             })()}
+            
+            {/* Handle update operation with field changes */}
+            {selectedDetail.operation === 'update' && (
+              <div className="space-y-3">
+                {detailFieldChanges.map(fc => (
+                  <div 
+                    key={fc.id} 
+                    className={`p-3 rounded-lg border ${
+                      fc.status === 'approved' 
+                        ? 'bg-green-50 border-green-200' 
+                        : fc.status === 'rejected' 
+                        ? 'bg-red-50 border-red-200' 
+                        : 'bg-gray-50 border-gray-200'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-mono text-blue-600 font-medium text-sm">{fc.field_name}</span>
+                      <div className="flex items-center gap-2">
+                        {fc.status !== 'pending' && (
+                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                            fc.status === 'approved' 
+                              ? 'bg-green-100 text-green-700' 
+                              : 'bg-red-100 text-red-700'
+                          }`}>
+                            {fc.status}
+                          </span>
+                        )}
+                        <button
+                          onClick={() => handleFieldChangeStatus(fc.id, 'approved')}
+                          disabled={isUpdatingField === fc.id || fc.status === 'approved'}
+                          className={`p-1.5 rounded-lg transition-colors ${
+                            fc.status === 'approved'
+                              ? 'bg-green-200 text-green-700 cursor-default'
+                              : 'text-green-600 hover:bg-green-100 disabled:opacity-50'
+                          }`}
+                          title="Approve this change"
+                        >
+                          <CheckIcon className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleFieldChangeStatus(fc.id, 'rejected')}
+                          disabled={isUpdatingField === fc.id || fc.status === 'rejected'}
+                          className={`p-1.5 rounded-lg transition-colors ${
+                            fc.status === 'rejected'
+                              ? 'bg-red-200 text-red-700 cursor-default'
+                              : 'text-red-600 hover:bg-red-100 disabled:opacity-50'
+                          }`}
+                          title="Reject this change"
+                        >
+                          <XMarkIcon className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3 text-sm">
+                      <div className="flex-1 min-w-0">
+                        <span className="text-xs text-gray-500 block mb-1">Current:</span>
+                        <span className="text-gray-500 line-through break-all">{formatValue(fc.old_value)}</span>
+                      </div>
+                      <span className="text-gray-300 flex-shrink-0 mt-5">→</span>
+                      <div className="flex-1 min-w-0">
+                        <span className="text-xs text-gray-500 block mb-1">New:</span>
+                        <span className="text-gray-900 break-all">{formatValue(fc.new_value)}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                
+                {/* Summary of decisions */}
+                {detailFieldChanges.length > 0 && (
+                  <div className="pt-3 border-t border-gray-200 text-sm text-gray-500">
+                    {(() => {
+                      const approved = detailFieldChanges.filter(fc => fc.status === 'approved').length;
+                      const rejected = detailFieldChanges.filter(fc => fc.status === 'rejected').length;
+                      const pending = detailFieldChanges.filter(fc => fc.status === 'pending').length;
+                      return (
+                        <span>
+                          {approved > 0 && <span className="text-green-600">{approved} approved</span>}
+                          {approved > 0 && (rejected > 0 || pending > 0) && ', '}
+                          {rejected > 0 && <span className="text-red-600">{rejected} rejected</span>}
+                          {rejected > 0 && pending > 0 && ', '}
+                          {pending > 0 && <span className="text-gray-600">{pending} pending</span>}
+                        </span>
+                      );
+                    })()}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </Modal>
       )}
@@ -1206,52 +1140,9 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
       <div className="bg-white rounded-xl border border-gray-200">
         {/* Toolbar - matching DataTable layout */}
         <div className="p-4 border-b border-gray-200 bg-gray-50">
-          {/* View Toggle Row */}
+          {/* Header Row */}
           <div className="mb-4 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-gray-600 mr-2">View:</span>
-              <div className="inline-flex rounded-xl border border-gray-300 bg-white overflow-hidden">
-                <button
-                  onClick={() => setView('fields')}
-                  className={`px-4 py-2 text-sm font-medium transition-colors cursor-pointer ${
-                    view === 'fields'
-                      ? 'bg-blue-600 text-white'
-                      : 'text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  Value
-                </button>
-                <button
-                  onClick={() => setView('changesets')}
-                  className={`px-4 py-2 text-sm font-medium border-l border-r border-gray-300 transition-colors cursor-pointer ${
-                    view === 'changesets'
-                      ? 'bg-blue-600 text-white border-blue-600'
-                      : 'text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  Row
-                </button>
-                <button
-                  onClick={() => setView('jobs')}
-                  className={`px-4 py-2 text-sm font-medium transition-colors cursor-pointer ${
-                    view === 'jobs'
-                      ? 'bg-blue-600 text-white'
-                      : 'text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  Job
-                </button>
-              </div>
-            </div>
-            <div className="text-sm text-gray-500">
-              {hasActiveFilters ? (
-                <>
-                  <span className="font-medium text-blue-600">{totalItems}</span>
-                  {' of '}
-                </>
-              ) : null}
-              {data?.total_pending_changesets || 0} rows across {data?.total_changegroups || 0} groups
-            </div>
+            <h2 className="text-lg font-semibold text-gray-900">Pending Changes</h2>
           </div>
 
           {/* Main Controls Row */}
@@ -1330,33 +1221,31 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
                       </div>
 
                       {/* Operation Filter */}
-                      {view !== 'jobs' && (
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">Operation</label>
-                          <div className="flex flex-wrap gap-2">
-                            {filterOptions.operations.map(op => (
-                              <button
-                                key={op}
-                                onClick={() => setFilter(f => ({
-                                  ...f,
-                                  operations: f.operations.includes(op)
-                                    ? f.operations.filter(x => x !== op)
-                                    : [...f.operations, op]
-                                }))}
-                                className={`px-3 py-1 text-sm font-medium rounded-xl transition-colors cursor-pointer ${
-                                  filter.operations.includes(op)
-                                    ? op === 'create' ? 'bg-green-100 text-green-800 border border-green-200'
-                                    : op === 'update' ? 'bg-blue-100 text-blue-800 border border-blue-200'
-                                    : 'bg-red-100 text-red-800 border border-red-200'
-                                    : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
-                                }`}
-                              >
-                                {op}
-                              </button>
-                            ))}
-                          </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Operation</label>
+                        <div className="flex flex-wrap gap-2">
+                          {filterOptions.operations.map(op => (
+                            <button
+                              key={op}
+                              onClick={() => setFilter(f => ({
+                                ...f,
+                                operations: f.operations.includes(op)
+                                  ? f.operations.filter(x => x !== op)
+                                  : [...f.operations, op]
+                              }))}
+                              className={`px-3 py-1 text-sm font-medium rounded-xl transition-colors cursor-pointer ${
+                                filter.operations.includes(op)
+                                  ? op === 'create' ? 'bg-green-100 text-green-800 border border-green-200'
+                                  : op === 'update' ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                                  : 'bg-red-100 text-red-800 border border-red-200'
+                                  : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
+                              }`}
+                            >
+                              {op}
+                            </button>
+                          ))}
                         </div>
-                      )}
+                      </div>
 
                       {/* Source Filter */}
                       <div>
@@ -1384,7 +1273,7 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
                       </div>
 
                       {/* Job Filter */}
-                      {filterOptions.jobs.length > 0 && view !== 'jobs' && (
+                      {filterOptions.jobs.length > 0 && (
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-2">Job</label>
                           <select
@@ -1412,7 +1301,7 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
                             {activeFilterCount} filter{activeFilterCount !== 1 ? 's' : ''} active
                           </span>
                           <span className="text-sm text-gray-500">
-                            Showing {currentList.length} of {view === 'fields' ? flatFieldChanges.length : view === 'changesets' ? flatChangesets.length : flatJobs.length} items
+                            Showing {paginatedChangesets.length} of {flatChangesets.length} rows
                           </span>
                         </div>
                       </div>
@@ -1450,7 +1339,11 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
                     disabled={isCommitting}
                     className="flex items-center gap-1 px-3 py-1 text-sm font-medium text-green-700 bg-green-100 border border-green-200 rounded-xl hover:bg-green-200 transition-colors cursor-pointer disabled:opacity-50"
                   >
-                    <CheckIcon className="w-4 h-4" />
+                    {isCommitting ? (
+                      <LoadingSpinner size="sm" noPadding />
+                    ) : (
+                      <CheckIcon className="w-4 h-4" />
+                    )}
                     Commit
                   </button>
                   <button
@@ -1458,12 +1351,17 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
                     disabled={isCommitting}
                     className="flex items-center gap-1 px-3 py-1 text-sm font-medium text-red-700 bg-red-100 border border-red-200 rounded-xl hover:bg-red-200 transition-colors cursor-pointer disabled:opacity-50"
                   >
-                    <XMarkIcon className="w-4 h-4" />
+                    {isCommitting ? (
+                      <LoadingSpinner size="sm" noPadding />
+                    ) : (
+                      <XMarkIcon className="w-4 h-4" />
+                    )}
                     Reject
                   </button>
                   <button
                     onClick={() => selection.clearSelection()}
-                    className="text-sm text-gray-500 hover:text-gray-700 transition-colors cursor-pointer"
+                    disabled={isCommitting}
+                    className="text-sm text-gray-500 hover:text-gray-700 transition-colors cursor-pointer disabled:opacity-50"
                   >
                     Clear
                   </button>
@@ -1513,13 +1411,17 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
         </div>
 
         {/* Table Content */}
-        {!hasPending ? (
+        {isCommitting ? (
+          <div className="p-8 text-center">
+            <LoadingSpinner size="page" label="Processing changes..." className="py-20" />
+          </div>
+        ) : !hasPending ? (
           <EmptyState
             icon={<CheckCircleIcon className="h-24 w-24 mx-auto mb-4" />}
             title="All Clear!"
             description="No pending changes to review."
           />
-        ) : currentList.length === 0 ? (
+        ) : paginatedChangesets.length === 0 ? (
           <EmptyState
             title="No matching changes"
             description="Try adjusting your filters"
@@ -1555,29 +1457,18 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
                       </div>
                     </th>
                   ))}
-                  <th className="px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200 text-right bg-gray-50" style={{ width: '100px' }}>Actions</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200 text-left bg-gray-50" style={{ width: '100px' }}>Actions</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {currentList.map((item) => {
+                {paginatedChangesets.map((item) => {
                   const isSelected = selection.isSelected(item.id);
-                  
-                  // Unified rendering for all views using dynamic columns
-                  const handleRowClick = () => {
-                    if (view === 'jobs') {
-                      setSelectedDetail({ type: 'job', item: item as FlatJob });
-                    } else if (view === 'fields') {
-                      setSelectedDetail({ type: 'field', item: item as FlatFieldChange });
-                    } else {
-                      setSelectedDetail({ type: 'changeset', item: item as FlatChangeset });
-                    }
-                  };
 
                   return (
                     <tr 
                       key={item.id} 
                       className={`${isSelected ? 'bg-blue-50' : 'bg-white hover:bg-gray-50'} transition-colors cursor-pointer`}
-                      onClick={handleRowClick}
+                      onClick={() => setSelectedDetail(item)}
                     >
                       <td className="px-4 py-4 whitespace-nowrap" style={{ width: '48px' }} onClick={e => e.stopPropagation()}>
                         <input
@@ -1596,31 +1487,23 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
                           {renderCellContent(column.key, item)}
                         </td>
                       ))}
-                      <td className="px-4 py-4 text-right align-top" style={{ width: '100px' }} onClick={e => e.stopPropagation()}>
-                        <div className="flex items-center justify-end gap-1">
+                      <td className="px-4 py-4 text-left align-top" style={{ width: '100px' }} onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center justify-start gap-1">
                           {/* Comments Button */}
-                          {(() => {
-                            // For fields view, use changeset_id; for changesets view, use item.id
-                            const csId = view === 'fields' 
-                              ? (item as FlatFieldChange).changeset_id 
-                              : item.id;
-                            return (
-                              <button
-                                onClick={() => setExpandedComments(csId)}
-                                className={`p-1.5 rounded-lg transition-colors relative ${
-                                  unreadChangesetIds.has(csId)
-                                    ? 'text-amber-600 hover:bg-amber-50'
-                                    : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'
-                                }`}
-                                title="Discussion"
-                              >
-                                <ChatBubbleLeftIcon className="w-5 h-5" />
-                                {unreadChangesetIds.has(csId) && (
-                                  <span className="absolute -top-1 -right-1 w-3 h-3 bg-amber-500 rounded-full border-2 border-white" />
-                                )}
-                              </button>
-                            );
-                          })()}
+                          <button
+                            onClick={() => setExpandedComments(item.id)}
+                            className={`p-1.5 rounded-lg transition-colors relative ${
+                              unreadChangesetIds.has(item.id)
+                                ? 'text-amber-600 hover:bg-amber-50'
+                                : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'
+                            }`}
+                            title="Discussion"
+                          >
+                            <ChatBubbleLeftIcon className="w-5 h-5" />
+                            {unreadChangesetIds.has(item.id) && (
+                              <span className="absolute -top-1 -right-1 w-3 h-3 bg-amber-500 rounded-full border-2 border-white" />
+                            )}
+                          </button>
                           <button
                             onClick={() => handleSingleCommit(item.id)}
                             disabled={isCommitting}
@@ -1630,8 +1513,9 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
                             <CheckIcon className="w-5 h-5" />
                           </button>
                           <button
-                            onClick={() => { /* Implement single reject */ }}
-                            className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            onClick={() => handleSingleReject(item.id)}
+                            disabled={isCommitting}
+                            className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
                             title="Reject"
                           >
                             <XMarkIcon className="w-5 h-5" />
@@ -1654,9 +1538,19 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
           pageSize={pageSize}
           onPageChange={setPage}
           loading={isLoading}
-          itemLabel={view === 'fields' ? 'value changes' : view === 'changesets' ? 'rows' : 'jobs'}
+          itemLabel="rows"
         />
       </div>
+
+      {/* Conflict Dialog */}
+      <ConflictDialog
+        isOpen={conflictDialog.isOpen}
+        onClose={handleCloseConflictDialog}
+        onDiscard={handleDiscardConflictedChangeset}
+        errors={conflictDialog.errors}
+        entityDisplay={conflictDialog.entityDisplay || undefined}
+        loading={isDiscarding}
+      />
     </div>
   );
 }

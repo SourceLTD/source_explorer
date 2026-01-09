@@ -1,10 +1,11 @@
 import React from 'react';
-import { GraphNode, Mode } from '@/lib/types';
-import { EditableField, FrameOption } from './types';
+import { GraphNode, PendingChangeInfo } from '@/lib/types';
+import { Mode, EditableField, FrameOption } from './types';
 import { OverlaySection } from './OverlaySection';
 import { VendlerClassSelector } from './VendlerClassSelector';
 import { FrameSelector } from './FrameSelector';
 import { LexfileSelector } from './LexfileSelector';
+import { PendingFieldIndicator } from '@/components/PendingChangeIndicator';
 
 interface LexicalPropertiesSectionProps {
   node: GraphNode;
@@ -19,6 +20,7 @@ interface LexicalPropertiesSectionProps {
   onSave: () => void;
   onCancel: () => void;
   isSaving: boolean;
+  pending?: PendingChangeInfo | null;
 }
 
 export function LexicalPropertiesSection({
@@ -33,8 +35,38 @@ export function LexicalPropertiesSection({
   onValueChange,
   onSave,
   onCancel,
-  isSaving
+  isSaving,
+  pending
 }: LexicalPropertiesSectionProps) {
+  // Helper to check if a field has pending changes
+  const hasPendingField = (fieldName: string) => {
+    return !!pending?.pending_fields?.[fieldName];
+  };
+
+  // Helper to get the display value for a field (pending new_value if exists, otherwise current value)
+  const getDisplayValue = <T,>(fieldName: string, currentValue: T): T => {
+    const pendingField = pending?.pending_fields?.[fieldName];
+    if (pendingField) {
+      return pendingField.new_value as T;
+    }
+    return currentValue;
+  };
+
+  // Helper to get frame label from frame_id (handles pending changes)
+  const getFrameLabel = (): string | null => {
+    const frameId = getDisplayValue('frame_id', node.frame_id);
+    if (!frameId) return null;
+    
+    // If there's a pending change, look up from availableFrames
+    if (hasPendingField('frame_id')) {
+      const frame = availableFrames.find(f => f.id === frameId);
+      return frame?.label ?? null;
+    }
+    
+    // Otherwise use the current node's frame label
+    return node.frame?.label ?? null;
+  };
+
   const getTitle = () => {
     switch (mode) {
       case 'verbs': return 'Verb Properties';
@@ -60,7 +92,12 @@ export function LexicalPropertiesSection({
       {mode === 'verbs' && (
         <div>
           <div className="flex items-center justify-between mb-2">
-            <h3 className="text-sm font-medium text-gray-700">Vendler Class</h3>
+            <h3 className="text-sm font-medium text-gray-700">
+              Vendler Class
+              {hasPendingField('vendler_class') && (
+                <span className="ml-2 text-xs text-orange-600 font-normal">(pending)</span>
+              )}
+            </h3>
             {editingField !== 'vendler_class' && (
               <button
                 onClick={() => onStartEdit('vendler_class')}
@@ -79,9 +116,11 @@ export function LexicalPropertiesSection({
               isSaving={isSaving}
             />
           ) : (
-            <p className="text-gray-900 text-sm">
-              {node.vendler_class || <span className="text-gray-500 italic">None</span>}
-            </p>
+            <PendingFieldIndicator fieldName="vendler_class" pending={pending}>
+              <span className="text-gray-900 text-sm">
+                {getDisplayValue('vendler_class', node.vendler_class) || <span className="text-gray-500 italic">None</span>}
+              </span>
+            </PendingFieldIndicator>
           )}
         </div>
       )}
@@ -90,7 +129,12 @@ export function LexicalPropertiesSection({
       {(mode === 'verbs' || mode === 'nouns' || mode === 'adjectives' || mode === 'adverbs') && (
         <div>
           <div className="flex items-center justify-between mb-2">
-            <h3 className="text-sm font-medium text-gray-700">Frame</h3>
+            <h3 className="text-sm font-medium text-gray-700">
+              Frame
+              {hasPendingField('frame_id') && (
+                <span className="ml-2 text-xs text-orange-600 font-normal">(pending)</span>
+              )}
+            </h3>
             {editingField !== 'frame' && (
               <button
                 onClick={() => onStartEdit('frame')}
@@ -110,9 +154,11 @@ export function LexicalPropertiesSection({
               isSaving={isSaving}
             />
           ) : (
-            <p className="text-gray-900 text-sm">
-              {node.frame?.label || <span className="text-gray-500 italic">None</span>}
-            </p>
+            <PendingFieldIndicator fieldName="frame_id" pending={pending}>
+              <span className="text-gray-900 text-sm">
+                {getFrameLabel() || <span className="text-gray-500 italic">None</span>}
+              </span>
+            </PendingFieldIndicator>
           )}
         </div>
       )}
@@ -120,7 +166,12 @@ export function LexicalPropertiesSection({
       {/* Category (Lexfile) */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <h3 className="text-sm font-medium text-gray-700">Category</h3>
+          <h3 className="text-sm font-medium text-gray-700">
+            Category
+            {hasPendingField('lexfile') && (
+              <span className="ml-2 text-xs text-orange-600 font-normal">(pending)</span>
+            )}
+          </h3>
           {editingField !== 'lexfile' && (
             <button
               onClick={() => onStartEdit('lexfile')}
@@ -140,7 +191,9 @@ export function LexicalPropertiesSection({
             isSaving={isSaving}
           />
         ) : (
-          <p className="text-gray-900 text-sm">{node.lexfile}</p>
+          <PendingFieldIndicator fieldName="lexfile" pending={pending}>
+            <span className="text-gray-900 text-sm">{getDisplayValue('lexfile', node.lexfile)}</span>
+          </PendingFieldIndicator>
         )}
       </div>
     </OverlaySection>
