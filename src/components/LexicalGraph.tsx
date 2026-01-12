@@ -532,7 +532,7 @@ export default function LexicalGraph({ currentNode, onNodeClick, onEditClick, mo
                           alignItems: 'center',
                           gap: '4px',
                         }}
-                        title={posNode.node.frame.short_definition}
+                        title={posNode.node.frame.short_definition ?? undefined}
                       >
                         <span style={{ 
                           backgroundColor: '#8b5cf6', 

@@ -411,7 +411,7 @@ export default function GraphMainNode({
               alignItems: 'center',
               gap: '4px',
             }}
-            title={node.frame.short_definition}
+            title={node.frame.short_definition ?? undefined}
           >
             <span style={{ 
               backgroundColor: '#8b5cf6', 

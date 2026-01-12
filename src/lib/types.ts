@@ -210,8 +210,8 @@ export interface FrameRole {
 export interface Frame {
   id: string;
   label: string;
-  definition: string;
-  short_definition: string;
+  definition?: string | null;
+  short_definition?: string | null;
   prototypical_synset: string;
   flagged?: boolean;
   flaggedReason?: string;
@@ -724,12 +724,12 @@ export interface FrameGraphRelation {
   target?: {
     id: string;
     label: string;
-    short_definition: string;
+    short_definition?: string | null;
   };
   source?: {
     id: string;
     label: string;
-    short_definition: string;
+    short_definition?: string | null;
   };
 }
 
@@ -738,8 +738,8 @@ export interface FrameGraphNode {
   numericId: string;
   pos: 'frames';
   label: string;
-  gloss: string; // definition
-  short_definition: string;
+  gloss?: string | null; // definition
+  short_definition?: string | null;
   prototypical_synset: string;
   roles: FrameGraphRole[];
   verbs: FrameGraphVerb[];
@@ -799,7 +799,7 @@ export interface FrameRecipeVerb {
 export interface FrameRecipeRelatedFrame {
   id: string;
   label: string;
-  short_definition: string;
+  short_definition?: string | null;
   roles?: Array<{
     id: string;
     role_type_label: string;
@@ -812,8 +812,8 @@ export interface FrameRecipeData {
   frame: {
     id: string;
     label: string;
-    definition: string;
-    short_definition: string;
+    definition?: string | null;
+    short_definition?: string | null;
     prototypical_synset: string;
     flagged: boolean | null;
     flagged_reason: string | null;

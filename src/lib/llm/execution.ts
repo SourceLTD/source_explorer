@@ -602,7 +602,7 @@ export async function fetchEntryForItem(item: SerializedJob['items'][number]): P
       dbId: record.id,
       code: record.id.toString(),
       pos: 'frames',
-      gloss: record.definition,
+      gloss: record.definition ?? '',
       lemmas: [],
       examples: [],
       label: record.label,

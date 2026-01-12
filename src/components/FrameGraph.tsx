@@ -137,7 +137,7 @@ export default function FrameGraph({ currentFrame, onFrameClick, onVerbClick, on
       id: currentFrame.id,
       type: 'current',
       label: currentFrame.label,
-      sublabel: currentFrame.short_definition,
+      sublabel: currentFrame.short_definition ?? undefined,
       x: centerX,
       y: centerY,
       width: mainNodeWidth,

@@ -1670,7 +1670,7 @@ async function getVerbGraphNode(entryId: string): Promise<GraphNode | null> {
     console.log(`DEBUG say.v.04 role_groups:`, JSON.stringify(role_groups, null, 2));
     console.log(`DEBUG say.v.04 roles:`, roles.map(r => ({ id: r.id, label: r.role_type.label })));
   }
-  const frameData = (entry as { frames?: { id: bigint; label: string; definition: string; short_definition: string } | null }).frames;
+  const frameData = (entry as { frames?: { id: bigint; label: string; definition?: string | null; short_definition?: string | null } | null }).frames;
   
   // Debug logging for frame mismatch
   if (entryCode === 'say.v.04') {

@@ -21,7 +21,7 @@ interface SemanticSearchResult {
 interface FrameSearchResult {
   id: number;
   label: string;
-  short_definition: string;
+  short_definition?: string | null;
   similarity: number;
 }
 

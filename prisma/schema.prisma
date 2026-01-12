@@ -30,9 +30,9 @@ model frame_roles {
 
 model frames {
   label                                             String
-  definition                                        String
+  definition                                        String?
   prototypical_synset                               String
-  short_definition                                  String
+  short_definition                                  String?
   created_at                                        DateTime               @default(now())
   updated_at                                        DateTime               @default(now())
   id                                                BigInt                 @id @default(autoincrement())

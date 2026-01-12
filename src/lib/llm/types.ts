@@ -116,8 +116,8 @@ export interface FrameNounData {
 export interface FrameRelationData {
   id: string;
   label: string;
-  definition: string;
-  short_definition: string;
+  definition?: string | null;
+  short_definition?: string | null;
   prototypical_synset: string;
   roles: FrameRoleData[];
   verbs: FrameVerbData[];

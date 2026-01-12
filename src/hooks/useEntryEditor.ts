@@ -25,9 +25,9 @@ export function useEntryEditor(node: GraphNode | Frame | null, mode: Mode) {
       if (field === 'label') {
         setEditValue(frameNode.label);
       } else if (field === 'definition') {
-        setEditValue(frameNode.definition);
+        setEditValue(frameNode.definition ?? '');
       } else if (field === 'short_definition') {
-        setEditValue(frameNode.short_definition);
+        setEditValue(frameNode.short_definition ?? '');
       } else if (field === 'prototypical_synset') {
         setEditValue(frameNode.prototypical_synset);
       } else if (field === 'frame_roles') {

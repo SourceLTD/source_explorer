@@ -21,8 +21,8 @@ import type {
 function buildStructuredFrameData(frameRecord: {
   id: bigint;
   label: string;
-  definition: string;
-  short_definition: string;
+  definition?: string | null;
+  short_definition?: string | null;
   prototypical_synset: string;
   frame_roles?: Array<{
     id: bigint;
@@ -388,7 +388,7 @@ async function fetchEntriesByIds(pos: PartOfSpeech, ids: string[]): Promise<Lexi
           dbId: record.id,
           code: record.id.toString(),
           pos,
-          gloss: record.definition,
+          gloss: record.definition ?? '',
           lemmas: [], // Frames don't have lemmas
           examples: [], // Frames don't have examples
           label: record.label,
@@ -491,7 +491,7 @@ async function fetchEntriesByFrameIds(
         dbId: frame.id,
         code: frame.id.toString(),
         pos: 'frames',
-        gloss: frame.definition,
+        gloss: frame.definition ?? '',
         lemmas: [],
         examples: [],
         label: frame.label,
