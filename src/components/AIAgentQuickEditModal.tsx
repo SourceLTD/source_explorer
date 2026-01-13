@@ -20,7 +20,7 @@ interface AIAgentQuickEditModalProps {
 // Helper to get editable fields by entity type
 function getEditableFields(entry: TableEntry | Frame, mode: DataTableMode): string[] {
   if (mode === 'frames') {
-    return ['definition', 'short_definition', 'prototypical_synset'];
+    return ['definition', 'short_definition'];
   }
 
   // For lexical units, determine fields based on POS
@@ -84,6 +84,12 @@ export function AIAgentQuickEditModal({
       // Simple system prompt for quick edits - just do what the user asks
       const quickEditSystemPrompt = `You are editing a lexical database entry. Follow the user's instructions exactly. Only make the changes they request - do not add extra improvements or modifications beyond what was asked. Be concise and precise.`;
 
+      // Map mode to targetType - DataTableMode to JobTargetType
+      const targetType = mode === 'frames' ? 'frames' : 
+                        mode === 'super_frames' ? 'frames' :
+                        mode === 'lexical_units' ? 'verb' : // Default to verb for lexical units
+                        (entry as TableEntry).pos || 'verb'; // Use entry's actual POS if available
+
       // Create job with single item scope
       const jobPayload = {
         label: `Quick Edit: ${displayId}`,
@@ -92,7 +98,7 @@ export function AIAgentQuickEditModal({
         model: 'gpt-5-nano',
         scope: {
           kind: 'ids' as const,
-          pos: mode,
+          targetType,
           ids: [entryId],
         },
         jobType: 'editing' as const,

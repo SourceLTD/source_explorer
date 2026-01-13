@@ -18,6 +18,7 @@ interface FrameRolesSectionProps {
   onSave: () => void;
   onCancel: () => void;
   isSaving: boolean;
+  isSuperFrame: boolean;
 }
 
 export function FrameRolesSection({
@@ -33,11 +34,12 @@ export function FrameRolesSection({
   onFrameRoleRemove,
   onSave,
   onCancel,
-  isSaving
+  isSaving,
+  isSuperFrame
 }: FrameRolesSectionProps) {
   return (
     <OverlaySection
-      title="Frame Roles"
+      title={isSuperFrame ? "Frame Roles" : "Inherited Roles"}
       icon={
         <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
@@ -49,7 +51,8 @@ export function FrameRolesSection({
       <div>
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-sm font-medium text-gray-700">Thematic Roles</h3>
-          {editingField !== 'frame_roles' && (
+          {/* Only show Edit button for super frames */}
+          {isSuperFrame && editingField !== 'frame_roles' && (
             <button
               onClick={() => onStartEdit('frame_roles')}
               className="text-xs text-blue-600 hover:text-blue-600 font-medium cursor-pointer"
@@ -58,7 +61,15 @@ export function FrameRolesSection({
             </button>
           )}
         </div>
-        {editingField === 'frame_roles' ? (
+
+        {/* Show note for regular frames (inherited roles) */}
+        {!isSuperFrame && (
+          <p className="text-xs text-gray-500 italic mb-3">
+            Roles are inherited from the parent super frame and cannot be edited here.
+          </p>
+        )}
+
+        {editingField === 'frame_roles' && isSuperFrame ? (
           <FrameRoleEditor
             roles={editFrameRoles}
             roleTypes={roleTypes}
@@ -88,7 +99,7 @@ export function FrameRolesSection({
                 ))}
               </div>
             ) : (
-              <p className="text-gray-500 text-sm italic">No roles</p>
+              <p className="text-gray-500 text-sm italic">No roles defined</p>
             )}
           </div>
         )}

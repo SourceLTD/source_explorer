@@ -8,6 +8,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getComments, addComment, getCommentCounts } from '@/lib/version-control';
 import { getCurrentUserName } from '@/utils/supabase/server';
+import { prisma } from '@/lib/db';
+
+// Types for AI revision data
+interface AIRevisionData {
+  id: string;
+  action: string;
+  modifications: Array<{
+    field: string;
+    old_value: unknown;
+    new_value: unknown;
+  }> | null;
+  justification: string | null;
+  confidence: number | null;
+  status: string;
+  accepted_fields: string[];
+  rejected_fields: string[];
+  created_at: string;
+  resolved_at: string | null;
+}
 
 // GET /api/comments - Fetch comments
 export async function GET(request: NextRequest) {
@@ -52,6 +71,39 @@ export async function GET(request: NextRequest) {
     
     const comments = await getComments(filters);
     
+    // Fetch ai_revisions linked to these comments
+    const commentIds = comments.map(c => c.id);
+    const aiRevisions = commentIds.length > 0 
+      ? await prisma.ai_revisions.findMany({
+          where: {
+            comment_id: { in: commentIds },
+          },
+        })
+      : [];
+    
+    // Create a map of comment_id -> ai_revision
+    const revisionMap = new Map<string, AIRevisionData>();
+    for (const rev of aiRevisions) {
+      if (rev.comment_id) {
+        revisionMap.set(rev.comment_id.toString(), {
+          id: rev.id.toString(),
+          action: rev.action,
+          modifications: rev.modifications as Array<{
+            field: string;
+            old_value: unknown;
+            new_value: unknown;
+          }> | null,
+          justification: rev.justification,
+          confidence: rev.confidence ? Number(rev.confidence) : null,
+          status: rev.status,
+          accepted_fields: (rev.accepted_fields as string[]) ?? [],
+          rejected_fields: (rev.rejected_fields as string[]) ?? [],
+          created_at: rev.created_at.toISOString(),
+          resolved_at: rev.resolved_at?.toISOString() ?? null,
+        });
+      }
+    }
+    
     return NextResponse.json({
       comments: comments.map(c => ({
         id: c.id.toString(),
@@ -60,6 +112,7 @@ export async function GET(request: NextRequest) {
         author: c.author,
         content: c.content,
         created_at: c.created_at.toISOString(),
+        ai_revision: revisionMap.get(c.id.toString()) ?? null,
       })),
     });
   } catch (error) {

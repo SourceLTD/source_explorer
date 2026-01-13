@@ -112,15 +112,6 @@ export default function FrameRecipeView({
             )}
           </div>
 
-          {/* Prototypical Synset */}
-          {currentFrame.prototypical_synset && (
-            <div className="mb-4">
-              <span className="px-3 py-1 bg-white/20 rounded-full text-white text-sm">
-                📌 {currentFrame.prototypical_synset}
-              </span>
-            </div>
-          )}
-
           {/* Definition */}
           {currentFrame.gloss && (
             <div className="mb-6 p-4 bg-white/10 rounded-lg">

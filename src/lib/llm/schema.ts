@@ -212,3 +212,92 @@ export type ChangeReviewResponse = {
   confidence: number;
 };
 
+/**
+ * Split response schema for frame/superframe split jobs.
+ * 
+ * Note: Split jobs are agentic - the AI uses MCP tools (create_frame, edit_frames, 
+ * edit_lexical_units) to perform the actual split. This schema captures the summary
+ * of what was done for logging and review purposes.
+ */
+export const SPLIT_RESPONSE_SCHEMA = {
+  name: 'frame_split_response',
+  strict: true,
+  schema: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['split_completed', 'new_frames', 'original_frame_deleted', 'confidence', 'reasoning'],
+    properties: {
+      split_completed: {
+        type: 'boolean',
+        description: 'Whether the split operation was successfully completed using MCP tools.',
+      },
+      new_frames: {
+        type: 'array',
+        description: 'Array of new frames created during the split.',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['label', 'changeset_id'],
+          properties: {
+            label: {
+              type: 'string',
+              description: 'Label of the new frame.',
+            },
+            changeset_id: {
+              type: 'string',
+              description: 'Changeset ID for the frame creation (pending approval).',
+            },
+            definition: {
+              type: 'string',
+              description: 'Definition of the new frame.',
+            },
+            assigned_items_count: {
+              type: 'integer',
+              description: 'Number of lexical units or child frames assigned to this new frame.',
+            },
+          },
+        },
+      },
+      original_frame_deleted: {
+        type: 'boolean',
+        description: 'Whether a delete changeset was created for the original frame.',
+      },
+      delete_changeset_id: {
+        type: ['string', 'null'],
+        description: 'Changeset ID for the original frame deletion (pending approval).',
+      },
+      reallocation_changeset_ids: {
+        type: 'array',
+        description: 'Changeset IDs for lexical unit or child frame reallocations.',
+        items: { type: 'string' },
+      },
+      confidence: {
+        type: 'number',
+        minimum: 0,
+        maximum: 1,
+        description: 'Confidence score for the split decision (0-1).',
+      },
+      reasoning: {
+        type: 'string',
+        description: 'Explanation for why the frame was split this way and how items were distributed.',
+      },
+    },
+  },
+} as const;
+
+export type SplitResponseNewFrame = {
+  label: string;
+  changeset_id: string;
+  definition?: string;
+  assigned_items_count?: number;
+};
+
+export type SplitResponse = {
+  split_completed: boolean;
+  new_frames: SplitResponseNewFrame[];
+  original_frame_deleted: boolean;
+  delete_changeset_id?: string | null;
+  reallocation_changeset_ids?: string[];
+  confidence: number;
+  reasoning: string;
+};

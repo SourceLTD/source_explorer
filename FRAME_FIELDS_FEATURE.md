@@ -13,8 +13,6 @@ Added new variables to `VERB_VARIABLES` array:
 - `frame.label` - Frame Name
 - `frame.definition` - Frame Definition
 - `frame.short_definition` - Frame Short Definition
-- `frame.prototypical_synset` - Frame Prototypical Synset
-- `frame.prototypical_synset_definition` - Frame Prototypical Synset Definition
 - `frame.is_supporting_frame` - Frame Is Supporting Frame
 - `frame.communication` - Frame Communication
 - `frame.roles` - Frame Roles (formatted list with role type, description, examples, and label)

@@ -65,7 +65,6 @@ function buildComplexRecipes(): { current: GraphNode; recipes: Recipe[] } {
       label: 'INVESTIGATION',
       definition: 'Conducting an investigation',
       short_definition: 'Investigative activity',
-      prototypical_synset: 'investigate.v.01',
       createdAt: new Date(),
       updatedAt: new Date(),
     },

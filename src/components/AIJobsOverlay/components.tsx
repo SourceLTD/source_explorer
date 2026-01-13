@@ -34,8 +34,10 @@ function formatScopeDescription(scope: JobScope | null, totalItems: number): str
     case 'frame_ids': {
       const frameCount = scope.frameIds?.length ?? 0;
       const target = scope.flagTarget === 'both' 
-        ? 'frames & verbs' 
-        : scope.flagTarget ?? 'frames';
+        ? 'frames & lexical units' 
+        : scope.flagTarget === 'frame'
+          ? 'frames'
+          : 'lexical units';
       return `${frameCount} frames (${target})`;
     }
     case 'filters':
@@ -155,6 +157,8 @@ export const JobTypeBadge = memo(function JobTypeBadge({
         return { label: 'Reallocation', color: 'bg-indigo-50 text-indigo-700 border-indigo-200' };
       case 'allocate':
         return { label: 'Allocate', color: 'bg-teal-50 text-teal-700 border-teal-200' };
+      case 'split':
+        return { label: 'Split', color: 'bg-orange-50 text-orange-700 border-orange-200' };
       case 'review':
         return { label: 'Review', color: 'bg-rose-50 text-rose-700 border-rose-200' };
       default:

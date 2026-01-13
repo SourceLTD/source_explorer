@@ -179,7 +179,6 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
     label: currentFrame.label,
     definition: currentFrame.gloss,
     short_definition: currentFrame.short_definition,
-    prototypical_synset: currentFrame.prototypical_synset,
     flagged: currentFrame.flagged,
     flaggedReason: currentFrame.flaggedReason,
     verifiable: currentFrame.verifiable,

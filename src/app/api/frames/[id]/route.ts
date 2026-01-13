@@ -33,6 +33,19 @@ export async function GET(
           },
           take: 100,
         },
+        // Include parent super frame info with its roles (for regular frames to show inherited roles)
+        frames: {
+          select: {
+            id: true,
+            label: true,
+            code: true,
+            frame_roles: {
+              include: {
+                role_types: true,
+              },
+            },
+          },
+        },
       },
     });
 
@@ -43,29 +56,46 @@ export async function GET(
       );
     }
 
+    // Helper to serialize roles
+    const serializeRoles = (roles: any[]) => roles.map((role: any) => ({
+      id: role.id.toString(),
+      description: role.description,
+      notes: role.notes,
+      main: role.main,
+      examples: role.examples,
+      label: role.label,
+      role_type: {
+        id: role.role_types.id.toString(),
+        code: role.role_types.code,
+        label: role.role_types.label,
+        generic_description: role.role_types.generic_description,
+        explanation: role.role_types.explanation,
+      },
+    }));
+
+    // For regular frames, use parent's roles; for super frames, use own roles
+    const isRegularFrame = frame.super_frame_id !== null;
+    const rolesToUse = isRegularFrame && frame.frames?.frame_roles 
+      ? frame.frames.frame_roles 
+      : frame.frame_roles;
+
     const serialized = {
       ...frame,
       id: frame.id.toString(),
-      frame_roles: (frame as any).frame_roles.map((role: any) => ({
-        id: role.id.toString(),
-        description: role.description,
-        notes: role.notes,
-        main: role.main,
-        examples: role.examples,
-        label: role.label,
-        role_type: {
-          id: role.role_types.id.toString(),
-          code: role.role_types.code,
-          label: role.role_types.label,
-          generic_description: role.role_types.generic_description,
-          explanation: role.role_types.explanation,
-        },
-      })),
+      super_frame_id: frame.super_frame_id?.toString() ?? null,
+      super_frame: frame.frames ? {
+        id: frame.frames.id.toString(),
+        label: frame.frames.label,
+        code: frame.frames.code,
+      } : null,
+      frame_roles: serializeRoles(rolesToUse || []),
       lexical_units: (frame as any).lexical_units.map((lu: any) => ({
         ...lu,
         id: lu.id.toString(),
       })),
     };
+    // Remove the raw frames relation from the response
+    delete (serialized as any).frames;
 
     return NextResponse.json(serialized);
   } catch (error) {
@@ -90,7 +120,7 @@ export async function PATCH(
     if (body.label !== undefined) updateData.label = body.label;
     if (body.definition !== undefined) updateData.definition = body.definition;
     if (body.short_definition !== undefined) updateData.short_definition = body.short_definition;
-    if (body.prototypical_synset !== undefined) updateData.prototypical_synset = body.prototypical_synset;
+    if (body.super_frame_id !== undefined) updateData.super_frame_id = body.super_frame_id;
     
     const moderationUpdates: Record<string, any> = {};
     if (body.flagged !== undefined) moderationUpdates.flagged = body.flagged;

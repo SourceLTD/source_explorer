@@ -3,14 +3,16 @@ import type { ScopeMode } from './types';
 export const MODEL_OPTIONS = [
   { value: 'gpt-5-nano', label: 'GPT-5 Nano' },
   { value: 'gpt-5-mini', label: 'GPT-5 Mini' },
+  { value: 'gpt-5', label: 'GPT-5' },
   { value: 'gpt-5.2', label: 'GPT-5.2' },
   { value: 'gpt-5.2-pro', label: 'GPT-5.2 Pro' },
 ] as const;
 
-export type JobType = 'moderation' | 'editing' | 'reallocation' | 'allocate';
+export type JobType = 'moderation' | 'editing' | 'reallocation' | 'allocate' | 'split';
 export type LexicalJobType = 'moderation' | 'editing' | 'allocate';
-export type FrameJobType = 'moderation' | 'editing' | 'reallocation';
-export type EntityType = 'lexical_units' | 'frames';
+export type FrameJobType = 'moderation' | 'editing' | 'reallocation' | 'split';
+export type SuperframeJobType = 'moderation' | 'editing' | 'reallocation' | 'split';
+export type EntityType = 'lexical_units' | 'frames' | 'super_frames' | 'frames_only';
 
 // ============================================================================
 // PROMPT BUILDING BLOCKS
@@ -117,7 +119,6 @@ const FRAME_PROMPTS: Record<FrameJobType, string> = {
 Frame Label: {{label}}
 Definition: {{definition}}
 Short Definition: {{short_definition}}
-Prototypical Synset: {{prototypical_synset}}
 Currently Flagged: {{flagged}}
 Flagged Reason: {{flagged_reason}}
 Verifiable: {{verifiable}}
@@ -128,7 +129,6 @@ Number of Lexical Units: {{lexical_units_count}}
 Decide whether the frame should be flagged for review. Consider:
 - Is the definition clear and comprehensive?
 - Does the short definition accurately summarize the frame's meaning?
-- Is the prototypical synset appropriate?
 
 Respond using the provided JSON schema.`,
 
@@ -137,14 +137,12 @@ Respond using the provided JSON schema.`,
 Frame Label: {{label}}
 Current Definition: {{definition}}
 Current Short Definition: {{short_definition}}
-Current Prototypical Synset: {{prototypical_synset}}
 Number of Roles: {{roles_count}}
 Number of Lexical Units: {{lexical_units_count}}
 
 Review this frame and suggest improvements to make the data more accurate and useful:
 - Improve the definition if it's unclear, incomplete, or could be more precise
 - Enhance the short definition to be more concise yet informative
-- Suggest a better prototypical synset if appropriate
 
 Respond using the provided JSON schema with your suggested edits.`,
 
@@ -162,6 +160,141 @@ Evaluate whether verbs and other lexical entries in this frame are correctly ass
 - Consider the semantic coherence of the frame's contents
 
 Respond using the provided JSON schema with your recommendations.`,
+
+  split: `You are splitting a semantic frame into multiple more specific frames.
+
+Frame ID: {{id}}
+Frame Label: {{label}}
+Definition: {{definition}}
+Short Definition: {{short_definition}}
+Number of Roles: {{roles_count}}
+Number of Lexical Units: {{lexical_units_count}}
+
+Current Roles:
+{% for role in roles %}
+- {{role.type}} ({{role.code}}): {{role.description}}{% if role.main %} [MAIN]{% endif %}
+{% endfor %}
+
+Current Lexical Units:
+{% for lu in lexical_units %}
+- {{lu.code}} ({{lu.pos}}): {{lu.gloss}}
+{% endfor %}
+
+Your task is to split this frame into {{min_splits}} to {{max_splits}} new frames. For each new frame:
+1. Create a unique, descriptive label
+2. Write a clear definition that distinguishes it from sibling frames
+3. Write a concise short_definition
+4. Define appropriate roles (you may reuse, modify, or create new roles)
+5. Assign each lexical unit to exactly one of the new frames
+
+Guidelines:
+- Each new frame should be semantically coherent and distinct
+- All lexical units from the original frame must be assigned to a new frame
+- The split should result in more precise, useful frame definitions
+- Consider the semantic relationships between lexical units when grouping
+
+Use the MCP tools to:
+1. Call create_frame for each new frame with its definition and roles
+2. Call edit_lexical_units to reassign each lexical unit to its new frame
+3. Call edit_frames with deleted: true on the original frame (ID: {{id}})
+
+Document your reasoning for the split structure.`,
+};
+
+// Prompts for superframes (frames that contain other frames, not lexical units)
+const SUPERFRAME_PROMPTS: Record<SuperframeJobType, string> = {
+  moderation: `You are reviewing a superframe for quality assurance.
+
+Superframe Label: {{label}}
+Definition: {{definition}}
+Short Definition: {{short_definition}}
+Currently Flagged: {{flagged}}
+Flagged Reason: {{flagged_reason}}
+Verifiable: {{verifiable}}
+Unverifiable Reason: {{unverifiable_reason}}
+Number of Roles: {{roles_count}}
+Number of Child Frames: {{child_frames_count}}
+
+Decide whether the superframe should be flagged for review. Consider:
+- Is the definition clear and comprehensive?
+- Does the short definition accurately summarize the superframe's meaning?
+- Does the superframe properly categorize its child frames?
+
+Respond using the provided JSON schema.`,
+
+  editing: `You are improving the quality of superframe data.
+
+Superframe Label: {{label}}
+Current Definition: {{definition}}
+Current Short Definition: {{short_definition}}
+Number of Roles: {{roles_count}}
+Number of Child Frames: {{child_frames_count}}
+
+Review this superframe and suggest improvements to make the data more accurate and useful:
+- Improve the definition if it's unclear, incomplete, or could be more precise
+- Enhance the short definition to be more concise yet informative
+
+Respond using the provided JSON schema with your suggested edits.`,
+
+  reallocation: `You are reviewing the composition of a superframe.
+
+Superframe Label: {{label}}
+Definition: {{definition}}
+Short Definition: {{short_definition}}
+Number of Roles: {{roles_count}}
+Number of Child Frames: {{child_frames_count}}
+
+Child Frames in this Superframe:
+{% for frame in child_frames %}
+- {{frame.label}}: {{frame.definition}} ({{frame.roles_count}} roles, {{frame.lexical_units_count}} lexical units)
+{% endfor %}
+
+Evaluate whether the child frames in this superframe are correctly assigned:
+- Does each child frame's meaning align with the superframe's definition?
+- Should any child frame be moved to a different superframe?
+- Are there frames that should be added or removed from this superframe?
+- Consider the semantic coherence of the superframe's contents
+
+Respond using the provided JSON schema with your recommendations.`,
+
+  split: `You are splitting a superframe into multiple more specific superframes.
+
+Superframe ID: {{id}}
+Superframe Label: {{label}}
+Definition: {{definition}}
+Short Definition: {{short_definition}}
+Number of Roles: {{roles_count}}
+Number of Child Frames: {{child_frames_count}}
+
+Current Roles:
+{% for role in roles %}
+- {{role.type}} ({{role.code}}): {{role.description}}{% if role.main %} [MAIN]{% endif %}
+{% endfor %}
+
+Child Frames in this Superframe:
+{% for frame in child_frames %}
+- ID {{frame.id}}: {{frame.label}} - {{frame.definition}} ({{frame.roles_count}} roles, {{frame.lexical_units_count}} lexical units)
+{% endfor %}
+
+Your task is to split this superframe into {{min_splits}} to {{max_splits}} new superframes. For each new superframe:
+1. Create a unique, descriptive label
+2. Write a clear definition that distinguishes it from sibling superframes
+3. Write a concise short_definition
+4. Define appropriate roles (you may reuse, modify, or create new roles)
+5. Assign each child frame to exactly one of the new superframes
+
+Guidelines:
+- Each new superframe should represent a coherent semantic category
+- All child frames from the original superframe must be assigned to a new superframe
+- The split should result in better organization of the frame hierarchy
+- Consider the semantic relationships between child frames when grouping
+
+Use the MCP tools to:
+1. Call create_frame for each new superframe (without a super_frame_id, making it a superframe)
+2. Call edit_frames to update each child frame's super_frame_id to point to its new parent
+3. Call edit_frames with deleted: true on the original superframe (ID: {{id}})
+
+Document your reasoning for the split structure.`,
 };
 
 // ============================================================================
@@ -176,21 +309,33 @@ export interface BuildPromptOptions {
   jobType: JobType;
   agenticMode: boolean;
   scopeMode: ScopeMode;
+  /** Whether targeting superframes (frames that contain other frames) */
+  isSuperFrame?: boolean;
 }
 
 /**
  * Get the base prompt template for a given entity type and job type
  */
-function getBasePrompt(entityType: EntityType, jobType: JobType): string {
-  if (entityType === 'frames') {
-    // Frames only support moderation, editing, and reallocation
+function getBasePrompt(entityType: EntityType, jobType: JobType, isSuperFrame?: boolean): string {
+  // Handle superframes
+  if (entityType === 'super_frames' || (entityType === 'frames' && isSuperFrame)) {
+    // Superframes support moderation, editing, reallocation, and split
+    if (jobType === 'allocate') {
+      return SUPERFRAME_PROMPTS.moderation; // Fallback - shouldn't happen
+    }
+    return SUPERFRAME_PROMPTS[jobType as SuperframeJobType];
+  }
+  
+  // frames_only is treated as regular frames
+  if (entityType === 'frames' || entityType === 'frames_only') {
+    // Regular frames support moderation, editing, reallocation, and split
     if (jobType === 'allocate') {
       return FRAME_PROMPTS.moderation; // Fallback - shouldn't happen
     }
     return FRAME_PROMPTS[jobType as FrameJobType];
   }
   // Lexical entries only support moderation, editing, and allocate
-  if (jobType === 'reallocation') {
+  if (jobType === 'reallocation' || jobType === 'split') {
     return LEXICAL_PROMPTS.moderation; // Fallback - shouldn't happen
   }
   return LEXICAL_PROMPTS[jobType as LexicalJobType];
@@ -206,7 +351,7 @@ function getBasePrompt(entityType: EntityType, jobType: JobType): string {
  * 4. Persistence block (always)
  */
 export function buildPrompt(options: BuildPromptOptions): string {
-  const { entityType, jobType, agenticMode, scopeMode } = options;
+  const { entityType, jobType, agenticMode, scopeMode, isSuperFrame } = options;
   
   const sections: string[] = [];
   
@@ -217,7 +362,7 @@ export function buildPrompt(options: BuildPromptOptions): string {
   }
   
   // 2. Add base prompt
-  const basePrompt = getBasePrompt(entityType, jobType);
+  const basePrompt = getBasePrompt(entityType, jobType, isSuperFrame);
   sections.push(basePrompt);
   
   // 3. Add agentic instructions if enabled
@@ -235,12 +380,13 @@ export function buildPrompt(options: BuildPromptOptions): string {
  * Get the default prompt for a given entity type and job type.
  * This is a simplified version for backwards compatibility that uses default options.
  */
-export function getDefaultPrompt(entityType: EntityType, jobType: JobType): string {
+export function getDefaultPrompt(entityType: EntityType, jobType: JobType, isSuperFrame?: boolean): string {
   return buildPrompt({
     entityType,
     jobType,
     agenticMode: true, // Default to agentic mode enabled
     scopeMode: 'all',  // Default scope
+    isSuperFrame,
   });
 }
 

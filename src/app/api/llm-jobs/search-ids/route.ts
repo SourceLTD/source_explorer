@@ -25,14 +25,17 @@ export async function GET(request: NextRequest) {
 
     if (targetType === 'frames') {
       const frames = await prisma.frames.findMany({
-        where: exact
-          ? { label: { equals: searchTerm, mode: 'insensitive' } }
-          : {
-              OR: [
-                { label: { contains: searchTerm, mode: 'insensitive' } },
-                { definition: { contains: searchTerm, mode: 'insensitive' } },
-              ],
-            },
+        where: {
+          deleted: false,
+          ...(exact
+            ? { label: { equals: searchTerm, mode: 'insensitive' } }
+            : {
+                OR: [
+                  { label: { contains: searchTerm, mode: 'insensitive' } },
+                  { definition: { contains: searchTerm, mode: 'insensitive' } },
+                ],
+              }),
+        },
         select: { label: true, definition: true },
         take: limit,
         orderBy: { label: 'asc' },

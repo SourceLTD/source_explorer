@@ -17,6 +17,7 @@ export async function GET(request: NextRequest) {
     // Only search by label or numeric id (not framebank_id or code)
     const frames = await prisma.frames.findMany({
       where: {
+        deleted: false,
         OR: [
           { label: { contains: searchTerm, mode: 'insensitive' } },
           ...(searchTerm.match(/^\d+$/) ? [{ id: BigInt(searchTerm) }] : []),

@@ -104,13 +104,12 @@ export default function FrameMainNode({
   const { 
     shortDefHeight, 
     glossHeight, 
-    prototypicalHeight, 
     rolesHeight, 
     verbsHeight, 
     relationsHeight 
   } = nodeHeights;
   
-  let currentY = centerY + 50 + shortDefHeight + prototypicalHeight + glossHeight + 8;
+  let currentY = centerY + 50 + shortDefHeight + glossHeight + 8;
 
   return (
     <Group
@@ -214,35 +213,10 @@ export default function FrameMainNode({
         </foreignObject>
       )}
 
-      {/* Prototypical Synset Badge */}
-      {node.prototypical_synset && (
-        <foreignObject
-          x={centerX + 12}
-          y={centerY + 50 + shortDefHeight}
-          width={nodeWidth - 24}
-          height={24}
-        >
-          <div style={{
-            fontSize: '11px',
-            fontFamily: 'Arial',
-            color: 'white',
-            backgroundColor: 'rgba(0, 0, 0, 0.2)',
-            padding: '2px 8px',
-            borderRadius: '4px',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '4px',
-          }}>
-            <span role="img" aria-label="rocket">🚀</span>
-            {node.prototypical_synset}
-          </div>
-        </foreignObject>
-      )}
-
       {/* Definition/gloss */}
       <foreignObject
         x={centerX + 12}
-        y={centerY + 50 + shortDefHeight + prototypicalHeight}
+        y={centerY + 50 + shortDefHeight}
         width={nodeWidth - 24}
         height={glossHeight}
       >
@@ -583,9 +557,6 @@ export function calculateFrameNodeHeights(
   const shortDefHeight = shortDefText ? Math.max(15, estimateTextHeight(shortDefText, contentWidth, 15, 1.3) + 4) : 0;
   height += shortDefHeight;
 
-  const prototypicalHeight = node.prototypical_synset ? 24 : 0;
-  height += prototypicalHeight;
-
   const glossText = node.gloss || '';
   const glossHeight = glossText ? Math.max(30, estimateTextHeight(glossText, contentWidth, 14, 1.3) + 10) : 0;
   height += glossHeight + 8; // Margin for gloss
@@ -634,7 +605,6 @@ export function calculateFrameNodeHeights(
     totalHeight: height,
     shortDefHeight,
     glossHeight,
-    prototypicalHeight,
     rolesHeight,
     verbsHeight,
     relationsHeight

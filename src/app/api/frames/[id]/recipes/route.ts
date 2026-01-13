@@ -72,7 +72,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         label: frame.label,
         definition: frame.definition,
         short_definition: frame.short_definition,
-        prototypical_synset: frame.prototypical_synset,
         flagged: frame.flagged,
         flagged_reason: frame.flagged_reason,
       },

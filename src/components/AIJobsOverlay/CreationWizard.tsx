@@ -40,6 +40,10 @@ export const CreationWizard = memo(function CreationWizard({
     setReasoningEffort,
     agenticMode,
     setAgenticMode,
+    splitMinFrames,
+    setSplitMinFrames,
+    splitMaxFrames,
+    setSplitMaxFrames,
     scopeMode,
     setScopeMode,
     manualIdsText,
@@ -235,6 +239,26 @@ export const CreationWizard = memo(function CreationWizard({
                     </div>
                   </label>
                 )}
+                {(mode === 'frames' || mode === 'super_frames') && (
+                  <label className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border p-3 transition-colors ${jobType === 'split' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-gray-200 hover:bg-gray-50'}`}>
+                    <input
+                      type="radio"
+                      name="jobType"
+                      value="split"
+                      checked={jobType === 'split'}
+                      onChange={() => {
+                        setJobType('split');
+                        setTargetFields([]);
+                        setReallocationEntityTypes([]);
+                      }}
+                      className="sr-only"
+                    />
+                    <div className="text-center">
+                      <div className="text-sm font-semibold">Split</div>
+                      <div className="text-[10px] opacity-70">Divide into multiple</div>
+                    </div>
+                  </label>
+                )}
               </div>
             </div>
 
@@ -349,38 +373,101 @@ export const CreationWizard = memo(function CreationWizard({
               <>
                 <div className="border-t border-gray-200" />
                 <div className="space-y-3">
-                  <label className="block text-xs font-semibold text-gray-700">Entity Types to Reallocate</label>
-                  <div className="flex gap-3">
-                    {(['verb', 'noun', 'adjective', 'adverb'] as const).map(entityType => (
-                      <label
-                        key={entityType}
-                        className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border p-3 transition-colors ${
-                          reallocationEntityTypes.includes(entityType)
-                            ? 'border-blue-500 bg-blue-50 text-blue-600'
-                            : 'border-gray-200 hover:bg-gray-50'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={reallocationEntityTypes.includes(entityType)}
-                        onChange={() => {
-                          setReallocationEntityTypes(
-                            reallocationEntityTypes.includes(entityType) 
-                              ? reallocationEntityTypes.filter(t => t !== entityType)
-                              : [...reallocationEntityTypes, entityType]
-                          );
-                        }}
-                          className="sr-only"
-                        />
-                        <div className="text-center">
-                          <div className="text-sm font-semibold">{entityType.charAt(0).toUpperCase() + entityType.slice(1)}s</div>
-                        </div>
-                      </label>
-                    ))}
-                  </div>
-                  {reallocationEntityTypes.length === 0 && (
-                    <p className="text-[10px] text-amber-600 font-medium">Select at least one entity type the AI can suggest reallocating.</p>
+                  <label className="block text-xs font-semibold text-gray-700">
+                    {mode === 'super_frames' ? 'Entity Types to Reallocate (Child Frames)' : 'Entity Types to Reallocate'}
+                  </label>
+                  {mode === 'super_frames' ? (
+                    /* For superframes, reallocation targets child frames */
+                    <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-700">
+                      <div className="font-semibold mb-1">Reallocating Frames</div>
+                      <p className="text-xs">
+                        For superframes, the AI will evaluate which child frames belong to this superframe 
+                        and suggest moving frames between superframes.
+                      </p>
+                    </div>
+                  ) : (
+                    /* For regular frames, reallocation targets lexical units */
+                    <>
+                      <div className="flex gap-3">
+                        {(['verb', 'noun', 'adjective', 'adverb'] as const).map(entityType => (
+                          <label
+                            key={entityType}
+                            className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border p-3 transition-colors ${
+                              reallocationEntityTypes.includes(entityType)
+                                ? 'border-blue-500 bg-blue-50 text-blue-600'
+                                : 'border-gray-200 hover:bg-gray-50'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={reallocationEntityTypes.includes(entityType)}
+                            onChange={() => {
+                              setReallocationEntityTypes(
+                                reallocationEntityTypes.includes(entityType) 
+                                  ? reallocationEntityTypes.filter(t => t !== entityType)
+                                  : [...reallocationEntityTypes, entityType]
+                              );
+                            }}
+                              className="sr-only"
+                            />
+                            <div className="text-center">
+                              <div className="text-sm font-semibold">{entityType.charAt(0).toUpperCase() + entityType.slice(1)}s</div>
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+                      {reallocationEntityTypes.length === 0 && (
+                        <p className="text-[10px] text-amber-600 font-medium">Select at least one entity type the AI can suggest reallocating.</p>
+                      )}
+                    </>
                   )}
+                </div>
+              </>
+            )}
+
+            {/* Split Configuration */}
+            {jobType === 'split' && isScopeValid && (
+              <>
+                <div className="border-t border-gray-200" />
+                <div className="space-y-3">
+                  <label className="block text-xs font-semibold text-gray-700">Split Configuration</label>
+                  <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-700">
+                    <div className="font-semibold mb-1">
+                      {mode === 'super_frames' ? 'Splitting Superframe' : 'Splitting Frame'}
+                    </div>
+                    <p className="text-xs mb-3">
+                      {mode === 'super_frames' 
+                        ? 'The AI will split this superframe into multiple new superframes, distributing child frames among them.'
+                        : 'The AI will split this frame into multiple new frames, distributing lexical units among them.'}
+                    </p>
+                    <div className="flex gap-4 items-center">
+                      <div className="flex-1">
+                        <label className="block text-[10px] font-medium text-blue-800 mb-1">Min Frames</label>
+                        <input
+                          type="number"
+                          min={2}
+                          max={splitMaxFrames}
+                          value={splitMinFrames}
+                          onChange={(e) => setSplitMinFrames(Math.max(2, Math.min(parseInt(e.target.value) || 2, splitMaxFrames)))}
+                          className="w-full rounded-lg border border-blue-300 bg-white px-2 py-1 text-sm text-blue-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <label className="block text-[10px] font-medium text-blue-800 mb-1">Max Frames</label>
+                        <input
+                          type="number"
+                          min={splitMinFrames}
+                          max={10}
+                          value={splitMaxFrames}
+                          onChange={(e) => setSplitMaxFrames(Math.max(splitMinFrames, Math.min(parseInt(e.target.value) || 5, 10)))}
+                          className="w-full rounded-lg border border-blue-300 bg-white px-2 py-1 text-sm text-blue-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-blue-600 mt-2">
+                      The AI will decide the optimal number of frames within this range based on the content.
+                    </p>
+                  </div>
                 </div>
               </>
             )}
@@ -471,7 +558,7 @@ export const CreationWizard = memo(function CreationWizard({
           </div>
         );
       case 'prompt': {
-        const jobTypeLabel = jobType === 'moderation' ? 'Flag' : jobType === 'editing' ? 'Edit' : jobType === 'allocate' ? 'Allocate' : 'Reallocate';
+        const jobTypeLabel = jobType === 'moderation' ? 'Flag' : jobType === 'editing' ? 'Edit' : jobType === 'allocate' ? 'Allocate' : jobType === 'split' ? 'Split' : 'Reallocate';
         const defaultPrompt = buildPrompt({
           entityType: mode,
           jobType,

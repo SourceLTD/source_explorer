@@ -31,7 +31,6 @@ model frame_roles {
 model frames {
   label                                             String
   definition                                        String?
-  prototypical_synset                               String
   short_definition                                  String?
   created_at                                        DateTime               @default(now())
   updated_at                                        DateTime               @default(now())
@@ -409,6 +408,7 @@ model changesets {
   committed_at    DateTime?         @db.Timestamptz(6)
   llm_job_id      BigInt?
   audit_log       audit_log[]
+  ai_revisions    ai_revisions[]
   change_comments change_comments[]
   llm_jobs        llm_jobs?         @relation(fields: [llm_job_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_changesets_llm_job")
   comment_reads   comment_reads[]
@@ -449,9 +449,30 @@ model change_comments {
   created_at      DateTime       @default(now()) @db.Timestamptz(6)
   changesets      changesets?    @relation(fields: [changeset_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   field_changes   field_changes? @relation(fields: [field_change_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  ai_revision     ai_revisions?
 
   @@index([changeset_id], map: "idx_change_comments_changeset")
   @@index([field_change_id], map: "idx_change_comments_field_change")
+}
+
+model ai_revisions {
+  id              BigInt             @id @default(autoincrement())
+  changeset_id    BigInt
+  comment_id      BigInt?            @unique
+  action          String             @db.VarChar(20)
+  modifications   Json?
+  justification   String?
+  confidence      Decimal?           @db.Decimal(3, 2)
+  status          ai_revision_status @default(pending)
+  accepted_fields Json?              @default("[]")
+  rejected_fields Json?              @default("[]")
+  created_at      DateTime           @default(now()) @db.Timestamptz(6)
+  resolved_at     DateTime?          @db.Timestamptz(6)
+  changesets      changesets         @relation(fields: [changeset_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  change_comments change_comments?   @relation(fields: [comment_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([changeset_id], map: "idx_ai_revisions_changeset")
+  @@index([status], map: "idx_ai_revisions_status")
 }
 
 model comment_reads {
@@ -635,7 +656,6 @@ enum entity_type {
   adverb_relation
   frame_relation
   lexical_unit
-  lexical_unit_relation
 }
 
 enum field_change_status {
@@ -644,11 +664,19 @@ enum field_change_status {
   rejected
 }
 
+enum ai_revision_status {
+  pending
+  accepted
+  rejected
+  partial
+}
+
 enum llm_job_type {
   moderation
   editing
   reallocation
   review
+  split
 }
 
 enum lexical_unit_relation_type {

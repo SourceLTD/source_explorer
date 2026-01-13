@@ -167,7 +167,9 @@ export interface RoleGroup {
 export interface LexicalUnitSnippet {
   code: string;
   lemmas: string[];
+  src_lemmas: string[];
   pos: PartOfSpeech;
+  gloss: string;
 }
 
 // Collection of lexical unit snippets (unified)
@@ -182,7 +184,6 @@ export interface Frame {
   label: string;
   definition?: string | null;
   short_definition?: string | null;
-  prototypical_synset: string;
   code?: string | null;
   flagged?: boolean;
   flaggedReason?: string;
@@ -194,8 +195,10 @@ export interface Frame {
   roles_count?: number;
   lexical_units_count?: number;
   subframes_count?: number;
-  lexical_units?: LexicalUnitsSample;
+  lexical_entries?: LexicalUnitsSample;
   pending?: PendingChangeInfo | null;
+  super_frame_id?: string | null;
+  super_frame?: { id: string; label: string; code?: string | null } | null;
 }
 
 // ============================================
@@ -403,7 +406,6 @@ export interface FramePaginationParams {
   code?: string;
   definition?: string;
   short_definition?: string;
-  prototypical_synset?: string;
   
   createdAfter?: string;
   createdBefore?: string;
@@ -671,7 +673,6 @@ export interface FrameGraphNode {
   label: string;
   gloss?: string | null;
   short_definition?: string | null;
-  prototypical_synset: string;
   roles: FrameGraphRole[];
   lexical_units: FrameGraphLexicalUnit[];
   relations: FrameGraphRelation[];
@@ -729,7 +730,6 @@ export interface FrameRecipeData {
     label: string;
     definition?: string | null;
     short_definition?: string | null;
-    prototypical_synset: string;
     flagged: boolean | null;
     flagged_reason: string | null;
   };
@@ -749,6 +749,46 @@ export interface FrameRecipeData {
 }
 
 // ============================================
+// Role Type Acronyms (max 4 characters)
+// ============================================
+
+export const ROLE_TYPE_ACRONYMS: Record<string, string> = {
+  'PROTO_AGENT': 'PAG',
+  'CONTENT.ENTITY': 'CTENT',
+  'CONTENT.CLAUSE': 'CTCLS',
+  'CONTENT.QUOTE': 'CTQTE',
+  'RECIPIENT': 'RECIP',
+  'CO_PROTO_AGENT': 'COPAG',
+  'TOPIC': 'TOPIC',
+  'THEME': 'THEME',
+  'CO_THEME': 'COTHM',
+  'PATIENT': 'PATNT',
+  'EXPERIENCER': 'EXPRN',
+  'INSTRUMENT': 'INSTR',
+  'SOURCE': 'SRC',
+  'DESTINATION': 'DEST',
+  'BENEFICIARY': 'BENEF',
+  'EXTENT': 'EXTN',
+  'GOAL': 'GOAL',
+  'TIME': 'TIME',
+  'LOCATION': 'LOC',
+  'STIMULUS': 'STIM',
+  'CO_PATIENT': 'COPAT',
+  'PURPOSE': 'PURP',
+  'CAUSE': 'CAUSE',
+  'RESULT': 'RSLT',
+  'PRODUCT': 'PROD',
+  'MATERIAL': 'MATRL',
+  'ATTRIBUTE': 'ATTR',
+  'VALUE': 'VALUE',
+  'ASSET': 'ASSET',
+  'IDIOM': 'IDIOM',
+};
+
+export function getRoleTypeAcronym(roleTypeLabel: string): string {
+  return ROLE_TYPE_ACRONYMS[roleTypeLabel] || roleTypeLabel.substring(0, 5).toUpperCase();
+}
+
 // Role Precedence (for frame roles display)
 // ============================================
 

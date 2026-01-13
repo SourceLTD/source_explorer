@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { useRouter } from 'next/navigation';
-import { TableEntry, Frame, POS_LABELS, PendingChangeInfo } from '@/lib/types';
+import { TableEntry, Frame, POS_LABELS, PendingChangeInfo, getRoleTypeAcronym } from '@/lib/types';
 import { ColumnConfig } from '@/components/ColumnVisibilityPanel';
 import { CheckCircleIcon, XCircleIcon, SparklesIcon } from '@heroicons/react/24/outline';
 import { PendingFieldIndicator, getPendingRowClasses } from '@/components/PendingChangeIndicator';
@@ -189,33 +189,55 @@ export function CellContent({
         return <div className={textContainerClasses}>{entry.definition || '—'}</div>;
       case 'short_definition':
         return <div className={textContainerClasses}>{entry.short_definition || '—'}</div>;
-      case 'prototypical_synset':
-        return <span className="text-sm font-medium text-gray-700">{entry.prototypical_synset}</span>;
       case 'lexical_units_count':
         return <div className="text-sm text-gray-600">{entry.lexical_units_count ?? 0}</div>;
       case 'subframes_count':
         return <div className="text-sm text-gray-600">{entry.subframes_count ?? 0}</div>;
       case 'frame_roles':
+        if (!entry.frame_roles || entry.frame_roles.length === 0) return <EmptyCell />;
         return (
-          <div className="flex flex-wrap gap-1">
-            {entry.frame_roles?.map((role, idx) => (
-              <span key={idx} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-600">
-                  {role.role_type.label}
-                </span>
-            ))}
+          <div className="grid gap-y-1 gap-x-2 max-w-full" style={{ gridTemplateColumns: 'auto 1fr' }}>
+            {entry.frame_roles.map((role, idx) => {
+              const acronym = getRoleTypeAcronym(role.role_type.label);
+              return (
+                <React.Fragment key={idx}>
+                  <div className="flex justify-end">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-600 whitespace-nowrap">
+                      <span className="font-bold">{role.label || '—'}</span>
+                      <span className="text-blue-400 ml-1">({acronym})</span>
+                    </span>
+                  </div>
+                  <span className="text-xs text-gray-600 truncate self-center" title={role.description || ''}>
+                    {role.description || '—'}
+                  </span>
+                </React.Fragment>
+              );
+            })}
           </div>
         );
       case 'lexical_entries':
         if (!entry.lexical_entries || entry.lexical_entries.entries.length === 0) return <EmptyCell />;
         return (
-          <div className="flex flex-wrap gap-1 max-w-full items-center">
-            {entry.lexical_entries.entries.map((lexicalEntry, idx) => (
-              <span key={idx} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-600">
-                {lexicalEntry.lemmas[0]}
-              </span>
-            ))}
+          <div className="grid gap-y-1 gap-x-2 max-w-full" style={{ gridTemplateColumns: 'auto 1fr' }}>
+            {entry.lexical_entries.entries.map((lexicalEntry, idx) => {
+              const allLemmas = [...(lexicalEntry.src_lemmas || []), ...(lexicalEntry.lemmas || [])];
+              const firstLemma = allLemmas[0] || '—';
+              const extraCount = allLemmas.length - 1;
+              return (
+                <React.Fragment key={idx}>
+                  <div className="flex justify-end">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-600 whitespace-nowrap">
+                      {firstLemma}{extraCount > 0 && <span className="text-blue-400 ml-1">+{extraCount}</span>}
+                    </span>
+                  </div>
+                  <span className="text-xs text-gray-600 truncate self-center" title={lexicalEntry.gloss}>
+                    {lexicalEntry.gloss}
+                  </span>
+                </React.Fragment>
+              );
+            })}
             {entry.lexical_entries.hasMore && (
-              <span className="text-xs text-gray-400 font-medium ml-1">
+              <span className="text-xs text-gray-400 font-medium col-span-2">
                 +{entry.lexical_entries.totalCount - 10} more
               </span>
             )}
@@ -395,16 +417,16 @@ export function CellContent({
       return <span className="text-xs text-gray-500 whitespace-nowrap">{formatDate(entry.updatedAt)}</span>;
     case 'actions':
       return (
-        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="flex items-center justify-center gap-1">
           <button
             onClick={(e) => {
               e.stopPropagation();
               onEditClick?.(entry);
             }}
-            className="p-1 text-gray-400 hover:text-blue-600 rounded hover:bg-blue-50"
-            title="Manual Edit"
+            className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition-colors cursor-pointer"
+            title="Edit"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
             </svg>
           </button>
@@ -413,10 +435,10 @@ export function CellContent({
               e.stopPropagation();
               onAIClick?.(entry);
             }}
-            className="p-1 text-gray-400 hover:text-purple-600 rounded hover:bg-purple-50"
-            title="AI Polish"
+            className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition-colors cursor-pointer"
+            title="AI Quick Edit"
           >
-            <SparklesIcon className="w-5 h-5" />
+            <SparklesIcon className="w-4 h-4" />
           </button>
         </div>
       );
@@ -532,10 +554,12 @@ export function DataTableBody({
 
               {/* Column resizer handle */}
               <div
-                className="absolute top-0 right-0 h-full w-1 cursor-col-resize hover:bg-blue-200"
+                className="absolute top-0 right-0 h-full w-2 cursor-col-resize hover:bg-blue-300 bg-transparent z-20 group"
                 onMouseDown={(e) => onMouseDown(col.key, e)}
                 onClick={(e) => e.stopPropagation()}
-              />
+              >
+                <div className="w-px h-full bg-gray-200 group-hover:bg-blue-500 ml-auto" />
+              </div>
             </th>
           ))}
         </tr>

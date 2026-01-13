@@ -99,7 +99,7 @@ export function serviceTierToPriority(tier?: string | null): 'flex' | 'normal' |
 
 export function buildScope(
   mode: ScopeMode,
-  pos: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames' | 'lexical_units',
+  pos: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames' | 'lexical_units' | 'super_frames' | 'frames_only',
   selectedIds: string[],
   manualIdsText: string,
   frameIdsText: string,
@@ -109,10 +109,12 @@ export function buildScope(
   frameFlagTarget?: 'frame' | 'lexical_unit' | 'both'
 ): JobScope {
   // Map POS to JobTargetType
-  const targetType: JobTargetType = pos === 'verbs' || pos === 'lexical_units' ? 'verb' : 
+  const targetType: JobTargetType = pos === 'verbs' ? 'verb' : 
                                    pos === 'nouns' ? 'noun' : 
                                    pos === 'adjectives' ? 'adjective' : 
-                                   pos === 'adverbs' ? 'adverb' : 'frames';
+                                   pos === 'adverbs' ? 'adverb' :
+                                   pos === 'frames' || pos === 'super_frames' || pos === 'frames_only' ? 'frames' :
+                                   pos === 'lexical_units' ? 'verb' : 'frames';
 
   switch (mode) {
     case 'selection':
@@ -167,7 +169,7 @@ export function normalizeLexicalCode(input: string): string {
   return `${lemma}.${pos}.${padded}`;
 }
 
-export function getManualIdPlaceholder(pos: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames' | 'lexical_units'): string {
+export function getManualIdPlaceholder(pos: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames' | 'lexical_units' | 'super_frames' | 'frames_only'): string {
   switch (pos) {
     case 'verbs':
     case 'lexical_units':

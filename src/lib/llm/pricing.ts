@@ -9,6 +9,8 @@ export const PRICING_BY_MODEL: Record<string, ModelPricing> = {
   'gpt-5': { inputPerMillion: 1.25, outputPerMillion: 10.0 },
   'gpt-5-mini': { inputPerMillion: 0.25, outputPerMillion: 2.0 },
   'gpt-5-nano': { inputPerMillion: 0.05, outputPerMillion: 0.4 },
+  'gpt-5.2': { inputPerMillion: 2.50, outputPerMillion: 15.0 },
+  'gpt-5.2-pro': { inputPerMillion: 5.00, outputPerMillion: 30.0 },
 };
 
 // Service tier multipliers based on OpenAI pricing (Standard tier is baseline at 1.0)

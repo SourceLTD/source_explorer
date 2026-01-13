@@ -26,6 +26,7 @@ export async function POST(request: NextRequest) {
       // For frame IDs, count frames and/or associated lexical units depending on flagTarget
       const frames = await prisma.frames.findMany({
         where: {
+          deleted: false,
           OR: scope.frameIds.map(id =>
             id.match(/^\d+$/)
               ? { id: BigInt(id) }
@@ -36,7 +37,7 @@ export async function POST(request: NextRequest) {
       });
 
       const frameIds = frames.map(f => f.id);
-      const flagTarget = scope.flagTarget ?? 'frame';
+      const flagTarget = scope.flagTarget ?? 'lexical_unit';
 
       if (flagTarget === 'frame' || flagTarget === 'both') {
         count += frameIds.length;
@@ -61,7 +62,11 @@ export async function POST(request: NextRequest) {
       const limit = scope.filters.limit;
 
       if (targetType === 'frames') {
-        count = await prisma.frames.count({ where: where as Prisma.framesWhereInput });
+        const framesWhere: Prisma.framesWhereInput = {
+          ...(where as Prisma.framesWhereInput),
+          deleted: false,
+        };
+        count = await prisma.frames.count({ where: framesWhere });
       } else {
         const luWhere: any = {
           ...(where as Record<string, unknown>),

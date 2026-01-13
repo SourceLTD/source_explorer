@@ -1,9 +1,16 @@
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import BooleanFilterBuilder from '@/components/BooleanFilterBuilder';
 import type { BooleanFilterGroup } from '@/lib/filters/types';
 import type { ScopeMode } from './types';
 import { getManualIdPlaceholder } from './utils';
 import type { DataTableMode } from '../DataTable/types';
+
+// Normalize DataTableMode to the simpler Pos type used by BooleanFilterBuilder
+type FilterBuilderPos = 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames' | 'lexical_units';
+function normalizeToFilterPos(mode: DataTableMode): FilterBuilderPos {
+  if (mode === 'super_frames' || mode === 'frames_only') return 'frames';
+  return mode as FilterBuilderPos;
+}
 
 export const ScopeSelector = memo(function ScopeSelector({
   mode,
@@ -136,7 +143,7 @@ export const ScopeSelector = memo(function ScopeSelector({
             <p className="text-xs text-gray-500">Build boolean conditions with AND/OR. Leave empty to target all.</p>
             {mode === 'filters' && (
               <div className="mt-2 space-y-2">
-                <BooleanFilterBuilder pos={pos} value={filterGroup} onChange={onFilterGroupChange} />
+                <BooleanFilterBuilder pos={normalizeToFilterPos(pos)} value={filterGroup} onChange={onFilterGroupChange} />
                 <div className="flex items-center gap-2">
                   <label className="text-xs text-gray-600">Limit</label>
                   <input

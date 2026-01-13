@@ -1,6 +1,6 @@
 import type { llm_job_items } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
-import type { FlaggingResponse, EditResponse, ReallocationResponse, AllocationResponse } from './schema';
+import type { FlaggingResponse, EditResponse, ReallocationResponse, AllocationResponse, SplitResponse, ChangeReviewResponse } from './schema';
 import type { JobScope, LexicalUnitSummary } from './types';
 import {
   createChangesetFromUpdate,
@@ -16,10 +16,10 @@ import {
 export async function applyJobResult(
   item: llm_job_items,
   entry: LexicalUnitSummary,
-  result: FlaggingResponse | EditResponse | ReallocationResponse | AllocationResponse,
+  result: FlaggingResponse | EditResponse | ReallocationResponse | AllocationResponse | SplitResponse | ChangeReviewResponse,
   jobLabel: string | null,
   submittedBy: string,
-  jobType: 'moderation' | 'editing' | 'reallocation' | 'allocate',
+  jobType: 'moderation' | 'editing' | 'reallocation' | 'allocate' | 'split' | 'review',
   jobScope?: JobScope,
   jobConfig?: Record<string, unknown>
 ): Promise<void> {
@@ -31,6 +31,12 @@ export async function applyJobResult(
     await applyEditingResult(item, entry, result as EditResponse, submittedBy, llmJobId);
   } else if (jobType === 'allocate') {
     await applyAllocationResult(item, entry, result as AllocationResponse, submittedBy, llmJobId);
+  } else if (jobType === 'split') {
+    await applySplitResult(item, result as SplitResponse, llmJobId);
+  } else if (jobType === 'review') {
+    // Review jobs are handled by Lambda webhooks - they post comments with AI revisions
+    // This handler just marks the item as succeeded
+    await applyReviewResult(item, result as ChangeReviewResponse, llmJobId);
   } else {
     await applyModerationResult(item, result as FlaggingResponse, jobLabel, submittedBy, llmJobId, jobScope);
   }
@@ -58,13 +64,13 @@ async function applyReallocationResult(
     let reallocationCount = 0;
 
     for (const [entryCode, targetFrameId] of Object.entries(reallocations)) {
-      const targetFrame = await prisma.frames.findUnique({
-        where: { id: BigInt(targetFrameId) },
+      const targetFrame = await prisma.frames.findFirst({
+        where: { id: BigInt(targetFrameId), deleted: false },
         select: { id: true },
       });
 
       if (!targetFrame) {
-        console.warn(`[LLM] Job ${item.job_id} suggested non-existent target frame ${targetFrameId} for entry ${entryCode}`);
+        console.warn(`[LLM] Job ${item.job_id} suggested non-existent or deleted target frame ${targetFrameId} for entry ${entryCode}`);
         continue;
       }
 
@@ -164,8 +170,8 @@ async function applyEditingResult(
 
       // 2. Handle frame_id reallocation (for lexical unit jobs)
       if (frame_id !== undefined && frame_id !== null && entityType !== 'frame') {
-        const targetFrame = await prisma.frames.findUnique({
-          where: { id: BigInt(frame_id) },
+        const targetFrame = await prisma.frames.findFirst({
+          where: { id: BigInt(frame_id), deleted: false },
           select: { id: true },
         });
 
@@ -175,7 +181,7 @@ async function applyEditingResult(
             validUpdates['frame_id'] = BigInt(frame_id);
           }
         } else {
-          console.warn(`[LLM] Job ${item.job_id} suggested non-existent frame_id: ${frame_id}`);
+          console.warn(`[LLM] Job ${item.job_id} suggested non-existent or deleted frame_id: ${frame_id}`);
         }
       }
 
@@ -184,13 +190,13 @@ async function applyEditingResult(
         let reallocationCount = 0;
         
         for (const [entryCode, targetFrameId] of Object.entries(entry_reallocations)) {
-          const targetFrame = await prisma.frames.findUnique({
-            where: { id: BigInt(targetFrameId) },
+          const targetFrame = await prisma.frames.findFirst({
+            where: { id: BigInt(targetFrameId), deleted: false },
             select: { id: true },
           });
 
           if (!targetFrame) {
-            console.warn(`[LLM] Job ${item.job_id} suggested non-existent target frame ${targetFrameId} for entry ${entryCode}`);
+            console.warn(`[LLM] Job ${item.job_id} suggested non-existent or deleted target frame ${targetFrameId} for entry ${entryCode}`);
             continue;
           }
 
@@ -319,14 +325,14 @@ async function applyAllocationResult(
   const entityId = item.lexical_unit_id;
 
   if (!keep_current && recommended_frame_id !== null && entityId) {
-    const targetFrame = await prisma.frames.findUnique({
-      where: { id: BigInt(recommended_frame_id) },
+    const targetFrame = await prisma.frames.findFirst({
+      where: { id: BigInt(recommended_frame_id), deleted: false },
       select: { id: true, label: true },
     });
 
     if (targetFrame) {
-      const currentEntity = await prisma.lexical_units.findUnique({
-        where: { id: entityId },
+      const currentEntity = await prisma.lexical_units.findFirst({
+        where: { id: entityId, deleted: false },
       });
 
       if (currentEntity) {
@@ -352,7 +358,7 @@ async function applyAllocationResult(
         }
       }
     } else {
-      console.warn(`[LLM] Allocation job ${item.job_id} suggested non-existent frame_id: ${recommended_frame_id}`);
+      console.warn(`[LLM] Allocation job ${item.job_id} suggested non-existent or deleted frame_id: ${recommended_frame_id}`);
     }
   }
 
@@ -391,9 +397,9 @@ async function applyModerationResult(
     ? (jobLabel ? `Via ${jobLabel}: ${rawReason}` : rawReason)
     : null;
 
-  let flagTarget: 'frame' | 'lexical_unit' | 'both' = 'frame';
+  let flagTarget: 'frame' | 'lexical_unit' | 'both' = 'lexical_unit';
   if (jobScope?.kind === 'frame_ids') {
-    flagTarget = jobScope.flagTarget ?? 'frame';
+    flagTarget = jobScope.flagTarget ?? 'lexical_unit';
   }
 
   const createModerationChangeset = async (
@@ -428,8 +434,8 @@ async function applyModerationResult(
     
     // Flag the frame if target is 'frame' or 'both'
     if (flagTarget === 'frame' || flagTarget === 'both') {
-      const frame = await prisma.frames.findUnique({
-        where: { id: frameId },
+      const frame = await prisma.frames.findFirst({
+        where: { id: frameId, deleted: false },
       }) as any;
       if (frame) {
         await createModerationChangeset('frame', frameId, frame as Record<string, unknown>);
@@ -461,6 +467,98 @@ async function applyModerationResult(
         confidence: result.confidence ?? null,
         notes: result.notes ?? null,
         staged_at: new Date().toISOString(),
+        llm_job_id: llmJobId.toString(),
+      },
+      completed_at: new Date(),
+    },
+  });
+}
+
+/**
+ * Apply split job result - log the summary of the split operation.
+ * 
+ * Split jobs are agentic - the AI uses MCP tools (create_frame, edit_frames, 
+ * edit_lexical_units) to perform the actual split. The changesets are created
+ * by those tools directly, so this handler just logs the summary.
+ */
+async function applySplitResult(
+  item: llm_job_items,
+  result: SplitResponse,
+  llmJobId: bigint
+): Promise<void> {
+  const { 
+    split_completed, 
+    new_frames, 
+    original_frame_deleted, 
+    delete_changeset_id,
+    reallocation_changeset_ids,
+    confidence, 
+    reasoning 
+  } = result;
+
+  const hasEdits = split_completed && new_frames.length > 0;
+
+  if (split_completed) {
+    console.log(
+      `[LLM] Split job ${item.job_id} completed: created ${new_frames.length} new frames, ` +
+      `${reallocation_changeset_ids?.length ?? 0} reallocations, ` +
+      `original deleted: ${original_frame_deleted}`
+    );
+  } else {
+    console.warn(`[LLM] Split job ${item.job_id} did not complete successfully`);
+  }
+
+  await prisma.llm_job_items.update({
+    where: { id: item.id },
+    data: {
+      status: split_completed ? 'succeeded' : 'failed',
+      has_edits: hasEdits,
+      flags: {
+        split_completed,
+        new_frames: new_frames.map((f: SplitResponse['new_frames'][number]) => ({
+          label: f.label,
+          changeset_id: f.changeset_id,
+          definition: f.definition,
+          assigned_items_count: f.assigned_items_count,
+        })),
+        original_frame_deleted,
+        delete_changeset_id,
+        reallocation_changeset_ids,
+        confidence,
+        reasoning,
+        staged_at: new Date().toISOString(),
+        llm_job_id: llmJobId.toString(),
+      },
+      completed_at: new Date(),
+    },
+  });
+}
+
+/**
+ * Apply review job result - store the AI's recommendation.
+ * 
+ * Review jobs provide recommendations for pending changesets. The Lambda webhook
+ * handles posting comments with AI revisions. This handler just stores the result
+ * and marks the job item as complete.
+ */
+async function applyReviewResult(
+  item: llm_job_items,
+  result: ChangeReviewResponse,
+  llmJobId: bigint
+): Promise<void> {
+  const { action, modifications, justification, confidence } = result;
+
+  await prisma.llm_job_items.update({
+    where: { id: item.id },
+    data: {
+      status: 'succeeded',
+      has_edits: action === 'modify' && !!modifications && Object.keys(modifications).length > 0,
+      flags: {
+        action,
+        modifications,
+        justification,
+        confidence,
+        processed_at: new Date().toISOString(),
         llm_job_id: llmJobId.toString(),
       },
       completed_at: new Date(),

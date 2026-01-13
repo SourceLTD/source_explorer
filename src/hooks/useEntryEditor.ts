@@ -28,8 +28,6 @@ export function useEntryEditor(node: GraphNode | Frame | null, mode: Mode) {
         setEditValue(frameNode.definition ?? '');
       } else if (field === 'short_definition') {
         setEditValue(frameNode.short_definition ?? '');
-      } else if (field === 'prototypical_synset') {
-        setEditValue(frameNode.prototypical_synset);
       } else if (field === 'frame_roles') {
         const preparedFrameRoles = sortRolesByPrecedence(frameNode.frame_roles || []).map((role, index) => {
           const clientId = role.id && role.id.length > 0 ? role.id : `existing-role-${index}-${role.role_type.label}`;

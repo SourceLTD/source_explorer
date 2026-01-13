@@ -23,9 +23,6 @@ export function parseURLToFilterAST(pos: JobTargetType, input: string | URLSearc
 
     const shortDefinition = get('short_definition');
     if (shortDefinition) addRule(group, { kind: 'rule', field: 'short_definition', operator: 'contains', value: shortDefinition });
-
-    const prototypicalSynset = get('prototypical_synset');
-    if (prototypicalSynset) addRule(group, { kind: 'rule', field: 'prototypical_synset', operator: 'contains', value: prototypicalSynset });
   } else {
     // Entry-specific text filters (verbs, nouns, adjectives, adverbs)
     const gloss = get('gloss');

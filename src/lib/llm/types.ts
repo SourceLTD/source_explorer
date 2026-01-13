@@ -57,7 +57,7 @@ export interface CreateLLMJobParams {
   previewOnly?: boolean;
   metadata?: Record<string, unknown>;
   serviceTier?: 'flex' | 'default' | 'priority';
-  jobType?: 'moderation' | 'editing' | 'reallocation' | 'allocate' | 'review';
+  jobType?: 'moderation' | 'editing' | 'reallocation' | 'allocate' | 'review' | 'split';
   targetFields?: string[];
   reallocationEntityTypes?: POSType[];
   reasoning?: {
@@ -71,6 +71,10 @@ export interface CreateLLMJobParams {
     content: string;
     createdAt: string;
   }>;
+  /** Minimum number of new frames to create when splitting (default: 2) */
+  splitMinFrames?: number;
+  /** Maximum number of new frames to create when splitting (default: 5) */
+  splitMaxFrames?: number;
 }
 
 /**
@@ -94,7 +98,19 @@ export interface FrameLexicalUnitData {
   pos: POSType;
   lemmas: string[];
   examples: string[];
-    flagged: boolean;
+  flagged: boolean;
+}
+
+/**
+ * Structured child frame data for superframe template loops
+ */
+export interface ChildFrameData {
+  id: string;
+  label: string;
+  definition: string | null;
+  short_definition: string | null;
+  roles_count: number;
+  lexical_units_count: number;
 }
 
 /**
@@ -105,7 +121,6 @@ export interface FrameRelationData {
   label: string;
   definition?: string | null;
   short_definition?: string | null;
-  prototypical_synset: string;
   roles: FrameRoleData[];
   lexical_units: FrameLexicalUnitData[];
 }
@@ -128,9 +143,11 @@ export interface LexicalUnitSummary {
   // Frame-specific fields
   definition?: string | null;
   short_definition?: string | null;
-  prototypical_synset?: string | null;
   roles?: FrameRoleData[];
   lexical_units?: FrameLexicalUnitData[];
+  // Superframe-specific fields
+  isSuperFrame?: boolean;
+  child_frames?: ChildFrameData[];
 }
 
 export interface RenderedPrompt {
@@ -233,7 +250,9 @@ export function formatScopeDescription(scope: JobScope | null, totalItems: numbe
       const frameCount = scope.frameIds?.length ?? 0;
       const target = scope.flagTarget === 'both' 
         ? 'frames & lexical units' 
-        : scope.flagTarget ?? 'frames';
+        : scope.flagTarget === 'frame'
+          ? 'frames'
+          : 'lexical units';
       return `${frameCount} frames (${target})`;
     }
     case 'filters':

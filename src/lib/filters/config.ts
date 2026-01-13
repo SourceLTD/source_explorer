@@ -57,7 +57,6 @@ export function getFieldConfigsForPos(pos: string): FieldConfig[] {
       { key: 'label', label: 'Frame Name', type: 'text', db: 'label', operators: textOps },
       { key: 'definition', label: 'Definition', type: 'text', db: 'definition', operators: textOps },
       { key: 'short_definition', label: 'Short Definition', type: 'text', db: 'short_definition', operators: textOps },
-      { key: 'prototypical_synset', label: 'Prototypical Synset', type: 'text', db: 'prototypical_synset', operators: textOps },
       { key: 'flagged_reason', label: 'Flagged Reason', type: 'text', db: 'flagged_reason', operators: textOps },
       { key: 'unverifiable_reason', label: 'Unverifiable Reason', type: 'text', db: 'unverifiable_reason', operators: textOps },
       { key: 'flagged', label: 'Flagged', type: 'boolean', db: 'flagged', operators: booleanOps },

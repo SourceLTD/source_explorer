@@ -2,9 +2,9 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import CommentItem from './CommentItem';
+import InlineRevisionCard, { type AIRevision } from './InlineRevisionCard';
 import { PaperAirplaneIcon, SparklesIcon } from '@heroicons/react/24/outline';
 import LoadingSpinner from '@/components/LoadingSpinner';
-import AIChangeReviewDialog from './AIChangeReviewDialog';
 
 interface Comment {
   id: string;
@@ -13,6 +13,7 @@ interface Comment {
   author: string;
   content: string;
   created_at: string;
+  ai_revision: AIRevision | null;
 }
 
 interface ChangeCommentsBoardProps {
@@ -28,18 +29,6 @@ interface ChangeCommentsBoardProps {
   maxHeight?: number;
 }
 
-export interface AIReviewSuggestion {
-  action: 'approve' | 'reject' | 'modify' | 'keep_as_is';
-  modifications?: Record<string, unknown>;
-  justification: string;
-  confidence: number;
-  currentFieldChanges: Array<{
-    field_name: string;
-    old_value: unknown;
-    new_value: unknown;
-  }>;
-}
-
 export default function ChangeCommentsBoard({
   changesetId,
   fieldChangeId,
@@ -53,7 +42,6 @@ export default function ChangeCommentsBoard({
   const [isAIReviewing, setIsAIReviewing] = useState(false);
   const [newComment, setNewComment] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [aiSuggestion, setAISuggestion] = useState<AIReviewSuggestion | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   
@@ -233,18 +221,9 @@ export default function ChangeCommentsBoard({
               }));
             }
             
-            // Note: The Lambda webhook posts the AI comment when processing the job,
-            // so we just need to refresh comments to show it
+            // The Lambda webhook posts the AI comment with ai_revision when processing the job,
+            // so we just need to refresh comments to show the inline revision card
             await fetchComments();
-            
-            // Show the confirmation dialog
-            setAISuggestion({
-              action: aiResult.action,
-              modifications: aiResult.modifications,
-              justification: aiResult.justification,
-              confidence: aiResult.confidence ?? 0.8,
-              currentFieldChanges,
-            });
             
             return; // Success!
           }
@@ -261,52 +240,35 @@ export default function ChangeCommentsBoard({
     }
   };
 
-  const handleApplySuggestion = async () => {
-    if (!aiSuggestion || !changesetId) return;
-    
+  // Handle resolving an AI revision (accept/deny fields)
+  const handleResolveRevision = useCallback(async (
+    revisionId: string, 
+    acceptedFields: string[], 
+    rejectedFields: string[]
+  ) => {
     try {
-      // Apply the modifications via the changeset API
-      if (aiSuggestion.action === 'modify' && aiSuggestion.modifications) {
-        const response = await fetch(`/api/changesets/${changesetId}/apply-ai-suggestion`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            modifications: aiSuggestion.modifications,
-          }),
-        });
-        
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || 'Failed to apply suggestion');
-        }
-      } else if (aiSuggestion.action === 'reject') {
-        // Reject all field changes
-        await fetch(`/api/changesets/${changesetId}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'reject_all' }),
-        });
-      } else if (aiSuggestion.action === 'approve') {
-        // Approve all field changes
-        await fetch(`/api/changesets/${changesetId}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'approve_all' }),
-        });
-      }
-      // 'keep_as_is' does nothing to the pending change
+      const response = await fetch(`/api/ai-revisions/${revisionId}/resolve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accepted_fields: acceptedFields,
+          rejected_fields: rejectedFields,
+        }),
+      });
       
-      setAISuggestion(null);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to resolve revision');
+      }
+      
+      // Refresh comments to show updated revision status
+      await fetchComments();
       onCommentsChange?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to apply suggestion');
-      console.error('Error applying AI suggestion:', err);
+      setError(err instanceof Error ? err.message : 'Failed to resolve revision');
+      console.error('Error resolving AI revision:', err);
     }
-  };
-
-  const handleDismissSuggestion = () => {
-    setAISuggestion(null);
-  };
+  }, [fetchComments, onCommentsChange]);
   
   return (
     <div className="flex flex-col bg-white rounded-lg border border-gray-200 overflow-hidden">
@@ -336,7 +298,7 @@ export default function ChangeCommentsBoard({
       {/* Comments List */}
       <div 
         ref={listRef}
-        className="flex-1 overflow-y-auto px-4 divide-y divide-gray-100"
+        className="flex-1 overflow-y-auto px-4 space-y-1"
         style={{ maxHeight: `${maxHeight}px` }}
       >
         {error ? (
@@ -347,13 +309,27 @@ export default function ChangeCommentsBoard({
           </div>
         ) : (
           comments.map((comment) => (
-            <CommentItem
-              key={comment.id}
-              id={comment.id}
-              author={comment.author}
-              content={comment.content}
-              created_at={comment.created_at}
-            />
+            <div key={comment.id}>
+              {/* If this comment has an AI revision, show the inline revision card */}
+              {comment.ai_revision ? (
+                <div className="py-3">
+                  <InlineRevisionCard
+                    revision={comment.ai_revision}
+                    onResolve={handleResolveRevision}
+                    onChangesetUpdated={onCommentsChange}
+                  />
+                </div>
+              ) : (
+                <div className="border-b border-gray-100 last:border-b-0">
+                  <CommentItem
+                    id={comment.id}
+                    author={comment.author}
+                    content={comment.content}
+                    created_at={comment.created_at}
+                  />
+                </div>
+              )}
+            </div>
           ))
         )}
       </div>
@@ -395,15 +371,6 @@ export default function ChangeCommentsBoard({
           )}
         </div>
       </form>
-
-      {/* AI Review Confirmation Dialog */}
-      {aiSuggestion && (
-        <AIChangeReviewDialog
-          suggestion={aiSuggestion}
-          onApply={handleApplySuggestion}
-          onDismiss={handleDismissSuggestion}
-        />
-      )}
     </div>
   );
 }

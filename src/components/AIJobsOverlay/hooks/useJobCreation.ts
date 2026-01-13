@@ -60,8 +60,8 @@ export interface UseJobCreationReturn {
   setLabelManuallyEdited: (edited: boolean) => void;
   model: string;
   setModel: (model: string) => void;
-  jobType: 'moderation' | 'editing' | 'reallocation' | 'allocate';
-  setJobType: (type: 'moderation' | 'editing' | 'reallocation' | 'allocate') => void;
+  jobType: 'moderation' | 'editing' | 'reallocation' | 'allocate' | 'split';
+  setJobType: (type: 'moderation' | 'editing' | 'reallocation' | 'allocate' | 'split') => void;
   targetFields: string[];
   setTargetFields: (fields: string[]) => void;
   reallocationEntityTypes: POSType[];
@@ -72,6 +72,11 @@ export interface UseJobCreationReturn {
   setReasoningEffort: (effort: 'low' | 'medium' | 'high') => void;
   agenticMode: boolean;
   setAgenticMode: (enabled: boolean) => void;
+  // Split job settings
+  splitMinFrames: number;
+  setSplitMinFrames: (min: number) => void;
+  splitMaxFrames: number;
+  setSplitMaxFrames: (max: number) => void;
   
   // Scope state
   scopeMode: ScopeMode;
@@ -194,12 +199,15 @@ export function useJobCreation({
   const [label, setLabel] = useState(DEFAULT_LABEL);
   const [labelManuallyEdited, setLabelManuallyEdited] = useState(false);
   const [model, setModel] = useState<string>(MODEL_OPTIONS[0].value);
-  const [jobType, setJobType] = useState<'moderation' | 'editing' | 'reallocation' | 'allocate'>('moderation');
+  const [jobType, setJobType] = useState<'moderation' | 'editing' | 'reallocation' | 'allocate' | 'split'>('moderation');
   const [targetFields, setTargetFields] = useState<string[]>([]);
   const [reallocationEntityTypes, setReallocationEntityTypes] = useState<POSType[]>([]);
   const [priority, setPriority] = useState<'flex' | 'normal' | 'priority'>('normal');
   const [reasoningEffort, setReasoningEffort] = useState<'low' | 'medium' | 'high'>('medium');
   const [agenticMode, setAgenticMode] = useState(true); // MCP tools enabled by default
+  // Split job settings
+  const [splitMinFrames, setSplitMinFrames] = useState(2);
+  const [splitMaxFrames, setSplitMaxFrames] = useState(5);
   
   // Scope state
   const [scopeMode, setScopeMode] = useState<ScopeMode>('all');
@@ -223,6 +231,7 @@ export function useJobCreation({
     jobType: 'moderation',
     agenticMode: true, // Default matches initial agenticMode state
     scopeMode: 'all',  // Default matches initial scopeMode state
+    isSuperFrame: mode === 'super_frames',
   }));
   const [promptManuallyEdited, setPromptManuallyEdited] = useState(false);
   const promptRef = useRef<HTMLTextAreaElement>(null);
@@ -347,8 +356,6 @@ export function useJobCreation({
     const forLoopRegex = /\{%\s*for\s+(\w+)\s+in\s+([a-zA-Z0-9_.]+)\s*%\}/g;
     const endforRegex = /\{%\s*endfor\s*%\}/g;
     
-    // Find the last unclosed for loop before cursor
-    const lastOpenLoop: { loopVar: string; collectionKey: string; index: number } | null = null;
     let match;
     
     // Find all for loops
@@ -368,8 +375,6 @@ export function useJobCreation({
     }
     
     // Match for loops with endfor to find unclosed ones
-    // Simple approach: count opens and closes, last open without close is our context
-    const openCount = 0;
     const events: Array<{ type: 'for' | 'endfor'; index: number; data?: { loopVar: string; collectionKey: string } }> = [];
     
     for (const fl of forLoops) {
@@ -437,7 +442,7 @@ export function useJobCreation({
 
   // Generate dynamic label based on job type, scope, and timestamp
   const generateDynamicLabel = useCallback(() => {
-    const action = jobType === 'moderation' ? 'Flag' : jobType === 'editing' ? 'Edit' : 'Reallocate';
+    const action = jobType === 'moderation' ? 'Flag' : jobType === 'editing' ? 'Edit' : jobType === 'split' ? 'Split' : jobType === 'allocate' ? 'Allocate' : 'Reallocate';
     
     let scopeDesc: string;
     switch (scopeMode) {
@@ -517,13 +522,14 @@ export function useJobCreation({
   const nextDisabled = useMemo(() => {
     if (currentStep === 'scope') {
       if (jobType === 'editing' && targetFields.length === 0) return true;
-      if (jobType === 'reallocation' && reallocationEntityTypes.length === 0) return true;
+      // For superframes, reallocation targets child frames, so no entity type selection needed
+      if (jobType === 'reallocation' && mode !== 'super_frames' && reallocationEntityTypes.length === 0) return true;
       return !isScopeValid;
     }
     if (currentStep === 'model') return false;
     if (currentStep === 'prompt') return !promptIsValid;
     return false;
-  }, [currentStep, isScopeValid, promptIsValid, jobType, targetFields, reallocationEntityTypes]);
+  }, [currentStep, isScopeValid, promptIsValid, jobType, targetFields, reallocationEntityTypes, mode]);
 
   // Computed summaries
   const scopeSummary = useMemo(() => {
@@ -578,6 +584,7 @@ export function useJobCreation({
       jobType: 'moderation',
       agenticMode: true,
       scopeMode: 'all',
+      isSuperFrame: mode === 'super_frames',
     }));
     setPromptManuallyEdited(false);
     setPreview(null);
@@ -654,6 +661,7 @@ export function useJobCreation({
       jobType: loadedJobType,
       agenticMode: loadedAgenticMode,
       scopeMode: 'all', // Will be determined later, but prompt is already stored in job
+      isSuperFrame: mode === 'super_frames',
     }));
     setPromptManuallyEdited(true);
     setPromptMode('advanced'); // When loading a job, use advanced mode since prompt may be customized
@@ -902,6 +910,8 @@ export function useJobCreation({
           mcpEnabled: agenticMode,
           metadata: { source: 'table-mode' },
           initialBatchSize: BATCH_SIZE,
+          // Split configuration (only relevant for split jobs)
+          ...(jobType === 'split' && { splitMinFrames, splitMaxFrames }),
         };
 
         console.log(`[useJobCreation] Creating job with first batch (${BATCH_SIZE} items)...`);
@@ -959,6 +969,8 @@ export function useJobCreation({
           // When agentic mode is OFF, don't attach MCP tools at all
           mcpEnabled: agenticMode,
           metadata: { source: 'table-mode' },
+          // Split configuration (only relevant for split jobs)
+          ...(jobType === 'split' && { splitMinFrames, splitMaxFrames }),
         };
 
         job = await api.post<SerializedJob>('/api/llm-jobs', payload);
@@ -1024,6 +1036,7 @@ export function useJobCreation({
         jobType,
         agenticMode,
         scopeMode,
+        isSuperFrame: mode === 'super_frames',
       }));
     }
   }, [jobType, mode, agenticMode, scopeMode, promptManuallyEdited, isCreating]);
@@ -1210,6 +1223,11 @@ export function useJobCreation({
     setReasoningEffort,
     agenticMode,
     setAgenticMode,
+    // Split job settings
+    splitMinFrames,
+    setSplitMinFrames,
+    splitMaxFrames,
+    setSplitMaxFrames,
     
     // Scope state
     scopeMode,

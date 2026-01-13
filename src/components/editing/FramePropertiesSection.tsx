@@ -1,8 +1,9 @@
 import React from 'react';
 import { Frame, PendingChangeInfo } from '@/lib/types';
-import { EditableField } from './types';
+import { EditableField, FrameOption } from './types';
 import { OverlaySection } from './OverlaySection';
 import { PendingFieldIndicator } from '@/components/PendingChangeIndicator';
+import { FrameSelector } from './FrameSelector';
 
 interface FramePropertiesSectionProps {
   frame: Frame;
@@ -16,6 +17,7 @@ interface FramePropertiesSectionProps {
   onCancel: () => void;
   isSaving: boolean;
   pending?: PendingChangeInfo | null;
+  availableSuperFrames?: FrameOption[];
 }
 
 export function FramePropertiesSection({
@@ -29,7 +31,8 @@ export function FramePropertiesSection({
   onSave,
   onCancel,
   isSaving,
-  pending
+  pending,
+  availableSuperFrames = []
 }: FramePropertiesSectionProps) {
   // Helper to check if a field has pending changes
   const hasPendingField = (fieldName: string) => {
@@ -44,6 +47,24 @@ export function FramePropertiesSection({
     }
     return currentValue;
   };
+
+  // Helper to get super frame label from super_frame_id (handles pending changes)
+  const getSuperFrameLabel = (): string | null => {
+    const superFrameId = getDisplayValue('super_frame_id', frame.super_frame_id);
+    if (!superFrameId) return null;
+    
+    // If there's a pending change, look up from availableSuperFrames
+    if (hasPendingField('super_frame_id')) {
+      const superFrame = availableSuperFrames.find(f => f.id === superFrameId);
+      return superFrame?.label ?? null;
+    }
+    
+    // Otherwise use the current frame's super_frame label
+    return frame.super_frame?.label ?? null;
+  };
+
+  // Check if this is a regular frame (not a super frame)
+  const isRegularFrame = frame.super_frame_id !== null;
 
   return (
     <OverlaySection
@@ -209,56 +230,44 @@ export function FramePropertiesSection({
         )}
       </div>
 
-      {/* Prototypical Synset */}
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <h3 className="text-sm font-medium text-gray-700">
-            Prototypical Synset
-            {hasPendingField('prototypical_synset') && (
-              <span className="ml-2 text-xs text-orange-600 font-normal">(pending)</span>
+      {/* Parent Super Frame - Only shown for regular frames (not super frames) */}
+      {isRegularFrame && (
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm font-medium text-gray-700">
+              Parent Super Frame
+              {hasPendingField('super_frame_id') && (
+                <span className="ml-2 text-xs text-orange-600 font-normal">(pending)</span>
+              )}
+            </h3>
+            {editingField !== 'super_frame_id' && (
+              <button
+                onClick={() => onStartEdit('super_frame_id')}
+                className="text-xs text-blue-600 hover:text-blue-600 font-medium cursor-pointer"
+              >
+                Edit
+              </button>
             )}
-          </h3>
-          {editingField !== 'prototypical_synset' && (
-            <button
-              onClick={() => onStartEdit('prototypical_synset')}
-              className="text-xs text-blue-600 hover:text-blue-600 font-medium cursor-pointer"
-            >
-              Edit
-            </button>
+          </div>
+          {editingField === 'super_frame_id' ? (
+            <FrameSelector
+              value={editValue}
+              onChange={onValueChange}
+              availableFrames={availableSuperFrames}
+              onSave={onSave}
+              onCancel={onCancel}
+              isSaving={isSaving}
+            />
+          ) : (
+            <PendingFieldIndicator fieldName="super_frame_id" pending={pending}>
+              <span className="text-gray-900 text-sm">
+                {getSuperFrameLabel() || <span className="text-gray-500 italic">None</span>}
+              </span>
+            </PendingFieldIndicator>
           )}
         </div>
-        {editingField === 'prototypical_synset' ? (
-          <div className="space-y-2">
-            <input
-              type="text"
-              value={editValue}
-              onChange={(e) => onValueChange(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-mono"
-              placeholder="Verb ID (e.g., speak.v.01)"
-              autoFocus
-            />
-            <div className="flex space-x-2">
-              <button
-                onClick={onSave}
-                disabled={isSaving}
-                className="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
-              >
-                {isSaving ? 'Saving...' : 'Save'}
-              </button>
-              <button
-                onClick={onCancel}
-                className="px-4 py-2 bg-gray-200 text-gray-700 text-sm rounded hover:bg-gray-300 cursor-pointer"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        ) : (
-          <PendingFieldIndicator fieldName="prototypical_synset" pending={pending}>
-            <span className="text-gray-900 text-sm font-mono">{getDisplayValue('prototypical_synset', frame.prototypical_synset)}</span>
-          </PendingFieldIndicator>
-        )}
-      </div>
+      )}
+
     </OverlaySection>
   );
 }

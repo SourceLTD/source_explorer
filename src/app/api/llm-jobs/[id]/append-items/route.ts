@@ -57,17 +57,25 @@ export async function POST(request: NextRequest, context: Context) {
       );
     }
 
-    // 3. Get job config to access promptTemplate
-    const config = job.config as { promptTemplate?: string } | null;
-    const promptTemplate = config?.promptTemplate;
+    // 3. Get job config to access userPromptTemplate (the key used when creating jobs)
+    const config = job.config as { userPromptTemplate?: string } | null;
+    const promptTemplate = config?.userPromptTemplate;
     
     if (!promptTemplate) {
-      return NextResponse.json({ error: 'Job config missing promptTemplate' }, { status: 500 });
+      return NextResponse.json({ error: 'Job config missing userPromptTemplate' }, { status: 500 });
     }
 
     // 4. Render prompts and prepare job items
     const preparedJobItemsData = entries.map(entry => {
       const { prompt, variables } = renderPrompt(promptTemplate, entry);
+
+      const frameInfo = entry.frame ? {
+        name: entry.frame.label,
+        id: entry.frame.id,
+        definition: entry.frame.definition,
+        short_definition: entry.frame.short_definition,
+        roles: entry.frame.roles,
+      } : null;
 
       const requestPayload = {
         promptTemplate,
@@ -77,9 +85,16 @@ export async function POST(request: NextRequest, context: Context) {
           code: entry.code,
           pos: entry.pos,
           gloss: entry.gloss,
-          lemmas: entry.lemmas,
+          lemmas: entry.lemmas ?? [],
+          examples: entry.examples ?? [],
           label: entry.label ?? null,
+          flagged: entry.flagged ?? false,
+          flagged_reason: entry.flagged_reason ?? null,
+          lexfile: entry.lexfile ?? null,
+          definition: entry.definition ?? null,
+          short_definition: entry.short_definition ?? null,
         },
+        frameInfo,
       } satisfies Record<string, unknown>;
 
       return {

@@ -222,11 +222,19 @@ function buildVariableMap(entry: LexicalUnitSummary): Record<string, string> {
   if (entry.pos === 'frames') {
     base.definition = entry.definition ?? '';
     base.short_definition = entry.short_definition ?? '';
-    base.prototypical_synset = entry.prototypical_synset ?? '';
     base.flagged = entry.flagged ? 'true' : 'false';
     base.flagged_reason = entry.flagged_reason ?? '';
     base.verifiable = entry.verifiable ? 'true' : 'false';
     base.unverifiable_reason = entry.unverifiable_reason ?? '';
+    base.roles_count = String(entry.roles?.length ?? 0);
+    
+    // Handle superframes vs regular frames
+    if (entry.isSuperFrame) {
+      base.child_frames_count = String(entry.child_frames?.length ?? 0);
+      // Don't include lexical_units_count for superframes
+    } else {
+      base.lexical_units_count = String(entry.lexical_units?.length ?? 0);
+    }
   }
 
   if (entry.additional) {
@@ -266,9 +274,20 @@ function buildTemplateContext(entry: LexicalUnitSummary): Record<string, unknown
   if (entry.pos === 'frames') {
     context.definition = entry.definition ?? '';
     context.short_definition = entry.short_definition ?? '';
-    context.prototypical_synset = entry.prototypical_synset ?? '';
     context.roles = entry.roles ?? [];
-    context.lexical_units = entry.lexical_units ?? [];
+    context.roles_count = entry.roles?.length ?? 0;
+    
+    // Handle superframes vs regular frames
+    if (entry.isSuperFrame) {
+      context.isSuperFrame = true;
+      context.child_frames = entry.child_frames ?? [];
+      context.child_frames_count = entry.child_frames?.length ?? 0;
+      // Don't include lexical_units for superframes (it would be empty anyway)
+    } else {
+      context.isSuperFrame = false;
+      context.lexical_units = entry.lexical_units ?? [];
+      context.lexical_units_count = entry.lexical_units?.length ?? 0;
+    }
   }
 
   if (entry.frame) {
@@ -452,10 +471,25 @@ export async function createLLMJob(
     mcpEnabled: params.mcpEnabled ?? true,
     changesetId: params.changesetId ?? null,
     chatHistory: params.chatHistory ? (params.chatHistory as unknown as Prisma.InputJsonValue) : null,
+    // Split job configuration
+    splitMinFrames: params.splitMinFrames ?? null,
+    splitMaxFrames: params.splitMaxFrames ?? null,
   };
 
   const preparedJobItemsData = entriesToCreate.map(entry => {
-    const { prompt, variables } = renderPrompt(params.promptTemplate, entry);
+    // Inject split configuration into entry.additional for template variable interpolation
+    const entryWithSplitConfig = params.jobType === 'split' && (params.splitMinFrames || params.splitMaxFrames)
+      ? {
+          ...entry,
+          additional: {
+            ...entry.additional,
+            min_splits: params.splitMinFrames ?? 2,
+            max_splits: params.splitMaxFrames ?? 5,
+          },
+        }
+      : entry;
+    
+    const { prompt, variables } = renderPrompt(params.promptTemplate, entryWithSplitConfig);
 
     const frameInfo = entry.frame ? {
       name: entry.frame.label,

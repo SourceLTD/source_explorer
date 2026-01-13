@@ -32,6 +32,7 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
   const [isUpdating, setIsUpdating] = useState(false);
   const [roleTypes, setRoleTypes] = useState<RoleType[]>([]);
   const [availableFrames, setAvailableFrames] = useState<FrameOption[]>([]);
+  const [availableSuperFrames, setAvailableSuperFrames] = useState<FrameOption[]>([]);
   
   // Overlay section expansion state
   const [overlaySections, setOverlaySections] = useState<OverlaySectionsState>({
@@ -79,6 +80,30 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
         }
       };
       fetchFrames();
+    }
+  }, [isOpen, mode]);
+
+  // Fetch super frames when editing a frame (for changing parent super frame)
+  useEffect(() => {
+    if (isOpen && mode === 'frames') {
+      const fetchSuperFrames = async () => {
+        try {
+          const response = await fetch('/api/frames/paginated?isSuperFrame=true&limit=500');
+          if (response.ok) {
+            const data = await response.json();
+            // Map the paginated response to FrameOption format
+            const superFrames: FrameOption[] = data.data?.map((f: { id: string; label: string; code?: string }) => ({
+              id: f.id,
+              label: f.label,
+              code: f.code,
+            })) || [];
+            setAvailableSuperFrames(superFrames);
+          }
+        } catch (error) {
+          console.error('Failed to fetch super frames:', error);
+        }
+      };
+      fetchSuperFrames();
     }
   }, [isOpen, mode]);
 
@@ -202,8 +227,8 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
         case 'short_definition':
           value = editor.editValue.trim();
           break;
-        case 'prototypical_synset':
-          value = editor.editValue.trim();
+        case 'super_frame_id':
+          value = editor.editValue || null;
           break;
         default:
           return;
@@ -380,6 +405,7 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
               onCancel={editor.cancelEditing}
               isSaving={editor.isSaving}
               pending={node.pending}
+              availableSuperFrames={availableSuperFrames}
             />
           )}
 
@@ -442,6 +468,7 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
               onSave={handleSave}
               onCancel={editor.cancelEditing}
               isSaving={editor.isSaving}
+              isSuperFrame={!(node as Frame).super_frame_id}
             />
           )}
 

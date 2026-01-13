@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client';
 import type OpenAI from 'openai';
 import { prisma } from '@/lib/prisma';
-import { FLAGGING_RESPONSE_SCHEMA, EDIT_RESPONSE_SCHEMA, REALLOCATION_RESPONSE_SCHEMA, ALLOCATION_RESPONSE_SCHEMA, type FlaggingResponse } from './schema';
+import { FLAGGING_RESPONSE_SCHEMA, EDIT_RESPONSE_SCHEMA, REALLOCATION_RESPONSE_SCHEMA, ALLOCATION_RESPONSE_SCHEMA, SPLIT_RESPONSE_SCHEMA, CHANGE_REVIEW_RESPONSE_SCHEMA, type FlaggingResponse } from './schema';
 import type { CreateLLMJobParams, JobScope, LexicalUnitSummary, SerializedJob, JobTargetType } from './types';
 import { getOpenAIClient } from './client';
 import { applyJobResult } from './result-handlers';
@@ -91,14 +91,18 @@ export async function submitJobItemBatch(
   }
 
   const config = job?.config as { model: string; serviceTier?: string; reasoning?: unknown } | null;
-  const jobType = (job?.job_type ?? 'moderation') as 'moderation' | 'editing' | 'reallocation' | 'allocate';
+  const jobType = (job?.job_type ?? 'moderation') as 'moderation' | 'editing' | 'reallocation' | 'allocate' | 'split' | 'review';
   const responseSchema = jobType === 'editing' 
     ? EDIT_RESPONSE_SCHEMA 
     : jobType === 'reallocation' 
       ? REALLOCATION_RESPONSE_SCHEMA 
       : jobType === 'allocate'
         ? ALLOCATION_RESPONSE_SCHEMA
-        : FLAGGING_RESPONSE_SCHEMA;
+        : jobType === 'split'
+          ? SPLIT_RESPONSE_SCHEMA
+          : jobType === 'review'
+            ? CHANGE_REVIEW_RESPONSE_SCHEMA
+            : FLAGGING_RESPONSE_SCHEMA;
   const client = ensureOpenAIClient();
   const openAIServiceTier = normalizeServiceTier(config?.serviceTier as CreateLLMJobParams['serviceTier']);
   
@@ -443,8 +447,11 @@ export async function refreshJobItems(
  */
 export async function fetchEntryForItem(item: SerializedJob['items'][number]): Promise<LexicalUnitSummary | null> {
   if (item.lexical_unit_id) {
-    const record = await prisma.lexical_units.findUnique({
-      where: { id: BigInt(item.lexical_unit_id) },
+    const record = await prisma.lexical_units.findFirst({
+      where: { 
+        id: BigInt(item.lexical_unit_id),
+        deleted: false,
+      },
       select: {
         id: true,
         code: true,
@@ -476,14 +483,16 @@ export async function fetchEntryForItem(item: SerializedJob['items'][number]): P
   }
 
   if (item.frame_id) {
-    const record = await prisma.frames.findUnique({
-      where: { id: BigInt(item.frame_id) },
+    const record = await prisma.frames.findFirst({
+      where: { 
+        id: BigInt(item.frame_id),
+        deleted: false,
+      },
       select: {
         id: true,
         label: true,
         definition: true,
         short_definition: true,
-        prototypical_synset: true,
       },
     });
     if (!record) return null;
@@ -497,7 +506,6 @@ export async function fetchEntryForItem(item: SerializedJob['items'][number]): P
       label: record.label,
       definition: record.definition,
       short_definition: record.short_definition,
-      prototypical_synset: record.prototypical_synset,
     };
   }
 

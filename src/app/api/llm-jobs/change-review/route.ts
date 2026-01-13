@@ -214,7 +214,7 @@ export async function POST(request: NextRequest) {
         submitted_by: submitted_by || null,
         job_type: 'review',
         scope_kind: 'ids',
-        scope: { kind: 'ids', pos: 'verbs', ids: [] } as unknown as Prisma.JsonObject,
+        scope: { kind: 'ids', targetType: 'verb', ids: [] } as unknown as Prisma.JsonObject,
         config: jobConfig,
         provider: 'openai',
         llm_vendor: 'openai',

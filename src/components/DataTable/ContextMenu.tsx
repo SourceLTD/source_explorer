@@ -35,8 +35,8 @@ export function ContextMenu({
 
   const handleOpenInGraph = () => {
     onClose();
-    // For frames, navigate to prototypical_synset; for entries, navigate to the entry itself
-    const targetId = frameEntry ? frameEntry.prototypical_synset : (tableEntry?.id || '');
+    // For frames, navigate to the frame ID; for entries, navigate to the entry itself
+    const targetId = frameEntry ? frameEntry.id : (tableEntry?.id || '');
     router.push(`${graphBasePath}?entry=${targetId}`);
   };
 

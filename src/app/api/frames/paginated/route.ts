@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
     
     const validSortColumns = [
       'id', 'label', 'code', 'definition', 
-      'short_definition', 'prototypical_synset', 'created_at', 'updated_at'
+      'short_definition', 'created_at', 'updated_at'
     ];
     
     if (!validSortColumns.includes(sortBy)) {
@@ -99,7 +99,7 @@ export async function GET(request: NextRequest) {
         // Include sample lexical units from unified lexical_units table
         lexical_units: {
           where: { deleted: false },
-          select: { code: true, lemmas: true, pos: true },
+          select: { code: true, lemmas: true, src_lemmas: true, pos: true, gloss: true },
           take: 11, // Take up to 11 to indicate if there are more than 10
         },
       },
@@ -110,7 +110,9 @@ export async function GET(request: NextRequest) {
       const lexicalUnitSnippets = frame.lexical_units.slice(0, 10).map(lu => ({
         code: lu.code,
         lemmas: lu.lemmas,
-        pos: lu.pos
+        src_lemmas: lu.src_lemmas,
+        pos: lu.pos,
+        gloss: lu.gloss
       }));
 
       return {
@@ -119,7 +121,6 @@ export async function GET(request: NextRequest) {
         code: frame.code,
         definition: frame.definition,
         short_definition: frame.short_definition,
-        prototypical_synset: frame.prototypical_synset,
         flagged: frame.flagged ?? false,
         flaggedReason: frame.flagged_reason ?? undefined,
         verifiable: frame.verifiable ?? true,
@@ -144,7 +145,7 @@ export async function GET(request: NextRequest) {
             explanation: fr.role_types.explanation,
           },
         })),
-        lexical_units: {
+        lexical_entries: {
           entries: lexicalUnitSnippets,
           totalCount: lexicalUnitsCount,
           hasMore: lexicalUnitsCount > 10,

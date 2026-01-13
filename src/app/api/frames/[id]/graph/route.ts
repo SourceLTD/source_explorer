@@ -76,7 +76,6 @@ export async function GET(
       label: frame.label,
       gloss: frame.definition,
       short_definition: frame.short_definition,
-      prototypical_synset: frame.prototypical_synset,
       roles: frame.frame_roles.map(role => ({
         id: role.id.toString(),
         frame_id: role.frame_id.toString(),

@@ -13,8 +13,8 @@ export type EditableField =
   | 'label'
   | 'definition'
   | 'short_definition'
-  | 'prototypical_synset'
-  | 'frame_roles';
+  | 'frame_roles'
+  | 'super_frame_id';
 
 export interface EditableRole {
   id: string;

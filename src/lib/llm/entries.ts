@@ -10,7 +10,8 @@ import type {
   JobTargetType, 
   FrameRoleData, 
   FrameLexicalUnitData,
-  FrameRelationData 
+  FrameRelationData,
+  ChildFrameData
 } from './types';
 
 /**
@@ -21,7 +22,6 @@ function buildStructuredFrameData(frameRecord: {
   label: string;
   definition?: string | null;
   short_definition?: string | null;
-  prototypical_synset: string;
   frame_roles?: Array<{
     id: bigint;
     description: string | null;
@@ -75,7 +75,6 @@ function buildStructuredFrameData(frameRecord: {
     'frame.label': frameRecord.label,
     'frame.definition': frameRecord.definition,
     'frame.short_definition': frameRecord.short_definition,
-    'frame.prototypical_synset': frameRecord.prototypical_synset,
     'frame.roles': roles.map(fr => {
       const examples = fr.examples.length > 0 ? fr.examples.join(', ') : '';
       return `**${fr.type}**: ${fr.description}${examples ? ` (e.g. ${examples})` : ''}${fr.label ? `; ${fr.label}` : ''}`;
@@ -88,12 +87,34 @@ function buildStructuredFrameData(frameRecord: {
     label: frameRecord.label,
     definition: frameRecord.definition,
     short_definition: frameRecord.short_definition,
-    prototypical_synset: frameRecord.prototypical_synset,
     roles,
     lexical_units,
   };
 
   return { additional, frame };
+}
+
+/**
+ * Build child frames data for superframes.
+ */
+function buildChildFramesData(childFrames: Array<{
+  id: bigint;
+  label: string;
+  definition: string | null;
+  short_definition: string | null;
+  _count?: {
+    frame_roles: number;
+    lexical_units: number;
+  };
+}>): ChildFrameData[] {
+  return childFrames.map(frame => ({
+    id: frame.id.toString(),
+    label: frame.label,
+    definition: frame.definition,
+    short_definition: frame.short_definition,
+    roles_count: frame._count?.frame_roles ?? 0,
+    lexical_units_count: frame._count?.lexical_units ?? 0,
+  }));
 }
 
 /**
@@ -129,7 +150,7 @@ async function fetchEntriesByIds(targetType: JobTargetType, ids: string[]): Prom
         label: true,
         definition: true,
         short_definition: true,
-        prototypical_synset: true,
+        super_frame_id: true,
         flagged: true,
         flagged_reason: true,
         verifiable: true,
@@ -163,6 +184,23 @@ async function fetchEntriesByIds(targetType: JobTargetType, ids: string[]): Prom
           },
           take: 100,
         },
+        // Include child frames for superframes
+        other_frames: {
+          where: { deleted: false },
+          select: {
+            id: true,
+            label: true,
+            definition: true,
+            short_definition: true,
+            _count: {
+              select: {
+                frame_roles: true,
+                lexical_units: { where: { deleted: false } },
+              },
+            },
+          },
+          take: 100,
+        },
       },
     });
     
@@ -172,6 +210,8 @@ async function fetchEntriesByIds(targetType: JobTargetType, ids: string[]): Prom
       .filter((record): record is (typeof records)[number] => Boolean(record))
       .map(record => {
         const frameInfo = buildStructuredFrameData(record);
+        // A frame is a superframe if it has child frames (other_frames)
+        const isSuperFrame = record.other_frames.length > 0;
         
         return {
           dbId: record.id,
@@ -183,13 +223,16 @@ async function fetchEntriesByIds(targetType: JobTargetType, ids: string[]): Prom
           label: record.label,
           definition: record.definition,
           short_definition: record.short_definition,
-          prototypical_synset: record.prototypical_synset,
           flagged: record.flagged,
           flagged_reason: record.flagged_reason,
           verifiable: record.verifiable,
           unverifiable_reason: record.unverifiable_reason,
           roles: frameInfo.frame.roles,
-          lexical_units: frameInfo.frame.lexical_units,
+          // Only include lexical_units for regular frames, not superframes
+          lexical_units: isSuperFrame ? [] : frameInfo.frame.lexical_units,
+          // Superframe-specific fields
+          isSuperFrame,
+          child_frames: isSuperFrame ? buildChildFramesData(record.other_frames) : undefined,
         };
       });
   } else {
@@ -217,7 +260,6 @@ async function fetchEntriesByIds(targetType: JobTargetType, ids: string[]): Prom
             label: true,
             definition: true,
             short_definition: true,
-            prototypical_synset: true,
             frame_roles: {
               select: {
                 id: true,
@@ -302,7 +344,7 @@ async function fetchEntriesByFrameIds(
       label: true,
       definition: true,
       short_definition: true,
-      prototypical_synset: true,
+      super_frame_id: true,
       flagged: true,
       flagged_reason: true,
       verifiable: true,
@@ -338,6 +380,23 @@ async function fetchEntriesByFrameIds(
         },
         take: 100,
       },
+      // Include child frames for superframes
+      other_frames: {
+        where: { deleted: false },
+        select: {
+          id: true,
+          label: true,
+          definition: true,
+          short_definition: true,
+          _count: {
+            select: {
+              frame_roles: true,
+              lexical_units: { where: { deleted: false } },
+            },
+          },
+        },
+        take: 100,
+      },
     },
   });
 
@@ -347,6 +406,8 @@ async function fetchEntriesByFrameIds(
   if (!includeLexicalUnits || targetType === 'frames') {
     for (const frame of frames) {
       const frameInfo = buildStructuredFrameData(frame);
+      // A frame is a superframe if it has child frames (other_frames)
+      const isSuperFrame = frame.other_frames.length > 0;
       entries.push({
         dbId: frame.id,
         code: frame.id.toString(),
@@ -357,13 +418,16 @@ async function fetchEntriesByFrameIds(
         label: frame.label,
         definition: frame.definition,
         short_definition: frame.short_definition,
-        prototypical_synset: frame.prototypical_synset,
         flagged: frame.flagged,
         flagged_reason: frame.flagged_reason,
         verifiable: frame.verifiable,
         unverifiable_reason: frame.unverifiable_reason,
         roles: frameInfo.frame.roles,
-        lexical_units: frameInfo.frame.lexical_units,
+        // Only include lexical_units for regular frames, not superframes
+        lexical_units: isSuperFrame ? [] : frameInfo.frame.lexical_units,
+        // Superframe-specific fields
+        isSuperFrame,
+        child_frames: isSuperFrame ? buildChildFramesData(frame.other_frames) : undefined,
       });
     }
   }
@@ -435,7 +499,7 @@ async function fetchEntriesByFilters(
         label: true,
         definition: true,
         short_definition: true,
-        prototypical_synset: true,
+        super_frame_id: true,
         flagged: true,
         flagged_reason: true,
         verifiable: true,
@@ -469,29 +533,51 @@ async function fetchEntriesByFilters(
           },
           take: 100,
         },
+        // Include child frames for superframes
+        other_frames: {
+          where: { deleted: false },
+          select: {
+            id: true,
+            label: true,
+            definition: true,
+            short_definition: true,
+            _count: {
+              select: {
+                frame_roles: true,
+                lexical_units: { where: { deleted: false } },
+              },
+            },
+          },
+          take: 100,
+        },
       },
     });
     return records.map(record => {
       const frameInfo = buildStructuredFrameData(record);
-        return {
-          dbId: record.id,
-          code: record.id.toString(),
-          pos: 'frames',
-          gloss: record.definition ?? '',
-          lemmas: [] as string[],
-          examples: [] as string[],
-          label: record.label,
-          definition: record.definition,
-          short_definition: record.short_definition,
-          prototypical_synset: record.prototypical_synset,
-          flagged: record.flagged,
-          flagged_reason: record.flagged_reason,
-          verifiable: record.verifiable,
-          unverifiable_reason: record.unverifiable_reason,
-          roles: frameInfo.frame.roles,
-          lexical_units: frameInfo.frame.lexical_units,
-        };
-      }) as LexicalUnitSummary[];
+      // A frame is a superframe if it has child frames (other_frames)
+      const isSuperFrame = record.other_frames.length > 0;
+      return {
+        dbId: record.id,
+        code: record.id.toString(),
+        pos: 'frames',
+        gloss: record.definition ?? '',
+        lemmas: [] as string[],
+        examples: [] as string[],
+        label: record.label,
+        definition: record.definition,
+        short_definition: record.short_definition,
+        flagged: record.flagged,
+        flagged_reason: record.flagged_reason,
+        verifiable: record.verifiable,
+        unverifiable_reason: record.unverifiable_reason,
+        roles: frameInfo.frame.roles,
+        // Only include lexical_units for regular frames, not superframes
+        lexical_units: isSuperFrame ? [] : frameInfo.frame.lexical_units,
+        // Superframe-specific fields
+        isSuperFrame,
+        child_frames: isSuperFrame ? buildChildFramesData(record.other_frames) : undefined,
+      };
+    }) as LexicalUnitSummary[];
   }
 
   // Lexical units (verb, noun, adjective, adverb)
@@ -526,7 +612,6 @@ async function fetchEntriesByFilters(
           label: true,
           definition: true,
           short_definition: true,
-          prototypical_synset: true,
           frame_roles: {
             select: {
               id: true,

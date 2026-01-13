@@ -89,7 +89,7 @@ export async function getEntryById(id: string): Promise<LexicalUnitWithRelations
       where: whereClause,
       include: {
         frames: {
-          select: { id: true, label: true, code: true, definition: true, short_definition: true, prototypical_synset: true }
+          select: { id: true, label: true, code: true, definition: true, short_definition: true }
         },
         lexical_unit_relations_lexical_unit_relations_source_idTolexical_units: {
           include: {
@@ -173,7 +173,6 @@ function transformToLexicalUnit(entry: any): LexicalUnit {
       code: entry.frames.code,
       definition: entry.frames.definition,
       short_definition: entry.frames.short_definition,
-      prototypical_synset: entry.frames.prototypical_synset,
       createdAt: new Date(),
       updatedAt: new Date(),
     } : null,
@@ -349,7 +348,6 @@ function transformToGraphNodeWithContext(entry: any): GraphNode {
       code: entry.frames.code,
       definition: entry.frames.definition,
       short_definition: entry.frames.short_definition,
-      prototypical_synset: entry.frames.prototypical_synset,
       createdAt: entry.frames.created_at,
       updatedAt: entry.frames.updated_at,
       frame_roles: entry.frames.frame_roles.map((role: any) => ({
@@ -880,7 +878,6 @@ function transformToGraphNode(entry: any): GraphNode {
       code: entry.frames.code,
       definition: entry.frames.definition,
       short_definition: entry.frames.short_definition,
-      prototypical_synset: entry.frames.prototypical_synset,
       createdAt: new Date(),
       updatedAt: new Date(),
     } : null,
@@ -943,7 +940,6 @@ export async function getPaginatedFrames(
     code,
     definition,
     short_definition,
-    prototypical_synset,
     createdAfter,
     createdBefore,
     updatedAfter,
@@ -975,7 +971,6 @@ export async function getPaginatedFrames(
   if (code) conditions.push({ code: { contains: code, mode: 'insensitive' } });
   if (definition) conditions.push({ definition: { contains: definition, mode: 'insensitive' } });
   if (short_definition) conditions.push({ short_definition: { contains: short_definition, mode: 'insensitive' } });
-  if (prototypical_synset) conditions.push({ prototypical_synset: { contains: prototypical_synset, mode: 'insensitive' } });
 
   // Date filters
   if (createdAfter) conditions.push({ created_at: { gte: new Date(createdAfter) } });
@@ -1030,7 +1025,6 @@ export async function getPaginatedFrames(
     label: frame.label,
     definition: frame.definition,
     short_definition: frame.short_definition,
-    prototypical_synset: frame.prototypical_synset,
     code: frame.code,
     flagged: frame.flagged ?? undefined,
     flaggedReason: frame.flagged_reason ?? undefined,

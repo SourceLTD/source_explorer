@@ -48,6 +48,16 @@ const LU_ITEM_FIELDS = [
   { key: 'flagged', label: 'Is Flagged (boolean)' },
 ];
 
+// Child frame fields for superframes
+const CHILD_FRAME_ITEM_FIELDS = [
+  { key: 'id', label: 'Frame ID' },
+  { key: 'label', label: 'Frame Label' },
+  { key: 'definition', label: 'Frame Definition' },
+  { key: 'short_definition', label: 'Frame Short Definition' },
+  { key: 'roles_count', label: 'Number of Roles' },
+  { key: 'lexical_units_count', label: 'Number of Lexical Units' },
+];
+
 // Common variables for all entity types
 const COMMON_VARIABLES: VariableDefinition[] = [
   { key: 'id', label: 'Id', category: 'basic' },
@@ -79,7 +89,6 @@ const VERB_VARIABLES: VariableDefinition[] = [
   { key: 'frame.label', label: 'Frame Label', category: 'relation' },
   { key: 'frame.definition', label: 'Frame Definition', category: 'relation' },
   { key: 'frame.short_definition', label: 'Frame Short Definition', category: 'relation' },
-  { key: 'frame.prototypical_synset', label: 'Frame Prototypical Synset', category: 'relation' },
   { key: 'frame.roles', label: 'Frame Roles (formatted string)', category: 'relation' },
   // Iterable collections for {% for %} loops
   {
@@ -139,14 +148,13 @@ const ADVERB_VARIABLES: VariableDefinition[] = [
   { key: 'antonyms', label: 'Antonyms', category: 'relation' },
 ];
 
-// Frame-specific variables
+// Frame-specific variables (regular frames with lexical units)
 const FRAME_VARIABLES: VariableDefinition[] = [
   { key: 'id', label: 'Id', category: 'basic' },
   { key: 'pos', label: 'Pos', category: 'computed' },
   { key: 'label', label: 'Label', category: 'basic' },
   { key: 'definition', label: 'Definition', category: 'basic' },
   { key: 'short_definition', label: 'Short Definition', category: 'basic' },
-  { key: 'prototypical_synset', label: 'Prototypical Synset', category: 'basic' },
   { key: 'flagged', label: 'Flagged', category: 'basic' },
   { key: 'flagged_reason', label: 'Flagged Reason', category: 'basic' },
   { key: 'verifiable', label: 'Verifiable', category: 'basic' },
@@ -170,10 +178,40 @@ const FRAME_VARIABLES: VariableDefinition[] = [
   } as IterableVariableDefinition,
 ];
 
+// Superframe-specific variables (frames that contain other frames, not lexical units)
+const SUPERFRAME_VARIABLES: VariableDefinition[] = [
+  { key: 'id', label: 'Id', category: 'basic' },
+  { key: 'pos', label: 'Pos', category: 'computed' },
+  { key: 'label', label: 'Label', category: 'basic' },
+  { key: 'definition', label: 'Definition', category: 'basic' },
+  { key: 'short_definition', label: 'Short Definition', category: 'basic' },
+  { key: 'flagged', label: 'Flagged', category: 'basic' },
+  { key: 'flagged_reason', label: 'Flagged Reason', category: 'basic' },
+  { key: 'verifiable', label: 'Verifiable', category: 'basic' },
+  { key: 'unverifiable_reason', label: 'Unverifiable Reason', category: 'basic' },
+  { key: 'roles_count', label: 'Roles Count', category: 'computed' },
+  { key: 'child_frames_count', label: 'Child Frames Count', category: 'computed' },
+  // Iterable collections for {% for %} loops
+  {
+    key: 'roles',
+    label: 'Superframe Roles (iterable)',
+    category: 'iterable',
+    itemFields: ROLE_ITEM_FIELDS,
+    exampleLoop: '{% for role in roles %}\n{{ role.type }}: {{ role.description }}\n{% endfor %}',
+  } as IterableVariableDefinition,
+  {
+    key: 'child_frames',
+    label: 'Child Frames (iterable)',
+    category: 'iterable',
+    itemFields: CHILD_FRAME_ITEM_FIELDS,
+    exampleLoop: '{% for frame in child_frames %}\n- {{ frame.label }}: {{ frame.definition }}\n{% endfor %}',
+  } as IterableVariableDefinition,
+];
+
 /**
  * Get available variables for a specific entity type
  */
-export function getVariablesForEntityType(entityType: DataTableMode): VariableDefinition[] {
+export function getVariablesForEntityType(entityType: DataTableMode, isSuperFrame?: boolean): VariableDefinition[] {
   switch (entityType) {
     case 'lexical_units':
       // Return combined variables for all lexical units
@@ -184,17 +222,27 @@ export function getVariablesForEntityType(entityType: DataTableMode): VariableDe
         ...ADVERB_VARIABLES
       ].map(v => [v.key, v])).values());
     case 'frames':
-      return FRAME_VARIABLES;
+      // Return superframe or regular frame variables based on flag
+      return isSuperFrame ? SUPERFRAME_VARIABLES : FRAME_VARIABLES;
+    case 'super_frames':
+      return SUPERFRAME_VARIABLES;
     default:
       return COMMON_VARIABLES;
   }
 }
 
 /**
+ * Get variables specifically for superframes
+ */
+export function getSuperframeVariables(): VariableDefinition[] {
+  return SUPERFRAME_VARIABLES;
+}
+
+/**
  * Get only iterable variables for a specific entity type
  */
-export function getIterableVariablesForEntityType(entityType: DataTableMode): IterableVariableDefinition[] {
-  return getVariablesForEntityType(entityType).filter(isIterableVariable);
+export function getIterableVariablesForEntityType(entityType: DataTableMode, isSuperFrame?: boolean): IterableVariableDefinition[] {
+  return getVariablesForEntityType(entityType, isSuperFrame).filter(isIterableVariable);
 }
 
 /**
@@ -204,5 +252,6 @@ export function getAllEntityVariables(): Record<string, VariableDefinition[]> {
   return {
     lexical_units: getVariablesForEntityType('lexical_units'),
     frames: FRAME_VARIABLES,
+    super_frames: SUPERFRAME_VARIABLES,
   };
 }
