@@ -45,11 +45,15 @@ model frames {
   deleted                                           Boolean                @default(false)
   deleted_at                                        DateTime?              @db.Timestamp(6)
   deleted_reason                                    String?
+  super_frame_id                                    BigInt?
+  code                                              String?
   adjectives                                        adjectives[]
   adverbs                                           adverbs[]
   frame_relations_frame_relations_source_idToframes frame_relations[]      @relation("frame_relations_source_idToframes")
   frame_relations_frame_relations_target_idToframes frame_relations[]      @relation("frame_relations_target_idToframes")
   frame_roles                                       frame_roles[]
+  frames                                            frames?                @relation("framesToframes", fields: [super_frame_id], references: [id], map: "frames_super_frame_fk")
+  other_frames                                      frames[]               @relation("framesToframes")
   llm_job_items                                     llm_job_items[]
   nouns                                             nouns[]
   verbs                                             verbs[]
@@ -59,6 +63,8 @@ model frames {
   @@index([embedding], map: "idx_frames_embedding")
   @@index([deleted], map: "idx_frames_deleted")
   @@index([verifiable], map: "idx_frames_verifiable")
+  @@index([code], map: "idx_frames_code")
+  @@index([super_frame_id], map: "idx_frames_super_frame_id")
 }
 
 model instantiation_types {

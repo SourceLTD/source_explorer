@@ -71,7 +71,7 @@ export async function GET(request: NextRequest) {
     // Get total count
     const totalCount = await prisma.frames.count({ where });
 
-    // Get frames with role counts and verb counts
+    // Get frames with role counts, verb counts, and sample words
     const frames = await prisma.frames.findMany({
       where,
       skip,
@@ -92,6 +92,27 @@ export async function GET(request: NextRequest) {
           include: {
             role_types: true,
           },
+        },
+        // Include sample words from each POS (up to 3 each)
+        nouns: {
+          where: { deleted: false },
+          select: { code: true, lemmas: true },
+          take: 3,
+        },
+        verbs: {
+          where: { deleted: false },
+          select: { code: true, lemmas: true },
+          take: 3,
+        },
+        adjectives: {
+          where: { deleted: false },
+          select: { code: true, lemmas: true },
+          take: 3,
+        },
+        adverbs: {
+          where: { deleted: false },
+          select: { code: true, lemmas: true },
+          take: 3,
         },
       },
     });
@@ -125,6 +146,13 @@ export async function GET(request: NextRequest) {
           explanation: fr.role_types.explanation,
         },
       })),
+      // Sample words from each POS
+      words_sample: {
+        nouns: frame.nouns.map(n => ({ code: n.code, lemmas: n.lemmas })),
+        verbs: frame.verbs.map(v => ({ code: v.code, lemmas: v.lemmas })),
+        adjectives: frame.adjectives.map(a => ({ code: a.code, lemmas: a.lemmas })),
+        adverbs: frame.adverbs.map(r => ({ code: r.code, lemmas: r.lemmas })),
+      },
     }));
 
     const totalPages = Math.ceil(totalCount / limit);

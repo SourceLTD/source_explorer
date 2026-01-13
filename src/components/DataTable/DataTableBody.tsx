@@ -246,6 +246,51 @@ export function CellContent({
             {entry.verbs_count ?? 0}
           </span>
         );
+      case 'words_sample':
+        if (!entry.words_sample) {
+          return <EmptyCell />;
+        }
+        const { nouns, verbs, adjectives, adverbs } = entry.words_sample;
+        const hasNoWords = nouns.length === 0 && verbs.length === 0 && adjectives.length === 0 && adverbs.length === 0;
+        if (hasNoWords) {
+          return <EmptyCell />;
+        }
+        return (
+          <div className="space-y-1.5 text-xs">
+            {verbs.length > 0 && (
+              <div className="flex items-start gap-1">
+                <span className="inline-block px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 font-medium shrink-0">V</span>
+                <span className="text-gray-700 break-words">
+                  {verbs.slice(0, 3).map(w => w.lemmas[0] || w.code).join(', ')}
+                </span>
+              </div>
+            )}
+            {nouns.length > 0 && (
+              <div className="flex items-start gap-1">
+                <span className="inline-block px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-medium shrink-0">N</span>
+                <span className="text-gray-700 break-words">
+                  {nouns.slice(0, 3).map(w => w.lemmas[0] || w.code).join(', ')}
+                </span>
+              </div>
+            )}
+            {adjectives.length > 0 && (
+              <div className="flex items-start gap-1">
+                <span className="inline-block px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-medium shrink-0">A</span>
+                <span className="text-gray-700 break-words">
+                  {adjectives.slice(0, 3).map(w => w.lemmas[0] || w.code).join(', ')}
+                </span>
+              </div>
+            )}
+            {adverbs.length > 0 && (
+              <div className="flex items-start gap-1">
+                <span className="inline-block px-1.5 py-0.5 rounded bg-green-100 text-green-700 font-medium shrink-0">R</span>
+                <span className="text-gray-700 break-words">
+                  {adverbs.slice(0, 3).map(w => w.lemmas[0] || w.code).join(', ')}
+                </span>
+              </div>
+            )}
+          </div>
+        );
       case 'flagged':
         if (entry.flagged === null || entry.flagged === undefined) {
           return <NACell />;

@@ -207,6 +207,20 @@ export interface FrameRole {
   role_type: RoleType;
 }
 
+// Sample word for displaying in the frames table
+export interface WordSample {
+  code: string;
+  lemmas: string[];
+}
+
+// Collection of sample words by part of speech
+export interface WordsSample {
+  nouns: WordSample[];
+  verbs: WordSample[];
+  adjectives: WordSample[];
+  adverbs: WordSample[];
+}
+
 export interface Frame {
   id: string;
   label: string;
@@ -223,6 +237,8 @@ export interface Frame {
   // Counts from related entities
   roles_count?: number;
   verbs_count?: number;
+  // Sample words from the frame (nouns, verbs, adjectives, adverbs)
+  words_sample?: WordsSample;
   // Pending changes info (optional, included when there are uncommitted changes)
   pending?: PendingChangeInfo | null;
 }

@@ -72,6 +72,7 @@ export const FRAMES_COLUMNS: ColumnConfig[] = [
   { key: 'frame_roles', label: 'Frame Roles', visible: true, sortable: false },
   { key: 'roles_count', label: 'Roles', visible: false, sortable: false },
   { key: 'verbs_count', label: 'Verbs', visible: true, sortable: false },
+  { key: 'words_sample', label: 'Words Sample', visible: true, sortable: false },
   { key: 'flagged', label: 'Flagged', visible: false, sortable: true },
   { key: 'flaggedReason', label: 'Flagged Reason', visible: false, sortable: false },
   { key: 'verifiable', label: 'Verifiable', visible: true, sortable: true },
@@ -109,6 +110,7 @@ export const DEFAULT_COLUMN_WIDTHS: ColumnWidthState = {
   frame_roles: 250,
   roles_count: 80,
   verbs_count: 80,
+  words_sample: 250,
 };
 
 export type DataTableMode = 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames';
