@@ -73,6 +73,7 @@ export function LexicalPropertiesSection({
       case 'nouns': return 'Noun Properties';
       case 'adjectives': return 'Adjective Properties';
       case 'adverbs': return 'Adverb Properties';
+      case 'lexical_units': return 'Lexical Unit Properties';
       default: return 'Properties';
     }
   };
@@ -89,7 +90,7 @@ export function LexicalPropertiesSection({
       onToggle={onToggle}
     >
       {/* Vendler Class - Only for verbs */}
-      {mode === 'verbs' && (
+      {(mode === 'verbs' || (mode === 'lexical_units' && node.pos === 'verb')) && (
         <div>
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-sm font-medium text-gray-700">
@@ -101,7 +102,7 @@ export function LexicalPropertiesSection({
             {editingField !== 'vendler_class' && (
               <button
                 onClick={() => onStartEdit('vendler_class')}
-                className="text-xs text-blue-600 hover:text-blue-700 font-medium cursor-pointer"
+                className="text-xs text-blue-600 hover:text-blue-600 font-medium cursor-pointer"
               >
                 Edit
               </button>
@@ -125,8 +126,8 @@ export function LexicalPropertiesSection({
         </div>
       )}
 
-      {/* Frame - For verbs, nouns, adjectives, and adverbs */}
-      {(mode === 'verbs' || mode === 'nouns' || mode === 'adjectives' || mode === 'adverbs') && (
+      {/* Frame - For lexical units */}
+      {(mode === 'lexical_units' || mode === 'verbs' || mode === 'nouns' || mode === 'adjectives' || mode === 'adverbs') && (
         <div>
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-sm font-medium text-gray-700">
@@ -138,7 +139,7 @@ export function LexicalPropertiesSection({
             {editingField !== 'frame' && (
               <button
                 onClick={() => onStartEdit('frame')}
-                className="text-xs text-blue-600 hover:text-blue-700 font-medium cursor-pointer"
+                className="text-xs text-blue-600 hover:text-blue-600 font-medium cursor-pointer"
               >
                 Edit
               </button>
@@ -175,7 +176,7 @@ export function LexicalPropertiesSection({
           {editingField !== 'lexfile' && (
             <button
               onClick={() => onStartEdit('lexfile')}
-              className="text-xs text-blue-600 hover:text-blue-700 font-medium cursor-pointer"
+              className="text-xs text-blue-600 hover:text-blue-600 font-medium cursor-pointer"
             >
               Edit
             </button>

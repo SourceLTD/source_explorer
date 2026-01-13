@@ -13,6 +13,7 @@ import {
   WithPendingChanges,
   PendingFieldInfo,
   FieldChangeStatus,
+  normalizeEntityType,
 } from './types';
 import {
   PendingChangeInfo,
@@ -125,9 +126,11 @@ async function getPendingChangesetsMap(
     return new Map();
   }
 
+  const normalizedType = normalizeEntityType(entityType);
+
   const results = await prisma.changesets.findMany({
     where: {
-      entity_type: entityType,
+      entity_type: normalizedType,
       entity_id: { in: entityIds },
       status: 'pending',
     },
@@ -197,9 +200,10 @@ export async function getPendingCreates(
     llm_job_id?: bigint;
   }
 ): Promise<ChangesetWithFieldChanges[]> {
+  const normalizedType = normalizeEntityType(entityType);
   const results = await prisma.changesets.findMany({
     where: {
-      entity_type: entityType,
+      entity_type: normalizedType,
       operation: 'create',
       status: 'pending',
       ...(filters?.created_by && { created_by: filters.created_by }),
@@ -285,9 +289,10 @@ export function pendingCreateToVirtualEntity<T extends { id: bigint }>(
 export async function getPendingDeleteIds(
   entityType: EntityType
 ): Promise<Set<bigint>> {
+  const normalizedType = normalizeEntityType(entityType);
   const results = await prisma.changesets.findMany({
     where: {
-      entity_type: entityType,
+      entity_type: normalizedType,
       operation: 'delete',
       status: 'pending',
     },

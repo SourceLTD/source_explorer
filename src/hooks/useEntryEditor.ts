@@ -83,7 +83,7 @@ export function useEntryEditor(node: GraphNode | Frame | null, mode: Mode) {
           description: role.description || '',
           roleType: role.role_type.label,
           exampleSentence: role.example_sentence || '',
-          main: role.main,
+          main: role.main ?? false,
         };
       });
 

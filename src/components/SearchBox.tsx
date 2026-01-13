@@ -8,7 +8,7 @@ interface SearchBoxProps {
   onSelectResult: (result: SearchResult) => void;
   onSearchChange?: (query: string) => void;
   placeholder?: string;
-  mode?: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames';
+  mode?: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames' | 'lexical_units';
 }
 
 export default function SearchBox({ onSelectResult, onSearchChange, placeholder = "Search lexical entries...", mode = 'verbs' }: SearchBoxProps) {
@@ -30,16 +30,19 @@ export default function SearchBox({ onSelectResult, onSearchChange, placeholder 
     setIsLoading(true);
     try {
       let apiEndpoint = '/api/search';
-      if (mode === 'nouns') {
-        apiEndpoint = '/api/nouns/search';
-      } else if (mode === 'adjectives') {
-        apiEndpoint = '/api/adjectives/search';
-      } else if (mode === 'adverbs') {
-        apiEndpoint = '/api/adverbs/search';
-      } else if (mode === 'frames') {
+      
+      if (mode === 'frames') {
         apiEndpoint = '/api/frames/search';
+      } else if (mode === 'nouns') {
+        apiEndpoint = '/api/search?pos=noun';
+      } else if (mode === 'adjectives') {
+        apiEndpoint = '/api/search?pos=adjective';
+      } else if (mode === 'adverbs') {
+        apiEndpoint = '/api/search?pos=adverb';
       }
-      const response = await fetch(`${apiEndpoint}?q=${encodeURIComponent(searchQuery)}&limit=100`);
+      
+      const separator = apiEndpoint.includes('?') ? '&' : '?';
+      const response = await fetch(`${apiEndpoint}${separator}q=${encodeURIComponent(searchQuery)}&limit=100`);
       if (response.ok) {
         const searchResults = await response.json();
         setResults(searchResults);

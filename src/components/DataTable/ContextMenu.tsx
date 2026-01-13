@@ -29,7 +29,7 @@ export function ContextMenu({
   }
 
   // Check if entry is a Frame
-  const isFrameEntry = mode === 'frames' && 'label' in entry;
+  const isFrameEntry = (mode === 'frames' || mode === 'super_frames' || mode === 'frames_only') && 'label' in entry;
   const frameEntry = isFrameEntry ? entry as Frame : null;
   const tableEntry = !isFrameEntry ? entry as TableEntry : null;
 
@@ -38,6 +38,22 @@ export function ContextMenu({
     // For frames, navigate to prototypical_synset; for entries, navigate to the entry itself
     const targetId = frameEntry ? frameEntry.prototypical_synset : (tableEntry?.id || '');
     router.push(`${graphBasePath}?entry=${targetId}`);
+  };
+
+  const handleViewLexicalEntries = () => {
+    onClose();
+    if (frameEntry) {
+      router.push(`/table?frame_id=${frameEntry.id}`);
+    }
+  };
+
+  const handleViewSubframes = () => {
+    onClose();
+    if (frameEntry) {
+      // Navigate to the frames table, with the "Frames" tab active and filtered by super_frame_id
+      // Since the tab state is local to the page, we might need a query param to tell it which tab to open
+      router.push(`/table/frames?super_frame_id=${frameEntry.id}&tab=frames`);
+    }
   };
 
   const handleAction = (action: 'flag' | 'unflag' | 'forbid' | 'allow') => {
@@ -74,15 +90,43 @@ export function ContextMenu({
 
       {/* Menu items */}
       <div className="py-1">
-        <button
-          onClick={handleOpenInGraph}
-          className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-800 flex items-center gap-2"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-          </svg>
-          {frameEntry ? 'Open Prototypical Synset in Graph Mode' : 'Open in Graph Mode'}
-        </button>
+        {frameEntry && (
+          <button
+            onClick={handleOpenInGraph}
+            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 flex items-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+            Open in Graph Mode
+          </button>
+        )}
+
+        {frameEntry && (
+          <>
+            {mode === 'super_frames' ? (
+              <button
+                onClick={handleViewSubframes}
+                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+                View Child Frames
+              </button>
+            ) : (
+              <button
+                onClick={handleViewLexicalEntries}
+                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+                View Lexical Entries
+              </button>
+            )}
+          </>
+        )}
 
         {/* Only show moderation actions for table entries, not frames */}
         {tableEntry && (

@@ -9,9 +9,9 @@ function TableModeContent() {
   const searchParams = useSearchParams();
   const [searchQuery, setSearchQuery] = useState<string>('');
   
-  const editOverlay = useTableEditOverlay('verbs');
+  // Changed mode to 'lexical_units'
+  const editOverlay = useTableEditOverlay('lexical_units' as any);
 
-  // Handle flaggedByJobId URL parameter
   useEffect(() => {
     const flaggedByJobIdParam = searchParams?.get('flaggedByJobId');
     if (!flaggedByJobIdParam) return;
@@ -20,7 +20,7 @@ function TableModeContent() {
 
   return (
     <TablePageLayout
-      mode="verbs"
+      mode="lexical_units"
       searchQuery={searchQuery}
       onSearchQueryChange={setSearchQuery}
       isEditOverlayOpen={editOverlay.isEditOverlayOpen}

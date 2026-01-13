@@ -55,7 +55,7 @@ export function RelationsSection({
           {editingField !== 'hypernym' && (
             <button
               onClick={() => onStartEdit('hypernym')}
-              className="text-xs text-blue-600 hover:text-blue-700 font-medium cursor-pointer"
+              className="text-xs text-blue-600 hover:text-blue-600 font-medium cursor-pointer"
             >
               Change
             </button>

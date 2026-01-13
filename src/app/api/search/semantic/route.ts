@@ -6,13 +6,14 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const openaiApiKey = process.env.OPENAI_API_KEY!;
 
-// Embedding model configuration (must match the Edge Function)
+// Embedding model configuration
 const EMBEDDING_MODEL = 'text-embedding-3-small';
 const EMBEDDING_DIMENSIONS = 1536;
 
 interface SemanticSearchResult {
   id: number;
   code: string;
+  pos: string;
   lemmas: string[];
   gloss: string;
   similarity: number;
@@ -28,7 +29,7 @@ interface FrameSearchResult {
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const query = searchParams.get('q');
-  const table = searchParams.get('table') || 'verbs';
+  const table = searchParams.get('table') || 'lexical_units';
   const limitParam = searchParams.get('limit');
   const thresholdParam = searchParams.get('threshold');
   
@@ -39,7 +40,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Search query (q) is required' }, { status: 400 });
   }
 
-  const validTables = ['verbs', 'nouns', 'adjectives', 'adverbs', 'frames'];
+  // Update valid tables to include lexical_units
+  const validTables = ['lexical_units', 'frames', 'verbs', 'nouns', 'adjectives', 'adverbs'];
   if (!validTables.includes(table)) {
     return NextResponse.json(
       { error: `Invalid table. Must be one of: ${validTables.join(', ')}` },
@@ -47,12 +49,15 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  // Map legacy table names to the new unified table
+  const actualTable = ['verbs', 'nouns', 'adjectives', 'adverbs', 'lexical_units'].includes(table) 
+    ? 'lexical_units' 
+    : table;
+
   try {
-    // Initialize clients
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     const openai = new OpenAI({ apiKey: openaiApiKey });
 
-    // Generate embedding for the search query
     const embeddingResponse = await openai.embeddings.create({
       model: EMBEDDING_MODEL,
       input: query,
@@ -61,8 +66,8 @@ export async function GET(request: NextRequest) {
 
     const queryEmbedding = embeddingResponse.data[0].embedding;
 
-    // Call the appropriate semantic search function
-    const functionName = `search_${table}_semantic`;
+    // Use the unified function for lexical units
+    const functionName = `search_${actualTable}_semantic`;
     
     const { data, error } = await supabase.rpc(functionName, {
       query_embedding: queryEmbedding,
@@ -78,10 +83,8 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Transform results to match the existing search result format
     const results = (data as (SemanticSearchResult | FrameSearchResult)[]).map((item) => {
       if ('label' in item) {
-        // Frame result
         return {
           id: item.id.toString(),
           label: item.label,
@@ -93,18 +96,18 @@ export async function GET(request: NextRequest) {
           similarity: item.similarity,
         };
       } else {
-        // Lexical entry result
+        // Map long POS names to short codes if needed by frontend
         const posMap: Record<string, string> = {
-          verbs: 'v',
-          nouns: 'n',
-          adjectives: 'a',
-          adverbs: 'r',
+          verb: 'v',
+          noun: 'n',
+          adjective: 'a',
+          adverb: 'r',
         };
         return {
           id: item.code,
           label: item.code,
           gloss: item.gloss,
-          pos: posMap[table] || 'v',
+          pos: posMap[item.pos] || item.pos,
           lemmas: item.lemmas || [],
           src_lemmas: [],
           legacy_id: '',
@@ -123,4 +126,3 @@ export async function GET(request: NextRequest) {
     );
   }
 }
-

@@ -99,21 +99,21 @@ export default function ColumnVisibilityPanel({
               <div className="flex gap-2">
                 <button
                   onClick={handleSelectAll}
-                  className="text-xs text-blue-600 hover:text-blue-700 font-medium cursor-pointer"
+                  className="text-xs text-blue-600 hover:text-blue-600 font-medium cursor-pointer"
                 >
                   All
                 </button>
                 <span className="text-xs text-gray-400">|</span>
                 <button
                   onClick={handleSelectNone}
-                  className="text-xs text-blue-600 hover:text-blue-700 font-medium cursor-pointer"
+                  className="text-xs text-blue-600 hover:text-blue-600 font-medium cursor-pointer"
                 >
                   None
                 </button>
                 <span className="text-xs text-gray-400">|</span>
                 <button
                   onClick={onResetToDefaults}
-                  className="text-xs text-blue-600 hover:text-blue-700 font-medium cursor-pointer"
+                  className="text-xs text-blue-600 hover:text-blue-600 font-medium cursor-pointer"
                 >
                   Reset
                 </button>

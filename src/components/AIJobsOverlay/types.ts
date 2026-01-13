@@ -1,11 +1,12 @@
 import type { SerializedJob } from '@/lib/llm/types';
+import type { DataTableMode } from '../DataTable/types';
 
 export type ScopeMode = 'selection' | 'manual' | 'frames' | 'all' | 'filters';
 
 export interface AIJobsOverlayProps {
   isOpen: boolean;
   onClose: () => void;
-  mode: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames';
+  mode: DataTableMode;
   selectedIds: string[];
   /** Email of the current user, used to track who submitted AI jobs */
   userEmail?: string | null;

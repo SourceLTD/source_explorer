@@ -42,8 +42,8 @@ export default function PendingChangesButton({ className, isActive = false }: Pe
       onClick={() => router.push('/frames/pending')}
       className={`relative inline-flex items-center justify-center rounded-xl px-3 py-2.5 text-sm font-medium border transition-colors ${
         isActive
-          ? 'bg-blue-50 text-blue-700 border-blue-300 ring-1 ring-blue-400'
-          : 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300'
+          ? 'bg-blue-50 text-blue-600 border-blue-300 ring-1 ring-blue-400'
+          : 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-300'
       } hover:cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${className || ''}`}
       title="Pending Changes"
     >

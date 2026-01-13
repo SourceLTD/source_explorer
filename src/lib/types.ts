@@ -1,113 +1,94 @@
-// Lexical type union for API routes
-export type LexicalType = 'verbs' | 'nouns' | 'adjectives' | 'adverbs';
+// ============================================
+// Part of Speech Types
+// ============================================
 
-export interface Verb {
+export type PartOfSpeech = 'verb' | 'noun' | 'adjective' | 'adverb';
+
+// Legacy type for backward compatibility - maps to table name style
+export type LexicalType = 'lexical_units';
+
+export type VendlerClass = 'state' | 'activity' | 'accomplishment' | 'achievement';
+
+// ============================================
+// Unified Lexical Unit Interface
+// ============================================
+
+/**
+ * Unified interface for all lexical units (verbs, nouns, adjectives, adverbs).
+ * All entries are stored in the `lexical_units` table with a `pos` discriminator.
+ */
+export interface LexicalUnit {
   id: string;
-  code?: string; // Human-readable code (e.g., "aphorize.v.01")
+  code: string;
   legacy_id: string;
-  gloss: string;
-  pos: string;
-  lexfile: string;
+  pos: PartOfSpeech;
   lemmas: string[];
   src_lemmas: string[];
+  gloss: string;
+  lexfile: string;
   examples: string[];
+  isMwe?: boolean;
   flagged?: boolean;
   flaggedReason?: string;
   verifiable?: boolean;
   unverifiableReason?: string;
-  concrete?: boolean;
+  legal_gloss?: string | null;
+  deleted?: boolean;
   frame_id?: string | null;
-  vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null;
+  frame?: Frame | null;
   createdAt: Date;
   updatedAt: Date;
-}
-
-export interface Noun {
-  id: string;
-  code?: string; // Human-readable code (e.g., "dog.n.01")
-  legacy_id: string;
-  gloss: string;
-  pos: string;
-  lexfile: string;
-  isMwe: boolean;
+  version?: number;
+  
+  // Verb-specific fields
+  vendler_class?: VendlerClass | null;
+  created_from?: string[];
+  
+  // Noun-specific fields
   countable?: boolean | null;
   proper?: boolean;
   collective?: boolean;
   concrete?: boolean;
   predicate?: boolean;
-  lemmas: string[];
-  src_lemmas: string[];
-  examples: string[];
-  flagged?: boolean;
-  flaggedReason?: string;
-  verifiable?: boolean;
-  unverifiableReason?: string;
-  frame_id?: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export interface Adjective {
-  id: string;
-  code?: string; // Human-readable code (e.g., "good.a.01")
-  legacy_id: string;
-  gloss: string;
-  pos: string;
-  lexfile: string;
-  isMwe: boolean;
+  
+  // Adjective-specific fields
   isSatellite?: boolean;
-  gradable?: boolean | null;
   predicative?: boolean;
   attributive?: boolean;
   subjective?: boolean;
   relational?: boolean;
-  lemmas: string[];
-  src_lemmas: string[];
-  examples: string[];
-  flagged?: boolean;
-  flaggedReason?: string;
-  verifiable?: boolean;
-  unverifiableReason?: string;
-  frame_id?: string | null;
-  createdAt: Date;
-  updatedAt: Date;
+  
+  // Adjective/Adverb fields
+  gradable?: boolean | null;
+  
+  // Pending changes info
+  pending?: PendingChangeInfo | null;
 }
 
-export interface VerbRelation {
-  sourceId: string;
-  targetId: string;
-  type: RelationType;
-  source?: Verb;
-  target?: Verb;
-}
+// ============================================
+// Unified Relation Types
+// ============================================
 
-export interface NounRelation {
-  sourceId: string;
-  targetId: string;
-  type: NounRelationType;
-  source?: Noun;
-  target?: Noun;
-}
-
-export interface AdjectiveRelation {
-  sourceId: string;
-  targetId: string;
-  type: AdjectiveRelationType;
-  source?: Adjective;
-  target?: Adjective;
-}
-
-export enum RelationType {
+/**
+ * All relation types from the unified lexical_unit_relations table.
+ * Combines verb, noun, adjective, and adverb relation types.
+ */
+export enum LexicalUnitRelationType {
+  // Verb relations
   ALSO_SEE = 'also_see',
   CAUSES = 'causes',
   ENTAILS = 'entails',
   HYPERNYM = 'hypernym',
   HYPONYM = 'hyponym',
-}
-
-export enum NounRelationType {
-  HYPERNYM = 'hypernym',
-  HYPONYM = 'hyponym',
+  STARTS = 'starts',
+  ENDS = 'ends',
+  PRECEDES = 'precedes',
+  DURING = 'during',
+  ENABLES = 'enables',
+  DO_AGAIN = 'do_again',
+  CO_TEMPORAL = 'co_temporal',
+  
+  // Noun relations
   INSTANCE_HYPERNYM = 'instance_hypernym',
   INSTANCE_HYPONYM = 'instance_hyponym',
   MERONYM_PART = 'meronym_part',
@@ -117,7 +98,6 @@ export enum NounRelationType {
   MERONYM_SUBSTANCE = 'meronym_substance',
   HOLONYM_SUBSTANCE = 'holonym_substance',
   SIMILAR_TO = 'similar_to',
-  ALSO_SEE = 'also_see',
   ATTRIBUTE = 'attribute',
   DERIVATIONALLY_RELATED = 'derivationally_related',
   PERTAINYM = 'pertainym',
@@ -127,75 +107,34 @@ export enum NounRelationType {
   MEMBER_OF_DOMAIN_TOPIC = 'member_of_domain_topic',
   MEMBER_OF_DOMAIN_REGION = 'member_of_domain_region',
   MEMBER_OF_DOMAIN_USAGE = 'member_of_domain_usage',
-}
-
-export enum AdjectiveRelationType {
+  
+  // Adjective relations
   SIMILAR = 'similar',
-  ALSO_SEE = 'also_see',
-  ATTRIBUTE = 'attribute',
   ANTONYM = 'antonym',
-  DOMAIN_TOPIC = 'domain_topic',
-  DOMAIN_REGION = 'domain_region',
-  DOMAIN_USAGE = 'domain_usage',
-  MEMBER_OF_DOMAIN_TOPIC = 'member_of_domain_topic',
-  MEMBER_OF_DOMAIN_REGION = 'member_of_domain_region',
-  MEMBER_OF_DOMAIN_USAGE = 'member_of_domain_usage',
   EXEMPLIFIES = 'exemplifies',
-  DERIVATIONALLY_RELATED = 'derivationally_related',
-  PERTAINYM = 'pertainym',
   PARTICIPLE_OF = 'participle_of',
   RELATED_TO = 'related_to',
-  CAUSES = 'causes',
+  ALSO = 'also',
 }
 
-export interface VerbWithRelations extends Verb {
-  sourceRelations: VerbRelation[];
-  targetRelations: VerbRelation[];
-}
-
-export interface NounWithRelations extends Noun {
-  sourceRelations: NounRelation[];
-  targetRelations: NounRelation[];
-}
-
-export interface AdjectiveWithRelations extends Adjective {
-  sourceRelations: AdjectiveRelation[];
-  targetRelations: AdjectiveRelation[];
-}
-
-export interface Adverb {
-  id: string;
-  code?: string;
-  legacy_id: string;
-  gloss: string;
-  pos: string;
-  lexfile: string;
-  isMwe: boolean;
-  gradable?: boolean | null;
-  lemmas: string[];
-  src_lemmas: string[];
-  examples: string[];
-  flagged?: boolean;
-  flaggedReason?: string;
-  verifiable?: boolean;
-  unverifiableReason?: string;
-  frame_id?: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export interface AdverbRelation {
+export interface LexicalUnitRelation {
   sourceId: string;
   targetId: string;
-  type: string;
-  source?: Adverb;
-  target?: Adverb;
+  type: LexicalUnitRelationType;
+  source?: LexicalUnit;
+  target?: LexicalUnit;
+  weight?: number | null;
+  properties?: Record<string, unknown> | null;
 }
 
-export interface AdverbWithRelations extends Adverb {
-  sourceRelations: AdverbRelation[];
-  targetRelations: AdverbRelation[];
+export interface LexicalUnitWithRelations extends LexicalUnit {
+  sourceRelations: LexicalUnitRelation[];
+  targetRelations: LexicalUnitRelation[];
 }
+
+// ============================================
+// Frame Types
+// ============================================
 
 export interface FrameRole {
   id: string;
@@ -203,22 +142,39 @@ export interface FrameRole {
   notes?: string | null;
   main?: boolean | null;
   examples?: string[];
+  example_sentence?: string | null; // For backward compatibility
   label?: string | null;
   role_type: RoleType;
+  instantiation_type_ids?: string[];
 }
 
-// Sample word for displaying in the frames table
-export interface WordSample {
+export interface RoleType {
+  id: string;
+  code?: string;
+  label: string;
+  generic_description: string;
+  explanation?: string | null;
+}
+
+export interface RoleGroup {
+  id: string;
+  description?: string | null;
+  role_ids: string[];
+  require_at_least_one?: boolean;
+}
+
+// Lexical unit snippet for displaying in the frames table
+export interface LexicalUnitSnippet {
   code: string;
   lemmas: string[];
+  pos: PartOfSpeech;
 }
 
-// Collection of sample words by part of speech
-export interface WordsSample {
-  nouns: WordSample[];
-  verbs: WordSample[];
-  adjectives: WordSample[];
-  adverbs: WordSample[];
+// Collection of lexical unit snippets (unified)
+export interface LexicalUnitsSample {
+  entries: LexicalUnitSnippet[];
+  totalCount: number;
+  hasMore: boolean;
 }
 
 export interface Frame {
@@ -227,6 +183,7 @@ export interface Frame {
   definition?: string | null;
   short_definition?: string | null;
   prototypical_synset: string;
+  code?: string | null;
   flagged?: boolean;
   flaggedReason?: string;
   verifiable?: boolean;
@@ -234,42 +191,20 @@ export interface Frame {
   createdAt: Date;
   updatedAt: Date;
   frame_roles?: FrameRole[];
-  // Counts from related entities
   roles_count?: number;
-  verbs_count?: number;
-  // Sample words from the frame (nouns, verbs, adjectives, adverbs)
-  words_sample?: WordsSample;
-  // Pending changes info (optional, included when there are uncommitted changes)
+  lexical_units_count?: number;
+  subframes_count?: number;
+  lexical_units?: LexicalUnitsSample;
   pending?: PendingChangeInfo | null;
 }
 
-export interface RoleType {
-  id: string;
-  code?: string; // Human-readable code (e.g., "agent.rl")
-  label: string;
-  generic_description: string;
-  explanation?: string | null;
-}
-
-export interface Role {
-  id: string;
-  description?: string;
-  example_sentence?: string;
-  instantiation_type_ids: number[]; // Changed from string[] to number[]
-  main: boolean;
-  role_type: RoleType;
-}
-
-export interface RoleGroup {
-  id: string;
-  description?: string | null;
-  require_at_least_one: boolean;
-  role_ids: string[]; // IDs of roles in this group
-}
+// ============================================
+// Graph Types
+// ============================================
 
 export interface GraphNode {
   id: string;
-  numericId: string; // The database BigInt ID as string (for pending changes lookup)
+  numericId: string;
   legacy_id: string;
   lemmas: string[];
   src_lemmas: string[];
@@ -282,18 +217,19 @@ export interface GraphNode {
   flaggedReason?: string;
   verifiable?: boolean;
   unverifiableReason?: string;
+  
   // Verb-specific fields
-  vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null;
+  vendler_class?: VendlerClass | null;
   frame_id?: string | null;
   frame?: Frame | null;
-  roles?: Role[];
-  role_groups?: RoleGroup[];
+  
   // Noun-specific fields
   countable?: boolean | null;
   proper?: boolean;
   collective?: boolean;
   concrete?: boolean;
   predicate?: boolean;
+  
   // Adjective-specific fields
   isSatellite?: boolean;
   gradable?: boolean | null;
@@ -301,15 +237,28 @@ export interface GraphNode {
   attributive?: boolean;
   subjective?: boolean;
   relational?: boolean;
-  // Common relation fields
+  
+  // Common fields
+  isMwe?: boolean;
+  
+  // Relation fields
   parents: GraphNode[];
   children: GraphNode[];
   entails: GraphNode[];
   causes: GraphNode[];
   alsoSee: GraphNode[];
-  // Pending changes info (optional, included when there are uncommitted changes)
+
+  // Role fields
+  roles?: FrameRole[];
+  role_groups?: RoleGroup[];
+  
+  // Pending changes
   pending?: PendingChangeInfo | null;
 }
+
+// ============================================
+// Search Types
+// ============================================
 
 export interface SearchResult {
   id: string;
@@ -325,25 +274,67 @@ export interface SearchResult {
 
 export interface SearchOptions {
   query: string;
-  pos?: string;
+  pos?: PartOfSpeech | PartOfSpeech[];
   limit?: number;
 }
 
 export interface PaginatedSearchResult {
-  entries: Verb[];
+  entries: LexicalUnit[];
   total: number;
   hasMore: boolean;
 }
 
-export interface VerbWithRelations extends Verb {
-  sourceRelations: VerbRelationWithEntries[];
-  targetRelations: VerbRelationWithEntries[];
+// ============================================
+// Table Types
+// ============================================
+
+export interface TableEntry {
+  id: string;
+  numericId: string;
+  legacy_id: string;
+  lemmas: string[];
+  src_lemmas: string[];
+  gloss: string;
+  pos: string;
+  lexfile: string;
+  frame_id?: string | null;
+  frame?: string | null; // Stores frame code (falling back to label)
+  
+  // Verb-specific
+  vendler_class?: VendlerClass | null;
+  
+  // Noun-specific
+  isMwe?: boolean;
+  countable?: boolean | null;
+  proper?: boolean;
+  collective?: boolean;
+  concrete?: boolean;
+  predicate?: boolean;
+  
+  // Adjective-specific
+  isSatellite?: boolean;
+  gradable?: boolean | null;
+  predicative?: boolean;
+  attributive?: boolean;
+  subjective?: boolean;
+  relational?: boolean;
+  
+  // Common fields
+  examples: string[];
+  flagged?: boolean;
+  flaggedReason?: string;
+  verifiable?: boolean;
+  unverifiableReason?: string;
+  parentsCount: number;
+  childrenCount: number;
+  createdAt: Date;
+  updatedAt: Date;
+  pending?: PendingChangeInfo | null;
 }
 
-export interface VerbRelationWithEntries extends VerbRelation {
-  source?: Verb;
-  target?: Verb;
-}
+// ============================================
+// Stats Types
+// ============================================
 
 export interface DatabaseStats {
   totalEntries: number;
@@ -352,12 +343,9 @@ export interface DatabaseStats {
   relationsByType: Record<string, number>;
 }
 
-export interface BreadcrumbItem {
-  id: string;
-  legacy_id: string;
-  lemma: string;
-  gloss: string;
-}
+// ============================================
+// Pagination Types
+// ============================================
 
 export interface PaginationParams {
   page?: number;
@@ -366,18 +354,17 @@ export interface PaginationParams {
   sortOrder?: 'asc' | 'desc';
   search?: string;
   
-  // Basic filters (legacy)
-  pos?: string;
+  // POS filter (new - replaces separate tables)
+  pos?: PartOfSpeech | PartOfSpeech[] | string;
   lexfile?: string;
-  frame_id?: string; // Comma-separated frame IDs
-  // AI jobs filters
+  frame_id?: string;
   flaggedByJobId?: string;
+  isSuperFrame?: string;
   
-  // Advanced filters
+  // Text filters
   gloss?: string;
   lemmas?: string;
   examples?: string;
-  // Note: frames filter removed - verbs table only has frame_id (BigInt), not frames array
   flaggedReason?: string;
   unverifiableReason?: string;
   
@@ -385,6 +372,7 @@ export interface PaginationParams {
   isMwe?: boolean;
   flagged?: boolean;
   verifiable?: boolean;
+  excludeNullFrame?: boolean;
   
   // Pending state filters
   pendingCreate?: boolean;
@@ -411,17 +399,17 @@ export interface FramePaginationParams {
   sortOrder?: 'asc' | 'desc';
   search?: string;
   
-  // Frame-specific text filters
   label?: string;
+  code?: string;
   definition?: string;
   short_definition?: string;
   prototypical_synset?: string;
   
-  // Date filters
   createdAfter?: string;
   createdBefore?: string;
   updatedAfter?: string;
   updatedBefore?: string;
+  super_frame_id?: string;
 }
 
 export interface PaginatedResult<T> {
@@ -434,9 +422,6 @@ export interface PaginatedResult<T> {
   hasPrev: boolean;
 }
 
-/**
- * Paginated result with pending change info attached to each entity.
- */
 export interface PaginatedResultWithPending<T> {
   data: WithPendingInfo<T>[];
   total: number;
@@ -447,67 +432,56 @@ export interface PaginatedResultWithPending<T> {
   hasPrev: boolean;
 }
 
-export interface TableEntry {
+// ============================================
+// Breadcrumb Types
+// ============================================
+
+export interface BreadcrumbItem {
   id: string;
-  numericId: string; // The database BigInt ID as string (for pending changes lookup)
   legacy_id: string;
-  lemmas: string[];
-  src_lemmas: string[];
+  lemma: string;
   gloss: string;
-  pos: string;
-  lexfile: string;
-  // Verb-specific fields
-  frame_id?: string | null;
-  frame?: string | null; // Frame name (e.g., "SPEAK")
-  vendler_class?: 'state' | 'activity' | 'accomplishment' | 'achievement' | null;
-  roles?: Role[];
-  role_groups?: RoleGroup[];
-  // Noun-specific fields
-  isMwe?: boolean;
-  countable?: boolean | null;
-  proper?: boolean;
-  collective?: boolean;
-  concrete?: boolean;
-  predicate?: boolean;
-  // Adjective-specific fields
-  isSatellite?: boolean;
-  gradable?: boolean | null;
-  predicative?: boolean;
-  attributive?: boolean;
-  subjective?: boolean;
-  relational?: boolean;
-  // Common fields
-  examples: string[];
-  flagged?: boolean;
-  flaggedReason?: string;
-  verifiable?: boolean;
-  unverifiableReason?: string;
-  parentsCount: number;
-  childrenCount: number;
-  createdAt: Date;
-  updatedAt: Date;
-  // Pending changes info (optional, included when there are uncommitted changes)
-  pending?: PendingChangeInfo | null;
 }
 
-export const POS_LABELS = {
+// ============================================
+// UI Constants
+// ============================================
+
+export const POS_LABELS: Record<string, string> = {
+  'verb': 'Verb',
+  'noun': 'Noun',
+  'adjective': 'Adjective',
+  'adverb': 'Adverb',
+  // Legacy single-char codes
   'n': 'Noun',
   'v': 'Verb',
   'a': 'Adjective',
   'r': 'Adverb',
   's': 'Satellite Adjective',
   'f': 'Frame'
-} as const;
+};
 
-export const RELATION_LABELS = {
-  [RelationType.HYPERNYM]: 'Hypernym',
-  [RelationType.HYPONYM]: 'Hyponym',
-  [RelationType.ALSO_SEE]: 'Also See',
-  [RelationType.CAUSES]: 'Causes',
-  [RelationType.ENTAILS]: 'Entails'
-} as const;
+export const RELATION_LABELS: Record<string, string> = {
+  [LexicalUnitRelationType.HYPERNYM]: 'Hypernym',
+  [LexicalUnitRelationType.HYPONYM]: 'Hyponym',
+  [LexicalUnitRelationType.ALSO_SEE]: 'Also See',
+  [LexicalUnitRelationType.CAUSES]: 'Causes',
+  [LexicalUnitRelationType.ENTAILS]: 'Entails',
+  [LexicalUnitRelationType.SIMILAR]: 'Similar',
+  [LexicalUnitRelationType.ANTONYM]: 'Antonym',
+  [LexicalUnitRelationType.INSTANCE_HYPERNYM]: 'Instance Hypernym',
+  [LexicalUnitRelationType.INSTANCE_HYPONYM]: 'Instance Hyponym',
+  [LexicalUnitRelationType.MERONYM_PART]: 'Part Meronym',
+  [LexicalUnitRelationType.HOLONYM_PART]: 'Part Holonym',
+  [LexicalUnitRelationType.MERONYM_MEMBER]: 'Member Meronym',
+  [LexicalUnitRelationType.HOLONYM_MEMBER]: 'Member Holonym',
+  [LexicalUnitRelationType.DERIVATIONALLY_RELATED]: 'Derivationally Related',
+};
 
-// Recipes graph types
+// ============================================
+// Recipe Types
+// ============================================
+
 export type RecipeRelationType =
   | 'also_see'
   | 'causes'
@@ -522,18 +496,13 @@ export type RecipeRelationType =
 
 export interface RecipePredicateRoleMapping {
   predicateRoleLabel: string;
-  bindKind: 'role' | 'variable' | 'constant';
-  // For role-to-role bindings
   entryRoleLabel?: string;
-  // For role-to-variable bindings
+  bindKind: 'role' | 'variable' | 'constant';
   variableTypeLabel?: string;
-  variableKey?: string; // Key from recipe_variables
-  // For role-to-constant bindings
+  variableKey?: string;
   constant?: unknown;
-  // Indicates this is a discovered variable (role must be NULL)
   discovered?: boolean;
-  // Noun code for noun-based bindings (from recipe_variables.noun_id)
-  nounCode?: string;
+  lexicalUnitCode?: string;
 }
 
 export interface RecipePredicateNode {
@@ -557,10 +526,9 @@ export interface PredicateGroup {
   id: string;
   description?: string | null;
   require_at_least_one: boolean;
-  predicate_ids: string[]; // IDs of predicates in this group
+  predicate_ids: string[];
 }
 
-// Logic AST types
 export type LogicNodeKind = 'and' | 'or' | 'not' | 'leaf' | 'enables' | 'causes' | 'precedes' | 'starts' | 'ends' | 'during' | 'co_temporal';
 
 export interface LogicNode {
@@ -568,10 +536,8 @@ export interface LogicNode {
   recipe_id: string;
   kind: LogicNodeKind;
   description?: string | null;
-  // For leaf nodes only
   target_predicate_id?: string | null;
   target_predicate?: RecipePredicateNode | null;
-  // Child nodes (from edges)
   children: LogicNode[];
 }
 
@@ -590,9 +556,9 @@ export interface RecipeVariable {
   id: string;
   key: string;
   predicate_variable_type_label?: string | null;
-  noun_id?: string | null;
-  noun_code?: string | null;
-  noun_gloss?: string | null;
+  lexical_unit_id?: string | null;
+  lexical_unit_code?: string | null;
+  lexical_unit_gloss?: string | null;
   default_value?: unknown;
 }
 
@@ -603,11 +569,10 @@ export interface Recipe {
   example?: string | null;
   is_default: boolean;
   predicates: RecipePredicateNode[];
-  predicate_groups: PredicateGroup[]; // Kept for backwards compatibility during transition
+  predicate_groups: PredicateGroup[];
   relations: RecipePredicateEdge[];
   preconditions: RecipePrecondition[];
   variables: RecipeVariable[];
-  // New: logic tree root
   logic_root?: LogicNode | null;
 }
 
@@ -616,50 +581,12 @@ export interface EntryRecipes {
   recipes: Recipe[];
 }
 
-// Role precedence order - higher number = higher precedence
-export const ROLE_PRECEDENCE: Record<string, number> = {
-  'PROTO_AGENT': 28,
-  'CONTENT.ENTITY': 27,
-  'CONTENT.CLAUSE': 26,
-  'CONTENT.QUOTE': 25,
-  'RECIPIENT': 24,
-  'CO_PROTO_AGENT': 23,
-  'TOPIC': 22,
-  'THEME': 21,
-  'CO_THEME': 20,
-  'PATIENT': 19,
-  'EXPERIENCER': 18,
-  'INSTRUMENT': 17,
-  'SOURCE': 16,
-  'DESTINATION': 15,
-  'BENEFICIARY': 14,
-  'EXTENT': 13,
-  'GOAL': 12,
-  'TIME': 11,
-  'LOCATION': 10,
-  'STIMULUS': 9,
-  'CO_PATIENT': 8,
-  'PURPOSE': 7,
-  'CAUSE': 6,
-  'RESULT': 5,
-  'PRODUCT': 4,
-  'MATERIAL': 3,
-  'ATTRIBUTE': 2,
-  'VALUE': 1,
-  'ASSET': 0,
-  'IDIOM': -1
-};
-
 // ============================================
-// Pending Change Types (for API responses)
+// Pending Change Types
 // ============================================
 
 export type PendingChangeOperation = 'create' | 'update' | 'delete';
 
-/**
- * Information about a pending field change.
- * Serializable version for API responses.
- */
 export interface PendingFieldChange {
   field_change_id: string;
   old_value: unknown;
@@ -667,27 +594,14 @@ export interface PendingFieldChange {
   status: 'pending' | 'approved' | 'rejected';
 }
 
-/**
- * Metadata about pending changes on an entity.
- * Attached to API responses when there are uncommitted changes.
- */
 export interface PendingChangeInfo {
-  /** The type of pending operation */
   operation: PendingChangeOperation;
-  /** The changeset ID (as string for JSON serialization) */
   changeset_id: string;
-  /** Map of field names to their pending change info */
   pending_fields: Record<string, PendingFieldChange>;
 }
 
-/**
- * Wrapper type for entities that may have pending changes.
- * Used in paginated responses and graph data.
- */
 export interface WithPendingInfo<T> {
-  /** The entity data (with pending values applied for preview) */
   data: T;
-  /** Pending change metadata, or null if no pending changes */
   pending: PendingChangeInfo | null;
 }
 
@@ -724,10 +638,11 @@ export interface FrameGraphRole {
   label: string | null;
 }
 
-export interface FrameGraphVerb {
+export interface FrameGraphLexicalUnit {
   id: string;
   code: string;
   gloss: string;
+  pos: PartOfSpeech;
   lemmas: string[];
   examples: string[];
   flagged: boolean | null;
@@ -754,11 +669,11 @@ export interface FrameGraphNode {
   numericId: string;
   pos: 'frames';
   label: string;
-  gloss?: string | null; // definition
+  gloss?: string | null;
   short_definition?: string | null;
   prototypical_synset: string;
   roles: FrameGraphRole[];
-  verbs: FrameGraphVerb[];
+  lexical_units: FrameGraphLexicalUnit[];
   relations: FrameGraphRelation[];
   flagged?: boolean;
   flaggedReason?: string;
@@ -787,29 +702,13 @@ export interface FrameRecipeRole {
   }>;
 }
 
-export interface FrameRecipeVerb {
+export interface FrameRecipeLexicalUnit {
   id: string;
   code: string;
+  pos: PartOfSpeech;
   lemmas: string[];
   gloss: string;
-  vendler_class: 'state' | 'activity' | 'accomplishment' | 'achievement' | null;
-  roles: Array<{
-    id: string;
-    role_type: {
-      id: string;
-      code: string;
-      label: string;
-    };
-    description: string | null;
-    main: boolean;
-    example_sentence: string | null;
-  }>;
-  role_groups: Array<{
-    id: string;
-    description: string | null;
-    require_at_least_one: boolean;
-    role_ids: string[];
-  }>;
+  vendler_class: VendlerClass | null;
 }
 
 export interface FrameRecipeRelatedFrame {
@@ -835,7 +734,7 @@ export interface FrameRecipeData {
     flagged_reason: string | null;
   };
   roles: FrameRecipeRole[];
-  verbs: FrameRecipeVerb[];
+  lexical_units: FrameRecipeLexicalUnit[];
   relations: {
     inherits_from: FrameRecipeRelatedFrame[];
     inherited_by: FrameRecipeRelatedFrame[];
@@ -849,18 +748,52 @@ export interface FrameRecipeData {
   };
 }
 
-// Helper function to sort roles by precedence
+// ============================================
+// Role Precedence (for frame roles display)
+// ============================================
+
+export const ROLE_PRECEDENCE: Record<string, number> = {
+  'PROTO_AGENT': 28,
+  'CONTENT.ENTITY': 27,
+  'CONTENT.CLAUSE': 26,
+  'CONTENT.QUOTE': 25,
+  'RECIPIENT': 24,
+  'CO_PROTO_AGENT': 23,
+  'TOPIC': 22,
+  'THEME': 21,
+  'CO_THEME': 20,
+  'PATIENT': 19,
+  'EXPERIENCER': 18,
+  'INSTRUMENT': 17,
+  'SOURCE': 16,
+  'DESTINATION': 15,
+  'BENEFICIARY': 14,
+  'EXTENT': 13,
+  'GOAL': 12,
+  'TIME': 11,
+  'LOCATION': 10,
+  'STIMULUS': 9,
+  'CO_PATIENT': 8,
+  'PURPOSE': 7,
+  'CAUSE': 6,
+  'RESULT': 5,
+  'PRODUCT': 4,
+  'MATERIAL': 3,
+  'ATTRIBUTE': 2,
+  'VALUE': 1,
+  'ASSET': 0,
+  'IDIOM': -1
+};
+
 export function sortRolesByPrecedence<T extends { role_type: { label: string }; main?: boolean | null }>(roles: T[]): T[] {
   return [...roles].sort((a, b) => {
-    // First, sort by main (main roles first)
     const mainA = a.main ?? false;
     const mainB = b.main ?? false;
     
     if (mainA !== mainB) {
-      return mainB ? 1 : -1; // main roles (true) come first
+      return mainB ? 1 : -1;
     }
     
-    // Then sort by precedence (descending)
     const roleA = a.role_type?.label || '';
     const roleB = b.role_type?.label || '';
     
@@ -871,7 +804,6 @@ export function sortRolesByPrecedence<T extends { role_type: { label: string }; 
       return precedenceB - precedenceA;
     }
     
-    // Finally, sort by label (ascending) for ties
     return roleA.localeCompare(roleB);
   });
 }

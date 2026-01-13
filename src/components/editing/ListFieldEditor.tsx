@@ -58,7 +58,7 @@ export function ListFieldEditor({
       </div>
       <button
         onClick={onItemAdd}
-        className="text-sm text-blue-600 hover:text-blue-700 font-medium cursor-pointer"
+        className="text-sm text-blue-600 hover:text-blue-600 font-medium cursor-pointer"
       >
         {addButtonText}
       </button>

@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { revalidateAllEntryCaches } from '@/lib/db'
-import type { RelationType, Prisma } from '@prisma/client'
+import type { lexical_unit_relation_type, Prisma } from '@prisma/client'
 
-// Force dynamic rendering - no static optimization
+// Force dynamic rendering
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 interface RelationRequest {
-  sourceId: string  // These are codes (e.g., "attack.v.01")
-  targetId: string  // These are codes (e.g., "fight.v.01")
-  type: RelationType
+  sourceId: string  // code
+  targetId: string  // code
+  type: lexical_unit_relation_type
 }
 
 interface ChangeHypernymRequest {
@@ -26,10 +26,10 @@ async function handleChangeHypernym(req: ChangeHypernymRequest): Promise<NextRes
   const { entryId, oldHypernym, newHypernym, hyponymsToMove, hyponymsToStay } = req;
 
   // Get entry IDs
-  const entry = await prisma.verbs.findFirst({
+  const entry = await prisma.lexical_units.findFirst({
     where: { 
       code: entryId,
-      deleted: { not: true }
+      deleted: false
     },
     select: { id: true }
   });
@@ -38,10 +38,10 @@ async function handleChangeHypernym(req: ChangeHypernymRequest): Promise<NextRes
     return NextResponse.json({ error: 'Entry not found' }, { status: 404 });
   }
 
-  const newHypernymEntry = await prisma.verbs.findFirst({
+  const newHypernymEntry = await prisma.lexical_units.findFirst({
     where: { 
       code: newHypernym,
-      deleted: { not: true }
+      deleted: false
     },
     select: { id: true }
   });
@@ -52,16 +52,16 @@ async function handleChangeHypernym(req: ChangeHypernymRequest): Promise<NextRes
 
   // 1. Delete old hypernym relation (entry -> oldHypernym)
   if (oldHypernym) {
-    const oldHypernymEntry = await prisma.verbs.findFirst({
+    const oldHypernymEntry = await prisma.lexical_units.findFirst({
       where: { 
         code: oldHypernym,
-        deleted: { not: true }
+        deleted: false
       },
       select: { id: true }
     });
 
     if (oldHypernymEntry) {
-      await prisma.verb_relations.deleteMany({
+      await prisma.lexical_unit_relations.deleteMany({
         where: {
           source_id: entry.id,
           target_id: oldHypernymEntry.id,
@@ -72,7 +72,7 @@ async function handleChangeHypernym(req: ChangeHypernymRequest): Promise<NextRes
   }
 
   // 2. Create new hypernym relation (entry -> newHypernym)
-  await prisma.verb_relations.upsert({
+  await prisma.lexical_unit_relations.upsert({
     where: {
       source_id_type_target_id: {
         source_id: entry.id,
@@ -90,27 +90,27 @@ async function handleChangeHypernym(req: ChangeHypernymRequest): Promise<NextRes
 
   // 3. For hyponyms that stay: change their hypernym relation from entry to oldHypernym
   if (oldHypernym && hyponymsToStay.length > 0) {
-    const oldHypernymEntry = await prisma.verbs.findFirst({
+    const oldHypernymEntry = await prisma.lexical_units.findFirst({
       where: { 
         code: oldHypernym,
-        deleted: { not: true }
+        deleted: false
       },
       select: { id: true }
     });
 
     if (oldHypernymEntry) {
       for (const hyponymCode of hyponymsToStay) {
-        const hyponymEntry = await prisma.verbs.findFirst({
+        const hyponymEntry = await prisma.lexical_units.findFirst({
           where: { 
             code: hyponymCode,
-            deleted: { not: true }
+            deleted: false
           },
           select: { id: true }
         });
 
         if (hyponymEntry) {
           // Delete relation: hyponym -> entry
-          await prisma.verb_relations.deleteMany({
+          await prisma.lexical_unit_relations.deleteMany({
             where: {
               source_id: hyponymEntry.id,
               target_id: entry.id,
@@ -119,7 +119,7 @@ async function handleChangeHypernym(req: ChangeHypernymRequest): Promise<NextRes
           });
 
           // Create relation: hyponym -> oldHypernym
-          await prisma.verb_relations.upsert({
+          await prisma.lexical_unit_relations.upsert({
             where: {
               source_id_type_target_id: {
                 source_id: hyponymEntry.id,
@@ -139,9 +139,6 @@ async function handleChangeHypernym(req: ChangeHypernymRequest): Promise<NextRes
     }
   }
 
-  // 4. Hyponyms that move keep their relation to entry (no change needed)
-
-  // Invalidate all caches since we've updated relations
   revalidateAllEntryCaches();
 
   return NextResponse.json({ 
@@ -155,20 +152,16 @@ async function handleChangeHypernym(req: ChangeHypernymRequest): Promise<NextRes
   });
 }
 
-// POST /api/relations - Create a new relation or handle complex relation operations
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     
-    // Handle change_hypernym action
     if (body.action === 'change_hypernym') {
       return handleChangeHypernym(body as ChangeHypernymRequest);
     }
     
-    // Regular relation creation
     const relationBody = body as RelationRequest;
     
-    // Validate required fields
     if (!relationBody.sourceId || !relationBody.targetId || !relationBody.type) {
       return NextResponse.json(
         { error: 'Missing required fields: sourceId, targetId, type' },
@@ -176,16 +169,6 @@ export async function POST(request: NextRequest) {
       )
     }
     
-    // Validate relation type
-    const validTypes: RelationType[] = ['also_see', 'causes', 'entails', 'hypernym', 'hyponym']
-    if (!validTypes.includes(relationBody.type)) {
-      return NextResponse.json(
-        { error: `Invalid relation type. Must be one of: ${validTypes.join(', ')}` },
-        { status: 400 }
-      )
-    }
-    
-    // Prevent self-relations
     if (relationBody.sourceId === relationBody.targetId) {
       return NextResponse.json(
         { error: 'Cannot create relation between entry and itself' },
@@ -194,19 +177,13 @@ export async function POST(request: NextRequest) {
     }
     
     // Convert codes to numeric IDs
-    const sourceEntry = await prisma.verbs.findFirst({
-      where: { 
-        code: relationBody.sourceId,
-        deleted: { not: true }
-      },
+    const sourceEntry = await prisma.lexical_units.findFirst({
+      where: { code: relationBody.sourceId, deleted: false },
       select: { id: true }
     })
     
-    const targetEntry = await prisma.verbs.findFirst({
-      where: { 
-        code: relationBody.targetId,
-        deleted: { not: true }
-      },
+    const targetEntry = await prisma.lexical_units.findFirst({
+      where: { code: relationBody.targetId, deleted: false },
       select: { id: true }
     })
     
@@ -217,7 +194,7 @@ export async function POST(request: NextRequest) {
       )
     }
     
-    const relation = await prisma.verb_relations.create({
+    const relation = await prisma.lexical_unit_relations.create({
       data: {
         source_id: sourceEntry.id,
         target_id: targetEntry.id,
@@ -234,68 +211,36 @@ export async function POST(request: NextRequest) {
     })
   } catch (error) {
     console.error('Create relation error:', error)
-    
-    // Handle unique constraint violation
     if (error instanceof Error && error.message.includes('Unique constraint')) {
-      return NextResponse.json(
-        { error: 'This relation already exists' },
-        { status: 409 }
-      )
+      return NextResponse.json({ error: 'This relation already exists' }, { status: 409 })
     }
-    
-    // Handle foreign key constraint violation
-    if (error instanceof Error && error.message.includes('Foreign key constraint')) {
-      return NextResponse.json(
-        { error: 'One or both entries do not exist' },
-        { status: 400 }
-      )
-    }
-    
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
-// DELETE /api/relations - Delete a relation
 export async function DELETE(request: NextRequest) {
   try {
     const body: RelationRequest = await request.json()
     
-    // Validate required fields
     if (!body.sourceId || !body.targetId || !body.type) {
-      return NextResponse.json(
-        { error: 'Missing required fields: sourceId, targetId, type' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
     
-    // Convert codes to numeric IDs
-    const sourceEntry = await prisma.verbs.findFirst({
-      where: { 
-        code: body.sourceId,
-        deleted: { not: true }
-      },
+    const sourceEntry = await prisma.lexical_units.findFirst({
+      where: { code: body.sourceId, deleted: false },
       select: { id: true }
     })
     
-    const targetEntry = await prisma.verbs.findFirst({
-      where: { 
-        code: body.targetId,
-        deleted: { not: true }
-      },
+    const targetEntry = await prisma.lexical_units.findFirst({
+      where: { code: body.targetId, deleted: false },
       select: { id: true }
     })
     
     if (!sourceEntry || !targetEntry) {
-      return NextResponse.json(
-        { error: 'One or both entries do not exist' },
-        { status: 404 }
-      )
+      return NextResponse.json({ error: 'Entries not found' }, { status: 404 })
     }
     
-    await prisma.verb_relations.delete({
+    await prisma.lexical_unit_relations.delete({
       where: {
         source_id_type_target_id: {
           source_id: sourceEntry.id,
@@ -313,18 +258,6 @@ export async function DELETE(request: NextRequest) {
     })
   } catch (error) {
     console.error('Delete relation error:', error)
-    
-    // Handle not found
-    if (error instanceof Error && error.message.includes('Record to delete does not exist')) {
-      return NextResponse.json(
-        { error: 'Relation not found' },
-        { status: 404 }
-      )
-    }
-    
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

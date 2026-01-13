@@ -32,7 +32,7 @@ const RELATION_LABELS: Record<FrameRelationType, string> = {
 // Vendler class colors
 const VENDLER_COLORS = {
   state: { bg: 'bg-green-100', text: 'text-green-800', border: 'border-green-200' },
-  activity: { bg: 'bg-blue-100', text: 'text-blue-800', border: 'border-blue-200' },
+  activity: { bg: 'bg-blue-100', text: 'text-blue-600', border: 'border-blue-200' },
   accomplishment: { bg: 'bg-amber-100', text: 'text-amber-800', border: 'border-amber-200' },
   achievement: { bg: 'bg-red-100', text: 'text-red-800', border: 'border-red-200' },
 };
@@ -277,67 +277,68 @@ export default function FrameRecipeView({
 
           {/* Verbs Section */}
           <div className="mb-6">
-            <button
-              onClick={() => toggleSection('verbs')}
-              className="flex items-center gap-2 text-gray-800 font-semibold mb-3"
-            >
-              <span>{expandedSections.verbs ? '▼' : '▶'}</span>
-              Verbs Using This Frame ({recipeData?.verbs.length || currentFrame.verbs?.length || 0})
-            </button>
-            
-            {expandedSections.verbs && (
-              <div className="space-y-2 max-h-80 overflow-auto">
-                {(recipeData?.verbs || currentFrame.verbs?.map(v => ({
-                  id: v.id,
-                  code: v.code,
-                  lemmas: v.lemmas,
-                  gloss: v.gloss,
-                  vendler_class: null,
-                  roles: [],
-                  role_groups: [],
-                })) || []).map(verb => (
-                  <div 
-                    key={verb.id}
-                    onClick={() => onVerbClick(verb.id)}
-                    className="p-3 bg-blue-50 border border-blue-200 rounded-lg cursor-pointer hover:bg-blue-100 transition-colors"
+            {(() => {
+              const verbs = recipeData?.lexical_units.filter(lu => lu.pos === 'verb') || 
+                            currentFrame.lexical_units?.filter(lu => lu.pos === 'verb') || [];
+              
+              return (
+                <>
+                  <button
+                    onClick={() => toggleSection('verbs')}
+                    className="flex items-center gap-2 text-gray-800 font-semibold mb-3"
                   >
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-blue-800">{verb.code || verb.id}</span>
-                      {verb.vendler_class && (
-                        <span className={`text-xs px-2 py-0.5 rounded ${VENDLER_COLORS[verb.vendler_class].bg} ${VENDLER_COLORS[verb.vendler_class].text}`}>
-                          {verb.vendler_class}
-                        </span>
+                    <span>{expandedSections.verbs ? '▼' : '▶'}</span>
+                    Verbs Using This Frame ({verbs.length})
+                  </button>
+                  
+                  {expandedSections.verbs && (
+                    <div className="space-y-2 max-h-80 overflow-auto">
+                      {verbs.map(verb => (
+                        <div 
+                          key={verb.id}
+                          onClick={() => onVerbClick(verb.id)}
+                          className="p-3 bg-blue-50 border border-blue-200 rounded-lg cursor-pointer hover:bg-blue-100 transition-colors"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-blue-600">{verb.code || verb.id}</span>
+                            {('vendler_class' in verb) && verb.vendler_class && (
+                              <span className={`text-xs px-2 py-0.5 rounded ${VENDLER_COLORS[verb.vendler_class as keyof typeof VENDLER_COLORS].bg} ${VENDLER_COLORS[verb.vendler_class as keyof typeof VENDLER_COLORS].text}`}>
+                                {verb.vendler_class}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-sm text-blue-600 mt-1">
+                            {verb.lemmas?.slice(0, 3).join(', ')}
+                          </p>
+                          {verb.gloss && (
+                            <p className="text-xs text-gray-600 mt-1 line-clamp-2">{verb.gloss}</p>
+                          )}
+                          {('roles' in verb) && Array.isArray(verb.roles) && verb.roles.length > 0 && (
+                            <div className="mt-2 flex flex-wrap gap-1">
+                              {verb.roles.slice(0, 5).map((role: any) => (
+                                <span 
+                                  key={role.id}
+                                  className={`text-xs px-2 py-0.5 rounded ${role.main ? 'bg-blue-200 text-blue-600' : 'bg-gray-200 text-gray-700'}`}
+                                >
+                                  {role.role_type.label}
+                                </span>
+                              ))}
+                              {verb.roles.length > 5 && (
+                                <span className="text-xs text-gray-500">+{verb.roles.length - 5}</span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                      
+                      {verbs.length === 0 && (
+                        <p className="text-gray-500 text-sm italic">No verbs using this frame</p>
                       )}
                     </div>
-                    <p className="text-sm text-blue-700 mt-1">
-                      {verb.lemmas?.slice(0, 3).join(', ')}
-                    </p>
-                    {verb.gloss && (
-                      <p className="text-xs text-gray-600 mt-1 line-clamp-2">{verb.gloss}</p>
-                    )}
-                    {verb.roles && verb.roles.length > 0 && (
-                      <div className="mt-2 flex flex-wrap gap-1">
-                        {verb.roles.slice(0, 5).map(role => (
-                          <span 
-                            key={role.id}
-                            className={`text-xs px-2 py-0.5 rounded ${role.main ? 'bg-blue-200 text-blue-800' : 'bg-gray-200 text-gray-700'}`}
-                          >
-                            {role.role_type.label}
-                          </span>
-                        ))}
-                        {verb.roles.length > 5 && (
-                          <span className="text-xs text-gray-500">+{verb.roles.length - 5}</span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ))}
-                
-                {(recipeData?.verbs.length === 0 && (!currentFrame.verbs || currentFrame.verbs.length === 0)) && (
-                  <p className="text-gray-500 text-sm italic">No verbs using this frame</p>
-                )}
-              </div>
-            )}
+                  )}
+                </>
+              );
+            })()}
           </div>
 
           {/* Uses/Used By Section */}

@@ -10,16 +10,15 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page') || '1', 10);
     const limitParam = parseInt(searchParams.get('limit') || '10', 10);
-    // Cap limit at 2000, default to 10 if invalid
     const limit = (limitParam >= 1 && limitParam <= 2000) ? limitParam : 10;
     const search = searchParams.get('search');
     const rawSortBy = searchParams.get('sortBy') || 'label';
     const sortOrder = searchParams.get('sortOrder') === 'desc' ? 'desc' : 'asc';
+    const isSuperFrame = searchParams.get('isSuperFrame');
+    const super_frame_id = searchParams.get('super_frame_id');
     
     const skip = (page - 1) * limit;
 
-    // Map sortBy to valid frame column names
-    // Frames don't have 'gloss', they have 'short_definition' instead
     const sortByMap: Record<string, string> = {
       'gloss': 'short_definition',
       'createdAt': 'created_at',
@@ -28,38 +27,43 @@ export async function GET(request: NextRequest) {
     
     const sortBy = sortByMap[rawSortBy] || rawSortBy;
     
-    // Valid columns for sorting in the frames table
     const validSortColumns = [
-      'id', 'label', 'definition', 
+      'id', 'label', 'code', 'definition', 
       'short_definition', 'prototypical_synset', 'created_at', 'updated_at'
     ];
     
-    // Validate sortBy column
     if (!validSortColumns.includes(sortBy)) {
       return NextResponse.json(
-        { error: `Invalid sortBy column: ${rawSortBy}. Valid columns are: ${validSortColumns.join(', ')}` },
+        { error: `Invalid sortBy column: ${rawSortBy}` },
         { status: 400 }
       );
     }
 
-    // Build where clause - combine search with advanced filters
     let where: Prisma.framesWhereInput = {};
-    
-    // Parse advanced filters from URL
     const filterAST = parseURLToFilterAST('frames', searchParams);
     const { where: filterWhere } = await translateFilterASTToPrisma('frames', filterAST || undefined);
     
-    // Combine basic search with advanced filters and soft delete
     const baseConditions: Prisma.framesWhereInput[] = [{ deleted: false }];
     
     if (search) {
       baseConditions.push({
         OR: [
           { label: { contains: search, mode: 'insensitive' } },
+          { code: { contains: search, mode: 'insensitive' } },
           { definition: { contains: search, mode: 'insensitive' } },
           ...(search.match(/^\d+$/) ? [{ id: BigInt(search) }] : []),
         ],
       });
+    }
+
+    if (isSuperFrame === 'true') {
+      baseConditions.push({ super_frame_id: null });
+    } else if (isSuperFrame === 'false') {
+      baseConditions.push({ super_frame_id: { not: null } });
+    }
+
+    if (super_frame_id) {
+      baseConditions.push({ super_frame_id: BigInt(super_frame_id) });
     }
 
     if (Object.keys(filterWhere).length > 0) {
@@ -68,10 +72,8 @@ export async function GET(request: NextRequest) {
 
     where = { AND: baseConditions };
 
-    // Get total count
     const totalCount = await prisma.frames.count({ where });
 
-    // Get frames with role counts, verb counts, and sample words
     const frames = await prisma.frames.findMany({
       where,
       skip,
@@ -81,7 +83,8 @@ export async function GET(request: NextRequest) {
         _count: {
           select: {
             frame_roles: true,
-            verbs: {
+            other_frames: true,
+            lexical_units: {
               where: {
                 deleted: false,
               },
@@ -93,71 +96,64 @@ export async function GET(request: NextRequest) {
             role_types: true,
           },
         },
-        // Include sample words from each POS (up to 3 each)
-        nouns: {
+        // Include sample lexical units from unified lexical_units table
+        lexical_units: {
           where: { deleted: false },
-          select: { code: true, lemmas: true },
-          take: 3,
-        },
-        verbs: {
-          where: { deleted: false },
-          select: { code: true, lemmas: true },
-          take: 3,
-        },
-        adjectives: {
-          where: { deleted: false },
-          select: { code: true, lemmas: true },
-          take: 3,
-        },
-        adverbs: {
-          where: { deleted: false },
-          select: { code: true, lemmas: true },
-          take: 3,
+          select: { code: true, lemmas: true, pos: true },
+          take: 11, // Take up to 11 to indicate if there are more than 10
         },
       },
     });
 
-    const serializedFrames = frames.map(frame => ({
-      id: frame.id.toString(),
-      label: frame.label,
-      definition: frame.definition,
-      short_definition: frame.short_definition,
-      prototypical_synset: frame.prototypical_synset,
-      flagged: frame.flagged ?? false,
-      flaggedReason: frame.flagged_reason ?? undefined,
-      verifiable: frame.verifiable ?? true,
-      unverifiableReason: frame.unverifiable_reason ?? undefined,
-      createdAt: frame.created_at.toISOString(),
-      updatedAt: frame.updated_at.toISOString(),
-      roles_count: frame._count.frame_roles,
-      verbs_count: frame._count.verbs,
-      frame_roles: frame.frame_roles.map(fr => ({
-        id: fr.id.toString(),
-        description: fr.description,
-        notes: fr.notes,
-        main: fr.main,
-        examples: fr.examples,
-        label: fr.label,
-        role_type: {
-          id: fr.role_types.id.toString(),
-          code: fr.role_types.code,
-          label: fr.role_types.label,
-          generic_description: fr.role_types.generic_description,
-          explanation: fr.role_types.explanation,
+    const serializedFrames = frames.map(frame => {
+      const lexicalUnitsCount = frame._count.lexical_units;
+      const lexicalUnitSnippets = frame.lexical_units.slice(0, 10).map(lu => ({
+        code: lu.code,
+        lemmas: lu.lemmas,
+        pos: lu.pos
+      }));
+
+      return {
+        id: frame.id.toString(),
+        label: frame.label,
+        code: frame.code,
+        definition: frame.definition,
+        short_definition: frame.short_definition,
+        prototypical_synset: frame.prototypical_synset,
+        flagged: frame.flagged ?? false,
+        flaggedReason: frame.flagged_reason ?? undefined,
+        verifiable: frame.verifiable ?? true,
+        unverifiableReason: frame.unverifiable_reason ?? undefined,
+        createdAt: frame.created_at.toISOString(),
+        updatedAt: frame.updated_at.toISOString(),
+        roles_count: frame._count.frame_roles,
+        lexical_units_count: lexicalUnitsCount,
+        subframes_count: frame._count.other_frames,
+        frame_roles: frame.frame_roles.map(fr => ({
+          id: fr.id.toString(),
+          description: fr.description,
+          notes: fr.notes,
+          main: fr.main,
+          examples: fr.examples,
+          label: fr.label,
+          role_type: {
+            id: fr.role_types.id.toString(),
+            code: fr.role_types.code,
+            label: fr.role_types.label,
+            generic_description: fr.role_types.generic_description,
+            explanation: fr.role_types.explanation,
+          },
+        })),
+        lexical_units: {
+          entries: lexicalUnitSnippets,
+          totalCount: lexicalUnitsCount,
+          hasMore: lexicalUnitsCount > 10,
         },
-      })),
-      // Sample words from each POS
-      words_sample: {
-        nouns: frame.nouns.map(n => ({ code: n.code, lemmas: n.lemmas })),
-        verbs: frame.verbs.map(v => ({ code: v.code, lemmas: v.lemmas })),
-        adjectives: frame.adjectives.map(a => ({ code: a.code, lemmas: a.lemmas })),
-        adverbs: frame.adverbs.map(r => ({ code: r.code, lemmas: r.lemmas })),
-      },
-    }));
+      };
+    });
 
     const totalPages = Math.ceil(totalCount / limit);
 
-    // Attach pending change info to each frame
     const dataWithPending = await attachPendingInfoToEntities(
       serializedFrames,
       'frame',

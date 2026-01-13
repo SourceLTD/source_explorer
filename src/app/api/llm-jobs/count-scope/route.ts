@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import type { JobScope, PartOfSpeech } from '@/lib/llm/types';
+import type { JobScope, JobTargetType } from '@/lib/llm/types';
 import { translateFilterASTToPrisma } from '@/lib/filters/translate';
 import type { Prisma } from '@prisma/client';
 
@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
       // For IDs, just return the array length
       count = scope.ids.length;
     } else if (scope.kind === 'frame_ids') {
-      // For frame IDs, we need to count frames and potentially verbs
+      // For frame IDs, count frames and/or associated lexical units depending on flagTarget
       const frames = await prisma.frames.findMany({
         where: {
           OR: scope.frameIds.map(id =>
@@ -31,53 +31,44 @@ export async function POST(request: NextRequest) {
               ? { id: BigInt(id) }
               : { label: { equals: id, mode: 'insensitive' as Prisma.QueryMode } }
           ),
-        },
-        select: {
-          id: true,
-          _count: {
-            select: {
-              verbs: {
-                where: { deleted: false },
-              },
-            },
-          },
-        },
+        } as any,
+        select: { id: true } as any,
       });
 
-      if (scope.pos === 'verbs') {
-        // Only counting verbs
-        count = frames.reduce((sum, frame) => sum + frame._count.verbs, 0);
-      } else if (scope.pos === 'frames') {
-        // Counting frames AND optionally verbs
-        count = frames.reduce((sum, frame) => sum + 1 + (scope.includeVerbs ? frame._count.verbs : 0), 0);
-      } else {
-        // Fallback for other POS (shouldn't happen with frame_ids scope)
-        count = scope.frameIds.length;
+      const frameIds = frames.map(f => f.id);
+      const flagTarget = scope.flagTarget ?? 'frame';
+
+      if (flagTarget === 'frame' || flagTarget === 'both') {
+        count += frameIds.length;
+      }
+
+      if (flagTarget === 'lexical_unit' || flagTarget === 'both') {
+        const targetType = scope.targetType;
+        const luWhere: any = {
+          deleted: false,
+          frame_id: { in: frameIds },
+        };
+        if (targetType && targetType !== 'frames') {
+          luWhere.pos = targetType;
+        }
+        const luCount = await prisma.lexical_units.count({ where: luWhere });
+        count += luCount;
       }
     } else if (scope.kind === 'filters') {
       // For filters, we need to run a count query
-      const pos = scope.pos;
-      const { where } = await translateFilterASTToPrisma(pos, scope.filters.where);
+      const targetType = scope.targetType;
+      const { where } = await translateFilterASTToPrisma(targetType, scope.filters.where);
       const limit = scope.filters.limit;
 
-      if (pos === 'verbs') {
-        const verbsWhere = where as Prisma.verbsWhereInput;
-        const finalWhere: Prisma.verbsWhereInput = {
-          ...verbsWhere,
-          AND: [
-            verbsWhere,
-            { deleted: false },
-          ],
-        };
-        count = await prisma.verbs.count({ where: finalWhere });
-      } else if (pos === 'nouns') {
-        count = await prisma.nouns.count({ where: where as Prisma.nounsWhereInput });
-      } else if (pos === 'adjectives') {
-        count = await prisma.adjectives.count({ where: where as Prisma.adjectivesWhereInput });
-      } else if (pos === 'adverbs') {
-        count = await prisma.adverbs.count({ where: where as Prisma.adverbsWhereInput });
-      } else if (pos === 'frames') {
+      if (targetType === 'frames') {
         count = await prisma.frames.count({ where: where as Prisma.framesWhereInput });
+      } else {
+        const luWhere: any = {
+          ...(where as Record<string, unknown>),
+          deleted: false,
+          pos: targetType as any,
+        };
+        count = await prisma.lexical_units.count({ where: luWhere });
       }
 
       // Apply limit if specified and less than actual count

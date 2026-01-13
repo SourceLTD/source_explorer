@@ -168,7 +168,7 @@ export function AIJobsOverlay({
             </div>
             <div className="flex items-center gap-2">
               {pendingBadge && (
-                <span className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
+                <span className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-600">
                   Pending Jobs: {pendingBadge}
                 </span>
               )}

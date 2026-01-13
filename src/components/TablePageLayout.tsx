@@ -11,6 +11,7 @@ import CategoryDropdown from '@/components/CategoryDropdown';
 import { EditOverlay } from '@/components/editing/EditOverlay';
 import { Mode } from '@/components/editing/types';
 import { SearchResult, TableEntry, Frame, GraphNode } from '@/lib/types';
+import { DataTableMode } from '@/components/DataTable/types';
 
 interface TablePageLayoutProps {
   mode: Mode;
@@ -24,6 +25,8 @@ interface TablePageLayoutProps {
   onEditClick: (entry: TableEntry | Frame) => Promise<void>;
   onUpdate: () => Promise<void>;
   onCloseOverlay: () => void;
+  tabs?: React.ReactNode;
+  children?: React.ReactNode;
 }
 
 /**
@@ -35,27 +38,33 @@ const modeConfig: Record<Mode, {
   showRecipes: boolean;
   showPendingChanges: boolean;
 }> = {
+  lexical_units: {
+    graphPath: '/graph',
+    searchPlaceholder: 'Search Lexical Entries...',
+    showRecipes: false,
+    showPendingChanges: true,
+  },
   verbs: {
     graphPath: '/graph',
-    searchPlaceholder: 'Search table...',
-    showRecipes: true,
+    searchPlaceholder: 'Search verbs...',
+    showRecipes: false,
     showPendingChanges: true,
   },
   nouns: {
-    graphPath: '/graph/nouns',
-    searchPlaceholder: 'Search table...',
+    graphPath: '/graph',
+    searchPlaceholder: 'Search nouns...',
     showRecipes: false,
     showPendingChanges: true,
   },
   adjectives: {
-    graphPath: '/graph/adjectives',
-    searchPlaceholder: 'Search table...',
+    graphPath: '/graph',
+    searchPlaceholder: 'Search adjectives...',
     showRecipes: false,
     showPendingChanges: true,
   },
   adverbs: {
-    graphPath: '/graph/adverbs',
-    searchPlaceholder: 'Search table...',
+    graphPath: '/graph',
+    searchPlaceholder: 'Search adverbs...',
     showRecipes: false,
     showPendingChanges: true,
   },
@@ -82,6 +91,8 @@ export function TablePageLayout({
   onEditClick,
   onUpdate,
   onCloseOverlay,
+  tabs,
+  children,
 }: TablePageLayoutProps) {
   const router = useRouter();
   const config = modeConfig[mode];
@@ -101,9 +112,9 @@ export function TablePageLayout({
   return (
     <div className="h-screen flex flex-col bg-white">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200 px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-4">
+      <header className={`bg-white border-b border-gray-200 px-6 ${tabs ? 'pt-4 pb-0' : 'py-4'}`}>
+        <div className={`flex items-center justify-between ${tabs ? 'pb-4' : ''}`}>
+          <div className="flex items-center space-x-8">
             <button
               onClick={() => router.push('/')}
               className="text-xl font-bold text-gray-900 hover:text-gray-700 cursor-pointer"
@@ -127,25 +138,34 @@ export function TablePageLayout({
               currentView="table"
               onViewChange={handleViewChange}
               hideRecipes={!config.showRecipes}
+              hideGraph={mode !== 'frames'}
             />
             {config.showPendingChanges && <PendingChangesButton />}
             <SignOutButton />
           </div>
         </div>
+
+        {tabs && (
+          <div className="flex items-center gap-1">
+            {tabs}
+          </div>
+        )}
       </header>
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col bg-white">
-        <div className="m-6 bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <Suspense fallback={<div className="p-8 text-center text-gray-500">Loading...</div>}>
-            <DataTable 
-              searchQuery={searchQuery}
-              mode={mode}
-              onEditClick={onEditClick}
-              refreshTrigger={refreshTrigger}
-            />
-          </Suspense>
-        </div>
+        {children || (
+          <div className="m-6 bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <Suspense fallback={<div className="p-8 text-center text-gray-500">Loading...</div>}>
+              <DataTable 
+                searchQuery={searchQuery}
+                mode={mode === 'frames' ? 'frames' : 'lexical_units'}
+                onEditClick={onEditClick}
+                refreshTrigger={refreshTrigger}
+              />
+            </Suspense>
+          </div>
+        )}
       </main>
 
       {/* Edit Overlay */}

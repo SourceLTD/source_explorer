@@ -1,9 +1,9 @@
 import { prisma } from '@/lib/prisma';
-import type { PartOfSpeech } from '@/lib/llm/types';
+import type { JobTargetType } from '@/lib/llm/types';
 import { getFieldConfigsForPos } from './config';
 import type { BooleanFilterGroup, BooleanFilterNode, BooleanFilterRule, TranslateResult, PostFilterCondition } from './types';
 
-export async function translateFilterASTToPrisma(pos: PartOfSpeech, root?: BooleanFilterGroup): Promise<TranslateResult> {
+export async function translateFilterASTToPrisma(pos: JobTargetType, root?: BooleanFilterGroup): Promise<TranslateResult> {
   if (!root || root.children.length === 0) {
     return { where: {}, computedFilters: [] };
   }
@@ -36,8 +36,8 @@ export async function translateFilterASTToPrisma(pos: PartOfSpeech, root?: Boole
       return {};
     }
 
-    // frame special lookup for verbs
-    if (cfg.type === 'frame' && pos === 'verbs') {
+    // frame special lookup for lexical_units (all POS)
+    if (cfg.type === 'frame' && pos !== 'frames') {
       const values = normalizeToArray(rule.value);
       const ids = await resolveFrameIds(values);
       if (ids.length === 0) return { id: undefined }; // no matches -> empty set when ANDed

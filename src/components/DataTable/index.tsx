@@ -30,7 +30,7 @@ export default function DataTable({
   onEditClick,
   searchQuery,
   className,
-  mode = 'verbs',
+  mode = 'lexical_units',
   refreshTrigger,
 }: DataTableProps) {
   // Use our custom hook for data table state management
@@ -129,8 +129,8 @@ export default function DataTable({
   }, [mode]);
 
   // Fetch frame options
-  const fetchFrameOptions = useCallback(async () => {
-    if (mode !== 'verbs') {
+  const fetchFrameOptions = useCallback(async (search?: string) => {
+    if (mode !== 'lexical_units') {
       return;
     }
 
@@ -138,7 +138,11 @@ export default function DataTable({
     setFrameOptionsError(null);
 
     try {
-      const response = await fetch('/api/frames', { cache: 'no-store' });
+      const queryParams = new URLSearchParams();
+      if (search) queryParams.set('search', search);
+      queryParams.set('limit', '100');
+
+      const response = await fetch(`/api/frames?${queryParams.toString()}`, { cache: 'no-store' });
       if (!response.ok) {
         throw new Error('Failed to load frames');
       }
@@ -151,6 +155,19 @@ export default function DataTable({
       setFrameOptionsLoading(false);
     }
   }, [mode]);
+
+  // Load frame options when modal opens or search query changes
+  useEffect(() => {
+    if (!isFrameModalOpen || mode !== 'lexical_units') {
+      return;
+    }
+
+    const debounceTimer = setTimeout(() => {
+      void fetchFrameOptions(frameSearchQuery);
+    }, 300);
+
+    return () => clearTimeout(debounceTimer);
+  }, [fetchFrameOptions, frameSearchQuery, isFrameModalOpen, mode]);
 
   // Load pending AI jobs on mount and poll
   useEffect(() => {
@@ -212,19 +229,6 @@ export default function DataTable({
     
     return () => clearInterval(interval);
   }, [isPollingQuickEditJobs, tableState.fetchData, fetchPendingAIJobs]);
-
-  // Load frame options when modal opens
-  useEffect(() => {
-    if (!isFrameModalOpen || mode !== 'verbs') {
-      return;
-    }
-
-    if (frameOptions.length > 0 || frameOptionsLoading || frameOptionsError) {
-      return;
-    }
-
-    void fetchFrameOptions();
-  }, [fetchFrameOptions, frameOptions.length, frameOptionsError, frameOptionsLoading, isFrameModalOpen, mode]);
 
   // Clear selection when mode changes
   useEffect(() => {
@@ -378,7 +382,7 @@ export default function DataTable({
 
   // Frame modal handlers
   const handleOpenFrameModal = () => {
-    if (mode !== 'verbs') {
+    if (mode !== 'lexical_units') {
       return;
     }
     setFrameOptionsError(null);
@@ -398,7 +402,7 @@ export default function DataTable({
   };
 
   const handleConfirmFrameChange = async () => {
-    if (selection.selectedCount === 0 || mode !== 'verbs') {
+    if (selection.selectedCount === 0 || mode !== 'lexical_units') {
       return;
     }
 
@@ -458,21 +462,21 @@ export default function DataTable({
         showGlobalAlert({
           type: 'success',
           title: 'Success',
-          message: `Successfully ${action} ${actualCount} ${actualCount === 1 ? 'verb' : 'verbs'}.`,
+          message: `Successfully ${action} ${actualCount} ${actualCount === 1 ? 'entry' : 'entries'}.`,
           durationMs: 4000
         });
       } else if (actualCount > 0) {
         showGlobalAlert({
           type: 'warning',
           title: 'Partial Update',
-          message: `Only ${actualCount} of ${selectedCount} selected ${selectedCount === 1 ? 'verb was' : 'verbs were'} updated. Some verbs may not exist or are no longer accessible.`,
+          message: `Only ${actualCount} of ${selectedCount} selected ${selectedCount === 1 ? 'entry was' : 'entries were'} updated. Some entries may not exist or are no longer accessible.`,
           durationMs: 6000
         });
       } else {
         showGlobalAlert({
           type: 'error',
           title: 'Update Failed',
-          message: `No verbs were updated. The selected verbs may not exist or are no longer accessible.`,
+          message: `No entries were updated. The selected entries may not exist or are no longer accessible.`,
           durationMs: 6000
         });
       }
@@ -725,7 +729,7 @@ export default function DataTable({
       />
 
       {/* Frame Change Modal */}
-      {mode === 'verbs' && (
+      {mode === 'lexical_units' && (
         <FrameChangeModal
           isOpen={isFrameModalOpen}
           selectedCount={selection.selectedCount}

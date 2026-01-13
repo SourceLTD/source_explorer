@@ -204,7 +204,7 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
             </span>
             <span>=</span>
             <span
-              className="hover:underline cursor-help text-blue-900"
+              className="hover:underline cursor-help text-blue-600"
               onMouseEnter={(e) => {
                 const r = (e.target as HTMLElement).getBoundingClientRect();
                 setArgTooltip({ title: entryRoleLabelStr, description: entryDesc, x: r.left + r.width / 2, y: r.top - 8 });
@@ -221,7 +221,7 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
         const variableKey = m.variableKey;
         const variable = variableKey ? activeRecipe?.variables?.find(v => v.key === variableKey) : undefined;
         const varDisplay = variableKey ? `$${variableKey}` : `[${m.variableTypeLabel || 'variable'}]`;
-        const noun = variable?.noun_code ? `instance of ${variable.noun_code}${variable.noun_gloss ? ` (${variable.noun_gloss})` : ''}` : (m.variableTypeLabel ? `type ${m.variableTypeLabel}` : 'variable');
+        const noun = variable?.lexical_unit_code ? `instance of ${variable.lexical_unit_code}${variable.lexical_unit_gloss ? ` (${variable.lexical_unit_gloss})` : ''}` : (m.variableTypeLabel ? `type ${m.variableTypeLabel}` : 'variable');
         const predRoleDesc = getVerbRoleDescription(pred.lexical, roleLabel);
         const predInfo = getRoleInfo(roleLabel);
         const predDesc = (predRoleDesc ?? predInfo?.generic_description ?? roleLabel) as string;
@@ -240,7 +240,7 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
             </span>
             <span>=</span>
             <span
-              className="hover:underline cursor-help text-blue-900"
+              className="hover:underline cursor-help text-blue-600"
               onMouseEnter={(e) => {
                 const r = (e.target as HTMLElement).getBoundingClientRect();
                 setArgTooltip({ title: `🕵 ${varDisplay}`, description: noun, x: r.left + r.width / 2, y: r.top - 8 });
@@ -271,7 +271,7 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
           </span>
           <span>=</span>
           <span
-            className="hover:underline cursor-help text-blue-900"
+            className="hover:underline cursor-help text-blue-600"
             onMouseEnter={(e) => {
               const r = (e.target as HTMLElement).getBoundingClientRect();
               setArgTooltip({ title: '📌 [constant]', description: 'Constant binding', x: r.left + r.width / 2, y: r.top - 8 });
@@ -390,7 +390,7 @@ export default function RecipesGraph({ currentNode, recipes, selectedRecipeId, o
             style={{ paddingLeft: depth * 16 + 32 }}
             className="mt-2"
           >
-            <div className="bg-blue-50 border border-blue-200 rounded-xl px-3 py-2 text-sm text-blue-900 font-mono space-y-1">
+            <div className="bg-blue-50 border border-blue-200 rounded-xl px-3 py-2 text-sm text-blue-600 font-mono space-y-1">
               {renderLeafBindings(pred)}
             </div>
           </div>

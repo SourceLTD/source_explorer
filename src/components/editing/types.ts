@@ -1,4 +1,4 @@
-export type Mode = 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames';
+export type Mode = 'lexical_units' | 'frames' | 'verbs' | 'nouns' | 'adjectives' | 'adverbs';
 
 export type EditableField =
   | 'code'
@@ -7,9 +7,9 @@ export type EditableField =
   | 'gloss'
   | 'examples'
   | 'lexfile'
-  | 'roles'
   | 'vendler_class'
   | 'frame'
+  | 'roles'
   | 'label'
   | 'definition'
   | 'short_definition'

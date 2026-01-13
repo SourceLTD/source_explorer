@@ -47,7 +47,7 @@ function getOperationStyles(operation: PendingChangeOperation) {
         bgColor: 'bg-blue-50',
         headerBg: 'bg-blue-100',
         label: 'New Field',
-        labelColor: 'text-blue-700',
+        labelColor: 'text-blue-600',
       };
     case 'delete':
       return {

@@ -2,9 +2,10 @@ import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { api } from '@/lib/api-client';
 import type { SerializedJob } from '@/lib/llm/types';
 import type { JobListResponse } from '../types';
+import type { DataTableMode } from '../../DataTable/types';
 
 export interface UseJobPollingOptions {
-  mode: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames';
+  mode: DataTableMode;
   isOpen: boolean;
   isCreating: boolean;
   onJobsUpdated?: (pendingJobs: number) => void;

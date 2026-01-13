@@ -18,18 +18,22 @@ interface AIAgentQuickEditModalProps {
 }
 
 // Helper to get editable fields by entity type
-function getEditableFields(mode: DataTableMode): string[] {
-  switch (mode) {
-    case 'verbs':
+function getEditableFields(entry: TableEntry | Frame, mode: DataTableMode): string[] {
+  if (mode === 'frames') {
+    return ['definition', 'short_definition', 'prototypical_synset'];
+  }
+
+  // For lexical units, determine fields based on POS
+  const pos = (entry as TableEntry).pos;
+  switch (pos) {
+    case 'verb':
       return ['gloss', 'lemmas', 'examples', 'vendler_class'];
-    case 'nouns':
+    case 'noun':
       return ['gloss', 'lemmas', 'examples', 'countable', 'proper', 'collective', 'concrete', 'predicate'];
-    case 'adjectives':
+    case 'adjective':
       return ['gloss', 'lemmas', 'examples', 'gradable', 'predicative', 'attributive', 'subjective', 'relational'];
-    case 'adverbs':
+    case 'adverb':
       return ['gloss', 'lemmas', 'examples', 'gradable'];
-    case 'frames':
-      return ['definition', 'short_definition', 'prototypical_synset'];
     default:
       return ['gloss', 'lemmas', 'examples'];
   }
@@ -75,7 +79,7 @@ export function AIAgentQuickEditModal({
     try {
       const entryId = entry.id;
       const displayId = getEntryDisplayId(entry, mode);
-      const targetFields = getEditableFields(mode);
+      const targetFields = getEditableFields(entry, mode);
 
       // Simple system prompt for quick edits - just do what the user asks
       const quickEditSystemPrompt = `You are editing a lexical database entry. Follow the user's instructions exactly. Only make the changes they request - do not add extra improvements or modifications beyond what was asked. Be concise and precise.`;

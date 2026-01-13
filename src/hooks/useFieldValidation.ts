@@ -3,11 +3,14 @@ import { Mode } from '@/components/editing/types';
 
 function getApiPrefix(mode: Mode): string {
   switch (mode) {
-    case 'verbs': return '/api/verbs';
-    case 'nouns': return '/api/nouns';
-    case 'adjectives': return '/api/adjectives';
-    case 'adverbs': return '/api/adverbs';
     case 'frames': return '/api/frames';
+    case 'lexical_units':
+    case 'verbs':
+    case 'nouns':
+    case 'adjectives':
+    case 'adverbs':
+    default:
+      return '/api/lexical-units';
   }
 }
 

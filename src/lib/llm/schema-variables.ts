@@ -1,3 +1,5 @@
+import type { DataTableMode } from '@/components/DataTable/types';
+
 /**
  * Dynamic variable definitions for each entity type based on Prisma schema
  * These variables can be used in AI prompt templates
@@ -37,19 +39,12 @@ const ROLE_ITEM_FIELDS = [
   { key: 'main', label: 'Is Main Role (boolean)' },
 ];
 
-const VERB_ITEM_FIELDS = [
-  { key: 'code', label: 'Verb Code (e.g., say.v.01)' },
-  { key: 'gloss', label: 'Verb Gloss/Definition' },
-  { key: 'lemmas', label: 'Verb Lemmas (array)' },
-  { key: 'examples', label: 'Verb Examples (array)' },
-  { key: 'flagged', label: 'Is Flagged (boolean)' },
-];
-
-const NOUN_ITEM_FIELDS = [
-  { key: 'code', label: 'Noun Code (e.g., dog.n.01)' },
-  { key: 'gloss', label: 'Noun Gloss/Definition' },
-  { key: 'lemmas', label: 'Noun Lemmas (array)' },
-  { key: 'examples', label: 'Noun Examples (array)' },
+const LU_ITEM_FIELDS = [
+  { key: 'code', label: 'Code (e.g., say.v.01)' },
+  { key: 'pos', label: 'Part of Speech' },
+  { key: 'gloss', label: 'Gloss/Definition' },
+  { key: 'lemmas', label: 'Lemmas (array)' },
+  { key: 'examples', label: 'Examples (array)' },
   { key: 'flagged', label: 'Is Flagged (boolean)' },
 ];
 
@@ -95,18 +90,11 @@ const VERB_VARIABLES: VariableDefinition[] = [
     exampleLoop: '{% for role in frame.roles %}\n{{ role.type }}: {{ role.description }}\n{% endfor %}',
   } as IterableVariableDefinition,
   {
-    key: 'frame.verbs',
-    label: 'Frame Verbs (iterable)',
+    key: 'frame.lexical_units',
+    label: 'Frame Lexical Units (iterable)',
     category: 'iterable',
-    itemFields: VERB_ITEM_FIELDS,
-    exampleLoop: '{% for verb in frame.verbs %}\n- {{ verb.code }}: {{ verb.gloss }}\n{% endfor %}',
-  } as IterableVariableDefinition,
-  {
-    key: 'frame.nouns',
-    label: 'Frame Nouns (iterable)',
-    category: 'iterable',
-    itemFields: NOUN_ITEM_FIELDS,
-    exampleLoop: '{% for noun in frame.nouns %}\n- {{ noun.code }}: {{ noun.gloss }}\n{% endfor %}',
+    itemFields: LU_ITEM_FIELDS,
+    exampleLoop: '{% for lu in frame.lexical_units %}\n- {{ lu.code }} ({{ lu.pos }}): {{ lu.gloss }}\n{% endfor %}',
   } as IterableVariableDefinition,
 ];
 
@@ -164,7 +152,7 @@ const FRAME_VARIABLES: VariableDefinition[] = [
   { key: 'verifiable', label: 'Verifiable', category: 'basic' },
   { key: 'unverifiable_reason', label: 'Unverifiable Reason', category: 'basic' },
   { key: 'roles_count', label: 'Roles Count', category: 'computed' },
-  { key: 'verbs_count', label: 'Verbs Count', category: 'computed' },
+  { key: 'lexical_units_count', label: 'Lexical Units Count', category: 'computed' },
   // Iterable collections for {% for %} loops (when targeting frames directly)
   {
     key: 'roles',
@@ -174,34 +162,27 @@ const FRAME_VARIABLES: VariableDefinition[] = [
     exampleLoop: '{% for role in roles %}\n{{ role.type }}: {{ role.description }}\n{% endfor %}',
   } as IterableVariableDefinition,
   {
-    key: 'verbs',
-    label: 'Frame Verbs (iterable)',
+    key: 'lexical_units',
+    label: 'Frame Lexical Units (iterable)',
     category: 'iterable',
-    itemFields: VERB_ITEM_FIELDS,
-    exampleLoop: '{% for verb in verbs %}\n- {{ verb.code }}: {{ verb.gloss }}\n{% endfor %}',
-  } as IterableVariableDefinition,
-  {
-    key: 'nouns',
-    label: 'Frame Nouns (iterable)',
-    category: 'iterable',
-    itemFields: NOUN_ITEM_FIELDS,
-    exampleLoop: '{% for noun in nouns %}\n- {{ noun.code }}: {{ noun.gloss }}\n{% endfor %}',
+    itemFields: LU_ITEM_FIELDS,
+    exampleLoop: '{% for lu in lexical_units %}\n- {{ lu.code }} ({{ lu.pos }}): {{ lu.gloss }}\n{% endfor %}',
   } as IterableVariableDefinition,
 ];
 
 /**
  * Get available variables for a specific entity type
  */
-export function getVariablesForEntityType(entityType: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames'): VariableDefinition[] {
+export function getVariablesForEntityType(entityType: DataTableMode): VariableDefinition[] {
   switch (entityType) {
-    case 'verbs':
-      return VERB_VARIABLES;
-    case 'nouns':
-      return NOUN_VARIABLES;
-    case 'adjectives':
-      return ADJECTIVE_VARIABLES;
-    case 'adverbs':
-      return ADVERB_VARIABLES;
+    case 'lexical_units':
+      // Return combined variables for all lexical units
+      return Array.from(new Map([
+        ...VERB_VARIABLES,
+        ...NOUN_VARIABLES,
+        ...ADJECTIVE_VARIABLES,
+        ...ADVERB_VARIABLES
+      ].map(v => [v.key, v])).values());
     case 'frames':
       return FRAME_VARIABLES;
     default:
@@ -212,7 +193,7 @@ export function getVariablesForEntityType(entityType: 'verbs' | 'nouns' | 'adjec
 /**
  * Get only iterable variables for a specific entity type
  */
-export function getIterableVariablesForEntityType(entityType: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames'): IterableVariableDefinition[] {
+export function getIterableVariablesForEntityType(entityType: DataTableMode): IterableVariableDefinition[] {
   return getVariablesForEntityType(entityType).filter(isIterableVariable);
 }
 
@@ -221,10 +202,7 @@ export function getIterableVariablesForEntityType(entityType: 'verbs' | 'nouns' 
  */
 export function getAllEntityVariables(): Record<string, VariableDefinition[]> {
   return {
-    verbs: VERB_VARIABLES,
-    nouns: NOUN_VARIABLES,
-    adjectives: ADJECTIVE_VARIABLES,
-    adverbs: ADVERB_VARIABLES,
+    lexical_units: getVariablesForEntityType('lexical_units'),
     frames: FRAME_VARIABLES,
   };
 }

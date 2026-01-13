@@ -79,7 +79,7 @@ interface PendingFieldIndicatorProps {
   /** The pending change info from the entity */
   pending: PendingChangeInfo | null | undefined;
   /** The content to render */
-  children: React.ReactNode;
+  children?: React.ReactNode;
   /** Optional additional className */
   className?: string;
   /** Whether this is a table cell (uses different styling) */
@@ -93,7 +93,7 @@ interface PendingFieldIndicatorProps {
 export function PendingFieldIndicator({
   fieldName,
   pending,
-  children,
+  children = null,
   className = '',
   isTableCell = false,
 }: PendingFieldIndicatorProps) {

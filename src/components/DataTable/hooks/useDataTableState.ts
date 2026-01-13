@@ -106,10 +106,13 @@ function parseURLParams(
   });
   
   // Parse boolean filters
-  ['isMwe', 'flagged', 'verifiable', 'pendingCreate', 'pendingUpdate', 'pendingDelete'].forEach(key => {
+  ['isMwe', 'flagged', 'verifiable', 'pendingCreate', 'pendingUpdate', 'pendingDelete', 'excludeNullFrame'].forEach(key => {
     const value = searchParams.get(key);
     if (value !== null) {
-      filters[key as 'isMwe' | 'flagged' | 'verifiable' | 'pendingCreate' | 'pendingUpdate' | 'pendingDelete'] = value === 'true';
+      filters[key as 'isMwe' | 'flagged' | 'verifiable' | 'pendingCreate' | 'pendingUpdate' | 'pendingDelete' | 'excludeNullFrame'] = value === 'true';
+    } else if (key === 'excludeNullFrame' && mode === 'lexical_units') {
+      // Default to true for lexical units mode
+      filters.excludeNullFrame = true;
     }
   });
   
@@ -342,7 +345,7 @@ export function useDataTableState({
     const managedParams = [
       'gloss', 'lemmas', 'examples', 'frames', 'flaggedReason', 'unverifiableReason',
       'pos', 'lexfile', 'frame_id', 'flaggedByJobId',
-      'isMwe', 'flagged', 'verifiable',
+      'isMwe', 'flagged', 'verifiable', 'excludeNullFrame',
       'pendingCreate', 'pendingUpdate', 'pendingDelete',
       'parentsCountMin', 'parentsCountMax', 'childrenCountMin', 'childrenCountMax',
       'createdAfter', 'createdBefore', 'updatedAfter', 'updatedBefore',
@@ -410,6 +413,7 @@ export function useDataTableState({
         sortBy: safeSortBy,
         sortOrder: sortState.order,
         search: searchQuery || undefined,
+        isSuperFrame: mode === 'super_frames' ? 'true' : (mode === 'frames_only' ? 'false' : undefined),
         ...filters,
       };
 
@@ -463,9 +467,9 @@ export function useDataTableState({
   }, [pageSize]);
 
   const handleClearAllFilters = useCallback(() => {
-    setFilters({});
+    setFilters(mode === 'lexical_units' ? { excludeNullFrame: true } : {});
     setCurrentPage(1);
-  }, []);
+  }, [mode]);
 
   const handleColumnVisibilityChange = useCallback((newVisibility: ColumnVisibilityState) => {
     const sanitizedVisibility = sanitizeColumnVisibility(newVisibility, mode);

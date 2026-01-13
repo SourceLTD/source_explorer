@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import type { PartOfSpeech } from '@/lib/llm/types';
+import type { JobTargetType } from '@/lib/llm/types';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const query = searchParams.get('q');
-  const pos = searchParams.get('pos') as PartOfSpeech | null;
+  const targetType = searchParams.get('pos') as JobTargetType | null;
   const limitParam = searchParams.get('limit');
   const exact = searchParams.get('exact') === 'true';
   const limit = limitParam ? Math.min(Math.max(parseInt(limitParam, 10), 1), 50) : 20;
@@ -19,93 +19,48 @@ export async function GET(request: NextRequest) {
   try {
     let results: Array<{ code: string; gloss: string }> = [];
 
-    if (pos === 'verbs') {
-      const entries = await prisma.verbs.findMany({
-        where: {
-          AND: [
-            exact ? {
-              code: { equals: searchTerm, mode: 'insensitive' }
-            } : {
+    if (!targetType) {
+      return NextResponse.json({ results: [] });
+    }
+
+    if (targetType === 'frames') {
+      const frames = await prisma.frames.findMany({
+        where: exact
+          ? { label: { equals: searchTerm, mode: 'insensitive' } }
+          : {
               OR: [
-                { code: { contains: searchTerm, mode: 'insensitive' } },
-                { gloss: { contains: searchTerm, mode: 'insensitive' } },
+                { label: { contains: searchTerm, mode: 'insensitive' } },
+                { definition: { contains: searchTerm, mode: 'insensitive' } },
               ],
             },
-            {
-              deleted: false
-            }
-          ]
-        },
-        select: {
-          code: true,
-          gloss: true,
-        },
+        select: { label: true, definition: true },
         take: limit,
-        orderBy: {
-          code: 'asc',
-        },
+        orderBy: { label: 'asc' },
       });
-      results = entries;
-    } else if (pos === 'nouns') {
-      const entries = await prisma.nouns.findMany({
-        where: exact ? {
-          code: { equals: searchTerm, mode: 'insensitive' }
-        } : {
-          OR: [
-            { code: { contains: searchTerm, mode: 'insensitive' } },
-            { gloss: { contains: searchTerm, mode: 'insensitive' } },
+
+      results = frames.map(f => ({ code: f.label, gloss: f.definition ?? '' }));
+    } else {
+      const entries = await prisma.lexical_units.findMany({
+        where: {
+          deleted: false,
+          pos: targetType as any,
+          AND: [
+            exact
+              ? { code: { equals: searchTerm, mode: 'insensitive' } }
+              : {
+                  OR: [
+                    { code: { contains: searchTerm, mode: 'insensitive' } },
+                    { gloss: { contains: searchTerm, mode: 'insensitive' } },
+                  ],
+                },
           ],
         },
-        select: {
-          code: true,
-          gloss: true,
-        },
+        select: { code: true, gloss: true },
         take: limit,
-        orderBy: {
-          code: 'asc',
-        },
+        orderBy: { code: 'asc' },
       });
-      results = entries;
-    } else if (pos === 'adjectives') {
-      const entries = await prisma.adjectives.findMany({
-        where: exact ? {
-          code: { equals: searchTerm, mode: 'insensitive' }
-        } : {
-          OR: [
-            { code: { contains: searchTerm, mode: 'insensitive' } },
-            { gloss: { contains: searchTerm, mode: 'insensitive' } },
-          ],
-        },
-        select: {
-          code: true,
-          gloss: true,
-        },
-        take: limit,
-        orderBy: {
-          code: 'asc',
-        },
-      });
-      results = entries;
-    } else if (pos === 'adverbs') {
-      const entries = await prisma.adverbs.findMany({
-        where: exact ? {
-          code: { equals: searchTerm, mode: 'insensitive' }
-        } : {
-          OR: [
-            { code: { contains: searchTerm, mode: 'insensitive' } },
-            { gloss: { contains: searchTerm, mode: 'insensitive' } },
-          ],
-        },
-        select: {
-          code: true,
-          gloss: true,
-        },
-        take: limit,
-        orderBy: {
-          code: 'asc',
-        },
-      });
-      results = entries;
+
+      results = entries.map(e => ({ code: e.code, gloss: e.gloss }));
     }
 
     return NextResponse.json({ results });

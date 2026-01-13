@@ -3,6 +3,8 @@ import { api } from '@/lib/api-client';
 import { createEmptyGroup, type BooleanFilterGroup } from '@/lib/filters/types';
 import { showGlobalAlert } from '@/lib/alerts';
 import type { SerializedJob, JobScope } from '@/lib/llm/types';
+import type { PartOfSpeech as POSType } from '@/lib/types';
+import type { DataTableMode } from '../../DataTable/types';
 import { getVariablesForEntityType, getIterableVariablesForEntityType } from '@/lib/llm/schema-variables';
 import type { PreviewResponse, ScopeMode } from '../types';
 import { 
@@ -36,7 +38,7 @@ export interface SubmissionProgress {
 }
 
 export interface UseJobCreationOptions {
-  mode: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames';
+  mode: DataTableMode;
   selectedIds: string[];
   isOpen: boolean;
   /** Email of the current user, used to track who submitted the job */
@@ -62,8 +64,8 @@ export interface UseJobCreationReturn {
   setJobType: (type: 'moderation' | 'editing' | 'reallocation' | 'allocate') => void;
   targetFields: string[];
   setTargetFields: (fields: string[]) => void;
-  reallocationEntityTypes: ('verbs' | 'nouns' | 'adjectives' | 'adverbs')[];
-  setReallocationEntityTypes: (types: ('verbs' | 'nouns' | 'adjectives' | 'adverbs')[]) => void;
+  reallocationEntityTypes: POSType[];
+  setReallocationEntityTypes: (types: POSType[]) => void;
   priority: 'flex' | 'normal' | 'priority';
   setPriority: (priority: 'flex' | 'normal' | 'priority') => void;
   reasoningEffort: 'low' | 'medium' | 'high';
@@ -80,10 +82,10 @@ export interface UseJobCreationReturn {
   frameIds: string[];
   validatedManualIds: Set<string>;
   validatedFrameIds: Set<string>;
-  frameIncludeVerbs: boolean;
-  setFrameIncludeVerbs: (include: boolean) => void;
-  frameFlagTarget: 'frame' | 'verb' | 'both';
-  setFrameFlagTarget: (target: 'frame' | 'verb' | 'both') => void;
+  frameIncludeLexicalUnits: boolean;
+  setFrameIncludeLexicalUnits: (include: boolean) => void;
+  frameFlagTarget: 'frame' | 'lexical_unit' | 'both';
+  setFrameFlagTarget: (target: 'frame' | 'lexical_unit' | 'both') => void;
   
   // Filter state
   filterGroup: BooleanFilterGroup;
@@ -194,15 +196,15 @@ export function useJobCreation({
   const [model, setModel] = useState<string>(MODEL_OPTIONS[0].value);
   const [jobType, setJobType] = useState<'moderation' | 'editing' | 'reallocation' | 'allocate'>('moderation');
   const [targetFields, setTargetFields] = useState<string[]>([]);
-  const [reallocationEntityTypes, setReallocationEntityTypes] = useState<('verbs' | 'nouns' | 'adjectives' | 'adverbs')[]>([]);
+  const [reallocationEntityTypes, setReallocationEntityTypes] = useState<POSType[]>([]);
   const [priority, setPriority] = useState<'flex' | 'normal' | 'priority'>('normal');
   const [reasoningEffort, setReasoningEffort] = useState<'low' | 'medium' | 'high'>('medium');
   const [agenticMode, setAgenticMode] = useState(true); // MCP tools enabled by default
   
   // Scope state
   const [scopeMode, setScopeMode] = useState<ScopeMode>('all');
-  const [frameIncludeVerbs, setFrameIncludeVerbs] = useState(false);
-  const [frameFlagTarget, setFrameFlagTarget] = useState<'frame' | 'verb' | 'both'>('verb');
+  const [frameIncludeLexicalUnits, setFrameIncludeLexicalUnits] = useState(false);
+  const [frameFlagTarget, setFrameFlagTarget] = useState<'frame' | 'lexical_unit' | 'both'>('lexical_unit');
   const [validatedManualIds, setValidatedManualIds] = useState<Set<string>>(new Set());
   const [validatedFrameIds, setValidatedFrameIds] = useState<Set<string>>(new Set());
   
@@ -482,7 +484,7 @@ export function useJobCreation({
       case 'manual':
         return manualIds.length > 0 && manualIds.every(id => validatedManualIds.has(id));
       case 'frames':
-        if (mode !== 'verbs' && mode !== 'frames') return false;
+        if (mode !== 'lexical_units' && mode !== 'frames') return false;
         return frameIds.length > 0 && frameIds.every(id => validatedFrameIds.has(id));
       default:
         return false;
@@ -505,7 +507,7 @@ export function useJobCreation({
       case 'manual':
         return manualIds.length === 0 || !manualIds.every(id => validatedManualIds.has(id));
       case 'frames':
-        if (mode !== 'verbs' && mode !== 'frames') return true;
+        if (mode !== 'lexical_units' && mode !== 'frames') return true;
         return frameIds.length === 0 || !frameIds.every(id => validatedFrameIds.has(id));
       default:
         return true;
@@ -566,6 +568,8 @@ export function useJobCreation({
     setReasoningEffort('medium');
     setAgenticMode(true);
     setScopeMode('all');
+    setFrameIncludeLexicalUnits(false);
+    setFrameFlagTarget('lexical_unit');
     setManualIdText('');
     setFrameIdText('');
     setPromptMode('simple');
@@ -618,7 +622,7 @@ export function useJobCreation({
       serviceTier?: string | null;
       jobType?: 'moderation' | 'editing' | 'reallocation' | 'allocate';
       targetFields?: string[];
-      reallocationEntityTypes?: ('verbs' | 'nouns' | 'adjectives' | 'adverbs')[];
+      reallocationEntityTypes?: POSType[];
       reasoning?: { effort?: 'low' | 'medium' | 'high' } | null;
       mcpEnabled?: boolean | null;
     } | null;
@@ -665,11 +669,11 @@ export function useJobCreation({
           manualIdAutocomplete.setText(idsToText(scopeIds));
         }
       } else if (scope.kind === 'frame_ids') {
-        if (mode === 'verbs' || mode === 'frames') {
+        if (mode === 'lexical_units' || mode === 'frames') {
           setScopeMode('frames');
           frameIdAutocomplete.setText(idsToText(scope.frameIds ?? []));
-          setFrameIncludeVerbs(scope.includeVerbs ?? false);
-          setFrameFlagTarget(scope.flagTarget ?? 'verb');
+          setFrameIncludeLexicalUnits(scope.includeLexicalUnits ?? false);
+          setFrameFlagTarget(scope.flagTarget ?? 'lexical_unit');
         } else {
           setScopeMode('selection');
         }
@@ -777,7 +781,7 @@ export function useJobCreation({
     setFilterValidateCount(null);
     setFilterValidateSample([]);
     try {
-      const scope = buildScope('filters', mode, [], '', '', filterGroup, filterLimit, frameIncludeVerbs, frameFlagTarget);
+      const scope = buildScope('filters', mode, [], '', '', filterGroup, filterLimit, frameIncludeLexicalUnits, frameFlagTarget);
       const resp = await api.post<{ totalItems: number; sampleSize: number; sample: Array<{ code: string; gloss: string }> }>(
         '/api/llm-jobs/validate',
         { scope }
@@ -789,7 +793,7 @@ export function useJobCreation({
     } finally {
       setFilterValidateLoading(false);
     }
-  }, [mode, filterGroup, filterLimit, frameIncludeVerbs, frameFlagTarget]);
+  }, [mode, filterGroup, filterLimit, frameIncludeLexicalUnits, frameFlagTarget]);
 
   // Preview and estimate
   const handlePreview = useCallback(async () => {
@@ -797,7 +801,7 @@ export function useJobCreation({
     setPreview(null);
     setCurrentPreviewIndex(0);
     try {
-      const scope = buildScope(scopeMode, mode, selectedIds, manualIdAutocomplete.text, frameIdAutocomplete.text, filterGroup, filterLimit, frameIncludeVerbs, frameFlagTarget);
+      const scope = buildScope(scopeMode, mode, selectedIds, manualIdAutocomplete.text, frameIdAutocomplete.text, filterGroup, filterLimit, frameIncludeLexicalUnits, frameFlagTarget);
       const response = await api.post<PreviewResponse>('/api/llm-jobs/preview', {
         model,
         promptTemplate,
@@ -817,14 +821,14 @@ export function useJobCreation({
     } finally {
       setPreviewLoading(false);
     }
-  }, [scopeMode, mode, selectedIds, manualIdAutocomplete.text, frameIdAutocomplete.text, filterGroup, filterLimit, frameIncludeVerbs, frameFlagTarget, model, promptTemplate, priority, reasoningEffort]);
+  }, [scopeMode, mode, selectedIds, manualIdAutocomplete.text, frameIdAutocomplete.text, filterGroup, filterLimit, frameIncludeLexicalUnits, frameFlagTarget, model, promptTemplate, priority, reasoningEffort]);
 
   const handleEstimate = useCallback(async () => {
     setEstimateLoading(true);
     setEstimateError(null);
     setEstimate(null);
     try {
-      const scope = buildScope(scopeMode, mode, selectedIds, manualIdAutocomplete.text, frameIdAutocomplete.text, filterGroup, filterLimit, frameIncludeVerbs, frameFlagTarget);
+      const scope = buildScope(scopeMode, mode, selectedIds, manualIdAutocomplete.text, frameIdAutocomplete.text, filterGroup, filterLimit, frameIncludeLexicalUnits, frameFlagTarget);
       const response = await api.post<{
         totalItems: number;
         sampleSize: number;
@@ -847,7 +851,7 @@ export function useJobCreation({
     } finally {
       setEstimateLoading(false);
     }
-  }, [scopeMode, mode, selectedIds, manualIdAutocomplete.text, frameIdAutocomplete.text, filterGroup, filterLimit, frameIncludeVerbs, frameFlagTarget, model, promptTemplate, priority, reasoningEffort]);
+  }, [scopeMode, mode, selectedIds, manualIdAutocomplete.text, frameIdAutocomplete.text, filterGroup, filterLimit, frameIncludeLexicalUnits, frameFlagTarget, model, promptTemplate, priority, reasoningEffort]);
 
   // Submission
   const handleSubmit = useCallback(async () => {
@@ -855,7 +859,7 @@ export function useJobCreation({
     setSubmissionLoading(true);
     setSubmissionError(null);
     try {
-      const scope: JobScope = buildScope(scopeMode, mode, selectedIds, manualIdAutocomplete.text, frameIdAutocomplete.text, filterGroup, filterLimit, frameIncludeVerbs, frameFlagTarget);
+      const scope: JobScope = buildScope(scopeMode, mode, selectedIds, manualIdAutocomplete.text, frameIdAutocomplete.text, filterGroup, filterLimit, frameIncludeLexicalUnits, frameFlagTarget);
       
       const BATCH_SIZE = 3000;
       let totalEntries = estimateScopeSize(scope);
@@ -1002,7 +1006,7 @@ export function useJobCreation({
     } finally {
       setSubmissionLoading(false);
     }
-  }, [isSubmitDisabled, scopeMode, mode, selectedIds, manualIdAutocomplete.text, frameIdAutocomplete.text, filterGroup, filterLimit, frameIncludeVerbs, frameFlagTarget, label, userEmail, model, promptTemplate, jobType, targetFields, reallocationEntityTypes, priority, reasoningEffort, agenticMode, onJobCreated, closeCreateFlow]);
+  }, [isSubmitDisabled, scopeMode, mode, selectedIds, manualIdAutocomplete.text, frameIdAutocomplete.text, filterGroup, filterLimit, frameIncludeLexicalUnits, frameFlagTarget, label, userEmail, model, promptTemplate, jobType, targetFields, reallocationEntityTypes, priority, reasoningEffort, agenticMode, onJobCreated, closeCreateFlow]);
 
   // Effects
   // Auto-update label when job type or scope changes
@@ -1140,7 +1144,7 @@ export function useJobCreation({
 
   // Validate frame IDs
   useEffect(() => {
-    if (scopeMode !== 'frames' || frameIds.length === 0 || (mode !== 'verbs' && mode !== 'frames')) {
+    if (scopeMode !== 'frames' || frameIds.length === 0 || (mode !== 'lexical_units' && mode !== 'frames')) {
       setValidatedFrameIds(new Set());
       return;
     }
@@ -1156,15 +1160,15 @@ export function useJobCreation({
           );
           
           if (frameResult) {
-            if (frameIncludeVerbs && mode === 'verbs') {
+            if (frameIncludeLexicalUnits && mode === 'lexical_units') {
               try {
                 const frameDetailsResponse = await api.get(`/api/frames/paginated?search=${encodeURIComponent(frameResult.label)}&limit=1`);
-                const frameData = frameDetailsResponse as { data?: Array<{ verbs_count?: number }> };
-                if (frameData.data && frameData.data.length > 0 && frameData.data[0].verbs_count && frameData.data[0].verbs_count > 0) {
+                const frameData = frameDetailsResponse as { data?: Array<{ lexical_units_count?: number }> };
+                if (frameData.data && frameData.data.length > 0 && frameData.data[0].lexical_units_count && frameData.data[0].lexical_units_count > 0) {
                   validIds.add(id);
                 }
               } catch (error) {
-                console.error(`Failed to check verb count for frame ${id}:`, error);
+                console.error(`Failed to check lexical unit count for frame ${id}:`, error);
               }
             } else {
               validIds.add(id);
@@ -1178,7 +1182,7 @@ export function useJobCreation({
     };
     const timeoutId = setTimeout(validateIds, 500);
     return () => clearTimeout(timeoutId);
-  }, [frameIds, scopeMode, frameIncludeVerbs, mode]);
+  }, [frameIds, scopeMode, frameIncludeLexicalUnits, mode]);
 
   return {
     // Creation flow state
@@ -1216,8 +1220,8 @@ export function useJobCreation({
     frameIds,
     validatedManualIds,
     validatedFrameIds,
-    frameIncludeVerbs,
-    setFrameIncludeVerbs,
+    frameIncludeLexicalUnits,
+    setFrameIncludeLexicalUnits,
     frameFlagTarget,
     setFrameFlagTarget,
     

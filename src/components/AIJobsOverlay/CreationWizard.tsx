@@ -8,10 +8,11 @@ import { ScopeSelector } from './ScopeSelector';
 import { STEPPER_STEPS, STEP_TITLES, MODEL_OPTIONS, buildPrompt, type StepperStep } from './constants';
 import { calculateCursorPosition, truncate } from './utils';
 import type { UseJobCreationReturn } from './hooks/useJobCreation';
+import type { DataTableMode } from '../DataTable/types';
 
 export interface CreationWizardProps {
   creation: UseJobCreationReturn;
-  mode: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames';
+  mode: DataTableMode;
 }
 
 export const CreationWizard = memo(function CreationWizard({
@@ -47,8 +48,8 @@ export const CreationWizard = memo(function CreationWizard({
     frameIds,
     validatedManualIds,
     validatedFrameIds,
-    frameIncludeVerbs,
-    setFrameIncludeVerbs,
+    frameIncludeLexicalUnits,
+    setFrameIncludeLexicalUnits,
     frameFlagTarget,
     setFrameFlagTarget,
     filterGroup,
@@ -160,7 +161,7 @@ export const CreationWizard = memo(function CreationWizard({
             <div className="space-y-3">
               <label className="block text-xs font-semibold text-gray-700">Job Type</label>
               <div className="flex gap-3">
-                <label className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border p-3 transition-colors ${jobType === 'moderation' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 hover:bg-gray-50'}`}>
+                <label className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border p-3 transition-colors ${jobType === 'moderation' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-gray-200 hover:bg-gray-50'}`}>
                   <input
                     type="radio"
                     name="jobType"
@@ -178,7 +179,7 @@ export const CreationWizard = memo(function CreationWizard({
                     <div className="text-[10px] opacity-70">Flag issues</div>
                   </div>
                 </label>
-                <label className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border p-3 transition-colors ${jobType === 'editing' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 hover:bg-gray-50'}`}>
+                <label className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border p-3 transition-colors ${jobType === 'editing' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-gray-200 hover:bg-gray-50'}`}>
                   <input
                     type="radio"
                     name="jobType"
@@ -196,7 +197,7 @@ export const CreationWizard = memo(function CreationWizard({
                   </div>
                 </label>
                 {mode !== 'frames' && (
-                  <label className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border p-3 transition-colors ${jobType === 'allocate' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 hover:bg-gray-50'}`}>
+                  <label className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border p-3 transition-colors ${jobType === 'allocate' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-gray-200 hover:bg-gray-50'}`}>
                     <input
                       type="radio"
                       name="jobType"
@@ -216,7 +217,7 @@ export const CreationWizard = memo(function CreationWizard({
                   </label>
                 )}
                 {mode === 'frames' && (
-                  <label className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border p-3 transition-colors ${jobType === 'reallocation' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 hover:bg-gray-50'}`}>
+                  <label className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border p-3 transition-colors ${jobType === 'reallocation' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-gray-200 hover:bg-gray-50'}`}>
                     <input
                       type="radio"
                       name="jobType"
@@ -282,8 +283,8 @@ export const CreationWizard = memo(function CreationWizard({
                 filterValidateCount={filterValidateCount}
                 filterValidateSample={filterValidateSample}
                 onValidateFilters={handleValidateFilters}
-                frameIncludeVerbs={frameIncludeVerbs}
-                onFrameIncludeVerbsChange={setFrameIncludeVerbs}
+                frameIncludeLexicalUnits={frameIncludeLexicalUnits}
+                onFrameIncludeLexicalUnitsChange={setFrameIncludeLexicalUnits}
                 frameFlagTarget={frameFlagTarget}
                 onFrameFlagTargetChange={setFrameFlagTarget}
               />
@@ -291,12 +292,12 @@ export const CreationWizard = memo(function CreationWizard({
                 <p className="text-xs text-red-500">
                   {scopeMode === 'manual' && manualIds.length > 0 && manualIds.some(id => !validatedManualIds.has(id))
                     ? 'Some manual IDs are invalid. Please ensure all IDs exist in the database.'
-                    : scopeMode === 'frames' && (mode === 'verbs' || mode === 'frames') && frameIds.length > 0 && frameIds.some(id => !validatedFrameIds.has(id))
-                    ? (frameIncludeVerbs && mode === 'verbs' 
-                        ? 'Some frame IDs are invalid or have no associated verbs. Please ensure all frame IDs exist and have verbs.'
+                    : scopeMode === 'frames' && (mode === 'lexical_units' || mode === 'frames') && frameIds.length > 0 && frameIds.some(id => !validatedFrameIds.has(id))
+                    ? (frameIncludeLexicalUnits && mode === 'lexical_units' 
+                        ? 'Some frame IDs are invalid or have no associated lexical units. Please ensure all frame IDs exist and have lexical units.'
                         : 'Some frame IDs are invalid. Please ensure all frame IDs exist in the database.')
-                    : scopeMode === 'frames' && (mode !== 'verbs' && mode !== 'frames')
-                    ? 'Frame scope is only available for verbs and frames.'
+                    : scopeMode === 'frames' && (mode !== 'lexical_units' && mode !== 'frames')
+                    ? 'Frame scope is only available for lexical units and frames.'
                     : 'Choose at least one target before continuing.'}
                 </p>
               )}
@@ -316,7 +317,7 @@ export const CreationWizard = memo(function CreationWizard({
                           key={variable.key}
                           className={`flex cursor-pointer items-center justify-center rounded-xl border px-3 py-2 transition-colors ${
                             targetFields.includes(variable.key)
-                              ? 'border-blue-500 bg-blue-50 text-blue-700'
+                              ? 'border-blue-500 bg-blue-50 text-blue-600'
                               : 'border-gray-200 hover:bg-gray-50'
                           }`}
                         >
@@ -350,12 +351,12 @@ export const CreationWizard = memo(function CreationWizard({
                 <div className="space-y-3">
                   <label className="block text-xs font-semibold text-gray-700">Entity Types to Reallocate</label>
                   <div className="flex gap-3">
-                    {(['verbs', 'nouns', 'adjectives', 'adverbs'] as const).map(entityType => (
+                    {(['verb', 'noun', 'adjective', 'adverb'] as const).map(entityType => (
                       <label
                         key={entityType}
                         className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border p-3 transition-colors ${
                           reallocationEntityTypes.includes(entityType)
-                            ? 'border-blue-500 bg-blue-50 text-blue-700'
+                            ? 'border-blue-500 bg-blue-50 text-blue-600'
                             : 'border-gray-200 hover:bg-gray-50'
                         }`}
                       >
@@ -372,7 +373,7 @@ export const CreationWizard = memo(function CreationWizard({
                           className="sr-only"
                         />
                         <div className="text-center">
-                          <div className="text-sm font-semibold">{entityType.charAt(0).toUpperCase() + entityType.slice(1)}</div>
+                          <div className="text-sm font-semibold">{entityType.charAt(0).toUpperCase() + entityType.slice(1)}s</div>
                         </div>
                       </label>
                     ))}
@@ -484,7 +485,7 @@ export const CreationWizard = memo(function CreationWizard({
             <div className="space-y-3">
               <label className="block text-xs font-semibold text-gray-700">Prompt Mode</label>
               <div className="flex gap-3">
-                <label className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border p-3 transition-colors ${promptMode === 'simple' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 hover:bg-gray-50'}`}>
+                <label className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border p-3 transition-colors ${promptMode === 'simple' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-gray-200 hover:bg-gray-50'}`}>
                   <input
                     type="radio"
                     name="promptMode"
@@ -501,7 +502,7 @@ export const CreationWizard = memo(function CreationWizard({
                     <div className="text-[10px] opacity-70">Use default prompt</div>
                   </div>
                 </label>
-                <label className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border p-3 transition-colors ${promptMode === 'advanced' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 hover:bg-gray-50'}`}>
+                <label className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border p-3 transition-colors ${promptMode === 'advanced' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-gray-200 hover:bg-gray-50'}`}>
                   <input
                     type="radio"
                     name="promptMode"
@@ -615,30 +616,30 @@ export const CreationWizard = memo(function CreationWizard({
               <div className="shrink-0 space-y-1 text-xs text-gray-500">
                 <p>
                   Type <code className="rounded bg-gray-100 px-1">{'{{'}</code> to insert variables.
-                  {(mode === 'verbs' || mode === 'frames') && (
+                  {(mode === 'lexical_units' || mode === 'frames') && (
                     <> Use <code className="rounded bg-indigo-50 px-1 text-indigo-600">{'{%'} for item in collection {'%}'}</code> for loops.</>
                   )}
                 </p>
-                {(mode === 'verbs' || mode === 'frames') && (
+                {(mode === 'lexical_units' || mode === 'frames') && (
                   <details className="cursor-pointer">
                     <summary className="text-gray-400 hover:text-gray-600">Loop syntax help</summary>
                     <div className="mt-1.5 rounded-lg bg-gray-50 p-2 font-mono text-[11px] leading-relaxed">
-                      {mode === 'verbs' ? (
+                      {mode === 'lexical_units' ? (
                         <>
                           <div className="text-gray-600">{'{%'} for role in frame.roles {'%}'}</div>
                           <div className="pl-2 text-gray-500">{'{{ role.type }}'}: {'{{ role.description }}'}</div>
                           <div className="text-gray-600">{'{%'} endfor {'%}'}</div>
                           <div className="mt-1.5 border-t border-gray-200 pt-1.5 text-gray-400">
-                            Available: frame.roles, frame.verbs, frame.nouns
+                            Available: frame.roles, frame.lexical_units
                           </div>
                         </>
                       ) : (
                         <>
-                          <div className="text-gray-600">{'{%'} for verb in verbs {'%}'}</div>
-                          <div className="pl-2 text-gray-500">- {'{{ verb.code }}'}: {'{{ verb.gloss }}'}</div>
+                          <div className="text-gray-600">{'{%'} for item in lexical_units {'%}'}</div>
+                          <div className="pl-2 text-gray-500">- {'{{ item.code }}'}: {'{{ item.gloss }}'}</div>
                           <div className="text-gray-600">{'{%'} endfor {'%}'}</div>
                           <div className="mt-1.5 border-t border-gray-200 pt-1.5 text-gray-400">
-                            Available: roles, verbs, nouns
+                            Available: roles, lexical_units
                           </div>
                         </>
                       )}

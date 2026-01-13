@@ -144,10 +144,10 @@ function ModerationActions({
           Mark Verifiable
         </button>
       )}
-      {mode === 'verbs' && (
+      {mode === 'lexical_units' && (
         <button
           onClick={onOpenFrameModal}
-          className="flex items-center gap-1 px-3 py-1 text-sm font-medium text-blue-700 bg-blue-100 border border-blue-200 rounded-xl hover:bg-blue-200 transition-colors cursor-pointer"
+          className="flex items-center gap-1 px-3 py-1 text-sm font-medium text-blue-600 bg-blue-100 border border-blue-200 rounded-xl hover:bg-blue-200 transition-colors cursor-pointer"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7h11m-2-3 3 3-3 3M20 17H9m2-3-3 3 3 3" />

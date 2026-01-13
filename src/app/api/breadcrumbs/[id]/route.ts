@@ -21,7 +21,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       ? await getAncestorPathUncached(id)
       : await getAncestorPath(id);
     
-    const breadcrumbs = ancestorPath.map(node => {
+    const breadcrumbs = ancestorPath.map((node: { id: string; legacy_id: string; lemmas?: string[]; src_lemmas?: string[]; gloss: string }) => {
       // Extract lemma from code format (e.g. 'attack' from 'attack.v.03')
       // The id is now the code, so we can extract directly
       const match = node.id.match(/^([^.]+)/);
@@ -31,7 +31,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       if (!match || lemma === node.id) {
         const allLemmas = node.lemmas || [];
         const srcLemmas = node.src_lemmas || [];
-        const regularLemmas = allLemmas.filter(l => !srcLemmas.includes(l));
+        const regularLemmas = allLemmas.filter((l: string) => !srcLemmas.includes(l));
         lemma = [...regularLemmas, ...srcLemmas][0] || node.id;
       }
       

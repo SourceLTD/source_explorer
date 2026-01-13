@@ -85,10 +85,7 @@ export async function POST(request: NextRequest, context: Context) {
       return {
         job_id: jobId,
         status: 'queued' as const,
-        verb_id: entry.pos === 'verbs' ? entry.dbId : null,
-        noun_id: entry.pos === 'nouns' ? entry.dbId : null,
-        adjective_id: entry.pos === 'adjectives' ? entry.dbId : null,
-        adverb_id: entry.pos === 'adverbs' ? entry.dbId : null,
+        lexical_unit_id: entry.pos !== 'frames' ? entry.dbId : null,
         frame_id: entry.pos === 'frames' ? entry.dbId : null,
         request_payload: requestPayload as Prisma.InputJsonObject,
       };

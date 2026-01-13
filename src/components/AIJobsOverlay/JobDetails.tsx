@@ -17,6 +17,7 @@ import {
 } from './components';
 import { formatRuntime } from './utils';
 import LoadingSpinner from '@/components/LoadingSpinner';
+import type { DataTableMode } from '../DataTable/types';
 
 export const JobDetails = memo(function JobDetails({ 
   job, 
@@ -41,7 +42,7 @@ export const JobDetails = memo(function JobDetails({
     failed: number;
     isSubmitting: boolean;
   } | null;
-  mode: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames';
+  mode: DataTableMode;
   onLoadMore: (status: 'pending' | 'succeeded' | 'failed') => void;
   cancelLoading?: boolean;
 }) {
@@ -126,9 +127,7 @@ export const JobDetails = memo(function JobDetails({
             <button
               onClick={() => {
                 onClose();
-                const baseUrl = mode === 'verbs' || mode === 'frames'
-                  ? `/table?flaggedByJobId=${encodeURIComponent(job.id)}&tab=${mode}`
-                  : `/table/${mode}?flaggedByJobId=${encodeURIComponent(job.id)}`;
+                const baseUrl = `/table?flaggedByJobId=${encodeURIComponent(job.id)}&tab=${mode === 'frames' ? 'frames' : 'lexical_units'}`;
                 router.push(baseUrl);
               }}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 transition-colors"

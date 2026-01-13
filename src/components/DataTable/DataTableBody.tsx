@@ -29,18 +29,14 @@ export function formatDate(date: Date | string | null | undefined): string {
 }
 
 export function getRowBackgroundColor(entry: TableEntry | Frame, isSelected: boolean): string {
-  // Check for pending changes
   const pending = (entry as TableEntry & { pending?: PendingChangeInfo | null }).pending;
   const isFlagged = 'flagged' in entry && entry.flagged;
   
   if (isSelected) {
-    // Pending + flagged uses inline styles
     if (pending && isFlagged) {
       return '';
     }
-    // Selected rows get a more intense version of their base color
     if (pending) {
-      // More intense pending colors when selected
       switch (pending.operation) {
         case 'create':
           return 'bg-green-200 hover:bg-green-300';
@@ -52,19 +48,15 @@ export function getRowBackgroundColor(entry: TableEntry | Frame, isSelected: boo
       }
     }
     if (isFlagged) {
-      // Flagged rows use inline styles for selected state
       return '';
     }
-    // Default selected color
     return 'bg-blue-100 hover:bg-blue-200';
   }
   
-  // Non-selected states
   if (pending) {
     return getPendingRowClasses(pending.operation);
   }
   
-  // Flagged rows get blue background (handled via inline styles, but add hover here)
   if (isFlagged) {
     return 'bg-white hover:bg-blue-200';
   }
@@ -73,47 +65,39 @@ export function getRowBackgroundColor(entry: TableEntry | Frame, isSelected: boo
 }
 
 export function getRowInlineStyles(entry: TableEntry | Frame, isSelected: boolean): React.CSSProperties {
-  // Check for pending changes
   const pending = (entry as TableEntry & { pending?: PendingChangeInfo | null }).pending;
   const isFlagged = 'flagged' in entry && entry.flagged;
   
   if (isSelected) {
-    // Selected rows that are both pending AND flagged: more intense pending color + blue border
     if (pending && isFlagged) {
       const pendingSelectedBackgroundColors: Record<string, string> = {
-        create: '#bbf7d0',  // green-200
-        update: '#fed7aa',  // orange-200
-        delete: '#fecaca',  // red-200
+        create: '#bbf7d0',
+        update: '#fed7aa',
+        delete: '#fecaca',
       };
       return { 
         backgroundColor: pendingSelectedBackgroundColors[pending.operation] || '#fed7aa',
-        borderLeft: '4px solid #3b82f6'  // blue-500
+        borderLeft: '4px solid #3b82f6'
       };
     }
-    // Selected flagged rows (without pending) get a more intense blue
     if (isFlagged) {
-      return { backgroundColor: '#7cb8e8' };  // More intense blue than #add8ff
+      return { backgroundColor: '#7cb8e8' };
     }
-    // Selected pending rows use Tailwind classes, no inline styles needed
     return {};
   }
   
-  // Non-selected states
-  
-  // If both pending AND flagged, show pending background with blue left border
   if (pending && isFlagged) {
     const pendingBackgroundColors: Record<string, string> = {
-      create: '#dcfce7',  // green-100
-      update: '#ffedd5',  // orange-100
-      delete: '#fee2e2',  // red-100
+      create: '#dcfce7',
+      update: '#ffedd5',
+      delete: '#fee2e2',
     };
     return { 
       backgroundColor: pendingBackgroundColors[pending.operation] || '#ffedd5',
-      borderLeft: '4px solid #3b82f6'  // blue-500
+      borderLeft: '4px solid #3b82f6'
     };
   }
   
-  // If only flagged (no pending), show blue background
   if (isFlagged) {
     return { backgroundColor: '#add8ff' };
   }
@@ -174,257 +158,145 @@ export function CellContent({
   const router = useRouter();
   const graphBasePath = getGraphBasePath(mode);
 
-  // Type guard to check if entry is a Frame
   const isFrame = (e: TableEntry | Frame): e is Frame => {
-    return mode === 'frames' && 'label' in e;
+    return (mode === 'frames' || mode === 'super_frames' || mode === 'frames_only') && 'label' in e;
   };
 
-  // Handle frame-specific columns
+  // Common styles
+  const textContainerClasses = "text-sm text-gray-900 break-words max-w-full";
+
   if (isFrame(entry)) {
     switch (columnKey) {
       case 'id':
         return <span className="text-xs font-mono text-blue-600 break-words">{entry.id}</span>;
+      case 'code': {
+        const code = entry.code || '—';
+        const dotIndex = code.indexOf('.');
+        return (
+          <span className="inline-block max-w-full text-sm font-mono text-gray-900 break-words">
+            {dotIndex !== -1 ? (
+              <>
+                {code.substring(0, dotIndex + 1)}
+                <span className="font-bold">{code.substring(dotIndex + 1)}</span>
+              </>
+            ) : code}
+          </span>
+        );
+      }
       case 'label':
         return <span className="inline-block max-w-full text-sm font-semibold text-gray-900 break-words">{entry.label}</span>;
       case 'definition':
-        return (
-          <div className="text-sm text-gray-900 break-words max-w-full">
-            {entry.definition || '—'}
-          </div>
-        );
+        return <div className={textContainerClasses}>{entry.definition || '—'}</div>;
       case 'short_definition':
-        return (
-          <div className="text-sm text-gray-700 break-words max-w-full">
-            {entry.short_definition || '—'}
-          </div>
-        );
+        return <div className={textContainerClasses}>{entry.short_definition || '—'}</div>;
       case 'prototypical_synset':
-        return (
-          <span className="inline-block max-w-full text-sm font-mono text-blue-600 hover:text-blue-800 cursor-pointer break-words"
-            onClick={(e) => {
-              e.stopPropagation();
-              router.push(`${graphBasePath}?entry=${entry.prototypical_synset}`);
-            }}
-            title={`Click to view ${entry.prototypical_synset} in graph mode`}
-          >
-            {entry.prototypical_synset}
-          </span>
-        );
+        return <span className="text-sm font-medium text-gray-700">{entry.prototypical_synset}</span>;
+      case 'lexical_units_count':
+        return <div className="text-sm text-gray-600">{entry.lexical_units_count ?? 0}</div>;
+      case 'subframes_count':
+        return <div className="text-sm text-gray-600">{entry.subframes_count ?? 0}</div>;
       case 'frame_roles':
-        if (!entry.frame_roles || entry.frame_roles.length === 0) {
-          return <EmptyCell />;
-        }
         return (
-          <div className="space-y-1 text-xs">
-            {entry.frame_roles.map((role, idx) => (
-              <div key={`role-${idx}`} className="flex items-start gap-1">
-                <span className={`inline-block px-2 py-1 rounded font-medium ${
-                  role.main 
-                    ? 'bg-blue-100 text-blue-800' 
-                    : 'bg-gray-100 text-gray-700'
-                }`}>
+          <div className="flex flex-wrap gap-1">
+            {entry.frame_roles?.map((role, idx) => (
+              <span key={idx} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-600">
                   {role.role_type.label}
                 </span>
-                {role.description && (
-                  <span className="text-gray-600 text-xs">
-                    {role.description}
-                  </span>
-                )}
-              </div>
             ))}
           </div>
         );
-      case 'roles_count':
+      case 'lexical_entries':
+        if (!entry.lexical_entries || entry.lexical_entries.entries.length === 0) return <EmptyCell />;
         return (
-          <span className="inline-block px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded font-medium">
-            {entry.roles_count ?? 0}
-          </span>
-        );
-      case 'verbs_count':
-        return (
-          <span className="inline-block px-2 py-1 text-xs bg-purple-100 text-purple-800 rounded font-medium">
-            {entry.verbs_count ?? 0}
-          </span>
-        );
-      case 'words_sample':
-        if (!entry.words_sample) {
-          return <EmptyCell />;
-        }
-        const { nouns, verbs, adjectives, adverbs } = entry.words_sample;
-        const hasNoWords = nouns.length === 0 && verbs.length === 0 && adjectives.length === 0 && adverbs.length === 0;
-        if (hasNoWords) {
-          return <EmptyCell />;
-        }
-        return (
-          <div className="space-y-1.5 text-xs">
-            {verbs.length > 0 && (
-              <div className="flex items-start gap-1">
-                <span className="inline-block px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 font-medium shrink-0">V</span>
-                <span className="text-gray-700 break-words">
-                  {verbs.slice(0, 3).map(w => w.lemmas[0] || w.code).join(', ')}
-                </span>
-              </div>
+          <div className="flex flex-wrap gap-1 max-w-full items-center">
+            {entry.lexical_entries.entries.map((lexicalEntry, idx) => (
+              <span key={idx} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-600">
+                {lexicalEntry.lemmas[0]}
+              </span>
+            ))}
+            {entry.lexical_entries.hasMore && (
+              <span className="text-xs text-gray-400 font-medium ml-1">
+                +{entry.lexical_entries.totalCount - 10} more
+              </span>
             )}
-            {nouns.length > 0 && (
-              <div className="flex items-start gap-1">
-                <span className="inline-block px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-medium shrink-0">N</span>
-                <span className="text-gray-700 break-words">
-                  {nouns.slice(0, 3).map(w => w.lemmas[0] || w.code).join(', ')}
-                </span>
-              </div>
-            )}
-            {adjectives.length > 0 && (
-              <div className="flex items-start gap-1">
-                <span className="inline-block px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-medium shrink-0">A</span>
-                <span className="text-gray-700 break-words">
-                  {adjectives.slice(0, 3).map(w => w.lemmas[0] || w.code).join(', ')}
-                </span>
-              </div>
-            )}
-            {adverbs.length > 0 && (
-              <div className="flex items-start gap-1">
-                <span className="inline-block px-1.5 py-0.5 rounded bg-green-100 text-green-700 font-medium shrink-0">R</span>
-                <span className="text-gray-700 break-words">
-                  {adverbs.slice(0, 3).map(w => w.lemmas[0] || w.code).join(', ')}
-                </span>
-              </div>
-            )}
-          </div>
-        );
-      case 'flagged':
-        if (entry.flagged === null || entry.flagged === undefined) {
-          return <NACell />;
-        }
-        return (
-          <div className="flex items-center gap-1">
-            <span className={`inline-block px-2 py-1 text-xs rounded font-medium ${
-              entry.flagged 
-                ? 'bg-orange-100 text-orange-800' 
-                : 'bg-gray-100 text-gray-600'
-            }`}>
-              {entry.flagged ? 'Yes' : 'No'}
-            </span>
-            {entry.flagged && entry.flaggedReason && (
-              <div className="group relative">
-                <svg className="w-4 h-4 text-orange-600 cursor-help" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <div className="absolute left-0 top-6 hidden group-hover:block z-50 w-64 p-2 bg-gray-900 text-white text-xs rounded">
-                  {entry.flaggedReason}
-                </div>
-              </div>
-            )}
-          </div>
-        );
-      case 'flaggedReason':
-        if (!entry.flaggedReason) {
-          return <span className="text-gray-400 text-xs">None</span>;
-        }
-        return (
-          <div className="text-xs text-gray-700 break-words">
-            {entry.flaggedReason}
-          </div>
-        );
-      case 'verifiable':
-        if (entry.verifiable === null || entry.verifiable === undefined) {
-          return <NACell />;
-        }
-        return entry.verifiable ? (
-          <CheckCircleIcon className="w-5 h-5 text-green-600" title="Verifiable" />
-        ) : (
-          <XCircleIcon className="w-5 h-5 text-red-500" title="Unverifiable" />
-        );
-      case 'unverifiableReason':
-        if (!entry.unverifiableReason) {
-          return <span className="text-gray-400 text-xs">None</span>;
-        }
-        return (
-          <div className="text-xs text-gray-700 break-words">
-            {entry.unverifiableReason}
-          </div>
-        );
-      case 'createdAt':
-        return <span className="text-xs text-gray-500 break-words">{formatDate(entry.createdAt)}</span>;
-      case 'updatedAt':
-        return <span className="text-xs text-gray-500 break-words">{formatDate(entry.updatedAt)}</span>;
-      case 'actions':
-        return (
-          <div className="flex flex-col items-center justify-center gap-1">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                console.log('Edit button clicked for frame:', entry.id);
-                if (onEditClick) {
-                  onEditClick(entry);
-                } else {
-                  console.warn('onEditClick is not defined');
-                }
-              }}
-              className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition-colors cursor-pointer"
-              title="Edit frame"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-              </svg>
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                console.log('AI Quick Edit button clicked for frame:', entry.id);
-                if (onAIClick) {
-                  onAIClick(entry);
-                } else {
-                  console.warn('onAIClick is not defined');
-                }
-              }}
-              className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition-colors cursor-pointer"
-              title="AI Agent Quick Edit"
-            >
-              <SparklesIcon className="w-4 h-4" />
-            </button>
           </div>
         );
       default:
-        return <span className="text-sm text-gray-900 break-words">{String((entry as unknown as Record<string, unknown>)[columnKey] || '')}</span>;
+        break;
     }
-  }
+  } else {
+    // Lexical Units handling
+    const dbFieldName = FIELD_NAME_MAP[columnKey] || columnKey;
+    const isEditingField = editing.entryId === entry.id && editing.field === dbFieldName;
 
-  // Handle TableEntry columns
-  const tableEntry = entry as TableEntry;
-  switch (columnKey) {
-    case 'lemmas':
-      // Display regular lemmas first, then src_lemmas in bold at the end
-      const allLemmas = entry.lemmas || [];
-      const srcLemmas = entry.src_lemmas || [];
-      const regularLemmas = allLemmas.filter(lemma => !srcLemmas.includes(lemma));
-      const displayLemmas = [...regularLemmas, ...srcLemmas];
+    switch (columnKey) {
+      case 'id':
+        return (
+          <div className="flex items-center gap-2 group">
+            <span 
+              className="text-xs font-mono text-blue-600 break-all cursor-pointer hover:underline"
+              onClick={() => router.push(`${graphBasePath}/${entry.id}`)}
+            >
+              {entry.id}
+            </span>
+            <PendingFieldIndicator pending={entry.pending} fieldName="code" />
+          </div>
+        );
+      case 'legacy_id':
+        return (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-500 font-mono break-all">{entry.legacy_id}</span>
+            <PendingFieldIndicator pending={entry.pending} fieldName="legacy_id" />
+          </div>
+        );
+      case 'pos':
+        return (
+          <div className="flex items-center gap-2">
+            <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
+              {POS_LABELS[entry.pos] || entry.pos}
+            </span>
+            <PendingFieldIndicator pending={entry.pending} fieldName="pos" />
+          </div>
+        );
+      case 'frame': {
+      const frameCode = entry.frame || entry.frame_id;
+      const dotIndex = frameCode?.indexOf('.');
       
       return (
-        <div className="flex flex-wrap gap-1">
-          {displayLemmas.map((lemma, idx) => {
-            const isSrcLemma = srcLemmas.includes(lemma);
-            return (
-              <span 
-                key={idx}
-                className={`inline-block px-2 py-1 text-xs rounded ${
-                  isSrcLemma 
-                    ? 'bg-blue-100 text-blue-800 font-bold' 
-                    : 'bg-blue-100 text-blue-800'
-                }`}
-              >
+        <div className="flex items-center gap-2 group">
+          {frameCode ? (
+            <span 
+              className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-600 hover:bg-blue-100 cursor-pointer transition-colors"
+              onClick={() => router.push(`/graph/frames/${entry.frame_id}`)}
+            >
+              {dotIndex !== undefined && dotIndex !== -1 ? (
+                <>
+                  {frameCode.substring(0, dotIndex + 1)}
+                  <span className="font-bold">{frameCode.substring(dotIndex + 1)}</span>
+                </>
+              ) : frameCode}
+            </span>
+          ) : <NoneCell />}
+          <PendingFieldIndicator pending={entry.pending} fieldName="frame_id" />
+        </div>
+      );
+    }
+    case 'lemmas':
+      return (
+          <div className="flex flex-wrap gap-1 items-center">
+            {entry.lemmas.map((lemma, idx) => (
+              <span key={idx} className="text-sm font-medium text-gray-900 bg-gray-100 px-1.5 py-0.5 rounded">
                 {lemma}
               </span>
-            );
-          })}
+            ))}
+            <PendingFieldIndicator pending={entry.pending} fieldName="lemmas" />
         </div>
       );
     case 'gloss':
-      const isEditingThisGloss = editing.entryId === entry.id && editing.field === 'gloss';
-      
-      if (isEditingThisGloss) {
+        if (isEditingField) {
         return (
-          <div className="relative">
             <textarea
+              className="w-full text-sm border-gray-300 rounded p-1"
               value={editing.value}
               onChange={(e) => onEditChange(e.target.value)}
               onBlur={onSaveEdit}
@@ -437,269 +309,133 @@ export function CellContent({
                 }
               }}
               autoFocus
-              className="w-full px-2 py-1 text-sm border border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-              rows={3}
             />
-            <div className="text-xs text-gray-500 mt-1">
-              Press Enter to save, Esc to cancel
-            </div>
-          </div>
         );
       }
-      
       return (
         <div 
-          className="text-sm text-gray-900 cursor-text hover:bg-blue-50 px-2 py-1 rounded transition-colors" 
-          title={`Double-click to edit\n\n${entry.gloss}`}
-          onDoubleClick={(e) => {
-            e.stopPropagation();
-            onStartEdit(entry.id, 'gloss', entry.gloss);
-          }}
-        >
+            className="flex items-center gap-2 group cursor-pointer"
+            onClick={() => onStartEdit(entry.id, 'gloss', entry.gloss)}
+          >
+            <span className="text-sm text-gray-900 break-words leading-relaxed">
           {truncateText(entry.gloss, 150)}
+            </span>
+            <PendingFieldIndicator pending={entry.pending} fieldName="gloss" />
         </div>
       );
-    case 'pos':
-      if (isFrame(entry)) return <EmptyCell />;
+      case 'vendler_class':
       return (
-        <span className="inline-block px-2 py-1 text-xs bg-green-100 text-green-800 rounded font-medium">
-          {POS_LABELS[tableEntry.pos as keyof typeof POS_LABELS] || tableEntry.pos}
-        </span>
-      );
-    case 'lexfile':
-      if (isFrame(entry)) return <EmptyCell />;
-      return <span className="text-xs text-gray-500 break-words">{tableEntry.lexfile?.replace(/^verb\./, '') || '—'}</span>;
-    case 'frame':
-      if (!tableEntry.frame) {
-        return <EmptyCell />;
-      }
-      return (
-        <span className="inline-block max-w-full px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded font-medium uppercase break-words whitespace-normal">
-          {tableEntry.frame}
-        </span>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-700 capitalize">{entry.vendler_class || '—'}</span>
+            <PendingFieldIndicator pending={entry.pending} fieldName="vendler_class" />
+          </div>
       );
     case 'isMwe':
       return (
-        <span className={`inline-block px-2 py-1 text-xs rounded font-medium ${
-          tableEntry.isMwe 
-            ? 'bg-purple-100 text-purple-800' 
-            : 'bg-gray-100 text-gray-600'
-        }`}>
-          {tableEntry.isMwe ? 'Yes' : 'No'}
-        </span>
-      );
-    case 'flagged':
-      if (isFrame(entry)) return <NACell />;
-      if (tableEntry.flagged === null || tableEntry.flagged === undefined) {
-        return <NACell />;
-      }
-      return (
-        <div className="flex items-center gap-1">
-          <span className={`inline-block px-2 py-1 text-xs rounded font-medium ${
-            tableEntry.flagged 
-              ? 'bg-orange-100 text-orange-800' 
-              : 'bg-gray-100 text-gray-600'
-          }`}>
-            {tableEntry.flagged ? 'Yes' : 'No'}
-          </span>
-          {tableEntry.flagged && tableEntry.flaggedReason && (
-            <div className="group relative">
-              <svg className="w-4 h-4 text-orange-600 cursor-help" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <div className="absolute left-0 top-6 hidden group-hover:block z-50 w-64 p-2 bg-gray-900 text-white text-xs rounded">
-                {tableEntry.flaggedReason}
-              </div>
-            </div>
-          )}
+          <div className="flex items-center gap-2">
+            {entry.isMwe ? (
+              <CheckCircleIcon className="w-5 h-5 text-green-500" />
+            ) : <NACell />}
+            <PendingFieldIndicator pending={entry.pending} fieldName="is_mwe" />
         </div>
       );
-    case 'verifiable':
-      if (isFrame(entry)) return <NACell />;
-      if (tableEntry.verifiable === null || tableEntry.verifiable === undefined) {
-        return <NACell />;
-      }
-      return tableEntry.verifiable ? (
-        <CheckCircleIcon className="w-5 h-5 text-green-600" title="Verifiable" />
-      ) : (
-        <XCircleIcon className="w-5 h-5 text-red-500" title="Unverifiable" />
-      );
-    case 'flaggedReason':
-      if (isFrame(entry)) return <NACell />;
-      if (!tableEntry.flaggedReason) {
-        return <span className="text-gray-400 text-xs">None</span>;
-      }
+      case 'gradable':
       return (
-        <div className="text-xs text-gray-700 break-words">
-          {tableEntry.flaggedReason}
-        </div>
-      );
-    case 'unverifiableReason':
-      if (isFrame(entry)) return <NACell />;
-      if (!tableEntry.unverifiableReason) {
-        return <span className="text-gray-400 text-xs">None</span>;
-      }
-      return (
-        <div className="text-xs text-gray-700 break-words">
-          {tableEntry.unverifiableReason}
+          <div className="flex items-center gap-2">
+            {entry.gradable ? (
+              <CheckCircleIcon className="w-5 h-5 text-green-500" />
+            ) : <NACell />}
+            <PendingFieldIndicator pending={entry.pending} fieldName="gradable" />
         </div>
       );
     case 'examples':
-      if (!tableEntry.examples || tableEntry.examples.length === 0) {
-        return <NoneCell />;
-      }
       return (
-        <div className="space-y-1 text-xs text-gray-700 max-w-md">
-          {tableEntry.examples.map((example, idx) => (
-            <div key={idx} className="leading-relaxed">
-              <span className="text-gray-400 mr-1">{idx + 1}.</span>
-              {example}
+          <div className="flex items-center gap-2 group">
+            <div className="text-xs text-gray-600 space-y-1">
+              {entry.examples.slice(0, 2).map((ex, idx) => (
+                <div key={idx} className="italic line-clamp-2">"{ex}"</div>
+              ))}
+              {entry.examples.length > 2 && <div className="text-gray-400">+{entry.examples.length - 2} more</div>}
             </div>
-          ))}
+            <PendingFieldIndicator pending={entry.pending} fieldName="examples" />
         </div>
       );
-    case 'frame_id':
-      if (!tableEntry.frame_id) {
-        return <span className="text-gray-400 text-sm">None</span>;
-      }
-      return <span className="text-sm font-mono text-purple-600">{tableEntry.frame_id}</span>;
-    case 'vendler_class':
-      if (!tableEntry.vendler_class) {
-        return <span className="text-gray-400 text-sm">None</span>;
-      }
-      const vendlerColors: Record<string, string> = {
-        state: 'bg-blue-100 text-blue-800',
-        activity: 'bg-green-100 text-green-800',
-        accomplishment: 'bg-orange-100 text-orange-800',
-        achievement: 'bg-red-100 text-red-800',
-      };
-      const colorClass = vendlerColors[tableEntry.vendler_class] || 'bg-gray-100 text-gray-800';
+      default:
+        break;
+    }
+  }
+
+  // Handle columns common to both types
+  switch (columnKey) {
+    case 'flagged':
       return (
-        <span className={`inline-block px-2 py-1 text-xs rounded font-medium ${colorClass}`}>
-          {tableEntry.vendler_class}
-        </span>
-      );
-    case 'roles':
-      if (!tableEntry.roles || tableEntry.roles.length === 0) {
-        return <NoneCell />;
-      }
-      
-      // Create a map of role IDs to check which roles are in groups
-      const rolesInGroups = new Set<string>();
-      const roleGroups = tableEntry.role_groups || [];
-      roleGroups.forEach(group => {
-        group.role_ids.forEach(roleId => rolesInGroups.add(roleId));
-      });
-      
-      // Separate roles that are not in groups
-      const ungroupedRoles = tableEntry.roles.filter(role => !rolesInGroups.has(role.id));
-      
-      return (
-        <div className="space-y-1 text-xs">
-          {/* Render ungrouped roles */}
-          {ungroupedRoles.map((role, idx) => (
-            <div key={`role-${idx}`} className="flex items-start gap-1">
-              <span className={`inline-block px-2 py-1 rounded font-medium ${
-                role.main 
-                  ? 'bg-blue-100 text-blue-800' 
-                  : 'bg-gray-100 text-gray-700'
-              }`}>
-                {role.role_type.label}
-              </span>
-              {role.description && (
-                <span className="text-gray-600 text-xs">
-                  {role.description}
-                </span>
-              )}
-            </div>
-          ))}
-          
-          {/* Render role groups with OR indicators */}
-          {roleGroups.map((group, groupIdx) => {
-            const groupRoles = tableEntry.roles!.filter(role => group.role_ids.includes(role.id));
-            if (groupRoles.length === 0) return null;
-            
-            return (
-              <div 
-                key={`group-${groupIdx}`} 
-                className="border border-black rounded px-2 py-1 bg-gray-50"
-                title={group.description || 'OR group: one of these roles is required'}
-              >
-                {groupRoles.map((role, roleIdx) => (
-                  <React.Fragment key={`group-${groupIdx}-role-${roleIdx}`}>
-                    {roleIdx > 0 && (
-                      <span className="mx-1 text-xs font-bold text-gray-700">OR</span>
-                    )}
-                    <span className={`inline-block px-2 py-1 rounded font-medium ${
-                      role.main 
-                        ? 'bg-blue-100 text-blue-800' 
-                        : 'bg-gray-100 text-gray-700'
-                    }`}>
-                      {role.role_type.label}
-                    </span>
-                  </React.Fragment>
-                ))}
-              </div>
-            );
-          })}
+        <div className="flex items-center gap-2">
+          {entry.flagged ? (
+            <XCircleIcon className="w-5 h-5 text-red-500" />
+          ) : (
+            <CheckCircleIcon className="w-5 h-5 text-gray-300" />
+          )}
+          <PendingFieldIndicator pending={entry.pending} fieldName="flagged" />
         </div>
       );
-    case 'id':
-      return <span className="text-xs font-mono text-blue-600 break-words">{entry.id}</span>;
-    case 'legacy_id':
-      return <span className="text-sm font-mono text-gray-600 break-words">{tableEntry.legacy_id}</span>;
+    case 'verifiable':
+      return (
+        <div className="flex items-center gap-2">
+          {entry.verifiable === false ? (
+            <XCircleIcon className="w-5 h-5 text-orange-500" title="Unverifiable" />
+          ) : (
+            <CheckCircleIcon className="w-5 h-5 text-green-500" title="Verifiable" />
+          )}
+          <PendingFieldIndicator pending={entry.pending} fieldName="verifiable" />
+        </div>
+      );
     case 'createdAt':
-      return <span className="text-xs text-gray-500 break-words">{formatDate(entry.createdAt)}</span>;
+      return <span className="text-xs text-gray-500 whitespace-nowrap">{formatDate(entry.createdAt)}</span>;
     case 'updatedAt':
-      return <span className="text-xs text-gray-500 break-words">{formatDate(entry.updatedAt)}</span>;
+      return <span className="text-xs text-gray-500 whitespace-nowrap">{formatDate(entry.updatedAt)}</span>;
     case 'actions':
       return (
-        <div className="flex flex-col items-center justify-center gap-1">
+        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
           <button
             onClick={(e) => {
               e.stopPropagation();
-              console.log('Edit button clicked for entry:', entry.id);
-              if (onEditClick) {
-                onEditClick(entry);
-              } else {
-                console.warn('onEditClick is not defined');
-              }
+              onEditClick?.(entry);
             }}
-            className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition-colors cursor-pointer"
-            title="Edit entry"
+            className="p-1 text-gray-400 hover:text-blue-600 rounded hover:bg-blue-50"
+            title="Manual Edit"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
             </svg>
           </button>
           <button
             onClick={(e) => {
               e.stopPropagation();
-              console.log('AI Quick Edit button clicked for entry:', entry.id);
-              if (onAIClick) {
-                onAIClick(entry);
-              } else {
-                console.warn('onAIClick is not defined');
-              }
+              onAIClick?.(entry);
             }}
-            className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition-colors cursor-pointer"
-            title="AI Agent Quick Edit"
+            className="p-1 text-gray-400 hover:text-purple-600 rounded hover:bg-purple-50"
+            title="AI Polish"
           >
-            <SparklesIcon className="w-4 h-4" />
+            <SparklesIcon className="w-5 h-5" />
           </button>
         </div>
       );
     default:
-      return <span className="text-sm text-gray-900 break-words">{String((entry as unknown as Record<string, unknown>)[columnKey] || '')}</span>;
+      return null;
   }
 }
 
+// ============================================
+// Main Table Body Component
+// ============================================
+
 interface DataTableBodyProps {
-  data: (TableEntry | Frame)[] | null;
+  data: Array<TableEntry | Frame> | null;
   visibleColumns: ColumnConfig[];
   mode: DataTableMode;
   sortState: SortState;
   selectedIds: Set<string>;
+  selectAll: boolean;
   editing: EditingState;
   filters: FilterState;
   searchQuery?: string;
@@ -709,7 +445,7 @@ interface DataTableBodyProps {
   onEditClick?: (entry: TableEntry | Frame) => void;
   onAIClick?: (entry: TableEntry | Frame) => void;
   onSelectAll: () => void;
-  onSelectRow: (entryId: string) => void;
+  onSelectRow: (id: string) => void;
   onContextMenu: (e: React.MouseEvent, entryId: string) => void;
   onStartEdit: (entryId: string, field: string, currentValue: string) => void;
   onEditChange: (value: string) => void;
@@ -717,7 +453,6 @@ interface DataTableBodyProps {
   onCancelEdit: () => void;
   onMouseDown: (columnKey: string, e: React.MouseEvent) => void;
   getColumnWidth: (columnKey: string) => string;
-  selectAll: boolean;
 }
 
 export function DataTableBody({
@@ -726,6 +461,7 @@ export function DataTableBody({
   mode,
   sortState,
   selectedIds,
+  selectAll,
   editing,
   filters,
   searchQuery,
@@ -743,140 +479,116 @@ export function DataTableBody({
   onCancelEdit,
   onMouseDown,
   getColumnWidth,
-  selectAll,
 }: DataTableBodyProps) {
-  const hasData = data && data.length > 0;
+  const rows = data ?? [];
+
+  if (!data) {
+    return null;
+  }
+
+  if (rows.length === 0) {
+    return (
+      <div className="p-8">
+        <EmptyState
+          title="No results"
+          description={
+            searchQuery
+              ? `No matches found for "${searchQuery}".`
+              : 'Try adjusting your filters.'
+          }
+        />
+      </div>
+    );
+  }
 
   return (
-    <table className="w-full" style={{ tableLayout: 'fixed' }}>
-      <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-20">
+    <table className="min-w-full border-collapse">
+      <thead className="sticky top-0 z-10 bg-white border-b border-gray-200">
         <tr>
-          <th className="px-4 py-3 text-left w-12 bg-gray-50" style={{ width: '48px' }}>
+          {/* Selection column */}
+          <th className="px-3 py-3 text-left w-[44px]">
             <input
               type="checkbox"
               checked={selectAll}
               onChange={onSelectAll}
-              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              disabled={isResizing}
             />
           </th>
-          {visibleColumns.map((column) => (
-            <th 
-              key={column.key}
-              className="relative px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-r border-gray-200 bg-gray-50"
-              style={{ width: getColumnWidth(column.key), minWidth: '50px' }}
+
+          {visibleColumns.map(col => (
+            <th
+              key={col.key}
+              className={`relative px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-l border-gray-100 ${
+                col.sortable ? 'cursor-pointer select-none' : ''
+              }`}
+              style={{ width: getColumnWidth(col.key) }}
+              onClick={() => col.sortable && onSort(col.key)}
             >
-              <div 
-                className={`flex items-center gap-2 ${column.sortable ? 'cursor-pointer hover:bg-gray-100 rounded px-1 py-1' : ''}`}
-                onClick={column.sortable ? () => onSort(column.key) : undefined}
-              >
-                {column.label}
-                {column.sortable && <SortIcon field={column.key} sortState={sortState} />}
+              <div className="flex items-center gap-2">
+                <span>{col.label}</span>
+                {col.sortable && <SortIcon field={col.key} sortState={sortState} />}
               </div>
-              {/* Resize handle */}
+
+              {/* Column resizer handle */}
               <div
-                className="absolute top-0 right-0 w-2 h-full cursor-col-resize hover:bg-blue-200 bg-transparent group"
-                onMouseDown={(e) => onMouseDown(column.key, e)}
-              >
-                <div className="w-px h-full bg-gray-300 group-hover:bg-blue-400 ml-auto"></div>
-              </div>
+                className="absolute top-0 right-0 h-full w-1 cursor-col-resize hover:bg-blue-200"
+                onMouseDown={(e) => onMouseDown(col.key, e)}
+                onClick={(e) => e.stopPropagation()}
+              />
             </th>
           ))}
         </tr>
       </thead>
-      <tbody className="bg-gray-50 divide-y divide-gray-200">
-        {hasData && data ? (
-          data.map((entry) => {
-            const isSelected = selectedIds.has(entry.id);
-            return (
-              <tr
-                key={entry.id}
-                className={getRowBackgroundColor(entry, isSelected)}
-                style={getRowInlineStyles(entry, isSelected)}
-                onContextMenu={(e) => onContextMenu(e, entry.id)}
-                onDoubleClick={(e) => {
-                  e.preventDefault();
-                  onSelectRow(entry.id);
-                }}
-              >
-                <td className="px-4 py-4 whitespace-nowrap w-12" style={{ width: '48px' }}>
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.has(entry.id)}
-                    onChange={(e) => {
-                      e.stopPropagation();
-                      onSelectRow(entry.id);
-                    }}
-                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+
+      <tbody className="divide-y divide-gray-200 bg-white">
+        {rows.map((entry) => {
+          const isSelected = selectedIds.has(entry.id);
+          const rowClass = getRowBackgroundColor(entry, isSelected);
+          const rowStyle = getRowInlineStyles(entry, isSelected);
+
+          return (
+            <tr
+              key={entry.id}
+              className={`group ${rowClass}`}
+              style={rowStyle}
+              onClick={() => onRowClick?.(entry)}
+              onContextMenu={(e) => onContextMenu(e, entry.id)}
+            >
+              <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
+                <input
+                  type="checkbox"
+                  checked={isSelected}
+                  onChange={() => onSelectRow(entry.id)}
+                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  disabled={isResizing}
+                />
+              </td>
+
+              {visibleColumns.map((col) => (
+                <td
+                  key={`${entry.id}:${col.key}`}
+                  className="px-3 py-3 align-top border-l border-gray-50"
+                  style={{ width: getColumnWidth(col.key) }}
+                >
+                  <CellContent
+                    entry={entry}
+                    columnKey={col.key}
+                    mode={mode}
+                    editing={editing}
+                    onEditClick={onEditClick}
+                    onAIClick={onAIClick}
+                    onStartEdit={onStartEdit}
+                    onEditChange={onEditChange}
+                    onSaveEdit={onSaveEdit}
+                    onCancelEdit={onCancelEdit}
                   />
                 </td>
-                {visibleColumns.map((column) => {
-                  const isClickable = onRowClick && column.key !== 'isMwe' && column.key !== 'gloss' && column.key !== 'actions';
-                  const cellClassName = `px-4 py-4 break-words ${isClickable ? 'cursor-pointer' : ''} align-top border-r border-gray-200`;
-                  const pending = (entry as TableEntry & { pending?: PendingChangeInfo | null }).pending;
-                  
-                  const fieldName = FIELD_NAME_MAP[column.key] || column.key;
-                  const hasPendingChange = pending?.pending_fields?.[fieldName];
-                  
-                  return (
-                    <td 
-                      key={column.key}
-                      className={cellClassName}
-                      style={{ width: getColumnWidth(column.key), minWidth: '50px' }}
-                      onClick={isClickable ? () => onRowClick?.(entry) : undefined}
-                    >
-                      <div className="max-w-full">
-                        {hasPendingChange ? (
-                          <PendingFieldIndicator
-                            fieldName={fieldName}
-                            pending={pending}
-                            isTableCell={true}
-                          >
-                            <CellContent
-                              entry={entry}
-                              columnKey={column.key}
-                              mode={mode}
-                              editing={editing}
-                              onEditClick={onEditClick}
-                              onAIClick={onAIClick}
-                              onStartEdit={onStartEdit}
-                              onEditChange={onEditChange}
-                              onSaveEdit={onSaveEdit}
-                              onCancelEdit={onCancelEdit}
-                            />
-                          </PendingFieldIndicator>
-                        ) : (
-                          <CellContent
-                            entry={entry}
-                            columnKey={column.key}
-                            mode={mode}
-                            editing={editing}
-                            onEditClick={onEditClick}
-                            onAIClick={onAIClick}
-                            onStartEdit={onStartEdit}
-                            onEditChange={onEditChange}
-                            onSaveEdit={onSaveEdit}
-                            onCancelEdit={onCancelEdit}
-                          />
-                        )}
-                      </div>
-                    </td>
-                  );
-                })}
-              </tr>
-            );
-          })
-        ) : (
-          <tr>
-            <td colSpan={visibleColumns.length + 1}>
-              <EmptyState
-                title="No entries found"
-                description={(searchQuery || Object.keys(filters).length > 0) ? "Try adjusting your search or filters" : undefined}
-              />
-            </td>
-          </tr>
-        )}
+              ))}
+            </tr>
+          );
+        })}
       </tbody>
     </table>
   );
 }
-

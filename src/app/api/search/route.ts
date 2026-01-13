@@ -1,19 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { searchEntries } from '@/lib/db';
 import { handleDatabaseError } from '@/lib/db-utils';
+import { PartOfSpeech } from '@/lib/types';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const query = searchParams.get('q');
   const limitParam = searchParams.get('limit');
   const limit = limitParam ? parseInt(limitParam, 10) : 20;
+  
+  // Optional POS filter
+  const pos = searchParams.get('pos') as PartOfSpeech | undefined;
 
   if (!query) {
     return NextResponse.json({ error: 'Search query is required' }, { status: 400 });
   }
 
   try {
-    const results = await searchEntries(query, limit, 'verbs');
+    // Search across all lexical units if pos is not specified
+    const results = await searchEntries(query, limit, pos);
     return NextResponse.json(results);
   } catch (error) {
     const { message, status, shouldRetry } = handleDatabaseError(error, 'GET /api/search');

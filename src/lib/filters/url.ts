@@ -1,12 +1,12 @@
 import type { BooleanFilterGroup, BooleanFilterRule } from './types';
 import { createEmptyGroup } from './types';
-import type { PartOfSpeech } from '@/lib/llm/types';
+import type { JobTargetType } from '@/lib/llm/types';
 
 function addRule(group: BooleanFilterGroup, rule: BooleanFilterRule) {
   group.children.push(rule);
 }
 
-export function parseURLToFilterAST(pos: PartOfSpeech, input: string | URLSearchParams): BooleanFilterGroup | null {
+export function parseURLToFilterAST(pos: JobTargetType, input: string | URLSearchParams): BooleanFilterGroup | null {
   const params = typeof input === 'string' ? new URLSearchParams(input) : input;
   const group = createEmptyGroup();
 
@@ -54,7 +54,7 @@ export function parseURLToFilterAST(pos: PartOfSpeech, input: string | URLSearch
     }
 
     const frameId = get('frame_id');
-    if (frameId && pos === 'verbs') {
+    if (frameId && pos === 'verb') {
       const values = splitCsv(frameId);
       addRule(group, { kind: 'rule', field: 'frame_id', operator: values.length > 1 ? 'in' : 'equals', value: values.length > 1 ? values : values[0] });
     }
@@ -64,7 +64,7 @@ export function parseURLToFilterAST(pos: PartOfSpeech, input: string | URLSearch
   if (pos !== 'frames') {
     // Entry-specific boolean filters
     const isMwe = get('isMwe');
-    if (isMwe !== null && pos !== 'verbs') addRule(group, { kind: 'rule', field: 'is_mwe', operator: 'is', value: isMwe === 'true' });
+    if (isMwe !== null && pos !== 'verb') addRule(group, { kind: 'rule', field: 'is_mwe', operator: 'is', value: isMwe === 'true' });
   }
 
   // Common boolean filters
@@ -75,7 +75,7 @@ export function parseURLToFilterAST(pos: PartOfSpeech, input: string | URLSearch
   if (verifiable !== null) addRule(group, { kind: 'rule', field: 'verifiable', operator: 'is', value: verifiable === 'true' });
 
   // Numeric (computed for verbs only)
-  if (pos === 'verbs') {
+  if (pos === 'verb') {
     const parentsMin = get('parentsCountMin');
     if (parentsMin) addRule(group, { kind: 'rule', field: 'parentsCount', operator: 'gte', value: parseInt(parentsMin, 10) });
     const parentsMax = get('parentsCountMax');

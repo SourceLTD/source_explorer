@@ -148,7 +148,7 @@ function getEntityDisplayName(changeset: Changeset): string {
 function getOperationColor(operation: string): string {
   switch (operation) {
     case 'create': return 'bg-green-100 text-green-800';
-    case 'update': return 'bg-blue-100 text-blue-800';
+    case 'update': return 'bg-blue-100 text-blue-600';
     case 'delete': return 'bg-red-100 text-red-800';
     default: return 'bg-gray-100 text-gray-800';
   }
@@ -1154,7 +1154,7 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
                 <button
                   onClick={() => setIsFilterOpen(!isFilterOpen)}
                   className={`inline-flex items-center gap-2 px-3 py-2 text-sm font-medium border border-gray-300 rounded-xl hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors cursor-pointer ${
-                    hasActiveFilters ? 'bg-blue-50 border-blue-300 text-blue-700' : 'bg-white text-gray-700'
+                    hasActiveFilters ? 'bg-blue-50 border-blue-300 text-blue-600' : 'bg-white text-gray-700'
                   }`}
                 >
                   <FunnelIcon className="w-4 h-4" />
@@ -1179,7 +1179,7 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
                         {hasActiveFilters && (
                           <button
                             onClick={() => setFilter(defaultFilter)}
-                            className="text-sm text-blue-600 hover:text-blue-700 font-medium cursor-pointer"
+                            className="text-sm text-blue-600 hover:text-blue-600 font-medium cursor-pointer"
                           >
                             Clear all
                           </button>
@@ -1210,7 +1210,7 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
                               }))}
                               className={`px-3 py-1 text-sm font-medium rounded-xl transition-colors cursor-pointer ${
                                 filter.entityTypes.includes(et)
-                                  ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                                  ? 'bg-blue-100 text-blue-600 border border-blue-200'
                                   : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
                               }`}
                             >
@@ -1236,7 +1236,7 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
                               className={`px-3 py-1 text-sm font-medium rounded-xl transition-colors cursor-pointer ${
                                 filter.operations.includes(op)
                                   ? op === 'create' ? 'bg-green-100 text-green-800 border border-green-200'
-                                  : op === 'update' ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                                  : op === 'update' ? 'bg-blue-100 text-blue-600 border border-blue-200'
                                   : 'bg-red-100 text-red-800 border border-red-200'
                                   : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
                               }`}

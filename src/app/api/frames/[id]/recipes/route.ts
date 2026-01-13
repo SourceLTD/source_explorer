@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
-// Force dynamic rendering - no static optimization
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -14,44 +13,23 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const { id: idParam } = await params;
     const id = BigInt(idParam);
 
-    // Fetch the frame with all related data
     const frame = await prisma.frames.findUnique({
       where: { id },
       include: {
-        // Frame roles with their role types
         frame_roles: {
           include: {
             role_types: true,
-            role_group_members: {
-              include: {
-                role_groups: true,
-              },
-            },
           },
           orderBy: {
             id: 'asc',
           },
         },
-        // Verbs using this frame with their roles
-        verbs: {
+        lexical_units: {
           where: {
             deleted: false,
           },
-          include: {
-            roles: {
-              include: {
-                role_types: true,
-              },
-            },
-            role_groups: {
-              include: {
-                role_group_members: true,
-              },
-            },
-          },
-          take: 50, // Limit for performance
+          take: 50,
         },
-        // Frame relations - outgoing (this frame -> other frames)
         frame_relations_frame_relations_source_idToframes: {
           include: {
             frames_frame_relations_target_idToframes: {
@@ -65,7 +43,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
             },
           },
         },
-        // Frame relations - incoming (other frames -> this frame)
         frame_relations_frame_relations_target_idToframes: {
           include: {
             frames_frame_relations_source_idToframes: {
@@ -89,7 +66,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    // Build the frame recipe data structure
     const frameRecipeData = {
       frame: {
         id: frame.id.toString(),
@@ -100,7 +76,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         flagged: frame.flagged,
         flagged_reason: frame.flagged_reason,
       },
-      // Frame roles with their types and groupings
       roles: frame.frame_roles.map(role => ({
         id: role.id.toString(),
         role_type: {
@@ -114,43 +89,29 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         main: role.main,
         examples: role.examples,
         label: role.label,
-        // Groups this role belongs to
-        groups: role.role_group_members.map(rgm => ({
-          id: rgm.role_groups.id.toString(),
-          description: rgm.role_groups.description,
-          require_at_least_one: rgm.role_groups.require_at_least_one,
-        })),
+        groups: [], // role_groups were deleted from DB
       })),
-      // Verbs using this frame with their role mappings
-      verbs: frame.verbs.map(verb => ({
+      lexical_units: frame.lexical_units.map(lu => ({
+        id: lu.id.toString(),
+        code: lu.code,
+        lemmas: lu.lemmas,
+        gloss: lu.gloss,
+        pos: lu.pos,
+        vendler_class: lu.vendler_class,
+        roles: [], // verb roles were deleted from DB
+        role_groups: [],
+      })),
+      // Legacy verbs alias
+      verbs: frame.lexical_units.filter(lu => lu.pos === 'verb').map(verb => ({
         id: verb.id.toString(),
         code: verb.code,
         lemmas: verb.lemmas,
         gloss: verb.gloss,
         vendler_class: verb.vendler_class,
-        // Verb's specific roles (which should align with frame roles)
-        roles: verb.roles.map(role => ({
-          id: role.id.toString(),
-          role_type: {
-            id: role.role_types.id.toString(),
-            code: role.role_types.code,
-            label: role.role_types.label,
-          },
-          description: role.description,
-          main: role.main,
-          example_sentence: role.example_sentence,
-        })),
-        // Role groups for this verb
-        role_groups: verb.role_groups.map(group => ({
-          id: group.id.toString(),
-          description: group.description,
-          require_at_least_one: group.require_at_least_one,
-          role_ids: group.role_group_members.map(m => m.role_id.toString()),
-        })),
+        roles: [],
+        role_groups: [],
       })),
-      // Related frames organized by relation type
       relations: {
-        // Frames this frame inherits from
         inherits_from: frame.frame_relations_frame_relations_source_idToframes
           .filter(rel => rel.type === 'inherits_from')
           .map(rel => ({
@@ -164,7 +125,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
               main: r.main,
             })),
           })),
-        // Frames that inherit from this frame
         inherited_by: frame.frame_relations_frame_relations_target_idToframes
           .filter(rel => rel.type === 'inherits_from')
           .map(rel => ({
@@ -172,7 +132,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
             label: rel.frames_frame_relations_source_idToframes.label,
             short_definition: rel.frames_frame_relations_source_idToframes.short_definition,
           })),
-        // Frames this frame uses
         uses: frame.frame_relations_frame_relations_source_idToframes
           .filter(rel => rel.type === 'uses')
           .map(rel => ({
@@ -180,7 +139,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
             label: rel.frames_frame_relations_target_idToframes.label,
             short_definition: rel.frames_frame_relations_target_idToframes.short_definition,
           })),
-        // Frames that use this frame
         used_by: frame.frame_relations_frame_relations_target_idToframes
           .filter(rel => rel.type === 'uses')
           .map(rel => ({
@@ -188,7 +146,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
             label: rel.frames_frame_relations_source_idToframes.label,
             short_definition: rel.frames_frame_relations_source_idToframes.short_definition,
           })),
-        // Other relations (causes, precedes, see_also, etc.)
         other: [
           ...frame.frame_relations_frame_relations_source_idToframes
             .filter(rel => !['inherits_from', 'uses'].includes(rel.type))
@@ -216,7 +173,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       },
     };
 
-    // Check for cache invalidation
     const { searchParams } = new URL(request.url);
     const skipCache = searchParams.has('t');
 
@@ -243,5 +199,3 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     );
   }
 }
-
-

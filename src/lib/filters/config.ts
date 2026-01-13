@@ -50,90 +50,8 @@ const frameOps: FieldOperator[] = [
 
 const computedNumberOps = numberOps;
 
-export function getFieldConfigsForPos(pos: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames'): FieldConfig[] {
-  if (pos === 'verbs') {
-    return [
-      { key: 'code', label: 'Code', type: 'enum', db: 'code', operators: codeOps },
-      { key: 'gloss', label: 'Gloss', type: 'text', db: 'gloss', operators: textOps },
-      { key: 'lemmas', label: 'Lemmas', type: 'string_array', db: 'lemmas', operators: arrayOps },
-      { key: 'src_lemmas', label: 'Source Lemmas', type: 'string_array', db: 'src_lemmas', operators: arrayOps },
-      { key: 'examples', label: 'Examples', type: 'string_array', db: 'examples', operators: arrayOps },
-      { key: 'flagged_reason', label: 'Flagged Reason', type: 'text', db: 'flagged_reason', operators: textOps },
-      { key: 'unverifiable_reason', label: 'Unverifiable Reason', type: 'text', db: 'unverifiable_reason', operators: textOps },
-      { key: 'lexfile', label: 'Lexfile', type: 'enum', db: 'lexfile', operators: enumOps },
-      { key: 'frame_id', label: 'Frame', type: 'frame', db: 'frame_id', operators: frameOps },
-      { key: 'flagged', label: 'Flagged', type: 'boolean', db: 'flagged', operators: booleanOps },
-      { key: 'verifiable', label: 'Verifiable', type: 'boolean', db: 'verifiable', operators: booleanOps },
-      { key: 'created_at', label: 'Created At', type: 'date', db: 'created_at', operators: dateOps },
-      { key: 'updated_at', label: 'Updated At', type: 'date', db: 'updated_at', operators: dateOps },
-      { key: 'parentsCount', label: 'Parents Count', type: 'computed_number', operators: computedNumberOps },
-      { key: 'childrenCount', label: 'Children Count', type: 'computed_number', operators: computedNumberOps },
-    ];
-  }
-
-  if (pos === 'nouns') {
-    return [
-      { key: 'code', label: 'Code', type: 'enum', db: 'code', operators: codeOps },
-      { key: 'gloss', label: 'Gloss', type: 'text', db: 'gloss', operators: textOps },
-      { key: 'lemmas', label: 'Lemmas', type: 'string_array', db: 'lemmas', operators: arrayOps },
-      { key: 'examples', label: 'Examples', type: 'string_array', db: 'examples', operators: arrayOps },
-      { key: 'flagged_reason', label: 'Flagged Reason', type: 'text', db: 'flagged_reason', operators: textOps },
-      { key: 'unverifiable_reason', label: 'Unverifiable Reason', type: 'text', db: 'unverifiable_reason', operators: textOps },
-      { key: 'lexfile', label: 'Lexfile', type: 'enum', db: 'lexfile', operators: enumOps },
-      { key: 'is_mwe', label: 'Is MWE', type: 'boolean', db: 'is_mwe', operators: booleanOps },
-      { key: 'flagged', label: 'Flagged', type: 'boolean', db: 'flagged', operators: booleanOps },
-      { key: 'verifiable', label: 'Verifiable', type: 'boolean', db: 'verifiable', operators: booleanOps },
-      { key: 'countable', label: 'Countable', type: 'boolean', db: 'countable', operators: booleanOps },
-      { key: 'proper', label: 'Proper', type: 'boolean', db: 'proper', operators: booleanOps },
-      { key: 'collective', label: 'Collective', type: 'boolean', db: 'collective', operators: booleanOps },
-      { key: 'concrete', label: 'Concrete', type: 'boolean', db: 'concrete', operators: booleanOps },
-      { key: 'predicate', label: 'Predicate', type: 'boolean', db: 'predicate', operators: booleanOps },
-      { key: 'created_at', label: 'Created At', type: 'date', db: 'created_at', operators: dateOps },
-      { key: 'updated_at', label: 'Updated At', type: 'date', db: 'updated_at', operators: dateOps },
-    ];
-  }
-
-  if (pos === 'adjectives') {
-    return [
-      { key: 'code', label: 'Code', type: 'enum', db: 'code', operators: codeOps },
-      { key: 'gloss', label: 'Gloss', type: 'text', db: 'gloss', operators: textOps },
-      { key: 'lemmas', label: 'Lemmas', type: 'string_array', db: 'lemmas', operators: arrayOps },
-      { key: 'examples', label: 'Examples', type: 'string_array', db: 'examples', operators: arrayOps },
-      { key: 'flagged_reason', label: 'Flagged Reason', type: 'text', db: 'flagged_reason', operators: textOps },
-      { key: 'unverifiable_reason', label: 'Unverifiable Reason', type: 'text', db: 'unverifiable_reason', operators: textOps },
-      { key: 'lexfile', label: 'Lexfile', type: 'enum', db: 'lexfile', operators: enumOps },
-      { key: 'is_mwe', label: 'Is MWE', type: 'boolean', db: 'is_mwe', operators: booleanOps },
-      { key: 'flagged', label: 'Flagged', type: 'boolean', db: 'flagged', operators: booleanOps },
-      { key: 'verifiable', label: 'Verifiable', type: 'boolean', db: 'verifiable', operators: booleanOps },
-      { key: 'is_satellite', label: 'Satellite', type: 'boolean', db: 'is_satellite', operators: booleanOps },
-      { key: 'gradable', label: 'Gradable', type: 'boolean', db: 'gradable', operators: booleanOps },
-      { key: 'predicative', label: 'Predicative', type: 'boolean', db: 'predicative', operators: booleanOps },
-      { key: 'attributive', label: 'Attributive', type: 'boolean', db: 'attributive', operators: booleanOps },
-      { key: 'subjective', label: 'Subjective', type: 'boolean', db: 'subjective', operators: booleanOps },
-      { key: 'relational', label: 'Relational', type: 'boolean', db: 'relational', operators: booleanOps },
-      { key: 'created_at', label: 'Created At', type: 'date', db: 'created_at', operators: dateOps },
-      { key: 'updated_at', label: 'Updated At', type: 'date', db: 'updated_at', operators: dateOps },
-    ];
-  }
-
-  if (pos === 'adverbs') {
-    return [
-      { key: 'code', label: 'Code', type: 'enum', db: 'code', operators: codeOps },
-      { key: 'gloss', label: 'Gloss', type: 'text', db: 'gloss', operators: textOps },
-      { key: 'lemmas', label: 'Lemmas', type: 'string_array', db: 'lemmas', operators: arrayOps },
-      { key: 'examples', label: 'Examples', type: 'string_array', db: 'examples', operators: arrayOps },
-      { key: 'flagged_reason', label: 'Flagged Reason', type: 'text', db: 'flagged_reason', operators: textOps },
-      { key: 'unverifiable_reason', label: 'Unverifiable Reason', type: 'text', db: 'unverifiable_reason', operators: textOps },
-      { key: 'lexfile', label: 'Lexfile', type: 'enum', db: 'lexfile', operators: enumOps },
-      { key: 'is_mwe', label: 'Is MWE', type: 'boolean', db: 'is_mwe', operators: booleanOps },
-      { key: 'flagged', label: 'Flagged', type: 'boolean', db: 'flagged', operators: booleanOps },
-      { key: 'verifiable', label: 'Verifiable', type: 'boolean', db: 'verifiable', operators: booleanOps },
-      { key: 'gradable', label: 'Gradable', type: 'boolean', db: 'gradable', operators: booleanOps },
-      { key: 'created_at', label: 'Created At', type: 'date', db: 'created_at', operators: dateOps },
-      { key: 'updated_at', label: 'Updated At', type: 'date', db: 'updated_at', operators: dateOps },
-    ];
-  }
-
+export function getFieldConfigsForPos(pos: string): FieldConfig[] {
+  // Support for frames remains separate
   if (pos === 'frames') {
     return [
       { key: 'label', label: 'Frame Name', type: 'text', db: 'label', operators: textOps },
@@ -149,8 +67,26 @@ export function getFieldConfigsForPos(pos: 'verbs' | 'nouns' | 'adjectives' | 'a
     ];
   }
 
-  // Default fallback
-  return [];
+  // All other POS types now use the unified lexical_units config
+  return [
+    { key: 'pos', label: 'Part of Speech', type: 'enum', db: 'pos', operators: enumOps },
+    { key: 'code', label: 'Code', type: 'enum', db: 'code', operators: codeOps },
+    { key: 'gloss', label: 'Gloss', type: 'text', db: 'gloss', operators: textOps },
+    { key: 'lemmas', label: 'Lemmas', type: 'string_array', db: 'lemmas', operators: arrayOps },
+    { key: 'src_lemmas', label: 'Source Lemmas', type: 'string_array', db: 'src_lemmas', operators: arrayOps },
+    { key: 'examples', label: 'Examples', type: 'string_array', db: 'examples', operators: arrayOps },
+    { key: 'flagged_reason', label: 'Flagged Reason', type: 'text', db: 'flagged_reason', operators: textOps },
+    { key: 'unverifiable_reason', label: 'Unverifiable Reason', type: 'text', db: 'unverifiable_reason', operators: textOps },
+    { key: 'lexfile', label: 'Lexfile', type: 'enum', db: 'lexfile', operators: enumOps },
+    { key: 'frame_id', label: 'Frame', type: 'frame', db: 'frame_id', operators: frameOps },
+    { key: 'flagged', label: 'Flagged', type: 'boolean', db: 'flagged', operators: booleanOps },
+    { key: 'verifiable', label: 'Verifiable', type: 'boolean', db: 'verifiable', operators: booleanOps },
+    { key: 'is_mwe', label: 'Is MWE', type: 'boolean', db: 'is_mwe', operators: booleanOps },
+    { key: 'vendler_class', label: 'Vendler Class', type: 'enum', db: 'vendler_class', operators: enumOps },
+    { key: 'gradable', label: 'Gradable', type: 'boolean', db: 'gradable', operators: booleanOps },
+    { key: 'created_at', label: 'Created At', type: 'date', db: 'created_at', operators: dateOps },
+    { key: 'updated_at', label: 'Updated At', type: 'date', db: 'updated_at', operators: dateOps },
+    { key: 'parentsCount', label: 'Parents Count', type: 'computed_number', operators: computedNumberOps },
+    { key: 'childrenCount', label: 'Children Count', type: 'computed_number', operators: computedNumberOps },
+  ];
 }
-
-

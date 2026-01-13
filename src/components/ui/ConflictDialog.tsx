@@ -143,7 +143,7 @@ export default function ConflictDialog({
                 <div className="text-xs text-blue-600 uppercase font-medium mb-1">
                   Your changes target
                 </div>
-                <div className="text-lg font-mono font-semibold text-blue-700">
+                <div className="text-lg font-mono font-semibold text-blue-600">
                   {formatValue(primaryError.conflict.proposed_value)}
                 </div>
               </div>

@@ -47,7 +47,7 @@ export default function Breadcrumbs({ items, onNavigate, onHomeClick, onRefreshC
             className={`hover:text-blue-600 transition-colors whitespace-nowrap ${
               index === items.length - 1 
                 ? 'text-gray-900 font-medium cursor-default' 
-                : 'text-blue-500 hover:underline'
+                : 'text-blue-600 hover:underline'
             }`}
             disabled={index === items.length - 1}
             title={item.gloss}

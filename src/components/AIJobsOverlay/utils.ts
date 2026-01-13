@@ -1,6 +1,6 @@
 import type { BooleanFilterGroup } from '@/lib/filters/types';
 import type { ScopeMode } from './types';
-import type { JobScopeIds, JobScopeFilters, JobScope } from '@/lib/llm/types';
+import type { JobScope, JobTargetType } from '@/lib/llm/types';
 
 export function calculateCursorPosition(textarea: HTMLTextAreaElement, cursorPos: number) {
   const textareaRect = textarea.getBoundingClientRect();
@@ -99,32 +99,38 @@ export function serviceTierToPriority(tier?: string | null): 'flex' | 'normal' |
 
 export function buildScope(
   mode: ScopeMode,
-  pos: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames',
+  pos: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames' | 'lexical_units',
   selectedIds: string[],
   manualIdsText: string,
   frameIdsText: string,
   filterGroup?: BooleanFilterGroup,
   filterLimit?: number,
-  frameIncludeVerbs?: boolean,
-  frameFlagTarget?: 'frame' | 'verb' | 'both'
+  frameIncludeLexicalUnits?: boolean,
+  frameFlagTarget?: 'frame' | 'lexical_unit' | 'both'
 ): JobScope {
+  // Map POS to JobTargetType
+  const targetType: JobTargetType = pos === 'verbs' || pos === 'lexical_units' ? 'verb' : 
+                                   pos === 'nouns' ? 'noun' : 
+                                   pos === 'adjectives' ? 'adjective' : 
+                                   pos === 'adverbs' ? 'adverb' : 'frames';
+
   switch (mode) {
     case 'selection':
       return {
         kind: 'ids',
-        pos,
+        targetType,
         ids: selectedIds,
       };
     case 'all':
       return {
         kind: 'filters',
-        pos,
+        targetType,
         filters: { limit: 0 },
       };
     case 'filters':
       return {
         kind: 'filters',
-        pos,
+        targetType,
         filters: {
           limit: typeof filterLimit === 'number' ? filterLimit : 50,
           where: filterGroup && filterGroup.children.length > 0 ? filterGroup : undefined,
@@ -133,21 +139,20 @@ export function buildScope(
     case 'manual':
       return {
         kind: 'ids',
-        pos,
+        targetType,
         ids: parseIds(manualIdsText).map(normalizeLexicalCode),
       };
     case 'frames':
       return {
         kind: 'frame_ids',
-        pos,
         frameIds: parseIds(frameIdsText),
-        includeVerbs: frameIncludeVerbs,
+        includeLexicalUnits: frameIncludeLexicalUnits,
         flagTarget: frameFlagTarget,
       };
     default:
       return {
         kind: 'ids',
-        pos,
+        targetType,
         ids: selectedIds,
       };
   }
@@ -162,9 +167,10 @@ export function normalizeLexicalCode(input: string): string {
   return `${lemma}.${pos}.${padded}`;
 }
 
-export function getManualIdPlaceholder(pos: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames'): string {
+export function getManualIdPlaceholder(pos: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames' | 'lexical_units'): string {
   switch (pos) {
     case 'verbs':
+    case 'lexical_units':
       return 'e.g., say.v.01, run.v.02';
     case 'nouns':
       return 'e.g., dog.n.01, cat.n.02';
@@ -248,7 +254,7 @@ export function estimateScopeSize(scope: JobScope): number | null {
     return scope.ids.length;
   }
   if (scope.kind === 'frame_ids') {
-    // Frame IDs might expand to multiple verbs if includeVerbs is true
+    // Frame IDs might expand to multiple lexical units if includeLexicalUnits is true
     // Can't accurately estimate without backend call
     return null;
   }

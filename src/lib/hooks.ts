@@ -2,13 +2,13 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import type { 
-  Verb, 
-  VerbWithRelations, 
+  LexicalUnit, 
+  LexicalUnitWithRelations, 
   SearchOptions, 
   PaginatedSearchResult,
   DatabaseStats,
-  VerbRelationWithEntries,
-  RelationType
+  LexicalUnitRelation,
+  LexicalUnitRelationType
 } from './types'
 
 // Custom hook for searching lexical entries
@@ -54,9 +54,9 @@ export function useSearchEntries() {
   return { results, loading, error, search }
 }
 
-// Custom hook for managing a single verb entry
-export function useVerb(id: string | null) {
-  const [entry, setEntry] = useState<VerbWithRelations | null>(null)
+// Custom hook for managing a single lexical unit
+export function useLexicalUnit(id: string | null) {
+  const [entry, setEntry] = useState<LexicalUnitWithRelations | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -65,7 +65,7 @@ export function useVerb(id: string | null) {
     setError(null)
 
     try {
-      const response = await fetch(`/api/verbs/${entryId}`)
+      const response = await fetch(`/api/lexical-units/${entryId}`)
       
       if (!response.ok) {
         throw new Error('Failed to fetch entry')
@@ -81,12 +81,12 @@ export function useVerb(id: string | null) {
     }
   }, [])
 
-  const updateEntry = useCallback(async (entryId: string, updates: Partial<Verb>) => {
+  const updateEntry = useCallback(async (entryId: string, updates: Partial<LexicalUnit>) => {
     setLoading(true)
     setError(null)
 
     try {
-      const response = await fetch(`/api/verbs/${entryId}`, {
+      const response = await fetch(`/api/lexical-units/${entryId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates)
@@ -112,7 +112,7 @@ export function useVerb(id: string | null) {
     setError(null)
 
     try {
-      const response = await fetch(`/api/verbs/${entryId}`, {
+      const response = await fetch(`/api/lexical-units/${entryId}`, {
         method: 'DELETE'
       })
 
@@ -140,9 +140,9 @@ export function useVerb(id: string | null) {
   return { entry, loading, error, updateEntry, deleteEntry, refetch: () => id && fetchEntry(id) }
 }
 
-// Custom hook for managing verb relations
-export function useVerbRelations(entryId: string | null) {
-  const [relations, setRelations] = useState<VerbRelationWithEntries[]>([])
+// Custom hook for managing lexical unit relations
+export function useLexicalUnitRelations(entryId: string | null) {
+  const [relations, setRelations] = useState<LexicalUnitRelation[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -151,7 +151,7 @@ export function useVerbRelations(entryId: string | null) {
     setError(null)
 
     try {
-      const response = await fetch(`/api/verbs/${id}/relations`)
+      const response = await fetch(`/api/lexical-units/${id}/relations`)
       
       if (!response.ok) {
         throw new Error('Failed to fetch relations')
@@ -167,7 +167,7 @@ export function useVerbRelations(entryId: string | null) {
     }
   }, [])
 
-  const addRelation = useCallback(async (sourceId: string, targetId: string, type: RelationType) => {
+  const addRelation = useCallback(async (sourceId: string, targetId: string, type: LexicalUnitRelationType) => {
     try {
       const response = await fetch('/api/relations', {
         method: 'POST',
@@ -189,7 +189,7 @@ export function useVerbRelations(entryId: string | null) {
     }
   }, [entryId, fetchRelations])
 
-  const removeRelation = useCallback(async (sourceId: string, targetId: string, type: RelationType) => {
+  const removeRelation = useCallback(async (sourceId: string, targetId: string, type: LexicalUnitRelationType) => {
     try {
       const response = await fetch('/api/relations', {
         method: 'DELETE',

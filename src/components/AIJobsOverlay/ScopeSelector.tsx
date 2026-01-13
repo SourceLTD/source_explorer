@@ -3,6 +3,7 @@ import BooleanFilterBuilder from '@/components/BooleanFilterBuilder';
 import type { BooleanFilterGroup } from '@/lib/filters/types';
 import type { ScopeMode } from './types';
 import { getManualIdPlaceholder } from './utils';
+import type { DataTableMode } from '../DataTable/types';
 
 export const ScopeSelector = memo(function ScopeSelector({
   mode,
@@ -41,8 +42,8 @@ export const ScopeSelector = memo(function ScopeSelector({
   filterValidateCount,
   filterValidateSample,
   onValidateFilters,
-  frameIncludeVerbs,
-  onFrameIncludeVerbsChange,
+  frameIncludeLexicalUnits,
+  onFrameIncludeLexicalUnitsChange,
   frameFlagTarget,
   onFrameFlagTargetChange,
 }: {
@@ -70,7 +71,7 @@ export const ScopeSelector = memo(function ScopeSelector({
   validatedFrameIds: Set<string>;
   manualIds: string[];
   frameIds: string[];
-  pos: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames';
+  pos: DataTableMode;
   manualIdActiveIndex: number;
   frameIdActiveIndex: number;
   filterGroup: BooleanFilterGroup;
@@ -82,10 +83,10 @@ export const ScopeSelector = memo(function ScopeSelector({
   filterValidateCount: number | null;
   filterValidateSample: Array<{ code: string; gloss: string }>;
   onValidateFilters: () => void;
-  frameIncludeVerbs?: boolean;
-  onFrameIncludeVerbsChange?: (include: boolean) => void;
-  frameFlagTarget?: 'frame' | 'verb' | 'both';
-  onFrameFlagTargetChange?: (target: 'frame' | 'verb' | 'both') => void;
+  frameIncludeLexicalUnits?: boolean;
+  onFrameIncludeLexicalUnitsChange?: (include: boolean) => void;
+  frameFlagTarget?: 'frame' | 'lexical_unit' | 'both';
+  onFrameFlagTargetChange?: (target: 'frame' | 'lexical_unit' | 'both') => void;
 }) {
   return (
     <div className="space-y-2">
@@ -244,8 +245,8 @@ export const ScopeSelector = memo(function ScopeSelector({
           </div>
         </label>
 
-        {/* Frame IDs scope - only for verbs and frames */}
-        {(pos === 'verbs' || pos === 'frames') && (
+        {/* Frame IDs scope - only for lexical_units and frames */}
+        {(pos === 'lexical_units' || pos === 'frames') && (
           <label className={`flex items-start gap-2 rounded-xl border px-3 py-2 ${mode === 'frames' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
           <input
             type="radio"
@@ -309,13 +310,13 @@ export const ScopeSelector = memo(function ScopeSelector({
                     <div className="flex items-center gap-2">
                       <input
                         type="checkbox"
-                        id="frameIncludeVerbs"
-                        checked={frameIncludeVerbs ?? false}
-                        onChange={(e) => onFrameIncludeVerbsChange?.(e.target.checked)}
+                        id="frameIncludeLexicalUnits"
+                        checked={frameIncludeLexicalUnits ?? false}
+                        onChange={(e) => onFrameIncludeLexicalUnitsChange?.(e.target.checked)}
                         className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                       />
-                      <label htmlFor="frameIncludeVerbs" className="text-xs font-medium text-gray-800">
-                        Include associated verbs in scope
+                      <label htmlFor="frameIncludeLexicalUnits" className="text-xs font-medium text-gray-800">
+                        Include associated lexical units in scope
                       </label>
                     </div>
                     
@@ -326,12 +327,12 @@ export const ScopeSelector = memo(function ScopeSelector({
                           <input
                             type="radio"
                             name="frameFlagTarget"
-                            value="verb"
-                            checked={frameFlagTarget === 'verb'}
-                            onChange={() => onFrameFlagTargetChange?.('verb')}
+                            value="lexical_unit"
+                            checked={frameFlagTarget === 'lexical_unit'}
+                            onChange={() => onFrameFlagTargetChange?.('lexical_unit')}
                             className="text-blue-600 focus:ring-blue-500"
                           />
-                          <span className="text-xs text-gray-700">Verbs only</span>
+                          <span className="text-xs text-gray-700">Lexical units only</span>
                         </label>
                         <label className="flex items-center gap-2">
                           <input
@@ -353,7 +354,7 @@ export const ScopeSelector = memo(function ScopeSelector({
                             onChange={() => onFrameFlagTargetChange?.('both')}
                             className="text-blue-600 focus:ring-blue-500"
                           />
-                          <span className="text-xs text-gray-700">Both frame and verbs</span>
+                          <span className="text-xs text-gray-700">Both frame and lexical units</span>
                         </label>
                       </div>
                     </div>

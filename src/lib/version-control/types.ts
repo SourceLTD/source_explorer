@@ -9,19 +9,15 @@
 // Enums (matching database enums)
 // ============================================
 
+/**
+ * Entity types for version control.
+ */
 export type EntityType = 
-  | 'verb'
-  | 'noun'
-  | 'adjective'
-  | 'adverb'
+  | 'lexical_unit'           // Unified type
+  | 'lexical_unit_relation'  // Unified relation type
   | 'frame'
   | 'frame_role'
-  | 'role'
   | 'recipe'
-  | 'verb_relation'
-  | 'noun_relation'
-  | 'adjective_relation'
-  | 'adverb_relation'
   | 'frame_relation';
 
 export type ChangeOperation = 'create' | 'update' | 'delete';
@@ -261,18 +257,11 @@ export interface UnreadChangesetInfo {
  * Maps entity types to their table names in the database.
  */
 export const ENTITY_TYPE_TO_TABLE: Record<EntityType, string> = {
-  verb: 'verbs',
-  noun: 'nouns',
-  adjective: 'adjectives',
-  adverb: 'adverbs',
+  lexical_unit: 'lexical_units',
+  lexical_unit_relation: 'lexical_unit_relations',
   frame: 'frames',
   frame_role: 'frame_roles',
-  role: 'roles',
   recipe: 'recipes',
-  verb_relation: 'verb_relations',
-  noun_relation: 'noun_relations',
-  adjective_relation: 'adjective_relations',
-  adverb_relation: 'adverb_relations',
   frame_relation: 'frame_relations',
 };
 
@@ -280,18 +269,11 @@ export const ENTITY_TYPE_TO_TABLE: Record<EntityType, string> = {
  * Maps table names to entity types.
  */
 export const TABLE_TO_ENTITY_TYPE: Record<string, EntityType> = {
-  verbs: 'verb',
-  nouns: 'noun',
-  adjectives: 'adjective',
-  adverbs: 'adverb',
+  lexical_units: 'lexical_unit',
+  lexical_unit_relations: 'lexical_unit_relation',
   frames: 'frame',
   frame_roles: 'frame_role',
-  roles: 'role',
   recipes: 'recipe',
-  verb_relations: 'verb_relation',
-  noun_relations: 'noun_relation',
-  adjective_relations: 'adjective_relation',
-  adverb_relations: 'adverb_relation',
   frame_relations: 'frame_relation',
 };
 
@@ -299,9 +281,27 @@ export const TABLE_TO_ENTITY_TYPE: Record<string, EntityType> = {
  * Entity types that are the main "word" types (not relations or children).
  */
 export const MAIN_ENTITY_TYPES: EntityType[] = [
-  'verb',
-  'noun',
-  'adjective',
-  'adverb',
+  'lexical_unit',
   'frame',
 ];
+
+/**
+ * Normalize entity type for database storage.
+ * Maps legacy POS types to the unified 'lexical_unit' type.
+ */
+export function normalizeEntityType(type: string): EntityType {
+  if (['verb', 'noun', 'adjective', 'adverb', 'lexical_unit'].includes(type)) {
+    return 'lexical_unit';
+  }
+  if (['verb_relation', 'noun_relation', 'adjective_relation', 'adverb_relation', 'lexical_unit_relation'].includes(type)) {
+    return 'lexical_unit_relation';
+  }
+  return type as EntityType;
+}
+
+/**
+ * Check if an entity type is a lexical unit type.
+ */
+export function isLexicalUnitType(type: string): boolean {
+  return type === 'lexical_unit';
+}

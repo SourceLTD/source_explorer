@@ -10,7 +10,7 @@ export const MODEL_OPTIONS = [
 export type JobType = 'moderation' | 'editing' | 'reallocation' | 'allocate';
 export type LexicalJobType = 'moderation' | 'editing' | 'allocate';
 export type FrameJobType = 'moderation' | 'editing' | 'reallocation';
-export type EntityType = 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames';
+export type EntityType = 'lexical_units' | 'frames';
 
 // ============================================================================
 // PROMPT BUILDING BLOCKS
@@ -123,7 +123,7 @@ Flagged Reason: {{flagged_reason}}
 Verifiable: {{verifiable}}
 Unverifiable Reason: {{unverifiable_reason}}
 Number of Roles: {{roles_count}}
-Number of Verbs: {{verbs_count}}
+Number of Lexical Units: {{lexical_units_count}}
 
 Decide whether the frame should be flagged for review. Consider:
 - Is the definition clear and comprehensive?
@@ -139,7 +139,7 @@ Current Definition: {{definition}}
 Current Short Definition: {{short_definition}}
 Current Prototypical Synset: {{prototypical_synset}}
 Number of Roles: {{roles_count}}
-Number of Verbs: {{verbs_count}}
+Number of Lexical Units: {{lexical_units_count}}
 
 Review this frame and suggest improvements to make the data more accurate and useful:
 - Improve the definition if it's unclear, incomplete, or could be more precise
@@ -154,7 +154,7 @@ Frame Label: {{label}}
 Definition: {{definition}}
 Short Definition: {{short_definition}}
 Number of Roles: {{roles_count}}
-Number of Verbs: {{verbs_count}}
+Number of Lexical Units: {{lexical_units_count}}
 
 Evaluate whether verbs and other lexical entries in this frame are correctly assigned:
 - Does the frame's definition clearly delineate what entries should belong?

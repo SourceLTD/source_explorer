@@ -8,67 +8,40 @@ import {
 } from './db';
 import { getPaginatedEntities } from './db/entities';
 import { handleDatabaseError } from './db-utils';
-import { stageUpdate, stageDelete, stageModerationUpdates, stageRolesUpdate, EntityType, attachPendingInfoToEntities, getPendingInfoForEntity, applyPendingToEntity } from './version-control';
+import { stageUpdate, stageDelete, stageModerationUpdates, EntityType, attachPendingInfoToEntities, getPendingInfoForEntity, applyPendingToEntity } from './version-control';
 import type { LexicalType, PaginationParams, TableEntry } from './types';
 import { getCurrentUserName } from '@/utils/supabase/server';
 
 /**
  * Helper to convert LexicalType to EntityType
  */
-function lexicalTypeToEntityType(lexicalType: LexicalType): EntityType {
-  const mapping: Record<LexicalType, EntityType> = {
-    verbs: 'verb',
-    nouns: 'noun',
-    adjectives: 'adjective',
-    adverbs: 'adverb',
-  };
-  return mapping[lexicalType];
+function lexicalTypeToEntityType(_lexicalType: LexicalType | 'lexical_units'): EntityType {
+  return 'lexical_unit';
 }
 
 /**
  * Helper to get entity name from lexical type
  */
-function getEntityName(lexicalType: LexicalType): string {
-  const names: Record<LexicalType, string> = {
-    verbs: 'Verb',
-    nouns: 'Noun',
-    adjectives: 'Adjective',
-    adverbs: 'Adverb'
-  };
-  return names[lexicalType];
-}
-
-/**
- * Helper to get search table name from lexical type
- */
-function getSearchTable(lexicalType: LexicalType): 'verbs' | 'nouns' | 'adjectives' | 'adverbs' {
-  return lexicalType;
+function getEntityName(_lexicalType: LexicalType | 'lexical_units'): string {
+  return 'Lexical Unit';
 }
 
 /**
  * Valid sortBy fields for pagination
  */
 const VALID_SORT_FIELDS = [
-  'id', 'legacy_id', 'gloss', 'pos', 'lexfile', 'lemmas', 'src_lemmas', 
+  'id', 'legacy_id', 'code', 'gloss', 'pos', 'lexfile', 'lemmas', 'src_lemmas', 
   'frame_id', 'vendler_class', 'parentsCount', 'childrenCount', 
   'createdAt', 'updatedAt', 'created_at', 'updated_at'
 ];
 
 /**
  * Parse pagination parameters from URL search params
- * Returns the params and any validation error
  */
 function parsePaginationParams(searchParams: URLSearchParams): { 
   params: PaginationParams; 
   validationError: string | null;
 } {
-  // Debug logging to catch src_id usage
-  const sortByParam = searchParams.get('sortBy');
-  if (sortByParam === 'src_id') {
-    console.warn('⚠️  WARNING: Request received with sortBy=src_id, converting to legacy_id');
-  }
-  
-  // Convert old field names to new ones for backward compatibility
   let sortBy = searchParams.get('sortBy') || 'id';
   if (sortBy === 'src_id') {
     sortBy = 'legacy_id';
@@ -77,11 +50,9 @@ function parsePaginationParams(searchParams: URLSearchParams): {
     sortBy = 'frame_id';
   }
 
-  // Parse page and limit
   const pageParam = searchParams.get('page') ? parseInt(searchParams.get('page')!, 10) : 1;
   const limitParam = searchParams.get('limit') ? parseInt(searchParams.get('limit')!, 10) : 10;
   
-  // Validate page
   if (isNaN(pageParam) || pageParam < 1) {
     return { 
       params: {} as PaginationParams, 
@@ -89,7 +60,6 @@ function parsePaginationParams(searchParams: URLSearchParams): {
     };
   }
   
-  // Validate limit (1-2000 range)
   if (isNaN(limitParam) || limitParam < 1 || limitParam > 2000) {
     return { 
       params: {} as PaginationParams, 
@@ -97,7 +67,6 @@ function parsePaginationParams(searchParams: URLSearchParams): {
     };
   }
 
-  // Validate sortBy field
   if (!VALID_SORT_FIELDS.includes(sortBy)) {
     return { 
       params: {} as PaginationParams, 
@@ -133,6 +102,7 @@ function parsePaginationParams(searchParams: URLSearchParams): {
       isMwe: searchParams.get('isMwe') === 'true' ? true : searchParams.get('isMwe') === 'false' ? false : undefined,
       flagged: searchParams.get('flagged') === 'true' ? true : searchParams.get('flagged') === 'false' ? false : undefined,
       verifiable: searchParams.get('verifiable') === 'true' ? true : searchParams.get('verifiable') === 'false' ? false : undefined,
+      excludeNullFrame: searchParams.get('excludeNullFrame') === 'true',
       
       // Pending state filters
       pendingCreate: searchParams.get('pendingCreate') === 'true' ? true : undefined,
@@ -156,25 +126,21 @@ function parsePaginationParams(searchParams: URLSearchParams): {
 
 /**
  * Handles paginated requests for any lexical type
- * Uses the unified getPaginatedEntities function
  */
 export async function handlePaginatedRequest(
   request: NextRequest,
-  lexicalType: LexicalType
+  lexicalType: LexicalType | 'lexical_units'
 ): Promise<NextResponse> {
   try {
     const { searchParams } = new URL(request.url);
     const { params, validationError } = parsePaginationParams(searchParams);
     
-    // Return validation error if any
     if (validationError) {
       return NextResponse.json({ error: validationError }, { status: 400 });
     }
 
-    // Use the unified paginated entities function
-    const result = await getPaginatedEntities(lexicalType, params);
+    const result = await getPaginatedEntities(params);
     
-    // Attach pending change info to each entry
     const entityType = lexicalTypeToEntityType(lexicalType);
     const dataWithPending = await attachPendingInfoToEntities(
       result.data,
@@ -203,11 +169,11 @@ export async function handlePaginatedRequest(
 }
 
 /**
- * Handles GET by ID requests for any lexical type
+ * Handles GET by ID requests
  */
 export async function handleGetById(
   id: string,
-  lexicalType: LexicalType,
+  _lexicalType: LexicalType | 'lexical_units',
   routePath: string
 ): Promise<NextResponse> {
   try {
@@ -215,7 +181,7 @@ export async function handleGetById(
     
     if (!entry) {
       return NextResponse.json(
-        { error: `${getEntityName(lexicalType)} not found` },
+        { error: `${getEntityName(_lexicalType)} not found` },
         { status: 404 }
       );
     }
@@ -240,32 +206,19 @@ export async function handleGetById(
 /**
  * Get allowed fields for each entity type
  */
-function getAllowedFieldsForType(lexicalType: LexicalType): string[] {
-  const commonFields = ['id', 'gloss', 'lemmas', 'src_lemmas', 'examples', 'lexfile', 'flagged', 'flaggedReason'];
+function getAllowedFieldsForType(lexicalType: LexicalType | 'lexical_units'): string[] {
+  const commonFields = ['id', 'gloss', 'lemmas', 'src_lemmas', 'examples', 'lexfile', 'flagged', 'flaggedReason', 'frame_id'];
   
-  switch (lexicalType) {
-    case 'verbs':
-      return [...commonFields, 'roles', 'role_groups', 'vendler_class', 'frame_id'];
-    case 'nouns':
-      return [...commonFields, 'countable', 'proper', 'collective', 'concrete', 'predicate', 'frame_id'];
-    case 'adjectives':
-      return [...commonFields, 'gradable', 'predicative', 'attributive', 'subjective', 'relational', 'frame_id'];
-    case 'adverbs':
-      return [...commonFields, 'gradable', 'frame_id'];
-    default:
-      return commonFields;
-  }
+  return [...commonFields, 'vendler_class', 'countable', 'proper', 'collective', 'concrete', 'predicate', 'isMwe', 'gradable', 'predicative', 'attributive', 'subjective', 'relational', 'isSatellite'];
 }
 
 /**
- * Handles PATCH (update) requests for any lexical type
- * Now stages changes for version control instead of direct updates
- * Supports verb-specific roles handling
+ * Handles PATCH (update) requests
  */
 export async function handleUpdateById(
   id: string,
   body: unknown,
-  lexicalType: LexicalType,
+  lexicalType: LexicalType | 'lexical_units',
   routePath: string
 ): Promise<NextResponse> {
   try {
@@ -273,8 +226,6 @@ export async function handleUpdateById(
     const userId = await getCurrentUserName();
     
     const updates = body as Record<string, unknown>;
-    
-    // Validate that only allowed fields are being updated
     const allowedFields = getAllowedFieldsForType(lexicalType);
     const updateData: Record<string, unknown> = {};
     
@@ -288,7 +239,6 @@ export async function handleUpdateById(
       return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 });
     }
 
-    // Handle direct updates (flagged status) immediately
     if ('flagged' in updateData || 'flaggedReason' in updateData) {
       const moderationUpdates: Record<string, any> = {};
       if ('flagged' in updateData) {
@@ -300,9 +250,8 @@ export async function handleUpdateById(
         delete updateData.flaggedReason;
       }
       
-      await updateModerationStatus([id], moderationUpdates, lexicalType as any);
+      await updateModerationStatus([id], moderationUpdates);
       
-      // If only flagged fields were updated, return early
       if (Object.keys(updateData).length === 0) {
         return NextResponse.json({ 
           success: true, 
@@ -311,59 +260,7 @@ export async function handleUpdateById(
       }
     }
 
-    // Handle verb-specific roles update
-    if (lexicalType === 'verbs') {
-      const hasRoles = 'roles' in updateData;
-      const hasRoleGroups = 'role_groups' in updateData;
-      
-      // Separate roles from other fields
-      const { roles, role_groups, ...otherFields } = updateData;
-
-      // Stage roles update if present
-      if (hasRoles || hasRoleGroups) {
-        const rolesResponse = await stageRolesUpdate(
-          id,
-          roles as unknown[] ?? [],
-          hasRoleGroups ? role_groups as unknown[] : undefined,
-          userId
-        );
-
-        // If only roles are being updated, return the roles response
-        if (Object.keys(otherFields).length === 0) {
-          return NextResponse.json(rolesResponse, {
-            headers: {
-              'Cache-Control': 'no-store, no-cache, must-revalidate',
-              'Pragma': 'no-cache',
-            },
-          });
-        }
-      }
-
-      // Stage other field updates for verbs
-      if (Object.keys(otherFields).length > 0) {
-        const response = await stageUpdate(entityType, id, otherFields, userId);
-        
-        return NextResponse.json(response, {
-          headers: {
-            'Cache-Control': 'no-store, no-cache, must-revalidate',
-            'Pragma': 'no-cache',
-          },
-        });
-      }
-
-      // If we got here with roles, return a combined response
-      return NextResponse.json({
-        staged: true,
-        message: 'Changes staged for review',
-      }, {
-        headers: {
-          'Cache-Control': 'no-store, no-cache, must-revalidate',
-          'Pragma': 'no-cache',
-        },
-      });
-    }
-    
-    // For non-verb entities, stage all updates directly
+    // Stage all updates directly
     const response = await stageUpdate(entityType, id, updateData, userId);
     
     return NextResponse.json(response, {
@@ -389,12 +286,11 @@ export async function handleUpdateById(
 }
 
 /**
- * Handles DELETE requests for any lexical type
- * Now stages deletion for version control instead of direct delete
+ * Handles DELETE requests
  */
 export async function handleDeleteById(
   id: string,
-  lexicalType: LexicalType,
+  lexicalType: LexicalType | 'lexical_units',
   routePath: string
 ): Promise<NextResponse> {
   try {
@@ -426,11 +322,11 @@ export async function handleDeleteById(
 }
 
 /**
- * Handles search requests for any lexical type
+ * Handles search requests
  */
 export async function handleSearchRequest(
   request: NextRequest,
-  lexicalType: LexicalType
+  lexicalType: LexicalType | 'lexical_units'
 ): Promise<NextResponse> {
   const { searchParams } = new URL(request.url);
   const query = searchParams.get('q');
@@ -442,7 +338,19 @@ export async function handleSearchRequest(
   }
 
   try {
-    const results = await searchEntries(query, limit, getSearchTable(lexicalType));
+    // Determine POS if using legacy routes
+    let pos: any = undefined;
+    if (lexicalType !== 'lexical_units') {
+      const posMap: Record<string, string> = {
+        verbs: 'verb',
+        nouns: 'noun',
+        adjectives: 'adjective',
+        adverbs: 'adverb'
+      };
+      pos = posMap[lexicalType];
+    }
+
+    const results = await searchEntries(query, limit, pos);
     return NextResponse.json(results);
   } catch (error) {
     const { message, status, shouldRetry } = handleDatabaseError(error, `GET /api/${lexicalType}/search`);
@@ -461,11 +369,11 @@ export async function handleSearchRequest(
 }
 
 /**
- * Handles GET relations requests for any lexical type
+ * Handles GET relations requests
  */
 export async function handleGetRelations(
   id: string,
-  lexicalType: LexicalType,
+  lexicalType: LexicalType | 'lexical_units',
   routePath: string
 ): Promise<NextResponse> {
   try {
@@ -499,16 +407,15 @@ export async function handleGetRelations(
 }
 
 /**
- * Handles GET graph requests for any lexical type
+ * Handles GET graph requests
  */
 export async function handleGetGraph(
   id: string,
-  lexicalType: LexicalType,
+  lexicalType: LexicalType | 'lexical_units',
   routePath: string,
   searchParams?: URLSearchParams
 ): Promise<NextResponse> {
   try {
-    // Use uncached version when invalidate=true is passed
     const shouldInvalidate = searchParams?.get('invalidate') === 'true';
     const node = shouldInvalidate 
       ? await getGraphNodeUncached(id)
@@ -521,7 +428,6 @@ export async function handleGetGraph(
       );
     }
     
-    // Apply pending changes to the main node (merges pending values for preview)
     const entityType = lexicalTypeToEntityType(lexicalType);
     const { entity: nodeWithPendingValues, pending: pendingInfo } = await applyPendingToEntity(
       node,
@@ -529,7 +435,6 @@ export async function handleGetGraph(
       BigInt(node.numericId)
     );
     
-    // Also check for pending info on parent/child nodes
     const attachPendingToNodes = async (nodes: typeof node.parents) => {
       if (!nodes || nodes.length === 0) return nodes;
       
@@ -575,12 +480,11 @@ export async function handleGetGraph(
 const VALID_MODERATION_FIELDS = ['flagged', 'flaggedReason', 'verifiable', 'unverifiableReason'];
 
 /**
- * Handles PATCH moderation requests for any lexical type
- * Now stages moderation changes for version control
+ * Handles PATCH moderation requests
  */
 export async function handleModerationRequest(
   request: NextRequest,
-  lexicalType: LexicalType
+  lexicalType: LexicalType | 'lexical_units'
 ): Promise<NextResponse> {
   try {
     const body = await request.json();
@@ -600,7 +504,6 @@ export async function handleModerationRequest(
       );
     }
 
-    // Validate that at least one moderation field is being updated
     const hasValidUpdate = Object.keys(updates).some(key => VALID_MODERATION_FIELDS.includes(key));
     if (!hasValidUpdate) {
       return NextResponse.json(
@@ -612,7 +515,6 @@ export async function handleModerationRequest(
     const entityType = lexicalTypeToEntityType(lexicalType);
     const userId = await getCurrentUserName();
     
-    // Split updates into direct (flagged) and staged (others)
     const directUpdates: Record<string, any> = {};
     const stagedUpdates: Record<string, any> = {};
     
@@ -629,25 +531,24 @@ export async function handleModerationRequest(
     let changesetIds: string[] = [];
     let message = '';
 
-    // Apply direct updates (flagged status) immediately
     if (Object.keys(directUpdates).length > 0) {
-      directCount = await updateModerationStatus(ids, directUpdates, lexicalType as any);
-      message = `Updated flagging status for ${directCount} ${lexicalType}. `;
+      const { updatedCount } = await updateModerationStatus(ids, directUpdates);
+      directCount = updatedCount;
+      message = `Updated flagging status for ${directCount} entries. `;
     }
 
-    // Stage other moderation updates (e.g., verifiable)
     if (Object.keys(stagedUpdates).length > 0) {
       const result = await stageModerationUpdates(entityType, ids, stagedUpdates, userId);
       stagedCount = result.staged_count;
       changesetIds = result.changeset_ids;
-      message += `Staged other moderation changes for ${result.staged_count} ${lexicalType}.`;
+      message += `Staged other moderation changes for ${result.staged_count} entries.`;
     }
 
     return NextResponse.json({ 
       staged: Object.keys(stagedUpdates).length > 0,
       staged_count: stagedCount,
       updated_count: directCount,
-      count: directCount, // Compatibility with some frontend parts
+      count: directCount,
       changeset_ids: changesetIds,
       message: message.trim() || 'No changes applied'
     }, {
@@ -671,4 +572,3 @@ export async function handleModerationRequest(
     );
   }
 }
-

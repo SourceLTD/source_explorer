@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 import type OpenAI from 'openai';
 import { prisma } from '@/lib/prisma';
 import { FLAGGING_RESPONSE_SCHEMA, EDIT_RESPONSE_SCHEMA, REALLOCATION_RESPONSE_SCHEMA, ALLOCATION_RESPONSE_SCHEMA, type FlaggingResponse } from './schema';
-import type { CreateLLMJobParams, JobScope, LexicalEntrySummary, SerializedJob } from './types';
+import type { CreateLLMJobParams, JobScope, LexicalUnitSummary, SerializedJob, JobTargetType } from './types';
 import { getOpenAIClient } from './client';
 import { applyJobResult } from './result-handlers';
 
@@ -51,7 +51,6 @@ function getLLMJobsDelegate() {
 
 /**
  * Submit a batch of job items to OpenAI.
- * Returns submission statistics and any errors encountered.
  */
 export async function submitJobItemBatch(
   jobId: bigint,
@@ -63,14 +62,13 @@ export async function submitJobItemBatch(
   errors: Array<{ itemId: string; error: string }>;
 }> {
   const batchStartTime = Date.now();
-  const TIMEOUT_MS = 290000; // Stop at 290s (with 10s buffer before 300s route timeout)
+  const TIMEOUT_MS = 290000;
   
-  // 1. Fetch next batch of queued items that haven't been submitted yet
   const items = await prisma.llm_job_items.findMany({
     where: { 
       job_id: jobId, 
       status: 'queued',
-      provider_task_id: null  // Not yet submitted to OpenAI
+      provider_task_id: null
     },
     take: batchSize,
     orderBy: { id: 'asc' },
@@ -80,7 +78,6 @@ export async function submitJobItemBatch(
     return { submitted: 0, failed: 0, remaining: 0, errors: [] };
   }
 
-  // 2. Update job status to 'running' if this is the first batch
   const job = await getLLMJobsDelegate().findUnique({
     where: { id: jobId },
     select: { status: true, config: true, job_type: true },
@@ -105,13 +102,11 @@ export async function submitJobItemBatch(
   const client = ensureOpenAIClient();
   const openAIServiceTier = normalizeServiceTier(config?.serviceTier as CreateLLMJobParams['serviceTier']);
   
-  // Helper function to submit a single item with retry logic
   const submitItem = async (item: typeof items[number], retries = 3): Promise<{ success: boolean; itemId: bigint; error?: string }> => {
     const payload = item.request_payload as Prisma.JsonObject;
     const renderedPrompt = String(payload.renderedPrompt ?? '');
     
     for (let attempt = 0; attempt <= retries; attempt++) {
-      // Check timeout
       if (Date.now() - batchStartTime > TIMEOUT_MS) {
         return { 
           success: false, 
@@ -154,11 +149,9 @@ export async function submitJobItemBatch(
         
         return { success: true, itemId: item.id };
       } catch (error: any) {
-        // Categorize errors based on OpenAI documentation
         const status = error?.status || error?.response?.status;
         const code = error?.code;
         
-        // Transient errors that should be retried
         const isRateLimit = status === 429 && !error?.message?.includes('quota');
         const isServerError = status === 500 || code === 'internal_server_error';
         const isServiceUnavailable = status === 503 || code === 'service_unavailable';
@@ -168,17 +161,13 @@ export async function submitJobItemBatch(
         const isRetryable = isRateLimit || isServerError || isServiceUnavailable || isTimeout || isConnectionError;
         
         if (isRetryable && attempt < retries) {
-          // Exponential backoff: 1s, 2s, 4s
           const delayMs = Math.pow(2, attempt) * 1000;
-          console.log(`[LLM] Retrying item ${item.id} after ${delayMs}ms (attempt ${attempt + 1}/${retries}) - Error: ${error?.message || 'Unknown'}`);
           await new Promise(resolve => setTimeout(resolve, delayMs));
           continue;
         }
         
-        // Final failure - categorize the error type for better debugging
         let errorMessage = error instanceof Error ? error.message : 'Submission failed';
         
-        // Add context about error type for non-retryable errors
         if (status === 401) {
           errorMessage = `Authentication error: ${errorMessage}`;
         } else if (status === 403) {
@@ -213,12 +202,9 @@ export async function submitJobItemBatch(
     };
   };
   
-  // 3. Submit all items in parallel using Promise.allSettled
   const submissions = items.map(item => submitItem(item));
-
   const results = await Promise.allSettled(submissions);
   
-  // 4. Count successes and failures
   let submitted = 0;
   let failed = 0;
   const errors: Array<{ itemId: string; error: string }> = [];
@@ -237,7 +223,6 @@ export async function submitJobItemBatch(
     }
   }
 
-  // 5. Update job submitted_items counter
   await getLLMJobsDelegate().update({
     where: { id: jobId },
     data: {
@@ -245,7 +230,6 @@ export async function submitJobItemBatch(
     },
   });
 
-  // 6. Calculate remaining items to submit
   const remaining = await prisma.llm_job_items.count({
     where: { 
       job_id: jobId, 
@@ -311,8 +295,6 @@ async function refreshSingleItem(
     }
 
     if (response.status === 'completed') {
-      // The Responses API may omit convenience fields on retrieve calls, so we
-      // normalize the output shape here.
       const outputItems = Array.isArray((response as any).output)
         ? ((response as any).output as Array<{ content?: unknown }>)
         : [];
@@ -339,9 +321,6 @@ async function refreshSingleItem(
       }
 
       if (!outputText) {
-        console.warn(
-          `[LLM] Completed response ${response.id} missing output content; will retry on next poll.`
-        );
         await prisma.llm_job_items.update({
           where: { id: BigInt(item.id) },
           data: {
@@ -352,13 +331,11 @@ async function refreshSingleItem(
         return;
       }
 
-      let parsed: FlaggingResponse | null = null;
+      let parsed: any | null = null;
       try {
-        parsed = JSON.parse(outputText) as FlaggingResponse;
+        parsed = JSON.parse(outputText);
       } catch (error) {
         console.error('[LLM] Failed to parse response JSON:', error);
-        console.error('[LLM] Output text was:', outputText);
-        console.error('[LLM] Response status:', response.status);
       }
 
       if (!parsed) {
@@ -396,7 +373,7 @@ async function refreshSingleItem(
       await applyJobResult(
         await prisma.llm_job_items.findUniqueOrThrow({ where: { id: BigInt(item.id) } }),
         entry,
-        parsed as any,
+        parsed,
         jobLabel,
         jobRecord?.submitted_by ?? 'system:llm-agent',
         (jobRecord?.job_type as any) ?? 'moderation',
@@ -426,10 +403,6 @@ async function refreshSingleItem(
 
 /**
  * Refresh job items by polling OpenAI in parallel batches.
- * @param job The job to refresh
- * @param options.limit Maximum number of items to refresh per call (default 40)
- * @param fetchJobRecordFn Function to fetch the updated job record
- * @param updateJobAggregatesFn Function to update job aggregates
  */
 export async function refreshJobItems(
   job: SerializedJob, 
@@ -442,7 +415,7 @@ export async function refreshJobItems(
   const limit = options.limit ?? 40;
   const staleItems = job.items
     .filter(item => !TERMINAL_ITEM_STATUSES.has(item.status))
-    .slice(0, limit); // Only process first N items to avoid long-running polls
+    .slice(0, limit);
 
   if (staleItems.length === 0) {
     return job;
@@ -450,7 +423,6 @@ export async function refreshJobItems(
 
   const CONCURRENT_BATCH_SIZE = 20;
 
-  // Process items in parallel batches to improve performance
   for (let i = 0; i < staleItems.length; i += CONCURRENT_BATCH_SIZE) {
     const batch = staleItems.slice(i, i + CONCURRENT_BATCH_SIZE);
     await Promise.allSettled(
@@ -467,15 +439,16 @@ export async function refreshJobItems(
 }
 
 /**
- * Fetch the entry data for a job item.
+ * Fetch the unit data for a job item.
  */
-export async function fetchEntryForItem(item: SerializedJob['items'][number]): Promise<LexicalEntrySummary | null> {
-  if (item.verb_id) {
-    const record = await prisma.verbs.findUnique({
-      where: { id: BigInt(item.verb_id) },
+export async function fetchEntryForItem(item: SerializedJob['items'][number]): Promise<LexicalUnitSummary | null> {
+  if (item.lexical_unit_id) {
+    const record = await prisma.lexical_units.findUnique({
+      where: { id: BigInt(item.lexical_unit_id) },
       select: {
         id: true,
         code: true,
+        pos: true,
         gloss: true,
         lemmas: true,
         examples: true,
@@ -491,97 +464,13 @@ export async function fetchEntryForItem(item: SerializedJob['items'][number]): P
     return {
       dbId: record.id,
       code: record.code,
-      pos: 'verbs',
+      pos: record.pos as any,
       gloss: record.gloss,
       lemmas: record.lemmas,
       examples: record.examples,
       flagged: record.flagged,
       flagged_reason: record.flagged_reason,
       label: record.frames?.label ?? null,
-      lexfile: record.lexfile,
-    };
-  }
-
-  if (item.noun_id) {
-    const record = await prisma.nouns.findUnique({
-      where: { id: BigInt(item.noun_id) },
-      select: {
-        id: true,
-        code: true,
-        gloss: true,
-        lemmas: true,
-        examples: true,
-        flagged: true,
-        flagged_reason: true,
-        lexfile: true,
-      },
-    });
-    if (!record) return null;
-    return {
-      dbId: record.id,
-      code: record.code,
-      pos: 'nouns',
-      gloss: record.gloss,
-      lemmas: record.lemmas,
-      examples: record.examples,
-      flagged: record.flagged,
-      flagged_reason: record.flagged_reason,
-      lexfile: record.lexfile,
-    };
-  }
-
-  if (item.adjective_id) {
-    const record = await prisma.adjectives.findUnique({
-      where: { id: BigInt(item.adjective_id) },
-      select: {
-        id: true,
-        code: true,
-        gloss: true,
-        lemmas: true,
-        examples: true,
-        flagged: true,
-        flagged_reason: true,
-        lexfile: true,
-      },
-    });
-    if (!record) return null;
-    return {
-      dbId: record.id,
-      code: record.code,
-      pos: 'adjectives',
-      gloss: record.gloss,
-      lemmas: record.lemmas,
-      examples: record.examples,
-      flagged: record.flagged,
-      flagged_reason: record.flagged_reason,
-      lexfile: record.lexfile,
-    };
-  }
-
-  if (item.adverb_id) {
-    const record = await prisma.adverbs.findUnique({
-      where: { id: BigInt(item.adverb_id) },
-      select: {
-        id: true,
-        code: true,
-        gloss: true,
-        lemmas: true,
-        examples: true,
-        flagged: true,
-        flagged_reason: true,
-        lexfile: true,
-      },
-    });
-    if (!record) return null;
-    return {
-      dbId: record.id,
-      code: record.code,
-      pos: 'adverbs',
-      gloss: record.gloss,
-      lemmas: record.lemmas,
-      examples: record.examples,
-      flagged: record.flagged,
-      flagged_reason: record.flagged_reason,
       lexfile: record.lexfile,
     };
   }
@@ -614,4 +503,3 @@ export async function fetchEntryForItem(item: SerializedJob['items'][number]): P
 
   return null;
 }
-

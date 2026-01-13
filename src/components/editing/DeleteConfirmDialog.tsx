@@ -21,10 +21,10 @@ export function DeleteConfirmDialog({ node, isOpen, isDeleting, onConfirm, onCan
       </p>
       {hasChildren && (
         <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded">
-          <p className="text-sm text-blue-900 font-medium mb-1">
+          <p className="text-sm text-blue-600 font-medium mb-1">
             This entry has {node.children.length} hyponym{node.children.length !== 1 ? 's' : ''}:
           </p>
-          <ul className="text-xs text-blue-800 list-disc list-inside max-h-32 overflow-y-auto">
+          <ul className="text-xs text-blue-600 list-disc list-inside max-h-32 overflow-y-auto">
             {node.children.slice(0, 5).map(child => (
               <li key={child.id}>{child.id}</li>
             ))}
@@ -32,7 +32,7 @@ export function DeleteConfirmDialog({ node, isOpen, isDeleting, onConfirm, onCan
               <li className="text-blue-600 italic">...and {node.children.length - 5} more</li>
             )}
           </ul>
-          <p className="text-xs text-blue-700 mt-2">
+          <p className="text-xs text-blue-600 mt-2">
             {hasParents ? (
               <>They will be reassigned to <strong>{node.parents[0].id}</strong></>
             ) : (

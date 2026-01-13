@@ -10,18 +10,31 @@ interface ViewToggleProps {
   onViewChange: (view: ViewMode) => void;
   className?: string;
   hideRecipes?: boolean;
+  hideGraph?: boolean;
   grayscale?: boolean;
 }
 
-export default function ViewToggle({ currentView, onViewChange, className, hideRecipes = false, grayscale = false }: ViewToggleProps) {
+export default function ViewToggle({ 
+  currentView, 
+  onViewChange, 
+  className, 
+  hideRecipes = false, 
+  hideGraph = false,
+  grayscale = false 
+}: ViewToggleProps) {
   // Calculate the transform position for the sliding background
   const getTransformClass = () => {
-    if (hideRecipes) {
+    if (hideGraph && hideRecipes) {
+      return 'translate-x-0';
+    }
+    
+    if (hideGraph || hideRecipes) {
       // Only 2 buttons, adjust positions
       switch (currentView) {
         case 'table':
           return 'translate-x-0';
         case 'graph':
+        case 'recipes':
           return 'translate-x-10';
         default:
           return 'translate-x-0';
@@ -62,7 +75,7 @@ export default function ViewToggle({ currentView, onViewChange, className, hideR
         className={`relative z-10 flex items-center justify-center w-10 py-2.5 rounded-xl transition-colors duration-300 ease-out cursor-pointer focus:outline-none ${
           currentView === 'table'
             ? 'text-white'
-            : grayscale ? 'text-gray-500 hover:text-gray-700' : 'text-gray-700 hover:text-blue-700'
+            : grayscale ? 'text-gray-500 hover:text-gray-700' : 'text-gray-700 hover:text-blue-600'
         }`}
         title="Table View"
       >
@@ -70,21 +83,23 @@ export default function ViewToggle({ currentView, onViewChange, className, hideR
       </button>
       
       {/* Graph button */}
-      <button
-        onClick={() => onViewChange('graph')}
-        className={`relative z-10 flex items-center justify-center w-10 py-2.5 rounded-xl transition-colors duration-300 ease-out cursor-pointer focus:outline-none ${
-          currentView === 'graph'
-            ? 'text-white'
-            : grayscale ? 'text-gray-500 hover:text-gray-700' : 'text-gray-700 hover:text-blue-700'
-        }`}
-        title="Graph View"
-      >
-        <div className="relative w-7 h-4 flex items-end -mt-0.5">
-          <ArrowTurnLeftDownIcon className="absolute w-3.5 h-3.5 bottom-0 left-0" />
-          <ArrowDownIcon className="absolute w-3.5 h-3.5 bottom-0 left-1/2 transform -translate-x-1/2" />
-          <ArrowTurnRightDownIcon className="absolute w-3.5 h-3.5 bottom-0 right-0" />
-        </div>
-      </button>
+      {!hideGraph && (
+        <button
+          onClick={() => onViewChange('graph')}
+          className={`relative z-10 flex items-center justify-center w-10 py-2.5 rounded-xl transition-colors duration-300 ease-out cursor-pointer focus:outline-none ${
+            currentView === 'graph'
+              ? 'text-white'
+              : grayscale ? 'text-gray-500 hover:text-gray-700' : 'text-gray-700 hover:text-blue-600'
+          }`}
+          title="Graph View"
+        >
+          <div className="relative w-7 h-4 flex items-end -mt-0.5">
+            <ArrowTurnLeftDownIcon className="absolute w-3.5 h-3.5 bottom-0 left-0" />
+            <ArrowDownIcon className="absolute w-3.5 h-3.5 bottom-0 left-1/2 transform -translate-x-1/2" />
+            <ArrowTurnRightDownIcon className="absolute w-3.5 h-3.5 bottom-0 right-0" />
+          </div>
+        </button>
+      )}
       
       {/* Recipes button */}
       {!hideRecipes && (
@@ -93,7 +108,7 @@ export default function ViewToggle({ currentView, onViewChange, className, hideR
           className={`relative z-10 flex items-center justify-center w-10 py-2.5 rounded-xl transition-colors duration-300 ease-out cursor-pointer focus:outline-none ${
             currentView === 'recipes'
               ? 'text-white'
-              : grayscale ? 'text-gray-500 hover:text-gray-700' : 'text-gray-700 hover:text-blue-700'
+              : grayscale ? 'text-gray-500 hover:text-gray-700' : 'text-gray-700 hover:text-blue-600'
           }`}
           title="Recipes View"
         >

@@ -1,5 +1,6 @@
 import { memo, useMemo, useState, useCallback } from 'react';
 import type { SerializedJob, JobScope } from '@/lib/llm/types';
+import type { PartOfSpeech as POSType } from '@/lib/types';
 
 /**
  * Parsed job configuration stored in llm_jobs.config
@@ -10,7 +11,7 @@ export interface ParsedJobConfig {
   serviceTier?: 'flex' | 'default' | 'priority' | null;
   reasoning?: { effort?: 'low' | 'medium' | 'high' } | null;
   targetFields?: string[];
-  reallocationEntityTypes?: ('verbs' | 'nouns' | 'adjectives' | 'adverbs')[];
+  reallocationEntityTypes?: POSType[];
   metadata?: Record<string, unknown>;
   mcpEnabled?: boolean | null;
   changesetId?: string | null;
@@ -29,7 +30,7 @@ function formatScopeDescription(scope: JobScope | null, totalItems: number): str
   
   switch (scope.kind) {
     case 'ids':
-      return `${scope.ids.length} ${scope.pos} by ID selection`;
+      return `${scope.ids.length} ${scope.targetType} by ID selection`;
     case 'frame_ids': {
       const frameCount = scope.frameIds?.length ?? 0;
       const target = scope.flagTarget === 'both' 
@@ -38,7 +39,7 @@ function formatScopeDescription(scope: JobScope | null, totalItems: number): str
       return `${frameCount} frames (${target})`;
     }
     case 'filters':
-      return `Filtered ${scope.pos}${scope.filters?.limit ? ` (limit: ${scope.filters.limit})` : ''}`;
+      return `Filtered ${scope.targetType}${scope.filters?.limit ? ` (limit: ${scope.filters.limit})` : ''}`;
     default:
       return `${totalItems} items`;
   }
@@ -70,7 +71,7 @@ export const StatusPill = memo(function StatusPill({
       case 'running':
         return { 
           label: 'Running', 
-          color: 'bg-blue-50 text-blue-700 border-blue-200',
+          color: 'bg-blue-50 text-blue-600 border-blue-200',
           icon: (
             <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -480,7 +481,7 @@ export const ProgressBar = memo(function ProgressBar({
   const { bgColor, fillColor, textColor } = useMemo(() => {
     switch (variant) {
       case 'submitting':
-        return { bgColor: 'bg-blue-100', fillColor: 'bg-blue-500', textColor: 'text-blue-700' };
+        return { bgColor: 'bg-blue-100', fillColor: 'bg-blue-500', textColor: 'text-blue-600' };
       case 'processing':
         return { bgColor: 'bg-emerald-100', fillColor: 'bg-emerald-500', textColor: 'text-emerald-700' };
       case 'success':
@@ -603,7 +604,7 @@ export const ItemList = memo(function ItemList({
                   case 'queued':
                   case 'submitting':
                   case 'processing':
-                    return 'border-blue-200 bg-blue-50 text-blue-700';
+                    return 'border-blue-200 bg-blue-50 text-blue-600';
                   case 'succeeded':
                     return 'border-green-200 bg-green-50 text-green-700';
                   case 'failed':
@@ -629,7 +630,7 @@ export const ItemList = memo(function ItemList({
                     <div className="mt-1 flex items-center gap-2 text-[10px] opacity-75">
                       <span>Flagged: {item.flagged ? 'Yes' : 'No'}</span>
                       {item.has_edits && (
-                        <span className="rounded bg-blue-100 px-1.5 py-0.5 font-semibold text-blue-800">
+                        <span className="rounded bg-blue-100 px-1.5 py-0.5 font-semibold text-blue-600">
                           AI Edits Staged
                         </span>
                       )}

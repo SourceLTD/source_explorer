@@ -1,6 +1,6 @@
 import { TableEntry, Frame } from '@/lib/types';
 
-export type DataTableMode = 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames';
+export type DataTableMode = 'lexical_units' | 'frames' | 'super_frames' | 'frames_only';
 
 export interface DataTableProps {
   onRowClick?: (entry: TableEntry | Frame) => void;
@@ -52,4 +52,3 @@ export interface ModerationState {
 export type { TableEntry, Frame, PaginatedResult, PaginationParams } from '@/lib/types';
 export type { FilterState } from '@/components/FilterPanel';
 export type { ColumnConfig, ColumnVisibilityState } from '@/components/ColumnVisibilityPanel';
-

@@ -52,7 +52,7 @@ export default function RootNodesView({ onNodeClick }: RootNodesViewProps) {
                   </div>
                 </div>
                 
-                <div className="mt-2 flex items-center text-blue-600 group-hover:text-blue-700 font-medium">
+                <div className="mt-2 flex items-center text-blue-600 group-hover:text-blue-600 font-medium">
                   <span className="text-sm">Explore this concept</span>
                   <svg 
                     className="ml-2 w-5 h-5 transform group-hover:translate-x-1 transition-transform" 
@@ -78,7 +78,7 @@ export default function RootNodesView({ onNodeClick }: RootNodesViewProps) {
             <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <p className="text-sm font-medium text-blue-900">
+            <p className="text-sm font-medium text-blue-600">
               These are the foundational verb concepts from which all other verbs in WordNet derive
             </p>
           </div>

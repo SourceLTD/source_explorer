@@ -24,8 +24,8 @@ export default function ErrorPage() {
               </ul>
             </div>
             <div className="text-left bg-blue-50 rounded-xl p-4 mb-6">
-              <h3 className="font-semibold text-blue-900 mb-2">What to try:</h3>
-              <ul className="text-sm text-blue-700 space-y-1">
+              <h3 className="font-semibold text-blue-600 mb-2">What to try:</h3>
+              <ul className="text-sm text-blue-600 space-y-1">
                 <li>• Request a new verification code</li>
                 <li>• Double-check you&apos;re entering the code correctly</li>
                 <li>• Check your spam folder for the email</li>

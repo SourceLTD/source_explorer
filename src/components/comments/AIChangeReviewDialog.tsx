@@ -216,7 +216,7 @@ export default function AIChangeReviewDialog({
                     </div>
                     <div>
                       <span className="text-xs text-gray-400 block mb-1">Pending:</span>
-                      <code className="block p-2 bg-blue-50 text-blue-800 rounded text-xs break-all">
+                      <code className="block p-2 bg-blue-50 text-blue-600 rounded text-xs break-all">
                         {formatValue(fc.new_value)}
                       </code>
                     </div>

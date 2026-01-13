@@ -90,10 +90,10 @@ export function HypernymEditor({
               ))}
             </div>
             <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded text-xs">
-              <p className="text-blue-900">
+              <p className="text-blue-600">
                 <strong>{selectedHyponymsToMove.size}</strong> will move with this entry
               </p>
-              <p className="text-blue-900">
+              <p className="text-blue-600">
                 <strong>{currentNode.children.length - selectedHyponymsToMove.size}</strong> will stay with old hypernym
               </p>
             </div>

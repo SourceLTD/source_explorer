@@ -85,7 +85,7 @@ export function hasLoopSyntax(template: string): boolean {
 
 /**
  * Extract collection names referenced in for loops.
- * Returns an array of collection paths like ['frame.roles', 'frame.verbs'].
+ * Returns an array of collection paths like ['frame.roles', 'frame.lexical_units'].
  */
 export function extractLoopCollections(template: string): string[] {
   const loopRegex = /\{%\s*for\s+\w+\s+in\s+([a-zA-Z0-9_.]+)\s*%\}/g;

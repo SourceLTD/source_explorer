@@ -84,7 +84,7 @@ export function BasicInfoSection({
           {editingField !== 'code' && (
             <button
               onClick={() => onStartEdit('code')}
-              className="text-xs text-blue-600 hover:text-blue-700 font-medium cursor-pointer"
+              className="text-xs text-blue-600 hover:text-blue-600 font-medium cursor-pointer"
             >
               Edit
             </button>
@@ -121,7 +121,7 @@ export function BasicInfoSection({
           {editingField !== 'src_lemmas' && (
             <button
               onClick={() => onStartEdit('src_lemmas')}
-              className="text-xs text-blue-600 hover:text-blue-700 font-medium cursor-pointer"
+              className="text-xs text-blue-600 hover:text-blue-600 font-medium cursor-pointer"
             >
               Edit
             </button>
@@ -148,7 +148,7 @@ export function BasicInfoSection({
                 return srcLemmas && srcLemmas.length > 0 ? (
                   <div className="flex flex-wrap gap-1">
                     {srcLemmas.map((lemma, idx) => (
-                      <span key={idx} className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-semibold">
+                      <span key={idx} className="px-2 py-1 bg-blue-100 text-blue-600 rounded text-xs font-semibold">
                         {lemma}
                       </span>
                     ))}
@@ -174,7 +174,7 @@ export function BasicInfoSection({
           {editingField !== 'gloss' && (
             <button
               onClick={() => onStartEdit('gloss')}
-              className="text-xs text-blue-600 hover:text-blue-700 font-medium cursor-pointer"
+              className="text-xs text-blue-600 hover:text-blue-600 font-medium cursor-pointer"
             >
               Edit
             </button>
@@ -209,7 +209,7 @@ export function BasicInfoSection({
           {editingField !== 'examples' && (
             <button
               onClick={() => onStartEdit('examples')}
-              className="text-xs text-blue-600 hover:text-blue-700 font-medium cursor-pointer"
+              className="text-xs text-blue-600 hover:text-blue-600 font-medium cursor-pointer"
             >
               Edit
             </button>
@@ -263,7 +263,7 @@ export function BasicInfoSection({
             {editingField !== 'lexfile' && (
               <button
                 onClick={() => onStartEdit('lexfile')}
-                className="text-xs text-blue-600 hover:text-blue-700 font-medium cursor-pointer"
+                className="text-xs text-blue-600 hover:text-blue-600 font-medium cursor-pointer"
               >
                 Edit
               </button>

@@ -23,8 +23,8 @@ function getApiEndpoint(mode: Mode, id: string, forUpdate: boolean = false): str
     // Frames use a different endpoint structure
     return `/api/frames/${id}`;
   }
-  // All other modes use /api/{mode}/{id}/graph
-  const baseUrl = `/api/${mode}/${id}/graph`;
+  // Lexical units use unified endpoint
+  const baseUrl = `/api/lexical-units/${id}/graph`;
   return forUpdate ? `${baseUrl}?invalidate=true&t=${Date.now()}` : baseUrl;
 }
 

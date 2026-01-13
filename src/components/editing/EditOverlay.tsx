@@ -64,9 +64,9 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
     fetchRoleTypes();
   }, []);
 
-  // Fetch frames when overlay opens (verbs, nouns, adjectives, adverbs)
+  // Fetch frames when overlay opens (lexical units)
   useEffect(() => {
-    if (isOpen && (mode === 'verbs' || mode === 'nouns' || mode === 'adjectives' || mode === 'adverbs')) {
+    if (isOpen && (mode === 'lexical_units' || mode === 'verbs' || mode === 'nouns' || mode === 'adjectives' || mode === 'adverbs')) {
       const fetchFrames = async () => {
         try {
           const response = await fetch('/api/frames');
@@ -403,7 +403,7 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
           )}
 
           {/* Roles Section (Verbs only) */}
-          {mode === 'verbs' && 'gloss' in node && (
+          {(mode === 'verbs' || (mode === 'lexical_units' && 'pos' in node && node.pos === 'verb')) && 'gloss' in node && (
             <RolesSection
               node={node as GraphNode}
               editingField={editor.editingField}

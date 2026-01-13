@@ -2,12 +2,11 @@
 
 import { useState } from 'react'
 import { useSearchEntries } from '@/lib/hooks'
-import { POS_LABELS } from '@/lib/types'
-import type { Verb } from '@/lib/types'
+import { POS_LABELS, type PartOfSpeech, type LexicalUnit } from '@/lib/types'
 
 export default function SearchExample() {
   const [query, setQuery] = useState('')
-  const [selectedPos, setSelectedPos] = useState<string>('')
+  const [selectedPos, setSelectedPos] = useState<PartOfSpeech | ''>('')
   const { results, loading, error, search } = useSearchEntries()
 
   const handleSearch = (e: React.FormEvent) => {
@@ -37,12 +36,12 @@ export default function SearchExample() {
           />
           <select
             value={selectedPos}
-            onChange={(e) => setSelectedPos(e.target.value)}
+            onChange={(e) => setSelectedPos(e.target.value as PartOfSpeech)}
             className="px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500"
           >
             <option value="">All POS</option>
-            {Object.entries(POS_LABELS).map(([pos, label]) => (
-              <option key={pos} value={pos}>{label}</option>
+            {['verb', 'noun', 'adjective', 'adverb'].map((pos) => (
+              <option key={pos} value={pos}>{POS_LABELS[pos]}</option>
             ))}
           </select>
           <button
@@ -70,7 +69,7 @@ export default function SearchExample() {
           </div>
           
           <div className="space-y-4">
-            {results.entries.map((entry: Verb) => (
+            {results.entries.map((entry: LexicalUnit) => (
               <EntryCard key={entry.id} entry={entry} />
             ))}
           </div>
@@ -87,7 +86,7 @@ export default function SearchExample() {
   )
 }
 
-function EntryCard({ entry }: { entry: Verb }) {
+function EntryCard({ entry }: { entry: LexicalUnit }) {
   return (
     <div className="border border-gray-200 rounded-xl p-4 transition-">
       <div className="flex items-start justify-between mb-2">

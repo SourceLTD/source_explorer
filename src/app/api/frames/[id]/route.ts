@@ -12,7 +12,7 @@ export async function GET(
     const { id: idParam } = await params;
     const id = BigInt(idParam);
 
-    const frame = await prisma.frames.findUnique({
+    const frame = await (prisma.frames as any).findUnique({
       where: { id },
       include: {
         frame_roles: {
@@ -20,7 +20,7 @@ export async function GET(
             role_types: true,
           },
         },
-        verbs: {
+        lexical_units: {
           where: {
             deleted: false,
           },
@@ -29,6 +29,7 @@ export async function GET(
             code: true,
             gloss: true,
             lemmas: true,
+            pos: true,
           },
           take: 100,
         },
@@ -42,11 +43,10 @@ export async function GET(
       );
     }
 
-    // Serialize BigInt fields
     const serialized = {
       ...frame,
       id: frame.id.toString(),
-      frame_roles: frame.frame_roles.map(role => ({
+      frame_roles: (frame as any).frame_roles.map((role: any) => ({
         id: role.id.toString(),
         description: role.description,
         notes: role.notes,
@@ -61,9 +61,9 @@ export async function GET(
           explanation: role.role_types.explanation,
         },
       })),
-      verbs: frame.verbs.map(verb => ({
-        ...verb,
-        id: verb.id.toString(),
+      lexical_units: (frame as any).lexical_units.map((lu: any) => ({
+        ...lu,
+        id: lu.id.toString(),
       })),
     };
 
@@ -85,16 +85,13 @@ export async function PATCH(
     const { id: idParam } = await params;
     const body = await request.json();
 
-    // Build update object dynamically based on provided fields
     const updateData: Record<string, unknown> = {};
     
-    // Handle frame fields
     if (body.label !== undefined) updateData.label = body.label;
     if (body.definition !== undefined) updateData.definition = body.definition;
     if (body.short_definition !== undefined) updateData.short_definition = body.short_definition;
     if (body.prototypical_synset !== undefined) updateData.prototypical_synset = body.prototypical_synset;
     
-    // Handle moderation fields
     const moderationUpdates: Record<string, any> = {};
     if (body.flagged !== undefined) moderationUpdates.flagged = body.flagged;
     if (body.flaggedReason !== undefined) moderationUpdates.flaggedReason = body.flaggedReason;
@@ -109,11 +106,9 @@ export async function PATCH(
       );
     }
 
-    // Apply direct updates (flagged status) immediately
     if (Object.keys(moderationUpdates).length > 0) {
-      await updateModerationStatus([idParam], moderationUpdates, 'frames');
+      await updateModerationStatus([idParam], moderationUpdates);
       
-      // If only flagged fields were updated, return early
       if (Object.keys(updateData).length === 0) {
         return NextResponse.json({ 
           success: true, 
@@ -123,7 +118,6 @@ export async function PATCH(
     }
 
     const userId = await getCurrentUserName();
-
     const response = await stageUpdate('frame', idParam, updateData, userId);
 
     return NextResponse.json(response, {
@@ -147,9 +141,7 @@ export async function DELETE(
 ) {
   try {
     const { id: idParam } = await params;
-    
     const userId = await getCurrentUserName();
-
     const response = await stageDelete('frame', idParam, userId);
 
     return NextResponse.json(response, {

@@ -183,9 +183,9 @@ function MultiPageWarning({ totalSelected, visibleCount, itemLabel, itemLabelPlu
         <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
-        <div className="text-sm text-blue-800">
+        <div className="text-sm text-blue-600">
           <p className="font-medium">Multi-page selection detected</p>
-          <p className="text-blue-700 mt-1">
+          <p className="text-blue-600 mt-1">
             You have selected {totalSelected} {totalSelected === 1 ? itemLabel : itemLabelPlural} across multiple pages. 
             Only {visibleCount} {visibleCount === 1 ? 'is' : 'are'} visible on the current page. 
             The operation will affect all {totalSelected} selected {totalSelected === 1 ? itemLabel : itemLabelPlural}.
@@ -325,9 +325,9 @@ export function FrameChangeModal({
               <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <div className="text-sm text-blue-800">
+              <div className="text-sm text-blue-600">
                 <p className="font-medium">Multi-page selection</p>
-                <p className="text-blue-700 mt-1">
+                <p className="text-blue-600 mt-1">
                   You selected {selectedCount} verbs across multiple pages. 
                   The breakdown below shows only the {selectedEntriesOnCurrentPage.length} verbs on this page. 
                   All {selectedCount} verbs will be updated.
@@ -339,10 +339,10 @@ export function FrameChangeModal({
 
         {frameSummary.length > 0 && (
           <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl">
-            <h4 className="text-xs font-semibold text-blue-900 uppercase tracking-wide mb-2">
+            <h4 className="text-xs font-semibold text-blue-600 uppercase tracking-wide mb-2">
               Current Frame Breakdown
             </h4>
-            <ul className="space-y-1 text-sm text-blue-900">
+            <ul className="space-y-1 text-sm text-blue-600">
               {frameSummary.map(({ label, count }) => (
                 <li key={`${label}-${count}`} className="flex justify-between">
                   <span>{label}</span>
@@ -368,24 +368,11 @@ export function FrameChangeModal({
             />
           </div>
 
-          {frameOptionsLoading ? (
-            <LoadingSpinner size="sm" label="Loading frames..." className="!flex-row !gap-2 !py-2" />
-          ) : frameOptionsError ? (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700 space-y-2">
-              <p>{frameOptionsError}</p>
-              <button
-                type="button"
-                onClick={onRetryLoad}
-                className="inline-flex items-center gap-1 px-3 py-1 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded cursor-pointer"
-              >
-                Retry
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <label htmlFor="frame-select" className="block text-sm font-medium text-gray-700">
-                New frame
-              </label>
+          <div className="space-y-2">
+            <label htmlFor="frame-select" className="block text-sm font-medium text-gray-700">
+              New frame
+            </label>
+            <div className="relative">
               <select
                 id="frame-select"
                 value={selectedFrameValue}
@@ -393,7 +380,8 @@ export function FrameChangeModal({
                   onClearError();
                   onFrameValueChange(e.target.value);
                 }}
-                className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-gray-900"
+                disabled={frameOptionsLoading}
+                className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-gray-900 disabled:bg-gray-50"
               >
                 <option value="">Select a new frame…</option>
                 <option value="__CLEAR__">No frame (clear existing frame)</option>
@@ -403,11 +391,32 @@ export function FrameChangeModal({
                   </option>
                 ))}
               </select>
+              {frameOptionsLoading && (
+                <div className="absolute inset-0 flex items-center justify-center bg-gray-50/50 rounded-xl">
+                  <LoadingSpinner size="sm" noPadding />
+                </div>
+              )}
+            </div>
+            
+            {frameOptionsError && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700 space-y-2">
+                <p>{frameOptionsError}</p>
+                <button
+                  type="button"
+                  onClick={onRetryLoad}
+                  className="inline-flex items-center gap-1 px-3 py-1 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded cursor-pointer"
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+            
+            {!frameOptionsError && (
               <p className="text-xs text-gray-500">
                 Selecting &quot;No frame&quot; will remove the frame assignment from all selected entries.
               </p>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </Modal>

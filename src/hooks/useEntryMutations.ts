@@ -2,13 +2,8 @@ import { useCallback } from 'react';
 import { Mode, EditableRole, EditableRoleGroup, EditableFrameRole } from '@/components/editing/types';
 
 function getApiPrefix(mode: Mode): string {
-  switch (mode) {
-    case 'verbs': return '/api/verbs';
-    case 'nouns': return '/api/nouns';
-    case 'adjectives': return '/api/adjectives';
-    case 'adverbs': return '/api/adverbs';
-    case 'frames': return '/api/frames';
-  }
+  if (mode === 'frames') return '/api/frames';
+  return '/api/lexical-units';
 }
 
 export function useEntryMutations(mode: Mode) {

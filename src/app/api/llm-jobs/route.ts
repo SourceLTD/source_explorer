@@ -4,7 +4,6 @@ import type { CreateLLMJobParams } from '@/lib/llm/types';
 import { handleDatabaseError } from '@/lib/db-utils';
 
 // Generous timeout for job creation with large batches
-// Creating a job can involve fetching thousands of entries and rendering prompts
 export const maxDuration = 60;
 
 export async function GET(request: NextRequest) {
@@ -12,7 +11,7 @@ export async function GET(request: NextRequest) {
   const includeCompleted = searchParams.get('includeCompleted') === 'true';
   const refresh = searchParams.get('refresh');
   const limitParam = searchParams.get('limit');
-  const entityType = searchParams.get('entityType') as 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames' | null;
+  const entityType = searchParams.get('entityType') as any;
   const limit = limitParam ? Math.min(Math.max(parseInt(limitParam, 10), 1), 50) : undefined;
 
   try {
@@ -83,4 +82,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

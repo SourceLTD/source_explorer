@@ -33,10 +33,10 @@
  * ```typescript
  * import { withPendingChanges } from '@/lib/version-control';
  * 
- * const verbs = await prisma.verbs.findMany({ ... });
- * const verbsWithPending = await withPendingChanges(
- *   verbs,
- *   'verb',
+ * const lus = await prisma.lexical_units.findMany({ ... });
+ * const lusWithPending = await withPendingChanges(
+ *   lus,
+ *   'lexical_unit',
  *   (v) => v.id
  * );
  * ```
@@ -155,7 +155,6 @@ export {
   stageUpdate,
   stageDelete,
   stageModerationUpdates,
-  stageRolesUpdate,
   stageFrameRolesUpdate,
 } from './stage';
 

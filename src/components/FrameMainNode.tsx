@@ -350,76 +350,81 @@ export default function FrameMainNode({
       </g>
 
       {/* Verbs Section */}
-      {node.verbs && node.verbs.length > 0 && (
-        <g>
-          <foreignObject
-            x={centerX + 12}
-            y={currentY}
-            width={nodeWidth - 24}
-            height={20}
-          >
-            <div 
-              style={{
-                fontSize: '13px',
-                fontFamily: 'Arial',
-                color: 'white',
-                fontWeight: 'bold',
-                padding: '2px 6px',
-                backgroundColor: 'rgba(0, 0, 0, 0.2)',
-                borderRadius: '3px 3px 0 0',
-                cursor: 'pointer',
-                userSelect: 'none',
-              }}
-              onClick={() => setVerbsExpanded(!verbsExpanded)}
-            >
-              {verbsExpanded ? '▼' : '▶'} Verbs ({node.verbs.length})
-            </div>
-          </foreignObject>
-          
-          {verbsExpanded && (
+      {(() => {
+        const verbs = node.lexical_units?.filter(lu => lu.pos === 'verb') || [];
+        if (verbs.length === 0) return null;
+
+        return (
+          <g>
             <foreignObject
               x={centerX + 12}
-              y={currentY + 20}
+              y={currentY}
               width={nodeWidth - 24}
-              height={verbsHeight - 20}
+              height={20}
             >
-              <div style={{ 
-                fontSize: '12px', 
-                color: 'white',
-                padding: '4px 0',
-              }}>
-                {node.verbs.slice(0, 10).map((verb) => (
-                  <div 
-                    key={verb.id} 
-                    style={{ 
-                      padding: '4px 8px', 
-                      background: 'rgba(59, 130, 246, 0.3)',
-                      borderRadius: '4px',
-                      marginBottom: '4px',
-                      cursor: 'pointer',
-                    }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onVerbClick(verb.id);
-                    }}
-                  >
-                    <strong style={{ color: '#bfdbfe' }}>{verb.code || verb.id}</strong>
-                    <span style={{ opacity: 0.8, marginLeft: '8px' }}>
-                      {verb.lemmas?.slice(0, 3).join(', ')}
-                    </span>
-                  </div>
-                ))}
-                {node.verbs.length > 10 && (
-                  <div style={{ opacity: 0.7, padding: '4px 8px', fontSize: '11px' }}>
-                    + {node.verbs.length - 10} more verbs
-                  </div>
-                )}
+              <div 
+                style={{
+                  fontSize: '13px',
+                  fontFamily: 'Arial',
+                  color: 'white',
+                  fontWeight: 'bold',
+                  padding: '2px 6px',
+                  backgroundColor: 'rgba(0, 0, 0, 0.2)',
+                  borderRadius: '3px 3px 0 0',
+                  cursor: 'pointer',
+                  userSelect: 'none',
+                }}
+                onClick={() => setVerbsExpanded(!verbsExpanded)}
+              >
+                {verbsExpanded ? '▼' : '▶'} Verbs ({verbs.length})
               </div>
             </foreignObject>
-          )}
-          {(() => { currentY += verbsHeight + 4; return null; })()}
-        </g>
-      )}
+            
+            {verbsExpanded && (
+              <foreignObject
+                x={centerX + 12}
+                y={currentY + 20}
+                width={nodeWidth - 24}
+                height={verbsHeight - 20}
+              >
+                <div style={{ 
+                  fontSize: '12px', 
+                  color: 'white',
+                  padding: '4px 0',
+                }}>
+                  {verbs.slice(0, 10).map((verb) => (
+                    <div 
+                      key={verb.id} 
+                      style={{ 
+                        padding: '4px 8px', 
+                        background: 'rgba(59, 130, 246, 0.3)',
+                        borderRadius: '4px',
+                        marginBottom: '4px',
+                        cursor: 'pointer',
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onVerbClick(verb.id);
+                      }}
+                    >
+                      <strong style={{ color: '#bfdbfe' }}>{verb.code || verb.id}</strong>
+                      <span style={{ opacity: 0.8, marginLeft: '8px' }}>
+                        {verb.lemmas?.slice(0, 3).join(', ')}
+                      </span>
+                    </div>
+                  ))}
+                  {verbs.length > 10 && (
+                    <div style={{ opacity: 0.7, padding: '4px 8px', fontSize: '11px' }}>
+                      + {verbs.length - 10} more verbs
+                    </div>
+                  )}
+                </div>
+              </foreignObject>
+            )}
+            {(() => { currentY += verbsHeight + 4; return null; })()}
+          </g>
+        );
+      })()}
 
       {/* Relations Section */}
       {node.relations && node.relations.length > 0 && (
@@ -600,12 +605,13 @@ export function calculateFrameNodeHeights(
 
   // Verbs section
   let verbsHeight = 0;
-  if (node.verbs && node.verbs.length > 0) {
+  const verbs = node.lexical_units?.filter(lu => lu.pos === 'verb') || [];
+  if (verbs.length > 0) {
     verbsHeight = 20; // Header
     if (verbsExpanded) {
-      const visibleVerbs = node.verbs.slice(0, 10);
+      const visibleVerbs = verbs.slice(0, 10);
       verbsHeight += visibleVerbs.length * 32 + 8;
-      if (node.verbs.length > 10) verbsHeight += 25;
+      if (verbs.length > 10) verbsHeight += 25;
     }
     height += verbsHeight + 4;
   }

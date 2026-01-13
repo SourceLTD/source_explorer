@@ -17,10 +17,10 @@ import LoadingSpinner from './LoadingSpinner';
 
 interface WordNetExplorerProps {
   initialEntryId?: string;
-  mode?: 'verbs' | 'nouns' | 'adjectives' | 'adverbs';
+  mode?: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'lexical_units';
 }
 
-export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: WordNetExplorerProps) {
+export default function WordNetExplorer({ initialEntryId, mode = 'lexical_units' }: WordNetExplorerProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [currentNode, setCurrentNode] = useState<GraphNode | null>(null);
@@ -105,10 +105,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
     setError(null);
     
     try {
-      let apiPrefix = '/api/verbs';
-      if (mode === 'nouns') apiPrefix = '/api/nouns';
-      else if (mode === 'adjectives') apiPrefix = '/api/adjectives';
-      else if (mode === 'adverbs') apiPrefix = '/api/adverbs';
+      const apiPrefix = '/api/lexical-units';
       
       const graphUrl = invalidateCache 
         ? `${apiPrefix}/${entryId}/graph?invalidate=true&t=${Date.now()}`
@@ -122,15 +119,12 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
         ? `${apiPrefix}/${entryId}/recipes?t=${Date.now()}`
         : `${apiPrefix}/${entryId}/recipes`;
         
-      // Only fetch recipes for verbs
+      // Fetch graph, breadcrumbs and recipes (recipes currently only for verbs)
       const fetchPromises = [
         fetch(graphUrl, invalidateCache ? { cache: 'no-store' } : {}),
-        fetch(breadcrumbUrl, invalidateCache ? { cache: 'no-store' } : {})
+        fetch(breadcrumbUrl, invalidateCache ? { cache: 'no-store' } : {}),
+        fetch(recipesUrl, invalidateCache ? { cache: 'no-store' } : {})
       ];
-      
-      if (mode === 'verbs') {
-        fetchPromises.push(fetch(recipesUrl, invalidateCache ? { cache: 'no-store' } : {}));
-      }
       
       const responses = await Promise.all(fetchPromises);
       const [graphResponse, breadcrumbResponse, recipesResponse] = responses;
@@ -142,19 +136,13 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
       const graphNode: GraphNode = await graphResponse.json();
       setCurrentNode(graphNode);
 
-      // Handle recipes (only for verbs)
-      if (mode === 'verbs' && recipesResponse) {
-        if (recipesResponse.ok) {
-          const recipesData: EntryRecipes = await recipesResponse.json();
-          setEntryRecipes(recipesData);
-          // default selection
-          setSelectedRecipeId(recipesData.recipes.find(r => r.is_default)?.id || recipesData.recipes[0]?.id);
-        } else {
-          setEntryRecipes({ entryId, recipes: [] });
-          setSelectedRecipeId(undefined);
-        }
+      // Handle recipes (primarily for verbs)
+      if (recipesResponse && recipesResponse.ok) {
+        const recipesData: EntryRecipes = await recipesResponse.json();
+        setEntryRecipes(recipesData);
+        // default selection
+        setSelectedRecipeId(recipesData.recipes.find(r => r.is_default)?.id || recipesData.recipes[0]?.id);
       } else {
-        // Nouns and adjectives don't have recipes
         setEntryRecipes({ entryId, recipes: [] });
         setSelectedRecipeId(undefined);
       }
@@ -231,13 +219,14 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
   const handleFlagToggle = async () => {
     if (!currentNode) return;
     try {
-      const apiPath = mode === 'nouns' ? 'nouns' : mode === 'adjectives' ? 'adjectives' : 'verbs';
-      await fetch(`/api/${apiPath}/moderation`, {
-        method: 'PUT',
+      await fetch('/api/lexical-units/moderation', {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ids: [currentNode.id],
-          flagged: !currentNode.flagged,
+          updates: {
+            flagged: !currentNode.flagged,
+          },
         }),
       });
       await handleUpdate();
@@ -249,13 +238,14 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
   const handleVerifiableToggle = async () => {
     if (!currentNode) return;
     try {
-      const apiPath = mode === 'nouns' ? 'nouns' : mode === 'adjectives' ? 'adjectives' : 'verbs';
-      await fetch(`/api/${apiPath}/moderation`, {
-        method: 'PUT',
+      await fetch('/api/lexical-units/moderation', {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ids: [currentNode.id],
-          verifiable: currentNode.verifiable === false ? true : false,
+          updates: {
+            verifiable: currentNode.verifiable === false ? true : false,
+          },
         }),
       });
       await handleUpdate();
@@ -281,7 +271,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
       {/* Header */}
       <header className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-8">
             <button
               onClick={() => router.push('/')}
               className="text-xl font-bold text-gray-900 hover:text-gray-700 cursor-pointer"
@@ -289,7 +279,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
               Source Console
             </button>
             <div className="h-6 w-px bg-gray-300"></div>
-            <CategoryDropdown currentCategory={mode} currentView="graph" />
+            <CategoryDropdown currentCategory={mode === 'verbs' || mode === 'nouns' || mode === 'adjectives' || mode === 'adverbs' ? 'lexical_units' : mode} currentView="graph" />
             <p className="text-sm text-gray-600">
               Explore lexical relationships
             </p>
@@ -301,7 +291,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
                 onSelectResult={handleSearchResult}
                 onSearchChange={handleSearchQueryChange}
                 placeholder="Search graph..."
-                mode={mode}
+                mode={mode === 'verbs' || mode === 'nouns' || mode === 'adjectives' || mode === 'adverbs' ? 'lexical_units' : mode}
               />
             </div>
             <ViewToggle 
@@ -750,7 +740,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
                       <div className="flex space-x-2">
                         <button
                           onClick={() => addRole(true)}
-                          className="flex-1 px-3 py-2 border-2 border-dashed border-blue-300 rounded-xl text-blue-600 hover:border-blue-400 hover:text-blue-700 text-sm flex items-center justify-center space-x-2"
+                          className="flex-1 px-3 py-2 border-2 border-dashed border-blue-300 rounded-xl text-blue-600 hover:border-blue-400 hover:text-blue-600 text-sm flex items-center justify-center space-x-2"
                         >
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -808,7 +798,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
                                             onChange={() => toggleRoleInGroup(groupIndex, roleIdentifier)}
                                             className="rounded"
                                           />
-                                          <span className={role.main ? 'text-blue-700 font-medium' : 'text-purple-700'}>
+                                          <span className={role.main ? 'text-blue-600 font-medium' : 'text-purple-700'}>
                                             {role.roleType || '(no type)'}
                                           </span>
                                           <span className="text-gray-600 truncate">
@@ -879,7 +869,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
                                 {/* Render ungrouped roles */}
                                 {ungroupedRoles.map((role, index) => (
                                   <div key={`role-${index}`} className="text-sm">
-                                    <span className={`font-medium ${role.main ? 'text-blue-800' : 'text-purple-800'}`}>
+                                    <span className={`font-medium ${role.main ? 'text-blue-600' : 'text-purple-800'}`}>
                                       {role.role_type.label}:
                                     </span>{' '}
                                     <span className="text-gray-900">{role.description || 'No description'}</span>
@@ -908,7 +898,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
                                             <span className="mx-2 text-sm font-bold text-gray-700">OR</span>
                                           )}
                                           <div className="inline-block text-sm">
-                                            <span className={`font-medium ${role.main ? 'text-blue-800' : 'text-purple-800'}`}>
+                                            <span className={`font-medium ${role.main ? 'text-blue-600' : 'text-purple-800'}`}>
                                               {role.role_type.label}:
                                             </span>{' '}
                                             <span className="text-gray-900">{role.description || 'No description'}</span>
@@ -1206,6 +1196,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'verbs' }: Word
                     {mode === 'nouns' ? 'No noun selected' : 
                      mode === 'adjectives' ? 'No adjective selected' : 
                      mode === 'adverbs' ? 'No adverb selected' : 
+                     mode === 'lexical_units' ? 'No entry selected' :
                      'No verb selected'}
                   </p>
                   <p className="text-sm mt-2">Search for an entry to view its graph</p>

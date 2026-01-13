@@ -52,7 +52,7 @@ export function FrameRolesSection({
           {editingField !== 'frame_roles' && (
             <button
               onClick={() => onStartEdit('frame_roles')}
-              className="text-xs text-blue-600 hover:text-blue-700 font-medium cursor-pointer"
+              className="text-xs text-blue-600 hover:text-blue-600 font-medium cursor-pointer"
             >
               Edit
             </button>
@@ -75,7 +75,7 @@ export function FrameRolesSection({
               <div className="space-y-2">
                 {sortRolesByPrecedence(frame.frame_roles).map((role, index) => (
                   <div key={index} className="text-sm">
-                    <span className={`font-medium ${role.main ? 'text-blue-800' : 'text-purple-800'}`}>
+                    <span className={`font-medium ${role.main ? 'text-blue-600' : 'text-purple-800'}`}>
                       {role.role_type.label}:
                     </span>{' '}
                     <span className="text-gray-900">{role.description || 'No description'}</span>

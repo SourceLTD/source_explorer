@@ -68,7 +68,7 @@ export function FramePropertiesSection({
           {editingField !== 'label' && (
             <button
               onClick={() => onStartEdit('label')}
-              className="text-xs text-blue-600 hover:text-blue-700 font-medium cursor-pointer"
+              className="text-xs text-blue-600 hover:text-blue-600 font-medium cursor-pointer"
             >
               Edit
             </button>
@@ -119,7 +119,7 @@ export function FramePropertiesSection({
           {editingField !== 'definition' && (
             <button
               onClick={() => onStartEdit('definition')}
-              className="text-xs text-blue-600 hover:text-blue-700 font-medium cursor-pointer"
+              className="text-xs text-blue-600 hover:text-blue-600 font-medium cursor-pointer"
             >
               Edit
             </button>
@@ -170,7 +170,7 @@ export function FramePropertiesSection({
           {editingField !== 'short_definition' && (
             <button
               onClick={() => onStartEdit('short_definition')}
-              className="text-xs text-blue-600 hover:text-blue-700 font-medium cursor-pointer"
+              className="text-xs text-blue-600 hover:text-blue-600 font-medium cursor-pointer"
             >
               Edit
             </button>
@@ -221,7 +221,7 @@ export function FramePropertiesSection({
           {editingField !== 'prototypical_synset' && (
             <button
               onClick={() => onStartEdit('prototypical_synset')}
-              className="text-xs text-blue-600 hover:text-blue-700 font-medium cursor-pointer"
+              className="text-xs text-blue-600 hover:text-blue-600 font-medium cursor-pointer"
             >
               Edit
             </button>

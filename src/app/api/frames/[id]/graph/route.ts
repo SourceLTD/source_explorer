@@ -21,7 +21,7 @@ export async function GET(
             id: 'asc',
           },
         },
-        verbs: {
+        lexical_units: {
           where: {
             deleted: false,
           },
@@ -33,6 +33,7 @@ export async function GET(
             examples: true,
             flagged: true,
             flagged_reason: true,
+            pos: true,
           },
           take: 100,
         },
@@ -68,7 +69,6 @@ export async function GET(
       );
     }
 
-    // Build graph node structure
     const graphNode = {
       id: frame.id.toString(),
       numericId: frame.id.toString(),
@@ -89,7 +89,18 @@ export async function GET(
         examples: role.examples,
         label: role.label,
       })),
-      verbs: frame.verbs.map(verb => ({
+      lexical_units: frame.lexical_units.map(lu => ({
+        id: lu.id.toString(),
+        code: lu.code,
+        gloss: lu.gloss,
+        lemmas: lu.lemmas,
+        examples: lu.examples,
+        flagged: lu.flagged,
+        flagged_reason: lu.flagged_reason,
+        pos: lu.pos,
+      })),
+      // Legacy verbs alias
+      verbs: frame.lexical_units.filter(lu => lu.pos === 'verb').map(verb => ({
         id: verb.id.toString(),
         code: verb.code,
         gloss: verb.gloss,
@@ -120,7 +131,6 @@ export async function GET(
       ],
     };
 
-    // Apply pending changes to merge pending values for preview
     const { entity: graphNodeWithPending, pending: pendingInfo } = await applyPendingToEntity(
       graphNode,
       'frame',
@@ -139,4 +149,3 @@ export async function GET(
     );
   }
 }
-
