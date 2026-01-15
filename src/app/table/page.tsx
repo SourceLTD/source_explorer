@@ -34,9 +34,14 @@ function TableModeContent() {
   );
 
   useEffect(() => {
+    const search = searchParams?.get('search');
+    if (search !== null) {
+      setSearchQuery(search);
+      return;
+    }
     const flaggedByJobIdParam = searchParams?.get('flaggedByJobId');
     if (!flaggedByJobIdParam) return;
-    setSearchQuery(prev => (prev === '' ? prev : ''));
+    setSearchQuery('');
   }, [searchParams]);
 
   return (

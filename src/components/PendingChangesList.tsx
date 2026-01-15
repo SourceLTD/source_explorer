@@ -20,6 +20,7 @@ import { Modal, EmptyState, ConflictDialog } from './ui';
 import type { ConflictError } from './ui';
 import { useTableSelection } from '@/hooks/useTableSelection';
 import { refreshPendingChangesCount } from '@/hooks/usePendingChangesCount';
+import ContextSection from '@/components/pending/ContextSection';
 
 // --- Types ---
 
@@ -257,6 +258,7 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
   const [unreadChangesetIds, setUnreadChangesetIds] = useState<Set<string>>(new Set());
   const [unreadKey, setUnreadKey] = useState(0);
   const [selectedDetail, setSelectedDetail] = useState<FlatChangeset | null>(null);
+  const [detailTab, setDetailTab] = useState<'review' | 'discussion'>('review');
   const [filter, setFilter] = useState<PendingChangesFilter>(defaultFilter);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [jobSearchQuery, setJobSearchQuery] = useState('');
@@ -361,6 +363,7 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
   useEffect(() => {
     if (selectedDetail) {
       setDetailFieldChanges(selectedDetail.field_changes);
+      setDetailTab('review');
     } else {
       setDetailFieldChanges([]);
     }
@@ -1041,7 +1044,7 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
               </h3>
             </div>
           }
-          maxWidth="lg"
+          maxWidth="wide"
           footer={
             <div className="flex items-center justify-between">
               <span className="text-xs text-gray-400">
@@ -1078,180 +1081,242 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
           }
         >
           <div className="px-5 py-4">
-            {/* Handle delete operation */}
-            {selectedDetail.operation === 'delete' && (() => {
-              const snapshot = selectedDetail.before_snapshot;
-              return (
-                <div className="space-y-3">
-                  <div className="text-sm text-red-600 font-semibold">This entity will be permanently deleted</div>
-                  {snapshot && (
-                    <div className="space-y-2 text-sm">
-                      {Object.entries(snapshot)
-                        .filter(([key]) => !['id', 'created_at', 'updated_at', 'version', 'deleted'].includes(key))
-                        .map(([key, value]) => (
-                          <div key={key} className="flex items-baseline gap-3">
-                            <span className="font-mono text-gray-500 w-28 flex-shrink-0 truncate">{key}</span>
-                            <span className="text-gray-600 break-all">{formatValue(value)}</span>
-                          </div>
-                        ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
-            
-            {/* Handle create operation */}
-            {selectedDetail.operation === 'create' && (() => {
-              const snapshot = selectedDetail.after_snapshot;
-              return (
-                <div className="space-y-3">
-                  <div className="text-sm text-green-600 font-semibold">New entity will be created</div>
-                  {snapshot && (
-                    <div className="space-y-2 text-sm">
-                      {Object.entries(snapshot)
-                        .filter(([key]) => !['id', 'created_at', 'updated_at', 'version', 'deleted'].includes(key))
-                        .map(([key, value]) => (
-                          <div key={key} className="flex items-baseline gap-3">
-                            <span className="font-mono text-gray-500 w-28 flex-shrink-0 truncate">{key}</span>
-                            <span className="text-gray-900 break-all">{formatValue(value)}</span>
-                          </div>
-                        ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
-            
-            {/* Handle update operation with field changes */}
-            {selectedDetail.operation === 'update' && (
+            {/* Tabs */}
+            <div className="mb-4 border-b border-gray-200">
+              <nav className="-mb-px flex items-center gap-6">
+                <button
+                  type="button"
+                  onClick={() => setDetailTab('review')}
+                  className={`py-2 text-sm font-medium border-b-2 transition-colors cursor-pointer ${
+                    detailTab === 'review'
+                      ? 'border-blue-600 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  Review
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDetailTab('discussion')}
+                  className={`py-2 text-sm font-medium border-b-2 transition-colors cursor-pointer ${
+                    detailTab === 'discussion'
+                      ? 'border-blue-600 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  Discussion
+                </button>
+              </nav>
+            </div>
+
+            {detailTab === 'discussion' ? (
               <div className="space-y-3">
-                {(() => {
-                  const frameRoleGroups = new Map<string, FieldChange[]>();
-                  const otherChanges: FieldChange[] = [];
+                <div className="flex items-center justify-between">
+                  <div className="text-sm font-semibold text-gray-900">Discussion</div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedDetail(null);
+                      setExpandedComments(selectedDetail.id);
+                    }}
+                    className="text-sm text-blue-600 hover:text-blue-700 font-medium cursor-pointer"
+                  >
+                    Open pop-out discussion
+                  </button>
+                </div>
+                <ChangeCommentsBoard changesetId={selectedDetail.id} maxHeight={520} />
+              </div>
+            ) : (
+              <div className="space-y-6">
+                <ContextSection
+                  entityType={selectedDetail.entity_type}
+                  operation={selectedDetail.operation}
+                  entityId={selectedDetail.entity_id}
+                  beforeSnapshot={selectedDetail.before_snapshot}
+                  afterSnapshot={selectedDetail.after_snapshot}
+                  fieldChanges={detailFieldChanges}
+                />
 
-                  for (const fc of detailFieldChanges) {
-                    const parsed = parseFrameRolesFieldName(fc.field_name);
-                    if (parsed) {
-                      if (!frameRoleGroups.has(parsed.roleType)) frameRoleGroups.set(parsed.roleType, []);
-                      frameRoleGroups.get(parsed.roleType)!.push(fc);
-                    } else {
-                      otherChanges.push(fc);
-                    }
-                  }
+                <div className="space-y-3">
+                  <div className="text-sm font-semibold text-gray-900">Changes</div>
 
-                  const roleFieldOrder = ['__exists', 'label', 'description', 'notes', 'main', 'examples'];
-                  const sortRoleFieldChanges = (a: FieldChange, b: FieldChange) => {
-                    const aParsed = parseFrameRolesFieldName(a.field_name);
-                    const bParsed = parseFrameRolesFieldName(b.field_name);
-                    const aField = aParsed?.field ?? '';
-                    const bField = bParsed?.field ?? '';
-                    const aIdx = roleFieldOrder.indexOf(aField);
-                    const bIdx = roleFieldOrder.indexOf(bField);
-                    return (aIdx === -1 ? 999 : aIdx) - (bIdx === -1 ? 999 : bIdx);
-                  };
+                  {/* Handle delete operation */}
+                  {selectedDetail.operation === 'delete' && (() => {
+                    const snapshot = selectedDetail.before_snapshot;
+                    return (
+                      <div className="space-y-3">
+                        <div className="text-sm text-red-600 font-semibold">This entity will be permanently deleted</div>
+                        {snapshot && (
+                          <div className="space-y-2 text-sm">
+                            {Object.entries(snapshot)
+                              .filter(([key]) => !['id', 'created_at', 'updated_at', 'version', 'deleted'].includes(key))
+                              .map(([key, value]) => (
+                                <div key={key} className="flex items-baseline gap-3">
+                                  <span className="font-mono text-gray-500 w-28 flex-shrink-0 truncate">{key}</span>
+                                  <span className="text-gray-600 break-all">{formatValue(value)}</span>
+                                </div>
+                              ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                  
+                  {/* Handle create operation */}
+                  {selectedDetail.operation === 'create' && (() => {
+                    const snapshot = selectedDetail.after_snapshot;
+                    return (
+                      <div className="space-y-3">
+                        <div className="text-sm text-green-600 font-semibold">New entity will be created</div>
+                        {snapshot && (
+                          <div className="space-y-2 text-sm">
+                            {Object.entries(snapshot)
+                              .filter(([key]) => !['id', 'created_at', 'updated_at', 'version', 'deleted'].includes(key))
+                              .map(([key, value]) => (
+                                <div key={key} className="flex items-baseline gap-3">
+                                  <span className="font-mono text-gray-500 w-28 flex-shrink-0 truncate">{key}</span>
+                                  <span className="text-gray-900 break-all">{formatValue(value)}</span>
+                                </div>
+                              ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                  
+                  {/* Handle update operation with field changes */}
+                  {selectedDetail.operation === 'update' && (
+                    <div className="space-y-3">
+                      {(() => {
+                        const frameRoleGroups = new Map<string, FieldChange[]>();
+                        const otherChanges: FieldChange[] = [];
 
-                  const renderFieldChangeCard = (fc: FieldChange, displayName: string) => (
-                    <div 
-                      key={fc.id} 
-                      className={`p-3 rounded-lg border ${
-                        fc.status === 'approved' 
-                          ? 'bg-green-50 border-green-200' 
-                          : fc.status === 'rejected' 
-                          ? 'bg-red-50 border-red-200' 
-                          : 'bg-gray-50 border-gray-200'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="font-mono text-blue-600 font-medium text-sm">{displayName}</span>
-                        <div className="flex items-center gap-2">
-                          {fc.status !== 'pending' && (
-                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                        for (const fc of detailFieldChanges) {
+                          const parsed = parseFrameRolesFieldName(fc.field_name);
+                          if (parsed) {
+                            if (!frameRoleGroups.has(parsed.roleType)) frameRoleGroups.set(parsed.roleType, []);
+                            frameRoleGroups.get(parsed.roleType)!.push(fc);
+                          } else {
+                            otherChanges.push(fc);
+                          }
+                        }
+
+                        const roleFieldOrder = ['__exists', 'label', 'description', 'notes', 'main', 'examples'];
+                        const sortRoleFieldChanges = (a: FieldChange, b: FieldChange) => {
+                          const aParsed = parseFrameRolesFieldName(a.field_name);
+                          const bParsed = parseFrameRolesFieldName(b.field_name);
+                          const aField = aParsed?.field ?? '';
+                          const bField = bParsed?.field ?? '';
+                          const aIdx = roleFieldOrder.indexOf(aField);
+                          const bIdx = roleFieldOrder.indexOf(bField);
+                          return (aIdx === -1 ? 999 : aIdx) - (bIdx === -1 ? 999 : bIdx);
+                        };
+
+                        const renderFieldChangeCard = (fc: FieldChange, displayName: string) => (
+                          <div 
+                            key={fc.id} 
+                            className={`p-3 rounded-lg border ${
                               fc.status === 'approved' 
-                                ? 'bg-green-100 text-green-700' 
-                                : 'bg-red-100 text-red-700'
-                            }`}>
-                              {fc.status}
-                            </span>
-                          )}
-                          <button
-                            onClick={() => handleFieldChangeStatus(fc.id, 'approved')}
-                            disabled={isUpdatingField === fc.id || fc.status === 'approved'}
-                            className={`p-1.5 rounded-lg transition-colors ${
-                              fc.status === 'approved'
-                                ? 'bg-green-200 text-green-700 cursor-default'
-                                : 'text-green-600 hover:bg-green-100 disabled:opacity-50'
+                                ? 'bg-green-50 border-green-200' 
+                                : fc.status === 'rejected' 
+                                ? 'bg-red-50 border-red-200' 
+                                : 'bg-gray-50 border-gray-200'
                             }`}
-                            title="Approve this change"
                           >
-                            <CheckIcon className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleFieldChangeStatus(fc.id, 'rejected')}
-                            disabled={isUpdatingField === fc.id || fc.status === 'rejected'}
-                            className={`p-1.5 rounded-lg transition-colors ${
-                              fc.status === 'rejected'
-                                ? 'bg-red-200 text-red-700 cursor-default'
-                                : 'text-red-600 hover:bg-red-100 disabled:opacity-50'
-                            }`}
-                            title="Reject this change"
-                          >
-                            <XMarkIcon className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                      <div className="flex items-start gap-3 text-sm">
-                        <div className="flex-1 min-w-0">
-                          <span className="text-xs text-gray-500 block mb-1">Current:</span>
-                          <span className="text-gray-500 line-through break-all">{formatFieldChangeValue(fc, 'old')}</span>
-                        </div>
-                        <span className="text-gray-300 flex-shrink-0 mt-5">→</span>
-                        <div className="flex-1 min-w-0">
-                          <span className="text-xs text-gray-500 block mb-1">New:</span>
-                          <span className="text-gray-900 break-all">{formatFieldChangeValue(fc, 'new')}</span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-
-                  return (
-                    <>
-                      {otherChanges.map(fc => renderFieldChangeCard(fc, formatFieldName(fc.field_name)))}
-                      {Array.from(frameRoleGroups.entries())
-                        .sort(([a], [b]) => a.localeCompare(b))
-                        .map(([roleType, changes]) => (
-                          <div key={roleType} className="p-3 rounded-lg border border-gray-200 bg-white">
-                            <div className="mb-2 text-xs font-semibold text-gray-700">frame_roles ▸ {roleType}</div>
-                            <div className="space-y-3">
-                              {changes
-                                .slice()
-                                .sort(sortRoleFieldChanges)
-                                .map(fc => renderFieldChangeCard(fc, formatFieldName(fc.field_name, { short: true })))}
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="font-mono text-blue-600 font-medium text-sm">{displayName}</span>
+                              <div className="flex items-center gap-2">
+                                {fc.status !== 'pending' && (
+                                  <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                    fc.status === 'approved' 
+                                      ? 'bg-green-100 text-green-700' 
+                                      : 'bg-red-100 text-red-700'
+                                  }`}>
+                                    {fc.status}
+                                  </span>
+                                )}
+                                <button
+                                  onClick={() => handleFieldChangeStatus(fc.id, 'approved')}
+                                  disabled={isUpdatingField === fc.id || fc.status === 'approved'}
+                                  className={`p-1.5 rounded-lg transition-colors ${
+                                    fc.status === 'approved'
+                                      ? 'bg-green-200 text-green-700 cursor-default'
+                                      : 'text-green-600 hover:bg-green-100 disabled:opacity-50'
+                                  }`}
+                                  title="Approve this change"
+                                >
+                                  <CheckIcon className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => handleFieldChangeStatus(fc.id, 'rejected')}
+                                  disabled={isUpdatingField === fc.id || fc.status === 'rejected'}
+                                  className={`p-1.5 rounded-lg transition-colors ${
+                                    fc.status === 'rejected'
+                                      ? 'bg-red-200 text-red-700 cursor-default'
+                                      : 'text-red-600 hover:bg-red-100 disabled:opacity-50'
+                                  }`}
+                                  title="Reject this change"
+                                >
+                                  <XMarkIcon className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+                            <div className="flex items-start gap-3 text-sm">
+                              <div className="flex-1 min-w-0">
+                                <span className="text-xs text-gray-500 block mb-1">Current:</span>
+                                <span className="text-gray-500 line-through break-all">{formatFieldChangeValue(fc, 'old')}</span>
+                              </div>
+                              <span className="text-gray-300 flex-shrink-0 mt-5">→</span>
+                              <div className="flex-1 min-w-0">
+                                <span className="text-xs text-gray-500 block mb-1">New:</span>
+                                <span className="text-gray-900 break-all">{formatFieldChangeValue(fc, 'new')}</span>
+                              </div>
                             </div>
                           </div>
-                        ))}
-                    </>
-                  );
-                })()}
-                
-                {/* Summary of decisions */}
-                {detailFieldChanges.length > 0 && (
-                  <div className="pt-3 border-t border-gray-200 text-sm text-gray-500">
-                    {(() => {
-                      const approved = detailFieldChanges.filter(fc => fc.status === 'approved').length;
-                      const rejected = detailFieldChanges.filter(fc => fc.status === 'rejected').length;
-                      const pending = detailFieldChanges.filter(fc => fc.status === 'pending').length;
-                      return (
-                        <span>
-                          {approved > 0 && <span className="text-green-600">{approved} approved</span>}
-                          {approved > 0 && (rejected > 0 || pending > 0) && ', '}
-                          {rejected > 0 && <span className="text-red-600">{rejected} rejected</span>}
-                          {rejected > 0 && pending > 0 && ', '}
-                          {pending > 0 && <span className="text-gray-600">{pending} pending</span>}
-                        </span>
-                      );
-                    })()}
-                  </div>
-                )}
+                        );
+
+                        return (
+                          <>
+                            {otherChanges.map(fc => renderFieldChangeCard(fc, formatFieldName(fc.field_name)))}
+                            {Array.from(frameRoleGroups.entries())
+                              .sort(([a], [b]) => a.localeCompare(b))
+                              .map(([roleType, changes]) => (
+                                <div key={roleType} className="p-3 rounded-lg border border-gray-200 bg-white">
+                                  <div className="mb-2 text-xs font-semibold text-gray-700">frame_roles ▸ {roleType}</div>
+                                  <div className="space-y-3">
+                                    {changes
+                                      .slice()
+                                      .sort(sortRoleFieldChanges)
+                                      .map(fc => renderFieldChangeCard(fc, formatFieldName(fc.field_name, { short: true })))}
+                                  </div>
+                                </div>
+                              ))}
+                          </>
+                        );
+                      })()}
+                      
+                      {/* Summary of decisions */}
+                      {detailFieldChanges.length > 0 && (
+                        <div className="pt-3 border-t border-gray-200 text-sm text-gray-500">
+                          {(() => {
+                            const approved = detailFieldChanges.filter(fc => fc.status === 'approved').length;
+                            const rejected = detailFieldChanges.filter(fc => fc.status === 'rejected').length;
+                            const pending = detailFieldChanges.filter(fc => fc.status === 'pending').length;
+                            return (
+                              <span>
+                                {approved > 0 && <span className="text-green-600">{approved} approved</span>}
+                                {approved > 0 && (rejected > 0 || pending > 0) && ', '}
+                                {rejected > 0 && <span className="text-red-600">{rejected} rejected</span>}
+                                {rejected > 0 && pending > 0 && ', '}
+                                {pending > 0 && <span className="text-gray-600">{pending} pending</span>}
+                              </span>
+                            );
+                          })()}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>

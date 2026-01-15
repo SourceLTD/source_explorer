@@ -1,15 +1,24 @@
 'use client';
 
-import { useState, Suspense } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { TablePageLayout } from '@/components/TablePageLayout';
 import { useTableEditOverlay } from '@/hooks/useTableEditOverlay';
 import DataTable from '@/components/DataTable';
 
 function FramesTableModeContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [searchQuery, setSearchQuery] = useState<string>('');
   const editOverlay = useTableEditOverlay('frames');
+
+  useEffect(() => {
+    const search = searchParams?.get('search');
+    if (search !== null) {
+      setSearchQuery(search);
+    }
+  }, [searchParams]);
 
   const tabs = (
     <div className="flex items-center gap-1">

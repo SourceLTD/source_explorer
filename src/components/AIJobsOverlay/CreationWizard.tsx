@@ -7,6 +7,7 @@ import LoadingSpinner from '@/components/LoadingSpinner';
 import { ScopeSelector } from './ScopeSelector';
 import { STEPPER_STEPS, STEP_TITLES, MODEL_OPTIONS, buildPrompt, type StepperStep } from './constants';
 import { calculateCursorPosition, truncate } from './utils';
+import { ProgressBar } from './components';
 import type { UseJobCreationReturn } from './hooks/useJobCreation';
 import type { DataTableMode } from '../DataTable/types';
 
@@ -121,6 +122,7 @@ export const CreationWizard = memo(function CreationWizard({
     goToPreviousStep,
     handleValidateFilters,
     handleSubmit,
+    cancelSubmission,
   } = creation;
 
   // Ref to track the active variable menu item for scrolling into view
@@ -1041,117 +1043,136 @@ export const CreationWizard = memo(function CreationWizard({
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      {/* Progress overlay during batch preparation */}
-      {submissionProgress?.phase === 'preparing' && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-          <div className="bg-white p-6 rounded-xl max-w-md w-full mx-4">
-            <div className="text-center">
-              <div className="flex justify-center mb-4">
-                <LoadingSpinner size="page" />
+      {/* Progress view during batch preparation */}
+      {submissionProgress?.phase === 'preparing' ? (
+        <div className="flex flex-1 flex-col items-center justify-center p-12 bg-gray-50/50">
+          <div className="w-full max-w-md space-y-8 text-center">
+            <div className="space-y-4">
+              <div className="flex justify-center">
+                <div className="relative">
+                  <div className="absolute inset-0 animate-ping rounded-full bg-blue-100 opacity-75"></div>
+                  <div className="relative rounded-full bg-blue-50 p-4">
+                    <LoadingSpinner size="lg" isSpinning className="text-blue-600" />
+                  </div>
+                </div>
               </div>
-              <p className="text-lg font-semibold text-gray-900 mb-2">Preparing large job...</p>
-              <p className="text-sm text-gray-600 mb-4">
-                Processing {submissionProgress.current?.toLocaleString() || 0} / {submissionProgress.total.toLocaleString()} entries
-              </p>
-              <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
-                <div 
-                  className="bg-gradient-to-r from-blue-500 to-blue-600 h-3 rounded-full transition-all duration-300 ease-out"
-                  style={{ 
-                    width: `${submissionProgress.current && submissionProgress.total > 0 
-                      ? Math.min(100, (submissionProgress.current / submissionProgress.total) * 100) 
-                      : 0}%` 
-                  }}
-                />
+              <div>
+                <h3 className="text-xl font-bold text-gray-900">Preparing Massive Job</h3>
+                <p className="text-sm text-gray-500 mt-2">
+                  This job contains {submissionProgress.total.toLocaleString()} entries and must be prepared in batches.
+                </p>
               </div>
-              <p className="text-xs text-gray-500 mt-3">
-                Please wait while we prepare your job in batches...
-              </p>
+            </div>
+
+            <div className="rounded-2xl border border-blue-100 bg-white p-6 shadow-sm">
+              <ProgressBar
+                label="Batch Preparation Progress"
+                current={submissionProgress.current || 0}
+                total={submissionProgress.total}
+                variant="submitting"
+                helperText={`Processing batch starting at offset ${submissionProgress.current?.toLocaleString() || 0}...`}
+              />
+              
+              <div className="mt-8 flex flex-col gap-3">
+                <button
+                  onClick={cancelSubmission}
+                  className="w-full rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition-all hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-500 cursor-pointer"
+                  type="button"
+                >
+                  Cancel Submission
+                </button>
+                <p className="text-[11px] text-gray-400 italic">
+                  Stopping will cancel the job on the server.
+                </p>
+              </div>
             </div>
           </div>
         </div>
-      )}
-      
-      <div className="border-b border-gray-200 px-6 py-4">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">Create New Job</p>
-            <h3 className="text-base font-semibold text-gray-900">{STEP_TITLES[currentStep]}</h3>
-          </div>
-          <button
-            onClick={closeCreateFlow}
-            className="cursor-pointer inline-flex items-center gap-1 rounded-xl border border-gray-300 bg-white px-3 py-1 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            type="button"
-          >
-            Cancel
-          </button>
-        </div>
-        <div className="mt-4 flex items-center gap-6 text-xs font-medium">
-          {STEPPER_STEPS.map((step, index) => {
-            const completed = index < stepIndex;
-            const active = index === stepIndex;
-            return (
-              <div key={step} className="flex items-center gap-3">
-                <span
-                  className={`flex h-6 w-6 items-center justify-center rounded-full border text-[11px] ${
-                    completed
-                      ? 'border-transparent bg-gradient-to-r from-blue-500 to-blue-600 text-white'
-                      : active
-                      ? 'border-blue-500 text-blue-600'
-                      : 'border-gray-300 text-gray-400'
-                  }`}
-                >
-                  {completed ? '✓' : index + 1}
-                </span>
-                <span className={`${completed || active ? 'text-blue-600' : 'text-gray-400'}`}>
-                  {STEP_TITLES[step]}
-                </span>
-                {index < STEPPER_STEPS.length - 1 && <span className="mx-2 text-gray-300">—</span>}
+      ) : (
+        <>
+          <div className="border-b border-gray-200 px-6 py-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">Create New Job</p>
+                <h3 className="text-base font-semibold text-gray-900">{STEP_TITLES[currentStep]}</h3>
               </div>
-            );
-          })}
-        </div>
-      </div>
-      <div className="flex-1 overflow-auto px-6 py-6">{renderStepContent()}</div>
-      <div className="border-t border-gray-200 bg-gray-50 px-6 py-4">
-        <div className="flex items-center justify-between gap-3">
-          <button
-            onClick={goToPreviousStep}
-            disabled={stepIndex === 0}
-            className="cursor-pointer inline-flex items-center gap-2 rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
-            type="button"
-          >
-            Back
-          </button>
-          <div className="flex items-center gap-3">
-            {!isLastStep ? (
               <button
-                onClick={goToNextStep}
-                disabled={nextDisabled}
-                className="cursor-pointer inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60 disabled:pointer-events-none"
+                onClick={closeCreateFlow}
+                className="cursor-pointer inline-flex items-center gap-1 rounded-xl border border-gray-300 bg-white px-3 py-1 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 type="button"
               >
-                {nextButtonLabel}
+                Cancel
               </button>
-            ) : (
-              <button
-                onClick={handleSubmit}
-                disabled={isSubmitDisabled}
-                className="cursor-pointer inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60 disabled:pointer-events-none"
-                type="button"
-              >
-                {submissionLoading ? (
-                  <>
-                    <LoadingSpinner size="sm" className="shrink-0 text-white" noPadding />
-                    Submitting...
-                  </>
-                ) : (
-                  'Submit Job'
-                )}
-              </button>
-            )}
+            </div>
+            <div className="mt-4 flex items-center gap-6 text-xs font-medium">
+              {STEPPER_STEPS.map((step, index) => {
+                const completed = index < stepIndex;
+                const active = index === stepIndex;
+                return (
+                  <div key={step} className="flex items-center gap-3">
+                    <span
+                      className={`flex h-6 w-6 items-center justify-center rounded-full border text-[11px] ${
+                        completed
+                          ? 'border-transparent bg-gradient-to-r from-blue-500 to-blue-600 text-white'
+                          : active
+                          ? 'border-blue-500 text-blue-600'
+                          : 'border-gray-300 text-gray-400'
+                      }`}
+                    >
+                      {completed ? '✓' : index + 1}
+                    </span>
+                    <span className={`${completed || active ? 'text-blue-600' : 'text-gray-400'}`}>
+                      {STEP_TITLES[step]}
+                    </span>
+                    {index < STEPPER_STEPS.length - 1 && <span className="mx-2 text-gray-300">—</span>}
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        </div>
-      </div>
+          <div className="flex-1 overflow-auto px-6 py-6">{renderStepContent()}</div>
+          <div className="border-t border-gray-200 bg-gray-50 px-6 py-4">
+            <div className="flex items-center justify-between gap-3">
+              <button
+                onClick={goToPreviousStep}
+                disabled={stepIndex === 0}
+                className="cursor-pointer inline-flex items-center gap-2 rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+                type="button"
+              >
+                Back
+              </button>
+              <div className="flex items-center gap-3">
+                {!isLastStep ? (
+                  <button
+                    onClick={goToNextStep}
+                    disabled={nextDisabled}
+                    className="cursor-pointer inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60 disabled:pointer-events-none"
+                    type="button"
+                  >
+                    {nextButtonLabel}
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleSubmit}
+                    disabled={isSubmitDisabled}
+                    className="cursor-pointer inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60 disabled:pointer-events-none"
+                    type="button"
+                  >
+                    {submissionLoading ? (
+                      <>
+                        <LoadingSpinner size="sm" className="shrink-0 text-white" noPadding />
+                        Submitting...
+                      </>
+                    ) : (
+                      'Submit Job'
+                    )}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 });

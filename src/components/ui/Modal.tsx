@@ -8,7 +8,7 @@ export interface ModalProps {
   onClose: () => void;
   title?: string;
   subtitle?: string;
-  maxWidth?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '4xl' | '5xl';
+  maxWidth?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '4xl' | '5xl' | 'wide';
   children: React.ReactNode;
   footer?: React.ReactNode;
   headerActions?: React.ReactNode;
@@ -32,6 +32,8 @@ const MAX_WIDTH_CLASSES: Record<string, string> = {
   '2xl': 'max-w-2xl',
   '4xl': 'max-w-4xl',
   '5xl': 'max-w-5xl',
+  // Responsive wide modal: almost full width on small screens, ~90% viewport on md+.
+  wide: 'max-w-[95vw] md:max-w-[90vw]',
 };
 
 export default function Modal({

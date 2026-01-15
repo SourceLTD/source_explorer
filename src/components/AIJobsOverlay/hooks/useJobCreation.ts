@@ -189,6 +189,7 @@ export interface UseJobCreationReturn {
   goToPreviousStep: () => void;
   handleValidateFilters: () => Promise<void>;
   handleSubmit: () => Promise<void>;
+  cancelSubmission: () => Promise<void>;
   loadJobSettings: (job: SerializedJob) => void;
   setSubmissionProgress: (progress: SubmissionProgress | null) => void;
 }
@@ -318,10 +319,34 @@ export function useJobCreation({
   const [submissionLoading, setSubmissionLoading] = useState(false);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
   const [submissionProgress, setSubmissionProgress] = useState<SubmissionProgress | null>(null);
+  const cancelSubmissionRef = useRef(false);
+  const currentJobIdRef = useRef<string | null>(null);
   
   const previewTimerRef = useRef<number | null>(null);
   
   const parsedSelectionCount = selectedIds.length;
+
+  const cancelSubmission = useCallback(async () => {
+    cancelSubmissionRef.current = true;
+    setSubmissionLoading(false);
+    setSubmissionProgress(null);
+    
+    if (currentJobIdRef.current) {
+      try {
+        await api.post(`/api/llm-jobs/${currentJobIdRef.current}/cancel`, {});
+        console.log('[useJobCreation] Cancelled current job:', currentJobIdRef.current);
+      } catch (error) {
+        console.error('[useJobCreation] Failed to cancel current job:', error);
+      }
+    }
+    
+    currentJobIdRef.current = null;
+    showGlobalAlert({
+      type: 'info',
+      title: 'Submission Cancelled',
+      message: 'Job preparation has been cancelled.',
+    });
+  }, []);
 
   // Manual ID autocomplete using the useAutocomplete hook
   const searchManualIds = useCallback(async (query: string) => {
@@ -971,6 +996,9 @@ export function useJobCreation({
     if (isSubmitDisabled) return;
     setSubmissionLoading(true);
     setSubmissionError(null);
+    cancelSubmissionRef.current = false;
+    currentJobIdRef.current = null;
+    
     try {
       const scope: JobScope = buildScope(scopeMode, mode, selectedIds, manualIdAutocomplete.text, frameIdAutocomplete.text, filterGroup, filterLimit, frameIncludeLexicalUnits, frameFlagTarget);
       
@@ -982,6 +1010,8 @@ export function useJobCreation({
         const countResult = await api.post<{ count: number }>('/api/llm-jobs/count-scope', { scope });
         totalEntries = countResult.count;
       }
+
+      if (cancelSubmissionRef.current) return;
 
       console.log(`[useJobCreation] Total entries: ${totalEntries}, Batch size: ${BATCH_SIZE}, Needs batching: ${totalEntries > BATCH_SIZE}`);
 
@@ -1026,11 +1056,19 @@ export function useJobCreation({
           ...(jobType === 'split' && { splitMinFrames, splitMaxFrames }),
         };
 
+        if (cancelSubmissionRef.current) return;
+
         console.log(`[useJobCreation] Creating job with first batch (${BATCH_SIZE} items)...`);
         job = await api.post<SerializedJob>('/api/llm-jobs', payload);
+        currentJobIdRef.current = job.id;
 
         try {
           for (let offset = BATCH_SIZE; offset < totalEntries; offset += BATCH_SIZE) {
+            if (cancelSubmissionRef.current) {
+              console.log('[useJobCreation] Cancellation detected during batch submission');
+              return;
+            }
+
             const batchScope = addOffsetAndLimitToScope(scope, offset, BATCH_SIZE);
             const remaining = totalEntries - offset;
             const batchCount = Math.min(BATCH_SIZE, remaining);
@@ -1050,21 +1088,26 @@ export function useJobCreation({
             await api.post(`/api/llm-jobs/${job.id}/append-items`, { scope: batchScope });
           }
 
+          if (cancelSubmissionRef.current) return;
+
           console.log('[useJobCreation] All batches appended successfully');
         } catch (batchError) {
           console.error('[useJobCreation] Batch append failed:', batchError);
           
-          try {
-            await api.post(`/api/llm-jobs/${job.id}/cancel`, {});
-            console.log('[useJobCreation] Incomplete job cancelled');
-          } catch (cancelError) {
-            console.error('[useJobCreation] Failed to cancel incomplete job:', cancelError);
-          }
+          if (!cancelSubmissionRef.current) {
+            try {
+              await api.post(`/api/llm-jobs/${job.id}/cancel`, {});
+              console.log('[useJobCreation] Incomplete job cancelled');
+            } catch (cancelError) {
+              console.error('[useJobCreation] Failed to cancel incomplete job:', cancelError);
+            }
 
-          throw new Error(
-            `Failed to prepare all batches: ${batchError instanceof Error ? batchError.message : 'Unknown error'}. ` +
-            `The job has been cancelled. Please try again or use a smaller batch size.`
-          );
+            throw new Error(
+              `Failed to prepare all batches: ${batchError instanceof Error ? batchError.message : 'Unknown error'}. ` +
+              `The job has been cancelled. Please try again or use a smaller batch size.`
+            );
+          }
+          return;
         }
       } else {
         const payload = {
@@ -1092,9 +1135,12 @@ export function useJobCreation({
           ...(jobType === 'split' && { splitMinFrames, splitMaxFrames }),
         };
 
+        if (cancelSubmissionRef.current) return;
         job = await api.post<SerializedJob>('/api/llm-jobs', payload);
       }
       
+      if (cancelSubmissionRef.current) return;
+
       onJobCreated(job);
       closeCreateFlow();
       
@@ -1116,6 +1162,8 @@ export function useJobCreation({
       });
       
     } catch (error) {
+      if (cancelSubmissionRef.current) return;
+
       const message = error instanceof Error ? error.message : 'Failed to submit job';
       setSubmissionError(message);
       
@@ -1135,7 +1183,10 @@ export function useJobCreation({
         });
       }
     } finally {
-      setSubmissionLoading(false);
+      if (!cancelSubmissionRef.current) {
+        setSubmissionLoading(false);
+      }
+      currentJobIdRef.current = null;
     }
   }, [isSubmitDisabled, scopeMode, mode, selectedIds, manualIdAutocomplete.text, frameIdAutocomplete.text, filterGroup, filterLimit, frameIncludeLexicalUnits, frameFlagTarget, label, userEmail, model, effectivePrompt, systemPrompt, jobType, targetFields, reallocationEntityTypes, clusterLoopListsEnabled, clusterKOverride, priority, reasoningEffort, agenticMode, onJobCreated, closeCreateFlow]);
 
@@ -1459,6 +1510,7 @@ export function useJobCreation({
     goToPreviousStep,
     handleValidateFilters,
     handleSubmit,
+    cancelSubmission,
     loadJobSettings,
     setSubmissionProgress,
   };

@@ -43,6 +43,10 @@ export class SourceClusteringError extends Error {
   }
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function getClusteringConfig(): { url: string; apiKey: string } {
   const url = process.env.CLUSTERING_API_URL;
   const apiKey = process.env.CLUSTERING_API_KEY;
@@ -60,33 +64,59 @@ export async function callSourceClustering(
 ): Promise<SourceClusteringResponse> {
   const { url, apiKey } = getClusteringConfig();
 
-  const resp = await fetch(url.endsWith('/') ? url : `${url}/`, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': apiKey,
-    },
-    body: JSON.stringify(payload),
-    // Avoid caching across requests.
-    cache: 'no-store',
-  });
+  const endpoint = url.endsWith('/') ? url : `${url}/`;
+  const maxAttempts = 3;
 
-  const text = await resp.text();
-  let body: unknown = text;
-  try {
-    body = text ? JSON.parse(text) : {};
-  } catch {
-    // leave as text
+  let lastError: unknown = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const resp = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': apiKey,
+        },
+        body: JSON.stringify(payload),
+        // Avoid caching across requests.
+        cache: 'no-store',
+      });
+
+      const text = await resp.text();
+      let body: unknown = text;
+      try {
+        body = text ? JSON.parse(text) : {};
+      } catch {
+        // leave as text
+      }
+
+      if (!resp.ok) {
+        const message =
+          typeof body === 'object' && body && 'error' in body && typeof (body as any).error === 'string'
+            ? (body as any).error
+            : `source-clustering failed: HTTP ${resp.status}`;
+
+        // Retry on transient gateway errors.
+        if ((resp.status === 429 || resp.status === 503) && attempt < maxAttempts) {
+          await sleep(250 * attempt);
+          continue;
+        }
+
+        throw new SourceClusteringError(message, resp.status, body);
+      }
+
+      return body as SourceClusteringResponse;
+    } catch (error) {
+      lastError = error;
+      // Retry on transient network errors too.
+      if (attempt < maxAttempts) {
+        await sleep(250 * attempt);
+        continue;
+      }
+      throw error;
+    }
   }
 
-  if (!resp.ok) {
-    const message =
-      typeof body === 'object' && body && 'error' in body && typeof (body as any).error === 'string'
-        ? (body as any).error
-        : `source-clustering failed: HTTP ${resp.status}`;
-    throw new SourceClusteringError(message, resp.status, body);
-  }
-
-  return body as SourceClusteringResponse;
+  throw lastError;
 }
 

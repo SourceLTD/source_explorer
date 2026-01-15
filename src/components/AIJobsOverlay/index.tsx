@@ -155,7 +155,8 @@ export function AIJobsOverlay({
   // Track submission progress for active jobs
   const { submissionProgress, setSubmissionProgress } = creation;
   useEffect(() => {
-    if (!isOpen || polling.jobs.length === 0) return;
+    // If we are currently preparing a large job, do not overwrite progress with polling results
+    if (!isOpen || polling.jobs.length === 0 || submissionProgress?.phase === 'preparing') return;
     
     const activeJob = polling.jobs.find(job => 
       (job.status === 'queued' || job.status === 'running') &&

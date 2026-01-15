@@ -699,6 +699,25 @@ async function clusterLoopList(
     }
   }
 
+  // If the service returned no usable assignments for our input IDs, treat this as a clustering failure
+  // so we fall back to the unclustered render (instead of putting everything in one giant bucket).
+  const matchedCount = ids.reduce((count, id) => (clusterById.has(id) ? count + 1 : count), 0);
+  if (matchedCount < 2) {
+    const nFound = typeof resp?.stats?.n === 'number' ? resp.stats.n : null;
+    const missingCount = Array.isArray(resp?.missing_ids) ? resp.missing_ids.length : null;
+    const resolutionHint =
+      resp?.resolution && typeof resp.resolution === 'object'
+        ? ` resolution=${JSON.stringify(resp.resolution)}`
+        : '';
+    throw new Error(
+      `Clustering returned no usable assignments for this list (matched=${matchedCount}/${ids.length}` +
+        (nFound !== null ? `, found=${nFound}` : '') +
+        (missingCount !== null ? `, missing=${missingCount}` : '') +
+        `).` +
+        resolutionHint
+    );
+  }
+
   // Assign missing/unclustered items to a final bucket after 1..k.
   const missingCluster = k; // display will be k+1
   const withCluster = items.map((item) => {

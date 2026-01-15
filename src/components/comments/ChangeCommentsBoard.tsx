@@ -40,6 +40,8 @@ export default function ChangeCommentsBoard({
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAIReviewing, setIsAIReviewing] = useState(false);
+  const [isAISubmitting, setIsAISubmitting] = useState(false);
+  const [isAIProcessing, setIsAIProcessing] = useState(false);
   const [newComment, setNewComment] = useState('');
   const [error, setError] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -82,12 +84,12 @@ export default function ChangeCommentsBoard({
     fetchComments();
   }, [fetchComments]);
   
-  // Scroll to bottom when new comments are added
+  // Scroll to bottom when new comments are added or AI starts processing
   useEffect(() => {
     if (listRef.current) {
       listRef.current.scrollTop = listRef.current.scrollHeight;
     }
-  }, [comments]);
+  }, [comments, isAIProcessing]);
   
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -135,6 +137,7 @@ export default function ChangeCommentsBoard({
     if (!newComment.trim() || isAIReviewing || !changesetId) return;
     
     setIsAIReviewing(true);
+    setIsAISubmitting(true);
     setError(null);
     
     try {
@@ -179,6 +182,10 @@ export default function ChangeCommentsBoard({
       
       const jobData = await createJobResponse.json();
       const jobId = jobData.job_id;
+
+      // Submission complete, now processing/polling
+      setIsAISubmitting(false);
+      setIsAIProcessing(true);
       
       // Poll for job completion
       const maxAttempts = 60; // 60 attempts * 2s = 2 minutes max
@@ -236,6 +243,8 @@ export default function ChangeCommentsBoard({
       setError(err instanceof Error ? err.message : 'AI review failed');
       console.error('Error during AI review:', err);
     } finally {
+      setIsAISubmitting(false);
+      setIsAIProcessing(false);
       setIsAIReviewing(false);
     }
   };
@@ -270,6 +279,29 @@ export default function ChangeCommentsBoard({
     }
   }, [fetchComments, onCommentsChange]);
   
+  /**
+   * Format a timestamp for display.
+   */
+  const formatTime = (isoString: string): string => {
+    const date = new Date(isoString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / (1000 * 60));
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
+    });
+  };
+
   return (
     <div className="flex flex-col bg-white rounded-lg border border-gray-200 overflow-hidden">
       {/* Header */}
@@ -310,14 +342,25 @@ export default function ChangeCommentsBoard({
         ) : (
           comments.map((comment) => (
             <div key={comment.id}>
-              {/* If this comment has an AI revision, show the inline revision card */}
+              {/* If this comment has an AI revision, show the inline revision card with participant header */}
               {comment.ai_revision ? (
-                <div className="py-3">
-                  <InlineRevisionCard
-                    revision={comment.ai_revision}
-                    onResolve={handleResolveRevision}
-                    onChangesetUpdated={onCommentsChange}
-                  />
+                <div className="py-3 flex gap-3">
+                  {/* AI Avatar */}
+                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold shadow-sm">
+                    <SparklesIcon className="w-4 h-4" />
+                  </div>
+                  
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-baseline gap-2 mb-2">
+                      <span className="font-medium text-sm text-gray-900">AI Agent</span>
+                      <span className="text-xs text-gray-400">{formatTime(comment.created_at)}</span>
+                    </div>
+                    <InlineRevisionCard
+                      revision={comment.ai_revision}
+                      onResolve={handleResolveRevision}
+                      onChangesetUpdated={onCommentsChange}
+                    />
+                  </div>
                 </div>
               ) : (
                 <div className="border-b border-gray-100 last:border-b-0">
@@ -331,6 +374,26 @@ export default function ChangeCommentsBoard({
               )}
             </div>
           ))
+        )}
+        
+        {isAIProcessing && (
+          <div className="py-3 flex gap-3 animate-pulse">
+            {/* AI Avatar */}
+            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold shadow-sm">
+              <SparklesIcon className="w-4 h-4" />
+            </div>
+            
+            <div className="flex-1 min-w-0">
+              <div className="flex items-baseline gap-2 mb-1">
+                <span className="font-medium text-sm text-gray-900">AI Agent</span>
+                <span className="text-xs text-gray-400">Responding...</span>
+              </div>
+              <div className="py-3 px-3 flex items-center gap-2 text-sm text-blue-600 bg-blue-50/30 rounded-lg border border-blue-100/50">
+                <SparklesIcon className="w-4 h-4 text-blue-400" />
+                <span>An AI agent is responding...</span>
+              </div>
+            </div>
+          </div>
         )}
       </div>
       
@@ -362,7 +425,7 @@ export default function ChangeCommentsBoard({
               className="px-3 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:brightness-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
               title="Ask AI for review assistance"
             >
-              {isAIReviewing ? (
+              {isAISubmitting ? (
                 <LoadingSpinner size="sm" noPadding className="text-white" />
               ) : (
                 <SparklesIcon className="w-4 h-4" />
