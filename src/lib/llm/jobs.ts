@@ -5,6 +5,7 @@ import {
   CancelJobResult,
   CreateLLMJobParams,
   JobDetailOptions,
+  JobEntityTypeFilter,
   JobListOptions,
   JobScope,
   LexicalUnitSummary,
@@ -15,14 +16,14 @@ import {
 } from './types';
 import { discardByLlmJob } from '@/lib/version-control';
 import { withRetry } from '@/lib/db-utils';
+import { callSourceClustering } from '@/lib/clustering/sourceClustering';
 
-import { fetchEntriesForScope } from './entries';
-import { submitJobItemBatch } from './execution';
+import { fetchUnitsForScope, countEntriesForScope } from './entries';
 
-export { fetchEntriesForScope, submitJobItemBatch };
+export { fetchUnitsForScope };
 
-// Import internal functions from execution.ts
-import { refreshJobItems as refreshJobItemsInternal } from './execution';
+// NOTE: Execution (submitting to OpenAI + applying results) is handled by `source-llm`.
+// source-explorer is responsible for job creation + UI read paths only.
 
 // ============================================================================
 // Error Class
@@ -40,6 +41,100 @@ export class LLMJobError extends Error {
 // ============================================================================
 
 const TERMINAL_ITEM_STATUSES = new Set(['succeeded', 'failed', 'skipped']);
+
+/**
+ * Enriches a list of job items with real codes and labels from the database 
+ * if they are missing or appear to be numeric IDs in the request_payload.
+ * For frames, always fetch the code since it might be incorrectly set to the label.
+ */
+async function enrichJobItemsWithDbCodes(items: any[]): Promise<void> {
+  if (items.length === 0) return;
+
+  const frameIdsToFetch = new Set<bigint>();
+  const luIdsToFetch = new Set<bigint>();
+  
+  for (const item of items) {
+    const entry = item.entry;
+    if (!entry) continue;
+
+    // For frames, always fetch since code might be incorrectly set to label
+    if (item.frame_id) {
+      frameIdsToFetch.add(BigInt(item.frame_id));
+    } else if (item.lexical_unit_id) {
+      // For lexical units, only fetch if code looks wrong
+      const looksLikeId = entry.code && /^\d+$/.test(entry.code);
+      if (!entry.code || entry.code === '' || looksLikeId) {
+        luIdsToFetch.add(BigInt(item.lexical_unit_id));
+      }
+    }
+  }
+
+  if (frameIdsToFetch.size === 0 && luIdsToFetch.size === 0) return;
+
+  const MAX_BIND_VARS = 15000;
+  
+  const fetchFrames = async () => {
+    const ids = Array.from(frameIdsToFetch);
+    const records: any[] = [];
+    for (let i = 0; i < ids.length; i += MAX_BIND_VARS) {
+      const chunk = ids.slice(i, i + MAX_BIND_VARS);
+      const chunkRecords = await prisma.frames.findMany({
+        where: { id: { in: chunk } },
+        select: { id: true, code: true, label: true }
+      });
+      records.push(...chunkRecords);
+    }
+    return records;
+  };
+
+  const fetchLUs = async () => {
+    const ids = Array.from(luIdsToFetch);
+    const records: any[] = [];
+    for (let i = 0; i < ids.length; i += MAX_BIND_VARS) {
+      const chunk = ids.slice(i, i + MAX_BIND_VARS);
+      const chunkRecords = await prisma.lexical_units.findMany({
+        where: { id: { in: chunk } },
+        select: { id: true, code: true }
+      });
+      records.push(...chunkRecords);
+    }
+    return records;
+  };
+
+  const [frameRecords, luRecords] = await Promise.all([
+    frameIdsToFetch.size > 0 ? fetchFrames() : Promise.resolve([]),
+    luIdsToFetch.size > 0 ? fetchLUs() : Promise.resolve([])
+  ]);
+
+  const frameMap = new Map(frameRecords.map(r => [r.id, r]));
+  const luMap = new Map(luRecords.map(r => [r.id, r]));
+
+  for (const item of items) {
+    const entry = item.entry;
+    if (!entry) continue;
+
+    if (item.frame_id) {
+      const frame = frameMap.get(BigInt(item.frame_id));
+      if (frame) {
+        // Always use the DB code for frames (prioritize code > label > id)
+        entry.code = frame.code ?? frame.label ?? frame.id.toString();
+        if (frame.label) entry.label = frame.label;
+      }
+    } else if (item.lexical_unit_id) {
+      const looksLikeId = entry.code && /^\d+$/.test(entry.code);
+      if (!entry.code || entry.code === '' || looksLikeId) {
+        const lu = luMap.get(BigInt(item.lexical_unit_id));
+        if (lu) {
+          entry.code = lu.code;
+        }
+      }
+    }
+  }
+}
+
+function isLexicalUnitPOS(pos: string | null): boolean {
+  return pos === 'verb' || pos === 'noun' || pos === 'adjective' || pos === 'adverb' || pos === 'lexical_units';
+}
 
 function inferTargetTypeFromJobScope(scope: JobScope | null): JobTargetType | null {
   if (!scope) return null;
@@ -118,7 +213,19 @@ async function fetchJobRecord(jobId: bigint, options: FetchOptions = {}): Promis
     return null;
   }
 
-  let items: Array<SerializedJobItem & { entry: { code: string | null; pos: JobTargetType | null; gloss?: string | null; lemmas?: string[] | null } }> = Array.isArray(job.llm_job_items)
+  let items: Array<SerializedJobItem & { 
+    entry: { 
+      code: string | null; 
+      pos: JobTargetType | null; 
+      gloss?: string | null; 
+      lemmas?: string[] | null;
+      label?: string | null;
+      isSuperFrame?: boolean | null;
+      lexical_units?: any[] | null;
+      roles?: any[] | null;
+      child_frames?: any[] | null;
+    } 
+  }> = Array.isArray(job.llm_job_items)
     ? job.llm_job_items.map((item: llm_job_items) => ({
         ...item,
         id: item.id.toString(),
@@ -132,6 +239,10 @@ async function fetchJobRecord(jobId: bigint, options: FetchOptions = {}): Promis
         entry: extractEntrySummary(item),
       }))
     : [];
+
+  if (options.includeItems && items.length > 0) {
+    await enrichJobItemsWithDbCodes(items);
+  }
 
   if (options.statusLimits) {
     const { pending, succeeded, failed } = options.statusLimits;
@@ -173,15 +284,38 @@ function extractEntrySummary(item: llm_job_items): {
   pos: JobTargetType | null;
   gloss?: string | null;
   lemmas?: string[] | null;
+  label?: string | null;
+  isSuperFrame?: boolean | null;
+  lexical_units?: any[] | null;
+  roles?: any[] | null;
+  child_frames?: any[] | null;
 } {
   const payload = (item.request_payload as Prisma.JsonObject | null) ?? {};
   const entry = (payload.entry as Prisma.JsonObject | undefined) ?? {};
+  const frameInfo = (payload.frameInfo as Prisma.JsonObject | undefined) ?? {};
+  
+  // Be extremely robust with type extraction from JSON
+  const rawCode = entry.code;
+  const rawLabel = entry.label || frameInfo.name;
+  
+  const code = rawCode !== null && rawCode !== undefined ? String(rawCode) : null;
+  const label = rawLabel !== null && rawLabel !== undefined ? String(rawLabel) : null;
+  const pos = (entry.pos as JobTargetType) ?? (item.frame_id ? 'frames' : null);
+
+  // Determine if it is a super frame
+  const isSuperFrame = (entry.isSuperFrame as boolean) ?? (item.frame_id ? (entry.child_frames && (entry.child_frames as any[]).length > 0) : false);
 
   return {
-    code: (entry.code as string) ?? null,
-    pos: (entry.pos as JobTargetType) ?? null,
+    // Always prefer code if available and not just a numeric ID fallback
+    code: (code && code.trim() !== '' && !/^\d+$/.test(code)) ? code : (label && label.trim() !== '' && !/^\d+$/.test(label)) ? label : code || label || (item.frame_id ?? item.lexical_unit_id ?? item.id).toString(),
+    pos,
     gloss: (entry.gloss as string) ?? null,
     lemmas: (entry.lemmas as string[]) ?? null,
+    label,
+    isSuperFrame,
+    lexical_units: (entry.lexical_units as any[]) ?? null,
+    roles: (entry.roles as any[]) ?? null,
+    child_frames: (entry.child_frames as any[]) ?? null,
   };
 }
 
@@ -222,6 +356,12 @@ function buildVariableMap(entry: LexicalUnitSummary): Record<string, string> {
   if (entry.pos === 'frames') {
     base.definition = entry.definition ?? '';
     base.short_definition = entry.short_definition ?? '';
+    base.super_frame_id = entry.super_frame_id ?? '';
+    base['super_frame.id'] = entry.super_frame?.id ?? '';
+    base['super_frame.code'] = entry.super_frame?.code ?? '';
+    base['super_frame.label'] = entry.super_frame?.label ?? '';
+    base['super_frame.definition'] = entry.super_frame?.definition ?? '';
+    base['super_frame.short_definition'] = entry.super_frame?.short_definition ?? '';
     base.flagged = entry.flagged ? 'true' : 'false';
     base.flagged_reason = entry.flagged_reason ?? '';
     base.verifiable = entry.verifiable ? 'true' : 'false';
@@ -274,20 +414,19 @@ function buildTemplateContext(entry: LexicalUnitSummary): Record<string, unknown
   if (entry.pos === 'frames') {
     context.definition = entry.definition ?? '';
     context.short_definition = entry.short_definition ?? '';
+    context.super_frame_id = entry.super_frame_id ?? null;
+    context.super_frame = entry.super_frame ?? null;
     context.roles = entry.roles ?? [];
     context.roles_count = entry.roles?.length ?? 0;
     
-    // Handle superframes vs regular frames
-    if (entry.isSuperFrame) {
-      context.isSuperFrame = true;
-      context.child_frames = entry.child_frames ?? [];
-      context.child_frames_count = entry.child_frames?.length ?? 0;
-      // Don't include lexical_units for superframes (it would be empty anyway)
-    } else {
-      context.isSuperFrame = false;
-      context.lexical_units = entry.lexical_units ?? [];
-      context.lexical_units_count = entry.lexical_units?.length ?? 0;
-    }
+    // Include both child frames and lexical units if present
+    context.isSuperFrame = entry.isSuperFrame ?? false;
+    
+    context.child_frames = entry.child_frames ?? [];
+    context.child_frames_count = entry.child_frames?.length ?? 0;
+    
+    context.lexical_units = entry.lexical_units ?? [];
+    context.lexical_units_count = entry.lexical_units?.length ?? 0;
   }
 
   if (entry.frame) {
@@ -371,19 +510,13 @@ async function updateJobAggregates(jobId: bigint) {
   });
 }
 
-async function refreshJobItems(job: SerializedJob, options: { limit?: number } = {}): Promise<SerializedJob> {
-  return refreshJobItemsInternal(job, {
-    limit: options.limit,
-    fetchJobRecordFn: (jobId) => fetchJobRecord(jobId, { includeItems: true }),
-    updateJobAggregatesFn: updateJobAggregates,
-  });
-}
+// (Removed) refreshJobItems(): source-explorer no longer polls OpenAI directly.
 
 // ============================================================================
 // Public API - Prompt Rendering
 // ============================================================================
 
-import { renderTemplate, hasLoopSyntax } from './template-renderer';
+import { renderTemplate, hasLoopSyntax, extractLoopCollections } from './template-renderer';
 
 export function renderPrompt(template: string, entry: LexicalUnitSummary): RenderedPrompt {
   const variables = buildVariableMap(entry);
@@ -418,27 +551,318 @@ export function renderPrompt(template: string, entry: LexicalUnitSummary): Rende
   return { prompt, variables };
 }
 
+type PromptClusteringConfig = {
+  enabled: boolean;
+  /** If set, forces k (clamped to list length). Otherwise uses heuristic per list. */
+  kOverride?: number | null;
+};
+
+function parsePromptClusteringConfig(metadata: unknown): PromptClusteringConfig {
+  const cfg = (metadata && typeof metadata === 'object' ? (metadata as any).promptClustering : null) as
+    | { enabled?: unknown; kOverride?: unknown }
+    | null;
+  return {
+    enabled: cfg?.enabled === true,
+    kOverride: typeof cfg?.kOverride === 'number' && Number.isFinite(cfg.kOverride) ? cfg.kOverride : null,
+  };
+}
+
+function clampInt(value: number, min: number, max: number): number {
+  const v = Math.round(value);
+  return Math.max(min, Math.min(max, v));
+}
+
+function autoK(n: number): number {
+  // Simple heuristic: k ≈ sqrt(n), clamped.
+  return clampInt(Math.sqrt(n), 2, 12);
+}
+
+function extractTargetLoopCollections(template: string): Set<'lexical_units' | 'child_frames'> {
+  const collections = extractLoopCollections(template);
+  const out = new Set<'lexical_units' | 'child_frames'>();
+  for (const c of collections) {
+    if (c === 'lexical_units') out.add('lexical_units');
+    if (c === 'child_frames') out.add('child_frames');
+  }
+  return out;
+}
+
+function stableClusterOrder<T extends { _cluster_num: number }>(items: T[]): T[] {
+  const groups = new Map<number, T[]>();
+  const clusterNums: number[] = [];
+  for (const item of items) {
+    const c = item._cluster_num;
+    if (!groups.has(c)) {
+      groups.set(c, []);
+      clusterNums.push(c);
+    }
+    groups.get(c)!.push(item);
+  }
+  clusterNums.sort((a, b) => a - b);
+  return clusterNums.flatMap((c) => groups.get(c)!);
+}
+
+function injectClusterHeaderIntoForLoop(
+  template: string,
+  options: { collection: 'lexical_units' | 'child_frames' }
+): string {
+  const { collection } = options;
+  // Inject header printing into loops like:
+  //   {% for lu in lexical_units %} ... {% endfor %}
+  //
+  // We assume clustering has already sorted the array by _cluster_num.
+  const forRegex = new RegExp(
+    String.raw`(\{%\s*for\s+(\w+)\s+in\s+${collection}\s*%\})`,
+    'g'
+  );
+
+  return template.replace(forRegex, (_full, forTag: string, loopVar: string) => {
+    const prevExpr = `${collection}[loop.index0 - 1]._cluster_num`;
+    const currExpr = `${loopVar}._cluster_num`;
+    const headerSnippet =
+      `{% if loop.first %}` +
+      `cluster {{ ${currExpr} }}{{"\\n"}}` +
+      `{% elif ${currExpr} != ${prevExpr} %}` +
+      `{{"\\n"}}cluster {{ ${currExpr} }}{{"\\n"}}` +
+      `{% endif %}`;
+    return `${forTag}${headerSnippet}`;
+  });
+}
+
+async function clusterLoopList(
+  collection: 'lexical_units' | 'child_frames',
+  items: Array<any>,
+  cfg: PromptClusteringConfig
+): Promise<Array<any>> {
+  if (!cfg.enabled) return items;
+  if (!Array.isArray(items) || items.length < 2) return items;
+
+  const ids: number[] = [];
+  for (const item of items) {
+    const rawId = item?.id;
+    const n = typeof rawId === 'string' ? Number(rawId) : typeof rawId === 'number' ? rawId : NaN;
+    if (Number.isInteger(n)) ids.push(n);
+  }
+  if (ids.length < 2) return items;
+
+  let k = cfg.kOverride ? clampInt(cfg.kOverride, 2, ids.length) : clampInt(autoK(ids.length), 2, ids.length);
+
+  // Call source-clustering; retry if k is too large after DB-side filtering (missing embeddings).
+  const call = async (kk: number) => {
+    if (collection === 'lexical_units') {
+      return callSourceClustering({
+        mode: 'lexical_unit',
+        ids_kind: 'lexical_unit_ids',
+        ids,
+        k: kk,
+        seed: 42,
+        max_iters: 20,
+        dtype: 'float32',
+      });
+    }
+    return callSourceClustering({
+      mode: 'frame',
+      ids_kind: 'frame_ids',
+      ids,
+      k: kk,
+      seed: 42,
+      max_iters: 20,
+      dtype: 'float32',
+    });
+  };
+
+  let resp: Awaited<ReturnType<typeof callSourceClustering>>;
+  try {
+    resp = await call(k);
+  } catch (error) {
+    // Attempt a retry if the service tells us k > n_found.
+    const msg = error instanceof Error ? error.message : String(error);
+    const match = msg.match(/k must be <= number of found embeddings \\(k=\\d+, n=(\\d+)\\)/);
+    if (match) {
+      const nFound = Number(match[1]);
+      if (Number.isInteger(nFound) && nFound >= 2) {
+        k = Math.min(k, nFound);
+        resp = await call(k);
+      } else {
+        return items;
+      }
+    } else {
+      throw error;
+    }
+  }
+
+  const clusterById = new Map<number, number>();
+  for (const a of resp.assignments ?? []) {
+    const idNum = Number(a.id);
+    if (Number.isInteger(idNum)) {
+      clusterById.set(idNum, a.cluster);
+    }
+  }
+
+  // Assign missing/unclustered items to a final bucket after 1..k.
+  const missingCluster = k; // display will be k+1
+  const withCluster = items.map((item) => {
+    const idNum = Number(item?.id);
+    const clusterId = Number.isInteger(idNum) && clusterById.has(idNum) ? clusterById.get(idNum)! : missingCluster;
+    return { ...item, _cluster_num: clusterId + 1 };
+  });
+
+  // Stable within cluster, clusters ordered by id.
+  return stableClusterOrder(withCluster);
+}
+
+export async function renderPromptAsync(
+  template: string,
+  entry: LexicalUnitSummary,
+  options?: { metadata?: Record<string, unknown>; onClusteringError?: (message: string) => void }
+): Promise<RenderedPrompt> {
+  const variables = buildVariableMap(entry);
+  const usesLoops = hasLoopSyntax(template);
+  const clusteringCfg = parsePromptClusteringConfig(options?.metadata);
+
+  let prompt: string;
+
+  if (usesLoops) {
+    const baseContext = buildTemplateContext(entry);
+    let effectiveTemplate = template;
+    let context: any = baseContext;
+
+    try {
+      if (clusteringCfg.enabled) {
+        const loopCollections = extractTargetLoopCollections(template);
+        const clusteredContext = { ...baseContext } as any;
+        let didClusterAny = false;
+
+        if (loopCollections.has('lexical_units') && Array.isArray((clusteredContext as any).lexical_units)) {
+          try {
+            const clustered = await clusterLoopList(
+              'lexical_units',
+              (clusteredContext as any).lexical_units,
+              clusteringCfg
+            );
+            const hasClusterNums = clustered.some((x) => typeof x?._cluster_num === 'number');
+            if (hasClusterNums) {
+              (clusteredContext as any).lexical_units = clustered;
+              effectiveTemplate = injectClusterHeaderIntoForLoop(effectiveTemplate, { collection: 'lexical_units' });
+              didClusterAny = true;
+            }
+          } catch (error) {
+            const msg = error instanceof Error ? error.message : String(error);
+            options?.onClusteringError?.(`Clustering failed for lexical_units: ${msg}`);
+          }
+        }
+
+        if (loopCollections.has('child_frames') && Array.isArray((clusteredContext as any).child_frames)) {
+          try {
+            const clustered = await clusterLoopList(
+              'child_frames',
+              (clusteredContext as any).child_frames,
+              clusteringCfg
+            );
+            const hasClusterNums = clustered.some((x) => typeof x?._cluster_num === 'number');
+            if (hasClusterNums) {
+              (clusteredContext as any).child_frames = clustered;
+              effectiveTemplate = injectClusterHeaderIntoForLoop(effectiveTemplate, { collection: 'child_frames' });
+              didClusterAny = true;
+            }
+          } catch (error) {
+            const msg = error instanceof Error ? error.message : String(error);
+            options?.onClusteringError?.(`Clustering failed for child_frames: ${msg}`);
+          }
+        }
+
+        if (didClusterAny) {
+          context = clusteredContext;
+        }
+
+        const result = renderTemplate(effectiveTemplate, context);
+        if (!result.success) {
+          throw new Error(result.error || 'Template render error');
+        }
+        prompt = result.prompt;
+      } else {
+        const result = renderTemplate(template, baseContext);
+        if (!result.success) {
+          throw new Error(result.error || 'Template render error');
+        }
+        prompt = result.prompt;
+      }
+    } catch (error) {
+      // If clustering fails, fall back to the unclustered loop render.
+      // If the template itself is invalid, fall back to simple interpolation.
+      console.error('[renderPromptAsync] Render error:', error);
+      const fallback = renderTemplate(template, baseContext);
+      if (fallback.success) {
+        prompt = fallback.prompt;
+      } else {
+        prompt = template.replace(/\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g, (_, key: string) => {
+          if (variables[key] !== undefined) {
+            return variables[key];
+          }
+          return '';
+        });
+      }
+    }
+  } else {
+    prompt = template.replace(/\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g, (_, key: string) => {
+      if (variables[key] !== undefined) {
+        return variables[key];
+      }
+      return '';
+    });
+  }
+
+  return { prompt, variables };
+}
+
 // ============================================================================
 // Public API - Job Preview and Creation
 // ============================================================================
 
 export async function previewLLMJob(params: CreateLLMJobParams) {
-  const entries = await fetchEntriesForScope(params.scope);
-  if (entries.length === 0) {
+  // For preview, we only need a few entries. 
+  // We apply a limit to the scope to avoid fetching thousands of records.
+  const previewScope = { ...params.scope };
+  if (previewScope.kind === 'filters') {
+    previewScope.filters = { ...previewScope.filters, limit: 5 };
+  } else if (previewScope.kind === 'frame_ids') {
+    previewScope.frameIds = previewScope.frameIds.slice(0, 5);
+    previewScope.limit = 5;
+  } else if (previewScope.kind === 'ids') {
+    previewScope.ids = previewScope.ids.slice(0, 5);
+  }
+
+  // Get total count separately to provide accurate info to the UI
+  const totalEntries = await countEntriesForScope(params.scope);
+  
+  if (totalEntries === 0) {
     throw new LLMJobError('No entries found for the provided scope.', 400);
   }
 
-  const previewCount = Math.min(entries.length, 20);
-  const previews = entries.slice(0, previewCount).map(entry => renderPrompt(params.promptTemplate, entry));
+  const entries = await fetchUnitsForScope(previewScope);
+  const clusteringCfg = parsePromptClusteringConfig(params.metadata);
+  const clusteringErrors = new Set<string>();
+  const previews = await Promise.all(
+    entries.slice(0, 5).map((entry) =>
+      renderPromptAsync(params.promptTemplate, entry, {
+        metadata: params.metadata,
+        onClusteringError: clusteringCfg.enabled ? (msg) => clusteringErrors.add(msg) : undefined,
+      })
+    )
+  );
 
-  return { previews, totalEntries: entries.length };
+  return {
+    previews,
+    totalEntries,
+    clusteringError: clusteringErrors.size ? Array.from(clusteringErrors)[0] : undefined,
+  };
 }
 
 export async function createLLMJob(
   params: CreateLLMJobParams,
   initialBatchSize?: number
 ): Promise<SerializedJob> {
-  const entries = await fetchEntriesForScope(params.scope);
+  const entries = await fetchUnitsForScope(params.scope);
 
   if (entries.length === 0) {
     throw new LLMJobError('No entries found for the provided scope.', 400);
@@ -476,7 +900,7 @@ export async function createLLMJob(
     splitMaxFrames: params.splitMaxFrames ?? null,
   };
 
-  const preparedJobItemsData = entriesToCreate.map(entry => {
+  const preparedJobItemsData = await Promise.all(entriesToCreate.map(async (entry) => {
     // Inject split configuration into entry.additional for template variable interpolation
     const entryWithSplitConfig = params.jobType === 'split' && (params.splitMinFrames || params.splitMaxFrames)
       ? {
@@ -489,7 +913,9 @@ export async function createLLMJob(
         }
       : entry;
     
-    const { prompt, variables } = renderPrompt(params.promptTemplate, entryWithSplitConfig);
+    const { prompt, variables } = await renderPromptAsync(params.promptTemplate, entryWithSplitConfig, {
+      metadata: params.metadata,
+    });
 
     const frameInfo = entry.frame ? {
       name: entry.frame.label,
@@ -515,6 +941,12 @@ export async function createLLMJob(
         lexfile: entry.lexfile ?? null,
         definition: entry.definition ?? null,
         short_definition: entry.short_definition ?? null,
+        super_frame_id: entry.super_frame_id ?? null,
+        super_frame: entry.super_frame ?? null,
+        isSuperFrame: entry.isSuperFrame ?? false,
+        lexical_units: (entry.lexical_units ?? []) as any[],
+        roles: (entry.roles ?? []) as any[],
+        child_frames: (entry.child_frames ?? []) as any[],
       },
       frameInfo,
     } satisfies Record<string, unknown>;
@@ -525,7 +957,7 @@ export async function createLLMJob(
       frame_id: entry.pos === 'frames' ? entry.dbId : null,
       request_payload: requestPayload as Prisma.InputJsonObject,
     };
-  });
+  }));
 
   const job = await prisma.$transaction(
     async (tx) => {
@@ -533,7 +965,7 @@ export async function createLLMJob(
         data: {
           label: params.label ?? null,
           submitted_by: params.submittedBy ?? null,
-          job_type: params.jobType ?? 'moderation',
+          job_type: params.jobType ?? 'flag',
           scope_kind: params.scope.kind,
           scope: params.scope as unknown as Prisma.JsonObject,
           config: jobConfig,
@@ -605,6 +1037,23 @@ export async function listLLMJobs(options: JobListOptions = {}): Promise<Seriali
     jobs = jobs.filter(job => {
       const scope = job.scope as JobScope | null;
       const jobTargetType = inferTargetTypeFromJobScope(scope);
+      const jobIsSuperFrame = scope && 'isSuperFrame' in scope ? scope.isSuperFrame === true : false;
+      
+      // Handle special entity type filters
+      if (options.entityType === 'lexical_units') {
+        // Show all jobs targeting any part of speech
+        return isLexicalUnitPOS(jobTargetType);
+      } else if (options.entityType === 'super_frames') {
+        // Show only jobs explicitly created for super frames
+        return jobTargetType === 'frames' && jobIsSuperFrame;
+      } else if (options.entityType === 'frames_only') {
+        // Show only jobs for regular frames (not super frames)
+        return jobTargetType === 'frames' && !jobIsSuperFrame;
+      } else if (options.entityType === 'frames') {
+        // 'frames' mode shows both super frames and regular frames (legacy behavior)
+        return jobTargetType === 'frames';
+      }
+      
       return jobTargetType === options.entityType;
     });
     jobs = jobs.slice(0, options.limit ?? 15);
@@ -612,6 +1061,19 @@ export async function listLLMJobs(options: JobListOptions = {}): Promise<Seriali
 
   const serialized = jobs.map(job => {
     const { llm_job_items: itemsRaw, ...jobWithoutItems } = job as typeof job & { llm_job_items?: typeof job.llm_job_items };
+    const serializedItems = (itemsRaw ?? []).map((item: llm_job_items) => ({
+      ...item,
+      id: item.id.toString(),
+      job_id: item.job_id.toString(),
+      created_at: item.created_at.toISOString(),
+      updated_at: item.updated_at.toISOString(),
+      started_at: item.started_at ? item.started_at.toISOString() : null,
+      completed_at: item.completed_at ? item.completed_at.toISOString() : null,
+      lexical_unit_id: item.lexical_unit_id ? item.lexical_unit_id.toString() : null,
+      frame_id: item.frame_id ? item.frame_id.toString() : null,
+      entry: extractEntrySummary(item),
+    }));
+
     return {
       ...jobWithoutItems,
       id: job.id.toString(),
@@ -620,31 +1082,20 @@ export async function listLLMJobs(options: JobListOptions = {}): Promise<Seriali
       started_at: job.started_at ? job.started_at.toISOString() : null,
       completed_at: job.completed_at ? job.completed_at.toISOString() : null,
       cost_microunits: job.cost_microunits != null ? job.cost_microunits.toString() : null,
-      items: (itemsRaw ?? []).map((item: llm_job_items) => ({
-        ...item,
-        id: item.id.toString(),
-        job_id: item.job_id.toString(),
-        created_at: item.created_at.toISOString(),
-        updated_at: item.updated_at.toISOString(),
-        started_at: item.started_at ? item.started_at.toISOString() : null,
-        completed_at: item.completed_at ? item.completed_at.toISOString() : null,
-        lexical_unit_id: item.lexical_unit_id ? item.lexical_unit_id.toString() : null,
-        frame_id: item.frame_id ? item.frame_id.toString() : null,
-        entry: extractEntrySummary(item),
-      })),
+      items: serializedItems,
     } as SerializedJob;
   });
 
-  if (options.refreshBeforeReturn !== false && options.includeItems === true) {
-    const jobsToRefresh = serialized.filter(job => ['queued', 'running'].includes(job.status));
-    for (const job of jobsToRefresh) {
-      const refreshed = await refreshJobItems(job);
-      const index = serialized.findIndex(j => j.id === job.id);
-      if (index >= 0) {
-        serialized[index] = refreshed;
+  // Enrich items with DB codes after serialization
+  if (options.includeItems) {
+    for (const job of serialized) {
+      if (job.items.length > 0) {
+        await enrichJobItemsWithDbCodes(job.items);
       }
     }
   }
+
+  // No refresh here: statuses/results are updated by the source-llm webhook.
 
   return options.includeCompleted === true
     ? serialized
@@ -659,10 +1110,6 @@ export async function getLLMJob(jobId: number | string, options: JobDetailOption
   });
   if (!job) {
     throw new LLMJobError('Job not found', 404);
-  }
-
-  if (options.refresh !== false && ['queued', 'running'].includes(job.status)) {
-    return refreshJobItems(job, { limit: options.refreshLimit });
   }
 
   return job;
@@ -687,11 +1134,26 @@ export async function cancelLLMJob(jobId: number | string): Promise<CancelJobRes
     },
   });
 
+  // Prevent any additional submissions by marking still-queued items as skipped.
+  // (Already-submitted items may still complete at the provider; webhook will ignore their side effects once cancelled.)
+  const skipResult = await prisma.llm_job_items.updateMany({
+    where: {
+      job_id: BigInt(job.id),
+      provider_task_id: null,
+      status: 'queued',
+    },
+    data: {
+      status: 'skipped',
+      last_error: 'Job cancelled before submission',
+      completed_at: new Date(),
+    },
+  });
+
   await discardByLlmJob(BigInt(job.id));
 
   const refreshed = await getLLMJob(jobId, { refresh: false });
   await updateJobAggregates(BigInt(refreshed.id));
-  return { job: refreshed, cancelledCount: 0 };
+  return { job: refreshed, cancelledCount: skipResult.count };
 }
 
 export async function deleteLLMJob(jobId: number | string): Promise<void> {
@@ -725,7 +1187,7 @@ export async function markJobAsSeen(jobId: string | number): Promise<void> {
   }
 }
 
-export async function getUnseenJobsCount(targetType?: JobTargetType): Promise<number> {
+export async function getUnseenJobsCount(targetType?: JobEntityTypeFilter): Promise<number> {
   try {
     const jobs = await withRetry(
       () => getLLMJobsDelegate().findMany({
@@ -740,7 +1202,21 @@ export async function getUnseenJobsCount(targetType?: JobTargetType): Promise<nu
     
     return jobs.filter(job => {
       const scope = job.scope as JobScope | null;
-      return inferTargetTypeFromJobScope(scope) === targetType;
+      const jobTargetType = inferTargetTypeFromJobScope(scope);
+      const jobIsSuperFrame = scope && 'isSuperFrame' in scope ? scope.isSuperFrame === true : false;
+      
+      // Handle special target type filters
+      if (targetType === 'lexical_units') {
+        return isLexicalUnitPOS(jobTargetType);
+      } else if (targetType === 'super_frames') {
+        return jobTargetType === 'frames' && jobIsSuperFrame;
+      } else if (targetType === 'frames_only') {
+        return jobTargetType === 'frames' && !jobIsSuperFrame;
+      } else if (targetType === 'frames') {
+        return jobTargetType === 'frames';
+      }
+      
+      return jobTargetType === targetType;
     }).length;
   } catch (error) {
     if (error instanceof Error && /Unknown argument\s+`?unseen_change`?/i.test(error.message)) {

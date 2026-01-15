@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { useRouter } from 'next/navigation';
+import { FlagIcon } from '@heroicons/react/24/outline';
 import { TableEntry, Frame } from '@/lib/types';
 import { DataTableMode, getGraphBasePath } from './config';
 import { ContextMenuState } from './types';
@@ -24,7 +25,7 @@ export function ContextMenu({
   const router = useRouter();
   const graphBasePath = getGraphBasePath(mode);
 
-  if (!contextMenu.isOpen || !contextMenu.entryId || !entry) {
+  if (!contextMenu.isOpen || !contextMenu.unitId || !entry) {
     return null;
   }
 
@@ -50,9 +51,8 @@ export function ContextMenu({
   const handleViewSubframes = () => {
     onClose();
     if (frameEntry) {
-      // Navigate to the frames table, with the "Frames" tab active and filtered by super_frame_id
-      // Since the tab state is local to the page, we might need a query param to tell it which tab to open
-      router.push(`/table/frames?super_frame_id=${frameEntry.id}&tab=frames`);
+      // Navigate to the frames table filtered by super_frame_id
+      router.push(`/table/frames?super_frame_id=${frameEntry.id}`);
     }
   };
 
@@ -128,7 +128,7 @@ export function ContextMenu({
           </>
         )}
 
-        {/* Only show moderation actions for table entries, not frames */}
+        {/* Only show flag actions for table entries, not frames */}
         {tableEntry && (
           <>
             <div className="border-t border-gray-200 my-1"></div>
@@ -136,11 +136,9 @@ export function ContextMenu({
             {!tableEntry.flagged ? (
               <button
                 onClick={() => handleAction('flag')}
-                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-orange-50 hover:text-orange-800 flex items-center gap-2"
+                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-800 flex items-center gap-2"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 2H21l-3 6 3 6h-8.5l-1-2H5a2 2 0 00-2 2zm9-13.5V9" />
-                </svg>
+                <FlagIcon className="w-4 h-4" />
                 Flag Entry
               </button>
             ) : (

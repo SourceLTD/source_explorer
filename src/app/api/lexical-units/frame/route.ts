@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { updateFramesForEntries } from '@/lib/db';
+import { updateFramesForLexicalUnits } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -24,7 +24,7 @@ export async function PATCH(request: NextRequest) {
           ? null
           : frameId.trim();
 
-    const { updatedCount } = await updateFramesForEntries(ids, normalizedFrameId);
+    const { updatedCount } = await updateFramesForLexicalUnits(ids, normalizedFrameId);
 
     return NextResponse.json(
       {

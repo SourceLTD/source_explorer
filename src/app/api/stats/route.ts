@@ -18,14 +18,14 @@ export async function GET() {
     ])
     
     // Group by POS
-    const entriesByPos = await prisma.lexical_units.groupBy({
+    const unitsByPos = await prisma.lexical_units.groupBy({
       by: ['pos'],
       where: { deleted: false },
       _count: true,
     });
 
     const posStats: Record<string, number> = {};
-    entriesByPos.forEach(group => {
+    unitsByPos.forEach(group => {
       posStats[group.pos] = group._count;
     });
 

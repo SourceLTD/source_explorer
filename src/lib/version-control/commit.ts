@@ -8,15 +8,18 @@
 import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
 import {
-  EntityType,
   ChangesetWithFieldChanges,
   CommitResult,
   CommitError,
-  ENTITY_TYPE_TO_TABLE,
   isLexicalUnitType,
 } from './types';
 import { getChangeset, createChangesetFromUpdate } from './create';
 import { addComment } from './comments';
+import {
+  applyFrameRolesSubChanges,
+  isFrameRolesFieldName,
+  type NormalizedFrameRole,
+} from './frameRolesSubfields';
 
 // Convert camelCase field names to snake_case for Prisma
 function camelToSnake(str: string): string {
@@ -151,7 +154,7 @@ async function commitCreate(
   }
 
   // Use a transaction to create the entity and update the changeset
-  const result = await prisma.$transaction(async (tx) => {
+  await prisma.$transaction(async (tx) => {
     const entityData = changeset.after_snapshot!;
     let newEntityId: bigint;
     
@@ -161,10 +164,79 @@ async function commitCreate(
       });
       newEntityId = lu.id;
     } else if (changeset.entity_type === 'frame') {
+      // Support optional `frame_roles` in after_snapshot for CREATE operations.
+      // This is used by AI split jobs (and some MCP tooling) to propose roles for new superframes.
+      const frameData: Record<string, unknown> = { ...(entityData as Record<string, unknown>) };
+      const frameRolesRaw = (frameData as { frame_roles?: unknown }).frame_roles;
+      delete (frameData as { frame_roles?: unknown }).frame_roles;
+
       const frame = await tx.frames.create({
-        data: entityData as Prisma.framesCreateInput,
+        data: frameData as Prisma.framesCreateInput,
       });
       newEntityId = frame.id;
+
+      if (Array.isArray(frameRolesRaw) && frameRolesRaw.length > 0) {
+        // Expect items like:
+        // - { role_type_code: "AGENT", description: "...", main: true, examples: [...] }
+        // Optionally supports { role_type_id: 123 } if already resolved.
+        const roles = frameRolesRaw as Array<Record<string, unknown>>;
+
+        // Resolve role_type_id by role_type_code (preferred) or role_type_id (fallback)
+        const codes = Array.from(
+          new Set(
+            roles
+              .map(r => (typeof r.role_type_code === 'string' ? r.role_type_code : null))
+              .filter((c): c is string => Boolean(c))
+          )
+        );
+        const roleTypeRecords = codes.length > 0
+          ? await tx.role_types.findMany({
+              where: { code: { in: codes } },
+              select: { id: true, code: true },
+            })
+          : [];
+        const codeToId = new Map(roleTypeRecords.map(rt => [rt.code, rt.id]));
+
+        const createManyData: Prisma.frame_rolesCreateManyInput[] = [];
+        const seenRoleTypeIds = new Set<string>();
+
+        for (const role of roles) {
+          const roleTypeId =
+            role.role_type_id != null
+              ? BigInt(role.role_type_id as any)
+              : (typeof role.role_type_code === 'string' ? codeToId.get(role.role_type_code) : undefined);
+
+          if (!roleTypeId) {
+            throw new Error(
+              `CREATE frame_roles failed: unknown role_type_code "${String(role.role_type_code ?? '')}"`
+            );
+          }
+
+          const roleTypeIdKey = roleTypeId.toString();
+          if (seenRoleTypeIds.has(roleTypeIdKey)) {
+            throw new Error(`CREATE frame_roles failed: duplicate role_type for new frame (${roleTypeIdKey})`);
+          }
+          seenRoleTypeIds.add(roleTypeIdKey);
+
+          createManyData.push({
+            frame_id: frame.id,
+            role_type_id: roleTypeId,
+            description: (role.description as string) ?? null,
+            notes: (role.notes as string) ?? null,
+            main: (role.main as boolean) ?? false,
+            examples: (Array.isArray(role.examples) ? (role.examples as string[]) : []),
+            label: (role.label as string) ?? null,
+            version: 1,
+          });
+        }
+
+        if (createManyData.length > 0) {
+          await tx.frame_roles.createMany({
+            data: createManyData,
+            skipDuplicates: false,
+          });
+        }
+      }
     } else if (changeset.entity_type === 'lexical_unit_relation') {
       const rel = await tx.lexical_unit_relations.create({
         data: entityData as Prisma.lexical_unit_relationsCreateInput,
@@ -210,7 +282,79 @@ async function commitCreate(
 }
 
 // Special fields that require separate table updates instead of direct field updates
-const COMPLEX_FIELDS = ['frame_roles', 'hypernym'];
+
+function isComplexField(fieldName: string): boolean {
+  return fieldName === 'hypernym' || isFrameRolesFieldName(fieldName);
+}
+
+async function commitFrameRolesSubChanges(
+  tx: Prisma.TransactionClient,
+  changeset: ChangesetWithFieldChanges,
+  approvedRoleChanges: ChangesetWithFieldChanges['field_changes'],
+): Promise<void> {
+  if (changeset.entity_type !== 'frame') {
+    throw new Error(`frame_roles.* changes are only supported for frames (got ${changeset.entity_type})`);
+  }
+  const entityId = changeset.entity_id!;
+
+  // Fetch current roles and normalize to the same shape as staging
+  const currentRolesRaw = await tx.frame_roles.findMany({
+    where: { frame_id: entityId },
+    include: { role_types: { select: { label: true } } },
+    orderBy: { id: 'asc' },
+  });
+
+  const baseRoles: NormalizedFrameRole[] = [];
+  for (const r of currentRolesRaw as any[]) {
+    const roleType = typeof r?.role_types?.label === 'string' ? r.role_types.label : '';
+    if (!roleType) continue;
+    baseRoles.push({
+      roleType,
+      description: typeof r.description === 'string' ? r.description : null,
+      notes: typeof r.notes === 'string' ? r.notes : null,
+      main: typeof r.main === 'boolean' ? r.main : Boolean(r.main),
+      examples: Array.isArray(r.examples) ? r.examples.filter((x: unknown): x is string => typeof x === 'string') : [],
+      label: typeof r.label === 'string' ? r.label : null,
+    });
+  }
+
+  const finalRoles = applyFrameRolesSubChanges(
+    baseRoles,
+    approvedRoleChanges.map(fc => ({ field_name: fc.field_name, new_value: fc.new_value }))
+  );
+
+  await tx.frame_roles.deleteMany({ where: { frame_id: entityId } });
+
+  if (finalRoles.length === 0) {
+    return;
+  }
+
+  const labels = Array.from(new Set(finalRoles.map(r => r.roleType)));
+  const roleTypes = await tx.role_types.findMany({
+    where: { label: { in: labels } },
+    select: { id: true, label: true },
+  });
+  const idByLabel = new Map(roleTypes.map(rt => [rt.label, rt.id]));
+
+  const createManyData: Prisma.frame_rolesCreateManyInput[] = [];
+  for (const r of finalRoles) {
+    const roleTypeId = idByLabel.get(r.roleType);
+    if (!roleTypeId) {
+      throw new Error(`Role type not found: ${r.roleType}`);
+    }
+    createManyData.push({
+      frame_id: entityId,
+      role_type_id: roleTypeId,
+      description: r.description ?? null,
+      notes: r.notes ?? null,
+      main: r.main ?? false,
+      examples: r.examples ?? [],
+      label: r.label ?? null,
+    });
+  }
+
+  await tx.frame_roles.createMany({ data: createManyData });
+}
 
 async function commitUpdate(
   changeset: ChangesetWithFieldChanges,
@@ -243,17 +387,54 @@ async function commitUpdate(
   }
 
   // Separate complex fields from simple fields
-  const simpleChanges = approvedChanges.filter(fc => !COMPLEX_FIELDS.includes(fc.field_name));
-  const complexChanges = approvedChanges.filter(fc => COMPLEX_FIELDS.includes(fc.field_name));
+  const simpleChanges = approvedChanges.filter(fc => !isComplexField(fc.field_name));
+  const complexChanges = approvedChanges.filter(fc => isComplexField(fc.field_name));
+  const frameRolesLegacy = complexChanges.find(fc => fc.field_name === 'frame_roles');
+  const frameRolesSub = complexChanges.filter(fc => fc.field_name.startsWith('frame_roles.'));
+  const hypernymChanges = complexChanges.filter(fc => fc.field_name === 'hypernym');
 
-  // Build the update data for simple fields only
+  // Build the update data for simple fields only, resolving virtual IDs (negative IDs = -changeset_id)
   const updateData: Record<string, unknown> = {};
-  for (const fc of simpleChanges) {
-    updateData[camelToSnake(fc.field_name)] = fc.new_value;
-  }
 
   // Use a transaction
   await prisma.$transaction(async (tx) => {
+    for (const fc of simpleChanges) {
+      let nextValue: unknown = fc.new_value;
+
+      // Virtual-ID resolution (used by AI SPLIT jobs to reference pending CREATEs)
+      if (fc.field_name === 'frame_id' || fc.field_name === 'super_frame_id') {
+        const asString = typeof nextValue === 'string' ? nextValue.trim() : null;
+        if (asString && /^-\d+$/.test(asString)) {
+          const virtualId = BigInt(asString); // negative
+          const createChangesetId = -virtualId; // positive changeset id
+          const createChangeset = await tx.changesets.findUnique({
+            where: { id: createChangesetId },
+            select: { id: true, entity_id: true, operation: true, status: true },
+          });
+
+          if (!createChangeset || createChangeset.operation !== 'create' || createChangeset.status !== 'committed' || createChangeset.entity_id === null) {
+            throw new Error(`Unable to resolve virtual ID ${asString} (create changeset ${createChangesetId.toString()} not committed)`);
+          }
+
+          nextValue = createChangeset.entity_id;
+        }
+
+        // BigInt foreign keys often come through JSON as strings; coerce to bigint for Prisma.
+        if (typeof nextValue === 'string') {
+          const trimmed = nextValue.trim();
+          if (trimmed === '') {
+            nextValue = null;
+          } else if (/^\d+$/.test(trimmed)) {
+            nextValue = BigInt(trimmed);
+          }
+        } else if (typeof nextValue === 'number' && Number.isInteger(nextValue)) {
+          nextValue = BigInt(nextValue);
+        }
+      }
+
+      updateData[camelToSnake(fc.field_name)] = nextValue;
+    }
+
     // Update simple fields on the entity using optimistic locking
     if (Object.keys(updateData).length > 0) {
       let updateCount: number;
@@ -285,8 +466,16 @@ async function commitUpdate(
       }
     }
 
-    // Handle complex field changes (frame_roles, hypernym)
-    for (const fc of complexChanges) {
+    // Handle complex field changes (frame_roles.*, hypernym)
+    if (frameRolesLegacy) {
+      // Backward-compatible full replacement
+      await commitComplexFieldChange(tx, changeset, frameRolesLegacy);
+    } else if (frameRolesSub.length > 0) {
+      // Apply approved granular role changes in one pass
+      await commitFrameRolesSubChanges(tx, changeset, frameRolesSub);
+    }
+
+    for (const fc of hypernymChanges) {
       await commitComplexFieldChange(tx, changeset, fc);
     }
 
@@ -389,33 +578,48 @@ async function commitComplexFieldChange(
 
     case 'hypernym':
       // Handle hypernym relation changes for lexical units
-      const hypernymData = newValue as unknown as { old_hypernym_id: bigint | null; new_hypernym_id: bigint | null } | null;
+      const hypernymData = newValue as unknown as { old_hypernym_id?: unknown; new_hypernym_id?: unknown } | null;
       
       if (hypernymData) {
+        const toBigIntOrNull = (v: unknown): bigint | null => {
+          if (v === null || v === undefined) return null;
+          if (typeof v === 'bigint') return v;
+          if (typeof v === 'number' && Number.isInteger(v)) return BigInt(v);
+          if (typeof v === 'string') {
+            const trimmed = v.trim();
+            if (!trimmed) return null;
+            if (/^\d+$/.test(trimmed)) return BigInt(trimmed);
+          }
+          return null;
+        };
+
+        const oldHypernymId = toBigIntOrNull(hypernymData.old_hypernym_id);
+        const newHypernymId = toBigIntOrNull(hypernymData.new_hypernym_id);
+
         // Delete the old hypernym relation if it exists
-        if (hypernymData.old_hypernym_id) {
+        if (oldHypernymId) {
           await tx.lexical_unit_relations.deleteMany({
             where: {
               source_id: entityId,
-              target_id: hypernymData.old_hypernym_id,
+              target_id: oldHypernymId,
               type: 'hypernym',
             },
           });
         }
         
         // Create new hypernym relation if there's a new hypernym
-        if (hypernymData.new_hypernym_id) {
+        if (newHypernymId) {
           await tx.lexical_unit_relations.upsert({
             where: {
               source_id_type_target_id: {
                 source_id: entityId,
-                target_id: hypernymData.new_hypernym_id,
+                target_id: newHypernymId,
                 type: 'hypernym',
               },
             },
             create: {
               source_id: entityId,
-              target_id: hypernymData.new_hypernym_id,
+              target_id: newHypernymId,
               type: 'hypernym',
             },
             update: {},
@@ -714,7 +918,19 @@ export async function commitByLlmJob(
     errors: [],
   };
 
-  for (const cs of changesets) {
+  // Commit in a stable, dependency-aware order:
+  // 1) create (so virtual IDs can be resolved)
+  // 2) update
+  // 3) delete
+  const opOrder = (op: string) => (op === 'create' ? 0 : op === 'update' ? 1 : 2);
+  const ordered = [...changesets].sort((a, b) => {
+    const diff = opOrder(a.operation) - opOrder(b.operation);
+    if (diff !== 0) return diff;
+    // Tie-breaker: stable by id
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
+
+  for (const cs of ordered) {
     const result = await commitChangeset(cs.id, committedBy);
     
     results.committed_count += result.committed_count;

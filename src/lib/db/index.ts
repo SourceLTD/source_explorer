@@ -9,4 +9,4 @@
 export * from './config';
 
 // Export unified entity functions
-export { getPaginatedEntities } from './entities';
+export { getPaginatedLexicalUnits } from './entities';

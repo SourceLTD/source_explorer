@@ -9,7 +9,6 @@ export const maxDuration = 60;
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const includeCompleted = searchParams.get('includeCompleted') === 'true';
-  const refresh = searchParams.get('refresh');
   const limitParam = searchParams.get('limit');
   const entityType = searchParams.get('entityType') as any;
   const limit = limitParam ? Math.min(Math.max(parseInt(limitParam, 10), 1), 50) : undefined;
@@ -17,7 +16,6 @@ export async function GET(request: NextRequest) {
   try {
     const jobs = await listLLMJobs({
       includeCompleted,
-      refreshBeforeReturn: refresh !== 'false',
       limit,
       entityType: entityType ?? undefined,
     });
@@ -60,6 +58,7 @@ export async function POST(request: NextRequest) {
       submittedBy: payload.submittedBy,
       model: payload.model,
       promptTemplate: payload.promptTemplate,
+      systemPrompt: payload.systemPrompt,
       scope: payload.scope,
       serviceTier: payload.serviceTier,
       reasoning: payload.reasoning,
@@ -75,9 +74,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(job, { status: 201 });
   } catch (error) {
     console.error('[LLM] Failed to create job:', error);
-    const status = error instanceof Error && 'statusCode' in error ? (error as { statusCode: number }).statusCode : 500;
+    if (error instanceof Error && 'statusCode' in error) {
+      const status = (error as { statusCode: number }).statusCode;
+      return NextResponse.json(
+        { error: error.message, isTransient: false },
+        { status }
+      );
+    }
+
+    const { message, status, shouldRetry } = handleDatabaseError(error, 'POST /api/llm-jobs');
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to create job' },
+      { error: message, isTransient: shouldRetry },
       { status }
     );
   }

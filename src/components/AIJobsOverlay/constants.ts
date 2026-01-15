@@ -8,10 +8,10 @@ export const MODEL_OPTIONS = [
   { value: 'gpt-5.2-pro', label: 'GPT-5.2 Pro' },
 ] as const;
 
-export type JobType = 'moderation' | 'editing' | 'reallocation' | 'allocate' | 'split';
-export type LexicalJobType = 'moderation' | 'editing' | 'allocate';
-export type FrameJobType = 'moderation' | 'editing' | 'reallocation' | 'split';
-export type SuperframeJobType = 'moderation' | 'editing' | 'reallocation' | 'split';
+export type JobType = 'flag' | 'edit' | 'allocate_contents' | 'allocate' | 'split';
+export type LexicalJobType = 'flag' | 'edit' | 'allocate';
+export type FrameJobType = 'flag' | 'edit' | 'allocate' | 'allocate_contents' | 'split';
+export type SuperframeJobType = 'flag' | 'edit' | 'allocate_contents' | 'split';
 export type EntityType = 'lexical_units' | 'frames' | 'super_frames' | 'frames_only';
 
 // ============================================================================
@@ -60,7 +60,7 @@ const SCOPE_CONTEXT: Record<ScopeMode, string> = {
 
 // Prompts for lexical entries (verbs, nouns, adjectives, adverbs)
 const LEXICAL_PROMPTS: Record<LexicalJobType, string> = {
-  moderation: `You are reviewing lexical entries for quality assurance.
+  flag: `You are reviewing lexical entries for quality assurance.
 
 Entry Code: {{code}}
 Part of Speech: {{pos}}
@@ -78,7 +78,7 @@ Decide whether the entry should be flagged for review. Consider:
 
 Respond using the provided JSON schema.`,
 
-  editing: `You are improving the quality of lexical entry data.
+  edit: `You are improving the quality of lexical entry data.
 
 Entry Code: {{code}}
 Part of Speech: {{pos}}
@@ -114,7 +114,7 @@ Respond using the provided JSON schema with your frame recommendation.`,
 
 // Prompts for frames (different fields: label, definition, short_definition, etc.)
 const FRAME_PROMPTS: Record<FrameJobType, string> = {
-  moderation: `You are reviewing semantic frames for quality assurance.
+  flag: `You are reviewing semantic frames for quality assurance.
 
 Frame Label: {{label}}
 Definition: {{definition}}
@@ -132,7 +132,7 @@ Decide whether the frame should be flagged for review. Consider:
 
 Respond using the provided JSON schema.`,
 
-  editing: `You are improving the quality of semantic frame data.
+  edit: `You are improving the quality of semantic frame data.
 
 Frame Label: {{label}}
 Current Definition: {{definition}}
@@ -146,7 +146,7 @@ Review this frame and suggest improvements to make the data more accurate and us
 
 Respond using the provided JSON schema with your suggested edits.`,
 
-  reallocation: `You are reviewing the composition of a semantic frame.
+  allocate_contents: `You are reviewing the composition of a semantic frame.
 
 Frame Label: {{label}}
 Definition: {{definition}}
@@ -167,13 +167,7 @@ Frame ID: {{id}}
 Frame Label: {{label}}
 Definition: {{definition}}
 Short Definition: {{short_definition}}
-Number of Roles: {{roles_count}}
 Number of Lexical Units: {{lexical_units_count}}
-
-Current Roles:
-{% for role in roles %}
-- {{role.type}} ({{role.code}}): {{role.description}}{% if role.main %} [MAIN]{% endif %}
-{% endfor %}
 
 Current Lexical Units:
 {% for lu in lexical_units %}
@@ -184,8 +178,10 @@ Your task is to split this frame into {{min_splits}} to {{max_splits}} new frame
 1. Create a unique, descriptive label
 2. Write a clear definition that distinguishes it from sibling frames
 3. Write a concise short_definition
-4. Define appropriate roles (you may reuse, modify, or create new roles)
-5. Assign each lexical unit to exactly one of the new frames
+4. Assign each lexical unit to exactly one of the new frames
+
+IMPORTANT:
+- Roles are attached to superframes only. For a frame split, set roles = [] for every proposed new frame in the structured response.
 
 Guidelines:
 - Each new frame should be semantically coherent and distinct
@@ -193,17 +189,41 @@ Guidelines:
 - The split should result in more precise, useful frame definitions
 - Consider the semantic relationships between lexical units when grouping
 
-Use the MCP tools to:
-1. Call create_frame for each new frame with its definition and roles
-2. Call edit_lexical_units to reassign each lexical unit to its new frame
-3. Call edit_frames with deleted: true on the original frame (ID: {{id}})
+Respond using the provided JSON schema with:
+- Whether the frame should be split
+- Proposed new frames (labels/definitions/short_definition)
+- Assignment of every lexical unit to exactly one proposed new frame
+- Whether the original should be deleted
+- Confidence + justification`,
 
-Document your reasoning for the split structure.`,
+  allocate: `You are allocating a semantic frame to the best-fitting super frame (parent category).
+
+Frame ID: {{id}}
+Frame Label: {{label}}
+Definition: {{definition}}
+Short Definition: {{short_definition}}
+
+Current Parent Super Frame:
+- ID: {{super_frame.id}}
+- Label: {{super_frame.label}}
+- Definition: {{super_frame.definition}}
+
+Evaluate whether this frame should stay under its current super frame, or be moved to a different existing super frame.
+
+When researching candidate target superframes, use:
+- search_superframes / select_superframes (TOP-LEVEL superframes only)
+Do NOT use search_frames / select_frames to pick a superframe target (those tools return non-top-level frames only).
+
+Rules:
+- If the current parent is appropriate, set keep_current = true.
+- If re-parenting is needed, set keep_current = false and provide recommended_super_frame_id (must be an existing super frame ID; never null).
+
+Respond using the provided JSON schema.`,
 };
 
 // Prompts for superframes (frames that contain other frames, not lexical units)
 const SUPERFRAME_PROMPTS: Record<SuperframeJobType, string> = {
-  moderation: `You are reviewing a superframe for quality assurance.
+  flag: `You are reviewing a superframe for quality assurance.
 
 Superframe Label: {{label}}
 Definition: {{definition}}
@@ -222,7 +242,7 @@ Decide whether the superframe should be flagged for review. Consider:
 
 Respond using the provided JSON schema.`,
 
-  editing: `You are improving the quality of superframe data.
+  edit: `You are improving the quality of superframe data.
 
 Superframe Label: {{label}}
 Current Definition: {{definition}}
@@ -236,7 +256,7 @@ Review this superframe and suggest improvements to make the data more accurate a
 
 Respond using the provided JSON schema with your suggested edits.`,
 
-  reallocation: `You are reviewing the composition of a superframe.
+  allocate_contents: `You are reviewing the composition of a superframe.
 
 Superframe Label: {{label}}
 Definition: {{definition}}
@@ -246,7 +266,7 @@ Number of Child Frames: {{child_frames_count}}
 
 Child Frames in this Superframe:
 {% for frame in child_frames %}
-- {{frame.label}}: {{frame.definition}} ({{frame.roles_count}} roles, {{frame.lexical_units_count}} lexical units)
+- ID {{frame.id}} ({{frame.code}}): {{frame.label}} - {{frame.definition}} ({{frame.roles_count}} roles, {{frame.lexical_units_count}} lexical units)
 {% endfor %}
 
 Evaluate whether the child frames in this superframe are correctly assigned:
@@ -254,6 +274,18 @@ Evaluate whether the child frames in this superframe are correctly assigned:
 - Should any child frame be moved to a different superframe?
 - Are there frames that should be added or removed from this superframe?
 - Consider the semantic coherence of the superframe's contents
+
+When researching candidate target superframes, use:
+- search_superframes / select_superframes (TOP-LEVEL superframes only)
+Use search_frames / select_frames only to inspect non-top-level child frames.
+
+IMPORTANT OUTPUT RULES (superframe allocate_contents):
+- Use ONLY the numeric child frame IDs shown above (the values in "ID {{frame.id}}").
+- If recommending moves, populate the output field:
+  frame_reallocations: [{ child_frame_id: <number>, target_super_frame_id: <number> }]
+- target_super_frame_id must be a TOP-LEVEL superframe ID (super_frame_id = null).
+- Set lexical_unit_reallocations = [] for this job type (do not suggest lexical unit moves here).
+- Do NOT output entry_code/target_frame_id for superframe jobs.
 
 Respond using the provided JSON schema with your recommendations.`,
 
@@ -280,7 +312,8 @@ Your task is to split this superframe into {{min_splits}} to {{max_splits}} new 
 1. Create a unique, descriptive label
 2. Write a clear definition that distinguishes it from sibling superframes
 3. Write a concise short_definition
-4. Define appropriate roles (you may reuse, modify, or create new roles)
+4. Define appropriate roles for the new superframe:
+   - Provide new role descriptions per superframe; examples are optional.
 5. Assign each child frame to exactly one of the new superframes
 
 Guidelines:
@@ -289,12 +322,12 @@ Guidelines:
 - The split should result in better organization of the frame hierarchy
 - Consider the semantic relationships between child frames when grouping
 
-Use the MCP tools to:
-1. Call create_frame for each new superframe (without a super_frame_id, making it a superframe)
-2. Call edit_frames to update each child frame's super_frame_id to point to its new parent
-3. Call edit_frames with deleted: true on the original superframe (ID: {{id}})
-
-Document your reasoning for the split structure.`,
+Respond using the provided JSON schema with:
+- Whether the superframe should be split
+- Proposed new superframes (labels/definitions/short_definition and roles)
+- Assignment of every child frame to exactly one proposed new superframe
+- Whether the original should be deleted
+- Confidence + justification`,
 };
 
 // ============================================================================
@@ -319,24 +352,20 @@ export interface BuildPromptOptions {
 function getBasePrompt(entityType: EntityType, jobType: JobType, isSuperFrame?: boolean): string {
   // Handle superframes
   if (entityType === 'super_frames' || (entityType === 'frames' && isSuperFrame)) {
-    // Superframes support moderation, editing, reallocation, and split
+    // Superframes support flag, edit, allocate_contents, and split
     if (jobType === 'allocate') {
-      return SUPERFRAME_PROMPTS.moderation; // Fallback - shouldn't happen
+      return SUPERFRAME_PROMPTS.flag; // Fallback - shouldn't happen
     }
     return SUPERFRAME_PROMPTS[jobType as SuperframeJobType];
   }
   
   // frames_only is treated as regular frames
   if (entityType === 'frames' || entityType === 'frames_only') {
-    // Regular frames support moderation, editing, reallocation, and split
-    if (jobType === 'allocate') {
-      return FRAME_PROMPTS.moderation; // Fallback - shouldn't happen
-    }
     return FRAME_PROMPTS[jobType as FrameJobType];
   }
-  // Lexical entries only support moderation, editing, and allocate
-  if (jobType === 'reallocation' || jobType === 'split') {
-    return LEXICAL_PROMPTS.moderation; // Fallback - shouldn't happen
+  // Lexical entries only support flag, edit, and allocate
+  if (jobType === 'allocate_contents' || jobType === 'split') {
+    return LEXICAL_PROMPTS.flag; // Fallback - shouldn't happen
   }
   return LEXICAL_PROMPTS[jobType as LexicalJobType];
 }
@@ -392,7 +421,7 @@ export function getDefaultPrompt(entityType: EntityType, jobType: JobType, isSup
 
 // Legacy exports for backwards compatibility
 export const DEFAULT_PROMPTS = LEXICAL_PROMPTS;
-export const DEFAULT_PROMPT = LEXICAL_PROMPTS.moderation;
+export const DEFAULT_PROMPT = LEXICAL_PROMPTS.flag;
 
 export const DEFAULT_LABEL = 'AI Flagging Review';
 

@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
-import { Mode, EditableRole, EditableRoleGroup, EditableFrameRole } from '@/components/editing/types';
+import { Mode, EditableFrameRole } from '@/components/editing/types';
+import { refreshPendingChangesCount } from './usePendingChangesCount';
 
 function getApiPrefix(mode: Mode): string {
   if (mode === 'frames') return '/api/frames';
@@ -62,7 +63,7 @@ export function useEntryMutations(mode: Mode) {
   }, [apiPrefix]);
 
   const updateHypernym = useCallback(async (
-    entryId: string,
+    unitId: string,
     oldHypernym: string | undefined,
     newHypernym: string,
     hyponymsToMove: string[],
@@ -73,7 +74,7 @@ export function useEntryMutations(mode: Mode) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         action: 'change_hypernym',
-        entryId,
+        unitId,
         oldHypernym,
         newHypernym,
         hyponymsToMove,
@@ -88,13 +89,13 @@ export function useEntryMutations(mode: Mode) {
   }, []);
 
   const updateField = useCallback(async (
-    entryId: string, 
+    unitId: string, 
     field: string, 
     value: unknown
   ): Promise<void> => {
     const updateData: Record<string, unknown> = { [field]: value };
     
-    const response = await fetch(`${apiPrefix}/${entryId}`, {
+    const response = await fetch(`${apiPrefix}/${unitId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updateData)
@@ -104,51 +105,13 @@ export function useEntryMutations(mode: Mode) {
       const errorData = await response.json();
       throw new Error(errorData.error || 'Failed to update entry');
     }
+    
+    // Refresh pending changes count since this stages a change
+    refreshPendingChangesCount();
   }, [apiPrefix]);
 
-  const updateRoles = useCallback(async (
-    entryId: string,
-    roles: EditableRole[],
-    roleGroups: EditableRoleGroup[]
-  ): Promise<void> => {
-    const filteredRoles = roles.filter(role => role.description.trim());
-
-    const roleIdLookup = new Map<string, string>();
-    roles.forEach(role => {
-      if (role.id) {
-        roleIdLookup.set(role.clientId, role.id);
-        roleIdLookup.set(role.id, role.id);
-      }
-    });
-
-    const filteredRoleGroups = roleGroups
-      .map(group => {
-        const resolvedRoleIds = group.role_ids
-          .map(roleId => roleIdLookup.get(roleId))
-          .filter((id): id is string => Boolean(id));
-        return {
-          ...group,
-          role_ids: resolvedRoleIds,
-        };
-      })
-      .filter(group => group.role_ids.length >= 2);
-
-    const response = await fetch(`${apiPrefix}/${entryId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        roles: filteredRoles,
-        role_groups: filteredRoleGroups
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to update roles');
-    }
-  }, [apiPrefix]);
-
-  const deleteEntry = useCallback(async (entryId: string): Promise<void> => {
-    const response = await fetch(`${apiPrefix}/${entryId}`, {
+  const deleteEntry = useCallback(async (unitId: string): Promise<void> => {
+    const response = await fetch(`${apiPrefix}/${unitId}`, {
       method: 'DELETE',
     });
 
@@ -156,14 +119,17 @@ export function useEntryMutations(mode: Mode) {
       const errorData = await response.json();
       throw new Error(errorData.error || 'Failed to delete entry');
     }
+    
+    // Refresh pending changes count since this stages a delete
+    refreshPendingChangesCount();
   }, [apiPrefix]);
 
-  const toggleFlag = useCallback(async (entryId: string, currentFlagged: boolean): Promise<void> => {
-    const response = await fetch(`${apiPrefix}/moderation`, {
+  const toggleFlag = useCallback(async (unitId: string, currentFlagged: boolean): Promise<void> => {
+    const response = await fetch(`${apiPrefix}/flag`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        ids: [entryId],
+        ids: [unitId],
         updates: {
           flagged: !currentFlagged
         }
@@ -173,14 +139,15 @@ export function useEntryMutations(mode: Mode) {
     if (!response.ok) {
       throw new Error('Failed to update flag status');
     }
+    // Note: No refreshPendingChangesCount() - flagging is a direct update, not a staged change
   }, [apiPrefix]);
 
-  const toggleVerifiable = useCallback(async (entryId: string, currentVerifiable: boolean): Promise<void> => {
-    const response = await fetch(`${apiPrefix}/moderation`, {
+  const toggleVerifiable = useCallback(async (unitId: string, currentVerifiable: boolean): Promise<void> => {
+    const response = await fetch(`${apiPrefix}/flag`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        ids: [entryId],
+        ids: [unitId],
         updates: {
           verifiable: !currentVerifiable
         }
@@ -190,6 +157,9 @@ export function useEntryMutations(mode: Mode) {
     if (!response.ok) {
       throw new Error('Failed to update verifiable status');
     }
+    
+    // Refresh pending changes count since this stages a change
+    refreshPendingChangesCount();
   }, [apiPrefix]);
 
   const updateFrameRoles = useCallback(async (
@@ -201,6 +171,8 @@ export function useEntryMutations(mode: Mode) {
       .filter(role => role.roleType.trim())
       .map(role => ({
         ...role,
+        // Normalize label (per-frame display name)
+        label: role.label?.trim?.() ?? '',
         // Remove empty/whitespace-only examples when saving
         examples: role.examples.filter(ex => ex.trim())
       }));
@@ -216,6 +188,9 @@ export function useEntryMutations(mode: Mode) {
     if (!response.ok) {
       throw new Error('Failed to update frame roles');
     }
+    
+    // Refresh pending changes count since this stages a change
+    refreshPendingChangesCount();
   }, [apiPrefix]);
 
   /**
@@ -230,13 +205,15 @@ export function useEntryMutations(mode: Mode) {
       const errorData = await response.json();
       throw new Error(errorData.error || 'Failed to delete field change');
     }
+    
+    // Refresh pending changes count since this removes a change
+    refreshPendingChangesCount();
   }, []);
 
   return {
     updateCode,
     updateHypernym,
     updateField,
-    updateRoles,
     updateFrameRoles,
     deleteEntry,
     toggleFlag,

@@ -19,6 +19,7 @@ import ColumnVisibilityPanel, { ColumnConfig, ColumnVisibilityState } from './Co
 import { Modal, EmptyState, ConflictDialog } from './ui';
 import type { ConflictError } from './ui';
 import { useTableSelection } from '@/hooks/useTableSelection';
+import { refreshPendingChangesCount } from '@/hooks/usePendingChangesCount';
 
 // --- Types ---
 
@@ -28,6 +29,8 @@ interface FieldChange {
   field_name: string;
   old_value: unknown;
   new_value: unknown;
+  old_display?: string;
+  new_display?: string;
   status: 'pending' | 'approved' | 'rejected';
   approved_by: string | null;
   approved_at: string | null;
@@ -123,6 +126,43 @@ function formatValue(value: unknown): string {
   return String(value);
 }
 
+function parseFrameRolesFieldName(fieldName: string): { roleType: string; field: string } | null {
+  if (!fieldName.startsWith('frame_roles.')) return null;
+  const parts = fieldName.split('.');
+  if (parts.length < 3) return null;
+  const roleType = parts[1];
+  const field = parts.slice(2).join('.');
+  if (!roleType || !field) return null;
+  return { roleType, field };
+}
+
+function formatFieldName(fieldName: string, opts?: { short?: boolean }): string {
+  const parsed = parseFrameRolesFieldName(fieldName);
+  if (!parsed) return fieldName;
+  if (opts?.short) {
+    return parsed.field === '__exists' ? 'role' : parsed.field;
+  }
+  if (parsed.field === '__exists') {
+    return `frame_roles ▸ ${parsed.roleType} ▸ role`;
+  }
+  return `frame_roles ▸ ${parsed.roleType} ▸ ${parsed.field}`;
+}
+
+function formatFieldChangeValue(fc: FieldChange, which: 'old' | 'new'): string {
+  const parsed = parseFrameRolesFieldName(fc.field_name);
+  if (parsed?.field === '__exists') {
+    const oldExists = typeof fc.old_value === 'boolean' ? fc.old_value : Boolean(fc.old_value);
+    const newExists = typeof fc.new_value === 'boolean' ? fc.new_value : Boolean(fc.new_value);
+    if (which === 'old') return oldExists ? 'present' : 'absent';
+    if (!oldExists && newExists) return 'added';
+    if (oldExists && !newExists) return 'removed';
+    return newExists ? 'present' : 'absent';
+  }
+  const display = which === 'old' ? fc.old_display : fc.new_display;
+  if (typeof display === 'string' && display.trim() !== '') return display;
+  return formatValue(which === 'old' ? fc.old_value : fc.new_value);
+}
+
 function getEntityDisplayName(changeset: Changeset): string {
   const snapshot = changeset.before_snapshot || changeset.after_snapshot;
   if (snapshot) {
@@ -210,7 +250,8 @@ function getDefaultVisibility(): ColumnVisibilityState {
 export default function PendingChangesList({ onRefresh }: PendingChangesListProps) {
   const [data, setData] = useState<PendingChangesData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isCommitting, setIsCommitting] = useState(false);
+  const [committingAction, setCommittingAction] = useState<'commit' | 'reject' | null>(null);
+  const isCommitting = committingAction !== null;
   const [error, setError] = useState<string | null>(null);
   const [expandedComments, setExpandedComments] = useState<string | null>(null);
   const [unreadChangesetIds, setUnreadChangesetIds] = useState<Set<string>>(new Set());
@@ -218,9 +259,12 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
   const [selectedDetail, setSelectedDetail] = useState<FlatChangeset | null>(null);
   const [filter, setFilter] = useState<PendingChangesFilter>(defaultFilter);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [jobSearchQuery, setJobSearchQuery] = useState('');
+  const [jobDropdownOpen, setJobDropdownOpen] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [isPageSizeSelectorOpen, setIsPageSizeSelectorOpen] = useState(false);
+  const jobDropdownContainerRef = useRef<HTMLDivElement>(null);
   
   // Column visibility and width state
   const [columnVisibility, setColumnVisibility] = useState<ColumnVisibilityState>(() => {
@@ -351,6 +395,7 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
       if (result.changeset_discarded) {
         setSelectedDetail(null);
         await fetchData();
+        refreshPendingChangesCount();
       }
     } catch (err) {
       console.error('Failed to update field change:', err);
@@ -455,6 +500,15 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
     };
   }, [flatChangesets]);
 
+  const filteredJobs = useMemo(() => {
+    if (!jobSearchQuery) return filterOptions.jobs;
+    const query = jobSearchQuery.toLowerCase();
+    return filterOptions.jobs.filter(job => {
+      if (filter.jobIds.includes(job.id)) return true;
+      return job.label.toLowerCase().includes(query) || job.id.includes(query);
+    });
+  }, [filterOptions.jobs, jobSearchQuery, filter.jobIds]);
+
   // --- Filtered List ---
   const filteredChangesets = useMemo(() => {
     return flatChangesets.filter(cs => {
@@ -462,9 +516,10 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
       if (filter.search) {
         const searchLower = filter.search.toLowerCase();
         const fieldMatches = cs.field_changes.some(fc => 
+          formatFieldName(fc.field_name).toLowerCase().includes(searchLower) ||
           fc.field_name.toLowerCase().includes(searchLower) ||
-          formatValue(fc.old_value).toLowerCase().includes(searchLower) ||
-          formatValue(fc.new_value).toLowerCase().includes(searchLower)
+          formatFieldChangeValue(fc, 'old').toLowerCase().includes(searchLower) ||
+          formatFieldChangeValue(fc, 'new').toLowerCase().includes(searchLower)
         );
         const matches = 
           cs.entity_type.toLowerCase().includes(searchLower) ||
@@ -492,6 +547,23 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
   useEffect(() => {
     setPage(1);
   }, [filter]);
+
+  // Close job dropdown on outside click (mimics the lexical-units FilterPanel "Frame ID" UX)
+  useEffect(() => {
+    if (!jobDropdownOpen) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        jobDropdownContainerRef.current &&
+        !jobDropdownContainerRef.current.contains(event.target as Node)
+      ) {
+        setJobDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [jobDropdownOpen]);
 
   // --- Paginated List ---
   const paginatedChangesets = useMemo(() => {
@@ -664,10 +736,10 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
             {/* Only show pending field changes */}
             {pendingChanges.map(f => (
               <div key={f.id} className="flex items-baseline gap-2 text-xs">
-                <span className="font-mono text-blue-600 flex-shrink-0">{f.field_name}</span>
-                <span className="text-gray-400 line-through whitespace-pre-wrap break-words">{formatValue(f.old_value)}</span>
+                <span className="font-mono text-blue-600 flex-shrink-0">{formatFieldName(f.field_name)}</span>
+                <span className="text-gray-400 line-through whitespace-pre-wrap break-words">{formatFieldChangeValue(f, 'old')}</span>
                 <span className="text-gray-300 flex-shrink-0">→</span>
-                <span className="text-gray-900 whitespace-pre-wrap break-words">{formatValue(f.new_value)}</span>
+                <span className="text-gray-900 whitespace-pre-wrap break-words">{formatFieldChangeValue(f, 'new')}</span>
               </div>
             ))}
             {pendingChanges.length === 0 && (approvedCount > 0 || rejectedCount > 0) && (
@@ -731,7 +803,7 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
   };
 
   const handleSingleCommit = async (id: string) => {
-    setIsCommitting(true);
+    setCommittingAction('commit');
     const changeset = flatChangesets.find(cs => cs.id === id);
     try {
       await fetch(`/api/changesets/${id}`, {
@@ -742,18 +814,19 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
       const result = await commitChangeset(id, changeset?.entity_display);
       if (result.conflict) {
         // Conflict dialog is shown, don't refresh data yet
-        setIsCommitting(false);
+        setCommittingAction(null);
         return;
       }
     } catch (err) {
       console.error(err);
     }
     await fetchData();
-    setIsCommitting(false);
+    refreshPendingChangesCount();
+    setCommittingAction(null);
   };
 
   const handleBulkCommit = async () => {
-    setIsCommitting(true);
+    setCommittingAction('commit');
     const ids = Array.from(selection.selectedIds);
     
     try {
@@ -775,7 +848,7 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
             entityDisplay: conflictedChangeset?.entity_display || null,
           });
         }
-        setIsCommitting(false);
+        setCommittingAction(null);
         return;
       }
       
@@ -786,11 +859,12 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
     
     selection.clearSelection();
     await fetchData();
-    setIsCommitting(false);
+    refreshPendingChangesCount();
+    setCommittingAction(null);
   };
 
   const handleBulkReject = async () => {
-    setIsCommitting(true);
+    setCommittingAction('reject');
     const ids = Array.from(selection.selectedIds);
     
     try {
@@ -805,11 +879,12 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
     
     selection.clearSelection();
     await fetchData();
-    setIsCommitting(false);
+    refreshPendingChangesCount();
+    setCommittingAction(null);
   };
 
   const handleSingleReject = async (id: string) => {
-    setIsCommitting(true);
+    setCommittingAction('reject');
     try {
       const changeset = flatChangesets.find(cs => cs.id === id);
       // For DELETE/CREATE operations, discard the changeset entirely
@@ -828,7 +903,8 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
       console.error('Failed to reject:', err);
     }
     await fetchData();
-    setIsCommitting(false);
+    refreshPendingChangesCount();
+    setCommittingAction(null);
   };
 
   // --- Conflict Dialog Handlers ---
@@ -852,6 +928,7 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
       // Close dialog and refresh
       setConflictDialog({ isOpen: false, errors: [], changesetId: null, entityDisplay: null });
       await fetchData();
+      refreshPendingChangesCount();
       if (onRefresh) onRefresh();
     } catch (err) {
       console.error('Failed to discard changeset:', err);
@@ -916,13 +993,13 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
                   <div className="space-y-2">
                     {changeset.field_changes.slice(0, 4).map(fc => (
                       <div key={fc.id} className="flex items-start gap-3 text-sm">
-                        <span className="font-mono text-blue-600 font-medium min-w-[120px] flex-shrink-0">{fc.field_name}</span>
+                        <span className="font-mono text-blue-600 font-medium min-w-[120px] flex-shrink-0">{formatFieldName(fc.field_name)}</span>
                         <span className="text-gray-400 line-through break-all">
-                          {formatValue(fc.old_value)}
+                          {formatFieldChangeValue(fc, 'old')}
                         </span>
                         <span className="text-gray-400 flex-shrink-0">→</span>
                         <span className="text-gray-900 font-medium break-all">
-                          {formatValue(fc.new_value)}
+                          {formatFieldChangeValue(fc, 'new')}
                         </span>
                       </div>
                     ))}
@@ -1048,68 +1125,113 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
             {/* Handle update operation with field changes */}
             {selectedDetail.operation === 'update' && (
               <div className="space-y-3">
-                {detailFieldChanges.map(fc => (
-                  <div 
-                    key={fc.id} 
-                    className={`p-3 rounded-lg border ${
-                      fc.status === 'approved' 
-                        ? 'bg-green-50 border-green-200' 
-                        : fc.status === 'rejected' 
-                        ? 'bg-red-50 border-red-200' 
-                        : 'bg-gray-50 border-gray-200'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="font-mono text-blue-600 font-medium text-sm">{fc.field_name}</span>
-                      <div className="flex items-center gap-2">
-                        {fc.status !== 'pending' && (
-                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                            fc.status === 'approved' 
-                              ? 'bg-green-100 text-green-700' 
-                              : 'bg-red-100 text-red-700'
-                          }`}>
-                            {fc.status}
-                          </span>
-                        )}
-                        <button
-                          onClick={() => handleFieldChangeStatus(fc.id, 'approved')}
-                          disabled={isUpdatingField === fc.id || fc.status === 'approved'}
-                          className={`p-1.5 rounded-lg transition-colors ${
-                            fc.status === 'approved'
-                              ? 'bg-green-200 text-green-700 cursor-default'
-                              : 'text-green-600 hover:bg-green-100 disabled:opacity-50'
-                          }`}
-                          title="Approve this change"
-                        >
-                          <CheckIcon className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleFieldChangeStatus(fc.id, 'rejected')}
-                          disabled={isUpdatingField === fc.id || fc.status === 'rejected'}
-                          className={`p-1.5 rounded-lg transition-colors ${
-                            fc.status === 'rejected'
-                              ? 'bg-red-200 text-red-700 cursor-default'
-                              : 'text-red-600 hover:bg-red-100 disabled:opacity-50'
-                          }`}
-                          title="Reject this change"
-                        >
-                          <XMarkIcon className="w-4 h-4" />
-                        </button>
+                {(() => {
+                  const frameRoleGroups = new Map<string, FieldChange[]>();
+                  const otherChanges: FieldChange[] = [];
+
+                  for (const fc of detailFieldChanges) {
+                    const parsed = parseFrameRolesFieldName(fc.field_name);
+                    if (parsed) {
+                      if (!frameRoleGroups.has(parsed.roleType)) frameRoleGroups.set(parsed.roleType, []);
+                      frameRoleGroups.get(parsed.roleType)!.push(fc);
+                    } else {
+                      otherChanges.push(fc);
+                    }
+                  }
+
+                  const roleFieldOrder = ['__exists', 'label', 'description', 'notes', 'main', 'examples'];
+                  const sortRoleFieldChanges = (a: FieldChange, b: FieldChange) => {
+                    const aParsed = parseFrameRolesFieldName(a.field_name);
+                    const bParsed = parseFrameRolesFieldName(b.field_name);
+                    const aField = aParsed?.field ?? '';
+                    const bField = bParsed?.field ?? '';
+                    const aIdx = roleFieldOrder.indexOf(aField);
+                    const bIdx = roleFieldOrder.indexOf(bField);
+                    return (aIdx === -1 ? 999 : aIdx) - (bIdx === -1 ? 999 : bIdx);
+                  };
+
+                  const renderFieldChangeCard = (fc: FieldChange, displayName: string) => (
+                    <div 
+                      key={fc.id} 
+                      className={`p-3 rounded-lg border ${
+                        fc.status === 'approved' 
+                          ? 'bg-green-50 border-green-200' 
+                          : fc.status === 'rejected' 
+                          ? 'bg-red-50 border-red-200' 
+                          : 'bg-gray-50 border-gray-200'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-mono text-blue-600 font-medium text-sm">{displayName}</span>
+                        <div className="flex items-center gap-2">
+                          {fc.status !== 'pending' && (
+                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                              fc.status === 'approved' 
+                                ? 'bg-green-100 text-green-700' 
+                                : 'bg-red-100 text-red-700'
+                            }`}>
+                              {fc.status}
+                            </span>
+                          )}
+                          <button
+                            onClick={() => handleFieldChangeStatus(fc.id, 'approved')}
+                            disabled={isUpdatingField === fc.id || fc.status === 'approved'}
+                            className={`p-1.5 rounded-lg transition-colors ${
+                              fc.status === 'approved'
+                                ? 'bg-green-200 text-green-700 cursor-default'
+                                : 'text-green-600 hover:bg-green-100 disabled:opacity-50'
+                            }`}
+                            title="Approve this change"
+                          >
+                            <CheckIcon className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleFieldChangeStatus(fc.id, 'rejected')}
+                            disabled={isUpdatingField === fc.id || fc.status === 'rejected'}
+                            className={`p-1.5 rounded-lg transition-colors ${
+                              fc.status === 'rejected'
+                                ? 'bg-red-200 text-red-700 cursor-default'
+                                : 'text-red-600 hover:bg-red-100 disabled:opacity-50'
+                            }`}
+                            title="Reject this change"
+                          >
+                            <XMarkIcon className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-3 text-sm">
+                        <div className="flex-1 min-w-0">
+                          <span className="text-xs text-gray-500 block mb-1">Current:</span>
+                          <span className="text-gray-500 line-through break-all">{formatFieldChangeValue(fc, 'old')}</span>
+                        </div>
+                        <span className="text-gray-300 flex-shrink-0 mt-5">→</span>
+                        <div className="flex-1 min-w-0">
+                          <span className="text-xs text-gray-500 block mb-1">New:</span>
+                          <span className="text-gray-900 break-all">{formatFieldChangeValue(fc, 'new')}</span>
+                        </div>
                       </div>
                     </div>
-                    <div className="flex items-start gap-3 text-sm">
-                      <div className="flex-1 min-w-0">
-                        <span className="text-xs text-gray-500 block mb-1">Current:</span>
-                        <span className="text-gray-500 line-through break-all">{formatValue(fc.old_value)}</span>
-                      </div>
-                      <span className="text-gray-300 flex-shrink-0 mt-5">→</span>
-                      <div className="flex-1 min-w-0">
-                        <span className="text-xs text-gray-500 block mb-1">New:</span>
-                        <span className="text-gray-900 break-all">{formatValue(fc.new_value)}</span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                  );
+
+                  return (
+                    <>
+                      {otherChanges.map(fc => renderFieldChangeCard(fc, formatFieldName(fc.field_name)))}
+                      {Array.from(frameRoleGroups.entries())
+                        .sort(([a], [b]) => a.localeCompare(b))
+                        .map(([roleType, changes]) => (
+                          <div key={roleType} className="p-3 rounded-lg border border-gray-200 bg-white">
+                            <div className="mb-2 text-xs font-semibold text-gray-700">frame_roles ▸ {roleType}</div>
+                            <div className="space-y-3">
+                              {changes
+                                .slice()
+                                .sort(sortRoleFieldChanges)
+                                .map(fc => renderFieldChangeCard(fc, formatFieldName(fc.field_name, { short: true })))}
+                            </div>
+                          </div>
+                        ))}
+                    </>
+                  );
+                })()}
                 
                 {/* Summary of decisions */}
                 {detailFieldChanges.length > 0 && (
@@ -1274,21 +1396,53 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
 
                       {/* Job Filter */}
                       {filterOptions.jobs.length > 0 && (
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">Job</label>
-                          <select
-                            value={filter.jobIds.length === 1 ? filter.jobIds[0] : ''}
-                            onChange={(e) => setFilter(f => ({
-                              ...f,
-                              jobIds: e.target.value ? [e.target.value] : []
-                            }))}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
-                          >
-                            <option value="">All jobs</option>
-                            {filterOptions.jobs.map(job => (
-                              <option key={job.id} value={job.id}>{job.label}</option>
-                            ))}
-                          </select>
+                        <div className="relative" ref={jobDropdownContainerRef}>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Job</label>
+                          <input
+                            type="text"
+                            value={jobSearchQuery}
+                            onChange={(e) => setJobSearchQuery(e.target.value)}
+                            onFocus={() => setJobDropdownOpen(true)}
+                            placeholder="Search jobs..."
+                            className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 mb-2"
+                          />
+                          {jobDropdownOpen && (
+                            <div className="max-h-48 overflow-y-auto border border-gray-300 rounded-xl bg-white">
+                              {filteredJobs.length === 0 ? (
+                                <div className="px-3 py-2 text-sm text-gray-500">No jobs found</div>
+                              ) : (
+                                filteredJobs.map((job) => (
+                                  <label
+                                    key={job.id}
+                                    className="flex items-start px-3 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={filter.jobIds.includes(job.id)}
+                                      onChange={() =>
+                                        setFilter((f) => ({
+                                          ...f,
+                                          jobIds: f.jobIds.includes(job.id)
+                                            ? f.jobIds.filter((id) => id !== job.id)
+                                            : [...f.jobIds, job.id],
+                                        }))
+                                      }
+                                      className="mt-0.5 mr-3 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                    />
+                                    <div className="flex-1 min-w-0">
+                                      <div className="text-sm font-medium text-gray-900 truncate">{job.label}</div>
+                                      <div className="text-xs text-gray-500 font-mono truncate">{job.id}</div>
+                                    </div>
+                                  </label>
+                                ))
+                              )}
+                            </div>
+                          )}
+                          {filter.jobIds.length > 0 && (
+                            <div className="mt-2 text-xs text-gray-600">
+                              {filter.jobIds.length} job{filter.jobIds.length !== 1 ? 's' : ''} selected
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1339,7 +1493,7 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
                     disabled={isCommitting}
                     className="flex items-center gap-1 px-3 py-1 text-sm font-medium text-green-700 bg-green-100 border border-green-200 rounded-xl hover:bg-green-200 transition-colors cursor-pointer disabled:opacity-50"
                   >
-                    {isCommitting ? (
+                    {committingAction === 'commit' ? (
                       <LoadingSpinner size="sm" noPadding />
                     ) : (
                       <CheckIcon className="w-4 h-4" />
@@ -1351,7 +1505,7 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
                     disabled={isCommitting}
                     className="flex items-center gap-1 px-3 py-1 text-sm font-medium text-red-700 bg-red-100 border border-red-200 rounded-xl hover:bg-red-200 transition-colors cursor-pointer disabled:opacity-50"
                   >
-                    {isCommitting ? (
+                    {committingAction === 'reject' ? (
                       <LoadingSpinner size="sm" noPadding />
                     ) : (
                       <XMarkIcon className="w-4 h-4" />

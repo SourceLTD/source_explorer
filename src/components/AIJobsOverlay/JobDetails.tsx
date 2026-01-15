@@ -1,9 +1,11 @@
 import { memo, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { FlagIcon } from '@heroicons/react/24/outline';
 import type { SerializedJob } from '@/lib/llm/types';
 import { 
   StatusPill, 
   JobTypeBadge,
+  McpModePill,
   Metric, 
   ItemList,
   ConfigCard,
@@ -15,7 +17,7 @@ import {
   parseJobConfig,
   parseJobScope
 } from './components';
-import { formatRuntime } from './utils';
+import { formatRuntime, formatRelativeTime, formatEmailAsName } from './utils';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import type { DataTableMode } from '../DataTable/types';
 
@@ -51,6 +53,8 @@ export const JobDetails = memo(function JobDetails({
   // Parse config and scope
   const config = useMemo(() => parseJobConfig(job.config), [job.config]);
   const scope = useMemo(() => parseJobScope(job.scope), [job.scope]);
+  const mcpEnabled = config?.mcpEnabled !== false;
+  const showFlaggedStatus = job.job_type === 'flag';
   
   // Memoize filtered item lists to prevent re-computation
   const pendingItems = useMemo(
@@ -78,6 +82,10 @@ export const JobDetails = memo(function JobDetails({
   // Only show processing bar when NOT submitting and all items are submitted
   const isProcessing = !isSubmitting && isActive && (job.submitted_items ?? 0) >= job.total_items && (job.processed_items ?? 0) < job.total_items;
 
+  const jobIsSuperFrame = useMemo(() => {
+    return scope && 'isSuperFrame' in scope ? scope.isSuperFrame === true : false;
+  }, [scope]);
+
   const [isItemsExpanded, setIsItemsExpanded] = useState(true);
 
   return (
@@ -94,19 +102,20 @@ export const JobDetails = memo(function JobDetails({
             </div>
             <div className="mt-2 flex items-center gap-3 text-sm text-gray-500 flex-wrap">
               <JobTypeBadge jobType={job.job_type} />
+              <McpModePill enabled={mcpEnabled} />
               {job.submitted_by && (
                 <span className="flex items-center gap-1">
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                   </svg>
-                  {job.submitted_by}
+                  {formatEmailAsName(job.submitted_by)}
                 </span>
               )}
               <span className="flex items-center gap-1">
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
-                {new Date(job.created_at).toLocaleString()}
+                {formatRelativeTime(job.created_at)}
               </span>
             </div>
         </div>
@@ -123,7 +132,7 @@ export const JobDetails = memo(function JobDetails({
             </svg>
               Clone
           </button>
-          {job.status === 'completed' && (
+          {job.status === 'completed' && job.job_type === 'flag' && (
             <button
               onClick={() => {
                 onClose();
@@ -210,12 +219,8 @@ export const JobDetails = memo(function JobDetails({
             size="sm"
             label="Flagged" 
             value={job.flagged_items.toString()}
-            variant={job.flagged_items > 0 ? 'warning' : 'default'}
-            icon={
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9" />
-              </svg>
-            }
+            variant={job.flagged_items > 0 ? 'info' : 'default'}
+            icon={<FlagIcon className="w-3.5 h-3.5" />}
           />
           <Metric 
             size="sm"
@@ -311,10 +316,8 @@ export const JobDetails = memo(function JobDetails({
                 </span>
               )}
               {(job.flagged_items ?? 0) > 0 && (
-                <span className="flex items-center gap-1 text-amber-600">
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                  </svg>
+                <span className="flex items-center gap-1 text-blue-600">
+                  <FlagIcon className="w-3.5 h-3.5" />
                   {job.flagged_items} flagged
                 </span>
               )}
@@ -364,6 +367,8 @@ export const JobDetails = memo(function JobDetails({
           emptyMessage="No items pending." 
           totalCount={job.total_items - job.succeeded_items - job.failed_items}
           onLoadMore={() => onLoadMore('pending')}
+          jobIsSuperFrame={jobIsSuperFrame}
+          showFlaggedStatus={showFlaggedStatus}
         />
         <ItemList 
           title="Succeeded" 
@@ -371,6 +376,8 @@ export const JobDetails = memo(function JobDetails({
           emptyMessage="No successes yet." 
           totalCount={job.succeeded_items}
           onLoadMore={() => onLoadMore('succeeded')}
+          jobIsSuperFrame={jobIsSuperFrame}
+          showFlaggedStatus={showFlaggedStatus}
         />
         <ItemList 
           title="Failed" 
@@ -378,6 +385,8 @@ export const JobDetails = memo(function JobDetails({
           emptyMessage="No failures." 
           totalCount={job.failed_items}
           onLoadMore={() => onLoadMore('failed')}
+          jobIsSuperFrame={jobIsSuperFrame}
+          showFlaggedStatus={showFlaggedStatus}
         />
           </div>
         )}

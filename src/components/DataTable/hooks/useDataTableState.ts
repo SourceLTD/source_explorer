@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
-import { PaginatedResult, PaginationParams, TableEntry, Frame } from '@/lib/types';
-import { FilterState } from '@/components/FilterPanel';
+import { PaginatedResult, PaginationParams, TableLexicalUnit, Frame } from '@/lib/types';
+import type { FilterState } from '../filterState';
+import { toDeltaFilters, toEffectiveFilters } from '../filterState';
 import { ColumnVisibilityState } from '@/components/ColumnVisibilityPanel';
 import {
   DataTableMode,
@@ -25,7 +26,7 @@ export interface UseDataTableStateOptions {
 
 export interface UseDataTableStateReturn {
   // Data
-  data: PaginatedResult<TableEntry | Frame> | null;
+  data: PaginatedResult<TableLexicalUnit | Frame> | null;
   loading: boolean;
   error: string | null;
   fetchData: () => Promise<void>;
@@ -90,18 +91,18 @@ function parseURLParams(
   const filters: FilterState = {};
   
   // Parse text filters
-  ['gloss', 'lemmas', 'examples', 'frames', 'flaggedReason', 'unverifiableReason'].forEach(key => {
+  ['gloss', 'lemmas', 'examples', 'frames', 'flaggedReason', 'unverifiableReason', 'label', 'definition', 'short_definition'].forEach(key => {
     const value = searchParams.get(key);
     if (value !== null) {
-      filters[key as 'gloss' | 'lemmas' | 'examples' | 'frames' | 'flaggedReason' | 'unverifiableReason'] = value;
+      filters[key as 'gloss' | 'lemmas' | 'examples' | 'frames' | 'flaggedReason' | 'unverifiableReason' | 'label' | 'definition' | 'short_definition'] = value;
     }
   });
   
   // Parse categorical filters
-  ['pos', 'lexfile', 'frame_id', 'flaggedByJobId'].forEach(key => {
+  ['pos', 'lexfile', 'frame_id', 'super_frame_id', 'flaggedByJobId'].forEach(key => {
     const value = searchParams.get(key);
     if (value !== null) {
-      filters[key as 'pos' | 'lexfile' | 'frame_id' | 'flaggedByJobId'] = value;
+      filters[key as 'pos' | 'lexfile' | 'frame_id' | 'super_frame_id' | 'flaggedByJobId'] = value;
     }
   });
   
@@ -110,9 +111,6 @@ function parseURLParams(
     const value = searchParams.get(key);
     if (value !== null) {
       filters[key as 'isMwe' | 'flagged' | 'verifiable' | 'pendingCreate' | 'pendingUpdate' | 'pendingDelete' | 'excludeNullFrame'] = value === 'true';
-    } else if (key === 'excludeNullFrame' && mode === 'lexical_units') {
-      // Default to true for lexical units mode
-      filters.excludeNullFrame = true;
     }
   });
   
@@ -201,7 +199,7 @@ export function useDataTableState({
   const initialState = getInitialStateFromURL();
 
   // Data state
-  const [data, setData] = useState<PaginatedResult<TableEntry | Frame> | null>(null);
+  const [data, setData] = useState<PaginatedResult<TableLexicalUnit | Frame> | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
@@ -213,7 +211,7 @@ export function useDataTableState({
   const [sortState, setSortState] = useState<SortState>(initialState.sortState);
   
   // Filter state
-  const [filters, setFilters] = useState<FilterState>(initialState.filters);
+  const [filters, setFilters] = useState<FilterState>(() => toDeltaFilters(mode, initialState.filters));
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
   
   // Column visibility state
@@ -321,7 +319,7 @@ export function useDataTableState({
     const newState = parseURLParams(params, mode);
     
     // Reset filters to URL state or empty
-    setFilters(newState.filters);
+    setFilters(toDeltaFilters(mode, newState.filters));
     
     // Reset column visibility to URL state or default for the new mode
     const newColumnVisibility = newState.columnVisibility || getDefaultVisibility(mode);
@@ -343,8 +341,8 @@ export function useDataTableState({
     
     // Remove DataTable-managed params to rebuild them
     const managedParams = [
-      'gloss', 'lemmas', 'examples', 'frames', 'flaggedReason', 'unverifiableReason',
-      'pos', 'lexfile', 'frame_id', 'flaggedByJobId',
+      'gloss', 'lemmas', 'examples', 'frames', 'flaggedReason', 'unverifiableReason', 'label', 'definition', 'short_definition',
+      'pos', 'lexfile', 'frame_id', 'super_frame_id', 'flaggedByJobId',
       'isMwe', 'flagged', 'verifiable', 'excludeNullFrame',
       'pendingCreate', 'pendingUpdate', 'pendingDelete',
       'parentsCountMin', 'parentsCountMax', 'childrenCountMin', 'childrenCountMax',
@@ -407,6 +405,7 @@ export function useDataTableState({
         ? sortState.field 
         : (mode === 'frames' ? 'label' : 'id');
       
+      const effectiveFilters = toEffectiveFilters(mode, filters);
       const params: PaginationParams = {
         page: currentPage,
         limit: pageSize,
@@ -414,7 +413,7 @@ export function useDataTableState({
         sortOrder: sortState.order,
         search: searchQuery || undefined,
         isSuperFrame: mode === 'super_frames' ? 'true' : (mode === 'frames_only' ? 'false' : undefined),
-        ...filters,
+        ...effectiveFilters,
       };
 
       const queryParams = new URLSearchParams();
@@ -429,7 +428,7 @@ export function useDataTableState({
         throw new Error('Failed to fetch data');
       }
 
-      const result: PaginatedResult<TableEntry> = await response.json();
+      const result: PaginatedResult<TableLexicalUnit> = await response.json();
       setData(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
@@ -458,18 +457,18 @@ export function useDataTableState({
   }, []);
 
   const handleFiltersChange = useCallback((newFilters: FilterState) => {
-    setFilters(newFilters);
+    setFilters(toDeltaFilters(mode, newFilters));
     setCurrentPage(1);
     // Reset to default page size (10) if currently showing all
     if (pageSize === -1) {
       setPageSize(10);
     }
-  }, [pageSize]);
+  }, [mode, pageSize]);
 
   const handleClearAllFilters = useCallback(() => {
-    setFilters(mode === 'lexical_units' ? { excludeNullFrame: true } : {});
+    setFilters({});
     setCurrentPage(1);
-  }, [mode]);
+  }, []);
 
   const handleColumnVisibilityChange = useCallback((newVisibility: ColumnVisibilityState) => {
     const sanitizedVisibility = sanitizeColumnVisibility(newVisibility, mode);

@@ -85,6 +85,11 @@ export const CreationWizard = memo(function CreationWizard({
     promptTemplate,
     setPromptTemplate,
     promptRef,
+    systemPrompt,
+    clusterLoopListsEnabled,
+    setClusterLoopListsEnabled,
+    clusterKOverrideText,
+    setClusterKOverrideText,
     showVariableMenu,
     variableMenuPosition,
     variableActiveIndex,
@@ -139,17 +144,17 @@ export const CreationWizard = memo(function CreationWizard({
       // Check for {{variable}} - simple interpolation
       if (/^\{\{[a-zA-Z0-9_.]+\}\}$/.test(part)) {
         return (
-          <strong key={`${index}-v`} className="font-semibold text-gray-900">
+          <span key={`${index}-v`} className="text-blue-700 bg-blue-50/50 rounded-sm px-0.5 -mx-0.5">
             {part}
-          </strong>
+          </span>
         );
       }
       // Check for {% for/endfor %} - loop blocks
       if (/^\{%\s*(?:for|endfor)/.test(part)) {
         return (
-          <strong key={`${index}-b`} className="font-semibold text-indigo-600">
+          <span key={`${index}-b`} className="text-indigo-600 bg-indigo-50/50 rounded-sm px-0.5 -mx-0.5">
             {part}
-          </strong>
+          </span>
         );
       }
       return <span key={`${index}-t`}>{part}</span>;
@@ -158,21 +163,33 @@ export const CreationWizard = memo(function CreationWizard({
 
   const renderStepContent = () => {
     switch (currentStep) {
-      case 'scope':
+      case 'scope': {
+        // Job type availability matrix (DataTableMode -> allowed job types)
+        const allowAllocate = mode === 'lexical_units' || mode === 'frames_only' || mode === 'frames';
+        const allowReallocateContents = mode === 'frames_only' || mode === 'frames' || mode === 'super_frames';
+        const allowSplit = mode === 'frames_only' || mode === 'frames' || mode === 'super_frames';
+        const allocateSubtitle =
+          mode === 'lexical_units'
+            ? 'Find best frame'
+            : 'Find best super frame';
+        const reallocateSubtitle =
+          mode === 'super_frames'
+            ? 'Reallocate child frames'
+            : 'Reallocate lexical units';
         return (
           <div className="space-y-5">
             {/* Job Type Selection */}
             <div className="space-y-3">
               <label className="block text-xs font-semibold text-gray-700">Job Type</label>
               <div className="flex gap-3">
-                <label className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border p-3 transition-colors ${jobType === 'moderation' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-gray-200 hover:bg-gray-50'}`}>
+                <label className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border p-3 transition-colors ${jobType === 'flag' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-gray-200 hover:bg-gray-50'}`}>
                   <input
                     type="radio"
                     name="jobType"
-                    value="moderation"
-                    checked={jobType === 'moderation'}
+                    value="flag"
+                    checked={jobType === 'flag'}
                     onChange={() => {
-                      setJobType('moderation');
+                      setJobType('flag');
                       setTargetFields([]);
                       setReallocationEntityTypes([]);
                     }}
@@ -180,17 +197,17 @@ export const CreationWizard = memo(function CreationWizard({
                   />
                   <div className="text-center">
                     <div className="text-sm font-semibold">Flag</div>
-                    <div className="text-[10px] opacity-70">Flag issues</div>
+                    <div className="text-[10px] opacity-70">Flag based on criteria</div>
                   </div>
                 </label>
-                <label className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border p-3 transition-colors ${jobType === 'editing' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-gray-200 hover:bg-gray-50'}`}>
+                <label className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border p-3 transition-colors ${jobType === 'edit' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-gray-200 hover:bg-gray-50'}`}>
                   <input
                     type="radio"
                     name="jobType"
-                    value="editing"
-                    checked={jobType === 'editing'}
+                    value="edit"
+                    checked={jobType === 'edit'}
                     onChange={() => {
-                      setJobType('editing');
+                      setJobType('edit');
                       setReallocationEntityTypes([]);
                     }}
                     className="sr-only"
@@ -200,7 +217,7 @@ export const CreationWizard = memo(function CreationWizard({
                     <div className="text-[10px] opacity-70">Improve data</div>
                   </div>
                 </label>
-                {mode !== 'frames' && (
+                {allowAllocate && (
                   <label className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border p-3 transition-colors ${jobType === 'allocate' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-gray-200 hover:bg-gray-50'}`}>
                     <input
                       type="radio"
@@ -216,30 +233,30 @@ export const CreationWizard = memo(function CreationWizard({
                     />
                     <div className="text-center">
                       <div className="text-sm font-semibold">Allocate</div>
-                      <div className="text-[10px] opacity-70">Find best frame</div>
+                      <div className="text-[10px] opacity-70">{allocateSubtitle}</div>
                     </div>
                   </label>
                 )}
-                {mode === 'frames' && (
-                  <label className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border p-3 transition-colors ${jobType === 'reallocation' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-gray-200 hover:bg-gray-50'}`}>
+                {allowReallocateContents && (
+                  <label className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border p-3 transition-colors ${jobType === 'allocate_contents' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-gray-200 hover:bg-gray-50'}`}>
                     <input
                       type="radio"
                       name="jobType"
-                      value="reallocation"
-                      checked={jobType === 'reallocation'}
+                      value="allocate_contents"
+                      checked={jobType === 'allocate_contents'}
                       onChange={() => {
-                        setJobType('reallocation');
+                        setJobType('allocate_contents');
                         setTargetFields([]);
                       }}
                       className="sr-only"
                     />
                     <div className="text-center">
-                      <div className="text-sm font-semibold">Reallocate</div>
-                      <div className="text-[10px] opacity-70">Change frame contents</div>
+                      <div className="text-sm font-semibold">Allocate Contents</div>
+                      <div className="text-[10px] opacity-70">{reallocateSubtitle}</div>
                     </div>
                   </label>
                 )}
-                {(mode === 'frames' || mode === 'super_frames') && (
+                {allowSplit && (
                   <label className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border p-3 transition-colors ${jobType === 'split' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-gray-200 hover:bg-gray-50'}`}>
                     <input
                       type="radio"
@@ -328,7 +345,7 @@ export const CreationWizard = memo(function CreationWizard({
             </div>
 
             {/* Target Fields for Editing */}
-            {jobType === 'editing' && isScopeValid && (
+            {jobType === 'edit' && isScopeValid && (
               <>
                 <div className="border-t border-gray-200" />
                 <div className="space-y-3">
@@ -368,58 +385,43 @@ export const CreationWizard = memo(function CreationWizard({
               </>
             )}
 
-            {/* Entity Types for Reallocation */}
-            {jobType === 'reallocation' && isScopeValid && (
+            {/* Entity Types for Allocate Contents
+                Note: For superframes, this always targets child frames (no choice), so we omit this section. */}
+            {jobType === 'allocate_contents' && isScopeValid && mode !== 'super_frames' && (
               <>
                 <div className="border-t border-gray-200" />
                 <div className="space-y-3">
-                  <label className="block text-xs font-semibold text-gray-700">
-                    {mode === 'super_frames' ? 'Entity Types to Reallocate (Child Frames)' : 'Entity Types to Reallocate'}
-                  </label>
-                  {mode === 'super_frames' ? (
-                    /* For superframes, reallocation targets child frames */
-                    <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-700">
-                      <div className="font-semibold mb-1">Reallocating Frames</div>
-                      <p className="text-xs">
-                        For superframes, the AI will evaluate which child frames belong to this superframe 
-                        and suggest moving frames between superframes.
-                      </p>
-                    </div>
-                  ) : (
-                    /* For regular frames, reallocation targets lexical units */
-                    <>
-                      <div className="flex gap-3">
-                        {(['verb', 'noun', 'adjective', 'adverb'] as const).map(entityType => (
-                          <label
-                            key={entityType}
-                            className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border p-3 transition-colors ${
+                  <label className="block text-xs font-semibold text-gray-700">Entity Types to Allocate</label>
+                  <div className="flex gap-3">
+                    {(['verb', 'noun', 'adjective', 'adverb'] as const).map(entityType => (
+                      <label
+                        key={entityType}
+                        className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border p-3 transition-colors ${
+                          reallocationEntityTypes.includes(entityType)
+                            ? 'border-blue-500 bg-blue-50 text-blue-600'
+                            : 'border-gray-200 hover:bg-gray-50'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={reallocationEntityTypes.includes(entityType)}
+                          onChange={() => {
+                            setReallocationEntityTypes(
                               reallocationEntityTypes.includes(entityType)
-                                ? 'border-blue-500 bg-blue-50 text-blue-600'
-                                : 'border-gray-200 hover:bg-gray-50'
-                            }`}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={reallocationEntityTypes.includes(entityType)}
-                            onChange={() => {
-                              setReallocationEntityTypes(
-                                reallocationEntityTypes.includes(entityType) 
-                                  ? reallocationEntityTypes.filter(t => t !== entityType)
-                                  : [...reallocationEntityTypes, entityType]
-                              );
-                            }}
-                              className="sr-only"
-                            />
-                            <div className="text-center">
-                              <div className="text-sm font-semibold">{entityType.charAt(0).toUpperCase() + entityType.slice(1)}s</div>
-                            </div>
-                          </label>
-                        ))}
-                      </div>
-                      {reallocationEntityTypes.length === 0 && (
-                        <p className="text-[10px] text-amber-600 font-medium">Select at least one entity type the AI can suggest reallocating.</p>
-                      )}
-                    </>
+                                ? reallocationEntityTypes.filter(t => t !== entityType)
+                                : [...reallocationEntityTypes, entityType]
+                            );
+                          }}
+                          className="sr-only"
+                        />
+                        <div className="text-center">
+                          <div className="text-sm font-semibold">{entityType.charAt(0).toUpperCase() + entityType.slice(1)}s</div>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                  {reallocationEntityTypes.length === 0 && (
+                    <p className="text-[10px] text-amber-600 font-medium">Select at least one entity type the AI can suggest moving.</p>
                   )}
                 </div>
               </>
@@ -473,7 +475,9 @@ export const CreationWizard = memo(function CreationWizard({
             )}
           </div>
         );
-      case 'model':
+      }
+      case 'model': {
+        const agenticDisabled = false;
         return (
           <div className="space-y-5">
             <div>
@@ -535,16 +539,26 @@ export const CreationWizard = memo(function CreationWizard({
               <div className="flex-1">
                 <label className="block text-sm font-medium text-gray-900">Agentic Mode</label>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  Enable AI to use MCP tools for searching frames and verbs in the database for additional context.
+                  {jobType === 'split'
+                    ? 'Optional: enable MCP tools so the AI can look up related frames/entries for extra context while proposing a split.'
+                    : 'Enable AI to use MCP tools for searching frames and verbs in the database for additional context.'}
                 </p>
               </div>
               <button
                 type="button"
                 role="switch"
                 aria-checked={agenticMode}
-                onClick={() => setAgenticMode(!agenticMode)}
-                className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-                  agenticMode ? 'bg-blue-600' : 'bg-gray-200'
+                aria-disabled={agenticDisabled}
+                onClick={() => {
+                  if (agenticDisabled) return;
+                  setAgenticMode(!agenticMode);
+                }}
+                className={`relative inline-flex h-6 w-11 flex-shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                  agenticDisabled
+                    ? 'cursor-not-allowed bg-gray-200 opacity-60'
+                    : agenticMode
+                      ? 'cursor-pointer bg-blue-600'
+                      : 'cursor-pointer bg-gray-200'
                 }`}
               >
                 <span className="sr-only">Enable agentic mode</span>
@@ -557,17 +571,77 @@ export const CreationWizard = memo(function CreationWizard({
             </div>
           </div>
         );
+      }
       case 'prompt': {
-        const jobTypeLabel = jobType === 'moderation' ? 'Flag' : jobType === 'editing' ? 'Edit' : jobType === 'allocate' ? 'Allocate' : jobType === 'split' ? 'Split' : 'Reallocate';
+        const jobTypeLabel = jobType === 'flag' ? 'Flag' : jobType === 'edit' ? 'Edit' : jobType === 'allocate' ? 'Allocate' : jobType === 'split' ? 'Split' : 'Allocate Contents';
         const defaultPrompt = buildPrompt({
           entityType: mode,
           jobType,
           agenticMode,
           scopeMode,
+          isSuperFrame: mode === 'super_frames',
         });
+        const effectivePrompt = promptMode === 'simple' ? defaultPrompt : promptTemplate;
+        const modeSuggestsClustering = mode === 'frames' || mode === 'super_frames';
+        const showClustering =
+          modeSuggestsClustering ||
+          /\{%\s*for\s+\w+\s+in\s+(lexical_units|child_frames)\s*%\}/.test(effectivePrompt);
         
         return (
           <div className="flex h-full flex-col gap-4">
+            {/* Prompt clustering */}
+            {showClustering && (
+            <div className="shrink-0 rounded-xl border border-gray-200 bg-gray-50 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs font-semibold text-gray-800">Cluster loop lists</div>
+                  <div className="text-[11px] text-gray-500">
+                    Groups{' '}
+                    <code className="rounded bg-white/70 px-1 py-0.5">
+                      {'{% for lu in lexical_units %}...{% endfor %}'}
+                    </code>{' '}
+                    and{' '}
+                    <code className="rounded bg-white/70 px-1 py-0.5">
+                      {'{% for frame in child_frames %}...{% endfor %}'}
+                    </code>{' '}
+                    outputs into clusters.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={clusterLoopListsEnabled}
+                  onClick={() => setClusterLoopListsEnabled(!clusterLoopListsEnabled)}
+                  className={`relative inline-flex h-6 w-11 flex-shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                    clusterLoopListsEnabled ? 'cursor-pointer bg-blue-600' : 'cursor-pointer bg-gray-200'
+                  }`}
+                >
+                  <span className="sr-only">Enable clustering</span>
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      clusterLoopListsEnabled ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {clusterLoopListsEnabled && (
+                <div className="mt-3 flex items-center gap-3">
+                  <label className="text-[11px] text-gray-600 shrink-0">k override (optional)</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={clusterKOverrideText}
+                    onChange={(e) => setClusterKOverrideText(e.target.value)}
+                    placeholder="auto"
+                    className="w-28 rounded-lg border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <span className="text-[11px] text-gray-500">Leave blank to auto-pick k.</span>
+                </div>
+              )}
+            </div>
+            )}
+
             {/* Mode Toggle */}
             <div className="space-y-3">
               <label className="block text-xs font-semibold text-gray-700">Prompt Mode</label>
@@ -580,7 +654,6 @@ export const CreationWizard = memo(function CreationWizard({
                     checked={promptMode === 'simple'}
                     onChange={() => {
                       setPromptMode('simple');
-                      setPromptTemplate(defaultPrompt);
                     }}
                     className="sr-only"
                   />
@@ -633,8 +706,14 @@ export const CreationWizard = memo(function CreationWizard({
                 <div className="relative mt-1 min-h-0 flex-1">
                   {/* Highlight overlay - must have identical text rendering to textarea */}
                   <div 
-                    className="pointer-events-none absolute inset-px overflow-hidden rounded-xl px-3 py-2 text-sm text-gray-900 font-mono leading-normal"
-                    style={{ wordWrap: 'break-word', overflowWrap: 'break-word' }}
+                    className="pointer-events-none absolute inset-px overflow-hidden rounded-xl px-3 py-2 text-sm text-gray-900 font-mono"
+                    style={{ 
+                      wordWrap: 'break-word', 
+                      overflowWrap: 'break-word',
+                      whiteSpace: 'pre-wrap',
+                      scrollbarGutter: 'stable',
+                      lineHeight: '1.5',
+                    }}
                   >
                     <div
                       className="whitespace-pre-wrap"
@@ -657,8 +736,15 @@ export const CreationWizard = memo(function CreationWizard({
                         // Note: This updates position through the hook's state
                       }
                     }}
-                    className="h-full w-full resize-none rounded-xl border border-gray-300 bg-transparent px-3 py-2 text-sm font-mono leading-normal focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    style={{ color: 'transparent', caretColor: '#111827' }}
+                    className="h-full w-full resize-none rounded-xl border border-gray-300 bg-transparent px-3 py-2 text-sm font-mono focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    style={{ 
+                      WebkitTextFillColor: 'transparent',
+                      caretColor: '#111827',
+                      whiteSpace: 'pre-wrap',
+                      overflowWrap: 'break-word',
+                      scrollbarGutter: 'stable',
+                      lineHeight: '1.5',
+                    }}
                     placeholder="Write instructions for the AI..."
                     spellCheck={false}
                     autoComplete="off"
@@ -671,8 +757,8 @@ export const CreationWizard = memo(function CreationWizard({
                 </div>
                 {showVariableMenu && (
                   <div
-                    className="fixed z-10 max-h-48 w-60 overflow-y-auto rounded-xl border border-gray-200 bg-white"
-                    style={{ top: `${variableMenuPosition.top}px`, left: `${variableMenuPosition.left}px` }}
+                    className="fixed z-10 max-h-48 w-60 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-lg"
+                    style={{ top: `${variableMenuPosition.top + 16}px`, left: `${variableMenuPosition.left}px` }}
                   >
                     {filteredVariables.length === 0 ? (
                       <div className="p-2 text-xs text-gray-500">No matching variables</div>
@@ -703,11 +789,21 @@ export const CreationWizard = memo(function CreationWizard({
               <div className="shrink-0 space-y-1 text-xs text-gray-500">
                 <p>
                   Type <code className="rounded bg-gray-100 px-1">{'{{'}</code> to insert variables.
-                  {(mode === 'lexical_units' || mode === 'frames') && (
-                    <> Use <code className="rounded bg-indigo-50 px-1 text-indigo-600">{'{%'} for item in collection {'%}'}</code> for loops.</>
+                  {(mode === 'lexical_units' || mode === 'frames' || mode === 'super_frames' || mode === 'frames_only') && (
+                    <>
+                      {' '}Use{' '}
+                      <code className="rounded bg-indigo-50 px-1 text-indigo-600">
+                        {mode === 'lexical_units' 
+                          ? '{% for role in frame.roles %}' 
+                          : mode === 'super_frames' 
+                          ? '{% for frame in child_frames %}' 
+                          : '{% for lu in lexical_units %}'}
+                      </code>
+                      {' '}for loops.
+                    </>
                   )}
                 </p>
-                {(mode === 'lexical_units' || mode === 'frames') && (
+                {(mode === 'lexical_units' || mode === 'frames' || mode === 'super_frames' || mode === 'frames_only') && (
                   <details className="cursor-pointer">
                     <summary className="text-gray-400 hover:text-gray-600">Loop syntax help</summary>
                     <div className="mt-1.5 rounded-lg bg-gray-50 p-2 font-mono text-[11px] leading-relaxed">
@@ -720,10 +816,19 @@ export const CreationWizard = memo(function CreationWizard({
                             Available: frame.roles, frame.lexical_units
                           </div>
                         </>
+                      ) : mode === 'super_frames' ? (
+                        <>
+                          <div className="text-gray-600">{'{%'} for frame in child_frames {'%}'}</div>
+                          <div className="pl-2 text-gray-500">- {'{{ frame.label }}'}: {'{{ frame.definition }}'}</div>
+                          <div className="text-gray-600">{'{%'} endfor {'%}'}</div>
+                          <div className="mt-1.5 border-t border-gray-200 pt-1.5 text-gray-400">
+                            Available: roles, child_frames
+                          </div>
+                        </>
                       ) : (
                         <>
-                          <div className="text-gray-600">{'{%'} for item in lexical_units {'%}'}</div>
-                          <div className="pl-2 text-gray-500">- {'{{ item.code }}'}: {'{{ item.gloss }}'}</div>
+                          <div className="text-gray-600">{'{%'} for lu in lexical_units {'%}'}</div>
+                          <div className="pl-2 text-gray-500">- {'{{ lu.code }}'}: {'{{ lu.gloss }}'}</div>
                           <div className="text-gray-600">{'{%'} endfor {'%}'}</div>
                           <div className="mt-1.5 border-t border-gray-200 pt-1.5 text-gray-400">
                             Available: roles, lexical_units
@@ -735,6 +840,30 @@ export const CreationWizard = memo(function CreationWizard({
                 )}
               </div>
             )}
+
+            {/* System prompt (optional viewer) */}
+            <details className="shrink-0 rounded-xl border border-gray-200 bg-gray-50 p-3">
+              <summary className="cursor-pointer text-xs font-semibold text-gray-700">
+                System prompt (optional)
+              </summary>
+              <p className="mt-1 text-[11px] text-gray-500">
+                Sent as the OpenAI <span className="font-mono">system</span> message. This changes when Agentic Mode is toggled.
+              </p>
+              <div className="mt-2 relative rounded-lg border border-gray-200 bg-white p-2">
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(systemPrompt);
+                    showGlobalAlert({ message: 'Copied system prompt to clipboard', type: 'success' });
+                  }}
+                  className="absolute top-2 right-2 p-1.5 rounded hover:bg-gray-100 text-gray-500 hover:text-gray-700 z-10 cursor-pointer"
+                  title="Copy system prompt to clipboard"
+                  type="button"
+                >
+                  <ClipboardDocumentIcon className="h-4 w-4" />
+                </button>
+                <pre className="whitespace-pre-wrap text-[11px] text-gray-800 pr-8">{systemPrompt}</pre>
+              </div>
+            </details>
           </div>
         );
       }
@@ -1013,7 +1142,7 @@ export const CreationWizard = memo(function CreationWizard({
                 {submissionLoading ? (
                   <>
                     <LoadingSpinner size="sm" className="shrink-0 text-white" noPadding />
-                    Creating Job…
+                    Submitting...
                   </>
                 ) : (
                   'Submit Job'

@@ -201,8 +201,8 @@ export const ScopeSelector = memo(function ScopeSelector({
             className="mt-1"
           />
           <div className="flex-1">
-            <div className="text-sm font-medium text-gray-800">Manual IDs</div>
-            <p className="text-xs text-gray-500">Paste lexical IDs separated by commas, spaces, or new lines.</p>
+            <div className="text-sm font-medium text-gray-800">Codes</div>
+            <p className="text-xs text-gray-500">Paste codes separated by commas, spaces, or new lines.</p>
             {mode === 'manual' && (
               <div className="relative mt-2">
                 <textarea
@@ -212,26 +212,32 @@ export const ScopeSelector = memo(function ScopeSelector({
                   onKeyDown={handleManualIdKeyDown}
                   rows={3}
                   className="w-full rounded-xl border border-gray-300 px-2 py-1 text-xs text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  style={{ scrollbarGutter: 'stable' }}
                   placeholder={getManualIdPlaceholder(pos)}
                 />
                 {showManualIdMenu && manualIdSuggestions.length > 0 && (
                   <div
-                    className="fixed z-10 max-h-48 w-60 overflow-y-auto rounded-xl border border-gray-200 bg-white"
-                    style={{ top: `${manualIdMenuPosition.top}px`, left: `${manualIdMenuPosition.left}px` }}
+                    className="fixed z-10 max-h-48 w-80 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-lg"
+                    style={{ top: `${manualIdMenuPosition.top + 16}px`, left: `${manualIdMenuPosition.left}px` }}
                   >
                     <ul>
-                      {manualIdSuggestions.map((suggestion, idx) => (
-                        <li key={suggestion.code}>
-                          <button
-                            onClick={() => insertManualId(suggestion.code)}
-                            className={`cursor-pointer flex w-full flex-col items-start px-3 py-2 text-left text-xs hover:bg-blue-50 ${idx === manualIdActiveIndex ? 'bg-blue-50' : ''}`}
-                            type="button"
-                          >
-                            <span className="font-semibold text-gray-800">{suggestion.code}</span>
-                            <span className="text-[11px] text-gray-500">{suggestion.gloss}</span>
-                          </button>
-                        </li>
-                      ))}
+                      {manualIdSuggestions.map((suggestion, idx) => {
+                        const isFrameMode = pos === 'frames' || pos === 'super_frames' || pos === 'frames_only';
+                        return (
+                          <li key={suggestion.code}>
+                            <button
+                              onClick={() => insertManualId(suggestion.code)}
+                              className={`cursor-pointer flex w-full flex-col items-start px-3 py-2 text-left text-xs hover:bg-blue-50 ${idx === manualIdActiveIndex ? 'bg-blue-50' : ''}`}
+                              type="button"
+                            >
+                              <span className="font-semibold text-gray-800">{suggestion.code}</span>
+                              <span className="text-[11px] text-gray-500 font-mono">
+                                {isFrameMode ? `ID: ${suggestion.gloss}` : suggestion.gloss}
+                              </span>
+                            </button>
+                          </li>
+                        );
+                      })}
                     </ul>
                   </div>
                 )}
@@ -275,6 +281,7 @@ export const ScopeSelector = memo(function ScopeSelector({
                   onKeyDown={handleFrameIdKeyDown}
                   rows={2}
                   className="w-full rounded-xl border border-gray-300 px-2 py-1 text-xs text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  style={{ scrollbarGutter: 'stable' }}
                   placeholder="e.g., Communication, 1023"
                 />
                 {showFrameIdMenu && frameIdSuggestions.length > 0 && (

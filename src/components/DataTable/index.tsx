@@ -2,27 +2,29 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
-import { TableEntry, Frame } from '@/lib/types';
+import { TableLexicalUnit, Frame } from '@/lib/types';
 import { showGlobalAlert } from '@/lib/alerts';
 import { api } from '@/lib/api-client';
 import Pagination from '@/components/Pagination';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import AIJobsOverlay from '@/components/AIJobsOverlay';
 import { useTableSelection } from '@/hooks/useTableSelection';
+import { refreshPendingChangesCount } from '@/hooks/usePendingChangesCount';
+import { useJobCompletionBroadcast } from '@/hooks/useJobCompletionBroadcast';
 
 import { useDataTableState } from './hooks';
 import { DataTableToolbar } from './DataTableToolbar';
 import { DataTableBody } from './DataTableBody';
-import { ModerationModal, FrameChangeModal } from './DataTableModals';
+import { FlagModal, FrameChangeModal } from './DataTableModals';
 import { ContextMenu } from './ContextMenu';
 import AIAgentQuickEditModal from '@/components/AIAgentQuickEditModal';
 import {
   DataTableProps,
-  ModerationModalState,
+  FlagModalState,
   EditingState,
   ContextMenuState,
   FrameOption,
-  ModerationState,
+  FlagState,
 } from './types';
 
 export default function DataTable({
@@ -41,18 +43,18 @@ export default function DataTable({
   });
 
   // Use the existing useTableSelection hook for selection management
-  const selection = useTableSelection<TableEntry | Frame>({
+  const selection = useTableSelection<TableLexicalUnit | Frame>({
     pageItems: tableState.data?.data || [],
   });
 
   // Local state for modals and UI
-  const [moderationModal, setModerationModal] = useState<ModerationModalState>({
+  const [flagModal, setFlagModal] = useState<FlagModalState>({
     isOpen: false,
     action: null,
     reason: ''
   });
   const [editing, setEditing] = useState<EditingState>({
-    entryId: null,
+    unitId: null,
     field: null,
     value: ''
   });
@@ -60,20 +62,20 @@ export default function DataTable({
     isOpen: false,
     x: 0,
     y: 0,
-    entryId: null
+    unitId: null
   });
   const [isAIOverlayOpen, setIsAIOverlayOpen] = useState(false);
   const [pendingAIJobs, setPendingAIJobs] = useState(0);
   
   // AI Agent Quick Edit modal state
-  const [aiQuickEditEntry, setAiQuickEditEntry] = useState<TableEntry | Frame | null>(null);
+  const [aiQuickEditEntry, setAiQuickEditEntry] = useState<TableLexicalUnit | Frame | null>(null);
   
   // Track submitted quick edit job IDs for background polling
   const quickEditJobIdsRef = useRef<Set<string>>(new Set());
   const [isPollingQuickEditJobs, setIsPollingQuickEditJobs] = useState(false);
   
-  // Moderation loading state
-  const [isModerationLoading, setIsModerationLoading] = useState(false);
+  // Flag loading state
+  const [isFlagLoading, setIsFlagLoading] = useState(false);
   
   // Frame modal state
   const [isFrameModalOpen, setIsFrameModalOpen] = useState(false);
@@ -92,6 +94,14 @@ export default function DataTable({
     return tableState.data.data.filter(entry => selection.selectedIds.has(entry.id));
   }, [tableState.data, selection.selectedIds, selection.selectedCount]);
 
+  // Subscribe to job completion broadcasts from other tabs and same-tab events
+  // This ensures all DataTable instances refresh when ANY AI job completes
+  useJobCompletionBroadcast(
+    mode,
+    tableState.fetchData,
+    isAIOverlayOpen // Don't poll when overlay is open - it handles polling itself
+  );
+
   // Filtered frame options based on search
   const filteredFrameOptions = useMemo(() => {
     if (!frameSearchQuery.trim()) {
@@ -99,7 +109,10 @@ export default function DataTable({
     }
     const query = frameSearchQuery.trim().toLowerCase();
     return frameOptions.filter(frame => {
-      return frame.label.toLowerCase().includes(query);
+      return (
+        frame.label.toLowerCase().includes(query) ||
+        (frame.code?.toLowerCase().includes(query) ?? false)
+      );
     });
   }, [frameOptions, frameSearchQuery]);
 
@@ -107,7 +120,7 @@ export default function DataTable({
   useEffect(() => {
     const handleClickOutside = () => {
       if (contextMenu.isOpen) {
-        setContextMenu({ isOpen: false, x: 0, y: 0, entryId: null });
+        setContextMenu({ isOpen: false, x: 0, y: 0, unitId: null });
       }
     };
 
@@ -235,28 +248,28 @@ export default function DataTable({
     selection.clearSelection();
   }, [mode]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Calculate moderation states of selected entries
-  const getSelectionModerationState = useCallback((): ModerationState => {
+  // Calculate flag states of selected entries
+  const getSelectionFlagState = useCallback((): FlagState => {
     if (selectedEntriesOnCurrentPage.length === 0) {
       return { allFlagged: false, noneFlagged: false, allUnverifiable: false, noneUnverifiable: false };
     }
 
-    const moderatableEntries = selectedEntriesOnCurrentPage.filter((entry): entry is TableEntry => 'flagged' in entry);
+    const flaggableEntries = selectedEntriesOnCurrentPage.filter((entry): entry is TableLexicalUnit => 'flagged' in entry);
     
-    if (moderatableEntries.length === 0) {
+    if (flaggableEntries.length === 0) {
       return { allFlagged: false, noneFlagged: true, allUnverifiable: false, noneUnverifiable: true };
     }
 
-    const allFlagged = moderatableEntries.every(entry => entry.flagged);
-    const noneFlagged = moderatableEntries.every(entry => !entry.flagged);
-    const allUnverifiable = moderatableEntries.every(entry => entry.verifiable === false);
-    const noneUnverifiable = moderatableEntries.every(entry => entry.verifiable !== false);
+    const allFlagged = flaggableEntries.every(entry => entry.flagged);
+    const noneFlagged = flaggableEntries.every(entry => !entry.flagged);
+    const allUnverifiable = flaggableEntries.every(entry => entry.verifiable === false);
+    const noneUnverifiable = flaggableEntries.every(entry => entry.verifiable !== false);
     
     return { allFlagged, noneFlagged, allUnverifiable, noneUnverifiable };
   }, [selectedEntriesOnCurrentPage]);
 
-  // Moderation handlers
-  const handleModerationUpdate = async (updates: { 
+  // Flag handlers
+  const handleFlagUpdate = async (updates: { 
     flagged?: boolean; 
     flaggedReason?: string;
     verifiable?: boolean;
@@ -265,10 +278,10 @@ export default function DataTable({
     if (selection.selectedCount === 0) return;
 
     const selectedCount = selection.selectedCount;
-    setIsModerationLoading(true);
+    setIsFlagLoading(true);
 
     try {
-      const response = await fetch(`${tableState.apiPrefix}/moderation`, {
+      const response = await fetch(`${tableState.apiPrefix}/flag`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -285,12 +298,13 @@ export default function DataTable({
       }
 
       const result = await response.json();
-      const actualCount = result.updatedCount || result.count || result.staged_count || 0;
+      const actualCount = result.updatedCount || result.updated_count || result.count || result.staged_count || 0;
 
       await tableState.fetchData();
+      refreshPendingChangesCount();
       selection.clearSelection();
-      setIsModerationLoading(false);
-      setModerationModal({ isOpen: false, action: null, reason: '' });
+      setIsFlagLoading(false);
+      setFlagModal({ isOpen: false, action: null, reason: '' });
 
       const action = updates.verifiable === false ? 'marked unverifiable' : 
                     updates.verifiable === true ? 'marked verifiable' :
@@ -329,21 +343,21 @@ export default function DataTable({
         durationMs: 6000
       });
 
-      setIsModerationLoading(false);
-      setModerationModal({ isOpen: false, action: null, reason: '' });
+      setIsFlagLoading(false);
+      setFlagModal({ isOpen: false, action: null, reason: '' });
     }
   };
 
-  const handleOpenModerationModal = (action: 'flag' | 'unflag' | 'forbid' | 'allow') => {
-    setModerationModal({ isOpen: true, action, reason: '' });
+  const handleOpenFlagModal = (action: 'flag' | 'unflag' | 'forbid' | 'allow') => {
+    setFlagModal({ isOpen: true, action, reason: '' });
   };
 
-  const handleCloseModerationModal = () => {
-    setModerationModal({ isOpen: false, action: null, reason: '' });
+  const handleCloseFlagModal = () => {
+    setFlagModal({ isOpen: false, action: null, reason: '' });
   };
 
-  const handleConfirmModeration = () => {
-    const { action, reason } = moderationModal;
+  const handleConfirmFlag = () => {
+    const { action, reason } = flagModal;
     
     if (!action) return;
 
@@ -377,7 +391,7 @@ export default function DataTable({
         break;
     }
 
-    handleModerationUpdate(updates);
+    handleFlagUpdate(updates);
   };
 
   // Frame modal handlers
@@ -440,7 +454,7 @@ export default function DataTable({
       }
 
       const result = await response.json();
-      const actualCount = result.updatedCount || result.count || 0;
+      const actualCount = result.updatedCount || result.updated_count || result.count || 0;
 
       const chosenFrame =
         normalizedFrameValue === null
@@ -448,6 +462,7 @@ export default function DataTable({
           : frameOptions.find(frame => frame.id === normalizedFrameValue) ?? null;
 
       await tableState.fetchData();
+      refreshPendingChangesCount();
 
       selection.clearSelection();
       setIsFrameModalOpen(false);
@@ -455,7 +470,7 @@ export default function DataTable({
       setFrameSearchQuery('');
       setFrameOptionsError(null);
 
-      const frameName = chosenFrame ? chosenFrame.label : 'No frame';
+      const frameName = chosenFrame ? (chosenFrame.code?.trim() || chosenFrame.label) : 'No frame';
       const action = normalizedFrameValue === null ? 'cleared frames for' : `updated to ${frameName} for`;
       
       if (actualCount === selectedCount) {
@@ -496,9 +511,9 @@ export default function DataTable({
   };
 
   // Editing handlers
-  const handleStartEdit = (entryId: string, field: string, currentValue: string) => {
+  const handleStartEdit = (unitId: string, field: string, currentValue: string) => {
     setEditing({
-      entryId,
+      unitId,
       field,
       value: currentValue
     });
@@ -506,17 +521,17 @@ export default function DataTable({
 
   const handleCancelEdit = () => {
     setEditing({
-      entryId: null,
+      unitId: null,
       field: null,
       value: ''
     });
   };
 
   const handleSaveEdit = async () => {
-    if (!editing.entryId || !editing.field) return;
+    if (!editing.unitId || !editing.field) return;
 
     try {
-      const response = await fetch(`${tableState.apiPrefix}/${editing.entryId}`, {
+      const response = await fetch(`${tableState.apiPrefix}/${editing.unitId}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -530,8 +545,9 @@ export default function DataTable({
         throw new Error('Failed to update entry');
       }
 
-      // Refresh data
+      // Refresh data and pending changes count
       await tableState.fetchData();
+      refreshPendingChangesCount();
       handleCancelEdit();
     } catch (error) {
       console.error('Error updating entry:', error);
@@ -539,36 +555,36 @@ export default function DataTable({
   };
 
   // Context menu handlers
-  const handleContextMenu = (e: React.MouseEvent, entryId: string) => {
+  const handleContextMenu = (e: React.MouseEvent, unitId: string) => {
     e.preventDefault();
     setContextMenu({
       isOpen: true,
       x: e.clientX,
       y: e.clientY,
-      entryId
+      unitId
     });
   };
 
   const handleContextMenuAction = (action: 'flag' | 'unflag' | 'forbid' | 'allow') => {
-    if (!contextMenu.entryId) return;
+    if (!contextMenu.unitId) return;
     
     // Set selection to just this entry using the hook
     selection.clearSelection();
-    selection.toggleSelect(contextMenu.entryId);
+    selection.toggleSelect(contextMenu.unitId);
     
     // Close context menu
-    setContextMenu({ isOpen: false, x: 0, y: 0, entryId: null });
+    setContextMenu({ isOpen: false, x: 0, y: 0, unitId: null });
     
-    // Open moderation modal
-    handleOpenModerationModal(action);
+    // Open flag modal
+    handleOpenFlagModal(action);
   };
 
   const handleCloseContextMenu = () => {
-    setContextMenu({ isOpen: false, x: 0, y: 0, entryId: null });
+    setContextMenu({ isOpen: false, x: 0, y: 0, unitId: null });
   };
 
   // AI Agent Quick Edit handlers
-  const handleAIClick = (entry: TableEntry | Frame) => {
+  const handleAIClick = (entry: TableLexicalUnit | Frame) => {
     setAiQuickEditEntry(entry);
   };
 
@@ -628,8 +644,8 @@ export default function DataTable({
   }
 
   // Get context menu entry
-  const contextMenuEntry = contextMenu.entryId 
-    ? tableState.data?.data.find(e => e.id === contextMenu.entryId) || null
+  const contextMenuEntry = contextMenu.unitId 
+    ? tableState.data?.data.find(e => e.id === contextMenu.unitId) || null
     : null;
 
   return (
@@ -652,8 +668,8 @@ export default function DataTable({
         pendingAIJobs={pendingAIJobs}
         onOpenAIOverlay={() => setIsAIOverlayOpen(true)}
         selectedCount={selection.selectedCount}
-        moderationState={getSelectionModerationState()}
-        onOpenModerationModal={handleOpenModerationModal}
+        flagState={getSelectionFlagState()}
+        onOpenFlagModal={handleOpenFlagModal}
         onOpenFrameModal={handleOpenFrameModal}
         isPageSizePanelOpen={tableState.isPageSizePanelOpen}
         onPageSizePanelToggle={() => tableState.setIsPageSizePanelOpen(!tableState.isPageSizePanelOpen)}
@@ -716,16 +732,16 @@ export default function DataTable({
         onAction={handleContextMenuAction}
       />
 
-      {/* Moderation Modal */}
-      <ModerationModal
-        isOpen={moderationModal.isOpen}
-        modalState={moderationModal}
+      {/* Flag Modal */}
+      <FlagModal
+        isOpen={flagModal.isOpen}
+        modalState={flagModal}
         selectedCount={selection.selectedCount}
         selectedEntriesOnPage={selectedEntriesOnCurrentPage}
-        isLoading={isModerationLoading}
-        onClose={handleCloseModerationModal}
-        onConfirm={handleConfirmModeration}
-        onReasonChange={(reason) => setModerationModal(prev => ({ ...prev, reason }))}
+        isLoading={isFlagLoading}
+        onClose={handleCloseFlagModal}
+        onConfirm={handleConfirmFlag}
+        onReasonChange={(reason) => setFlagModal(prev => ({ ...prev, reason }))}
       />
 
       {/* Frame Change Modal */}

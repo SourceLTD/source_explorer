@@ -37,6 +37,8 @@ export function AIJobsOverlay({
   }, [userEmailProp, isOpen]);
   
   const userEmail = userEmailProp ?? fetchedUserEmail;
+  const [isSyncingFromProvider, setIsSyncingFromProvider] = useState(false);
+
   // Job polling hook - manages job list, selection, and polling
   const polling = useJobPolling({
     mode,
@@ -64,6 +66,43 @@ export function AIJobsOverlay({
     ...polling,
     isCreating: creation.isCreating,
   }), [polling, creation.isCreating]);
+
+  const handleRefresh = useCallback(async () => {
+    if (isSyncingFromProvider) return;
+    setIsSyncingFromProvider(true);
+    try {
+      // Only poll OpenAI for active jobs; completed jobs already have final status.
+      const activeJobs = polling.jobs.filter(j => j.status === 'queued' || j.status === 'running');
+      const jobIds = activeJobs.map(j => j.id).filter(Boolean);
+
+      if (jobIds.length > 0) {
+        const params = new URLSearchParams({
+          jobIds: jobIds.join(','),
+          limit: '40',
+        });
+        const resp = await fetch(`/api/llm-jobs/poll?${params.toString()}`);
+        if (!resp.ok) {
+          const text = await resp.text().catch(() => '');
+          throw new Error(`Failed to sync status from OpenAI: HTTP ${resp.status} ${resp.statusText}${text ? `\n${text}` : ''}`);
+        }
+      }
+
+      await polling.loadJobs(true);
+      if (polling.selectedJob?.id) {
+        await polling.loadJobDetails(polling.selectedJob.id, true);
+      }
+    } catch (error) {
+      console.error('Failed to refresh jobs', error);
+      showGlobalAlert({
+        type: 'error',
+        title: 'Refresh failed',
+        message: error instanceof Error ? error.message : 'Failed to refresh jobs',
+        durationMs: 7000,
+      });
+    } finally {
+      setIsSyncingFromProvider(false);
+    }
+  }, [isSyncingFromProvider, polling.jobs, polling.loadJobs, polling.loadJobDetails, polling.selectedJob?.id]);
 
   // Cancel job handler
   const handleCancelJob = useCallback(async (jobId: string) => {
@@ -148,6 +187,19 @@ export function AIJobsOverlay({
   }, [isOpen, polling.jobs, submissionProgress, setSubmissionProgress]);
 
   const pendingBadge = polling.pendingJobsCount > 0 ? polling.pendingJobsCount : null;
+  const overlayTitle = useMemo(() => {
+    switch (mode) {
+      case 'lexical_units':
+        return 'Lexical Unit AI Agent';
+      case 'super_frames':
+        return 'Super Frame AI Agent';
+      case 'frames':
+      case 'frames_only':
+        return 'Frame AI Agent';
+      default:
+        return 'AI Agent';
+    }
+  }, [mode]);
 
   if (!isOpen) return null;
 
@@ -163,7 +215,7 @@ export function AIJobsOverlay({
         <header className="border-b border-gray-200 bg-gray-50 px-6 py-5">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
-              <h2 className="text-xl font-semibold text-gray-900">AI Agent</h2>
+              <h2 className="text-xl font-semibold text-gray-900">{overlayTitle}</h2>
               <p className="text-sm text-gray-600">Create and track AI jobs</p>
             </div>
             <div className="flex items-center gap-2">
@@ -173,10 +225,10 @@ export function AIJobsOverlay({
                 </span>
               )}
               <button
-                onClick={() => polling.loadJobs()}
-                disabled={polling.jobsLoading}
+                onClick={handleRefresh}
+                disabled={polling.jobsLoading || isSyncingFromProvider}
                 className={`inline-flex items-center gap-1 rounded-xl border px-3 py-1.5 text-sm font-medium transition-colors focus:outline-none focus:ring-2 ${
-                  polling.jobsLoading
+                  polling.jobsLoading || isSyncingFromProvider
                     ? 'cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400 focus:ring-gray-300'
                     : 'cursor-pointer border-gray-300 bg-white text-gray-700 hover:bg-gray-100 focus:ring-blue-500'
                 }`}
@@ -184,7 +236,7 @@ export function AIJobsOverlay({
               >
                 <LoadingSpinner 
                   size="sm" 
-                  isSpinning={polling.jobsLoading} 
+                  isSpinning={polling.jobsLoading || isSyncingFromProvider} 
                   noPadding 
                 />
                 Refresh
@@ -213,7 +265,6 @@ export function AIJobsOverlay({
               jobsError={polling.jobsError}
               selectedJobId={polling.selectedJob?.id ?? null}
               onSelectJob={polling.setActiveJobId}
-              onCloneSettings={creation.loadJobSettings}
               onStartCreateFlow={creation.startCreateFlow}
               isCreating={creation.isCreating}
             />

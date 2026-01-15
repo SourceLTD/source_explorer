@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Modal from './Modal';
+import LoadingSpinner from '@/components/LoadingSpinner';
 
 export interface ConfirmDialogProps {
   isOpen: boolean;
@@ -41,6 +42,9 @@ export default function ConfirmDialog({
   loading = false,
   children,
 }: ConfirmDialogProps) {
+  const displayConfirmLabel =
+    loading && confirmLabel === 'Confirm' ? 'Loading...' : confirmLabel;
+
   return (
     <Modal
       isOpen={isOpen}
@@ -59,10 +63,17 @@ export default function ConfirmDialog({
           </button>
           <button
             onClick={onConfirm}
-            className={`px-4 py-2 text-sm font-medium text-white rounded-xl transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-offset-2 ${VARIANT_STYLES[variant]}`}
+            className={`px-4 py-2 text-sm font-medium text-white rounded-xl transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-offset-2 flex items-center gap-2 ${VARIANT_STYLES[variant]}`}
             disabled={loading}
           >
-            {loading ? 'Loading...' : confirmLabel}
+            {loading && (
+              <LoadingSpinner
+                size="sm"
+                noPadding
+                className="text-white !py-0"
+              />
+            )}
+            {displayConfirmLabel}
           </button>
         </div>
       }

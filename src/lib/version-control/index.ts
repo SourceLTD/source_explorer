@@ -111,7 +111,13 @@ export {
   createChangesetFromUpdate,
   createChangesetFromCreate,
   createChangesetFromDelete,
+  // Utilities
+  valuesAreEqual,
+  // Error classes
+  NoOpFieldChangeError,
 } from './create';
+
+export type { UpsertFieldChangeResult } from './create';
 
 // Merge operations
 export {
@@ -154,7 +160,7 @@ export type { BulkOperationResult } from './commit';
 export {
   stageUpdate,
   stageDelete,
-  stageModerationUpdates,
+  stageFlagUpdates,
   stageFrameRolesUpdate,
 } from './stage';
 

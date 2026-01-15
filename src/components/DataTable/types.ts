@@ -1,10 +1,10 @@
-import { TableEntry, Frame } from '@/lib/types';
+import { TableLexicalUnit, Frame } from '@/lib/types';
 
 export type DataTableMode = 'lexical_units' | 'frames' | 'super_frames' | 'frames_only';
 
 export interface DataTableProps {
-  onRowClick?: (entry: TableEntry | Frame) => void;
-  onEditClick?: (entry: TableEntry | Frame) => void;
+  onRowClick?: (entry: TableLexicalUnit | Frame) => void;
+  onEditClick?: (entry: TableLexicalUnit | Frame) => void;
   searchQuery?: string;
   className?: string;
   mode?: DataTableMode;
@@ -16,14 +16,14 @@ export interface SortState {
   order: 'asc' | 'desc';
 }
 
-export interface ModerationModalState {
+export interface FlagModalState {
   isOpen: boolean;
   action: 'flag' | 'unflag' | 'forbid' | 'allow' | null;
   reason: string;
 }
 
 export interface EditingState {
-  entryId: string | null;
+  unitId: string | null;
   field: string | null;
   value: string;
 }
@@ -32,7 +32,7 @@ export interface ContextMenuState {
   isOpen: boolean;
   x: number;
   y: number;
-  entryId: string | null;
+  unitId: string | null;
 }
 
 export interface FrameOption {
@@ -41,7 +41,7 @@ export interface FrameOption {
   label: string;
 }
 
-export interface ModerationState {
+export interface FlagState {
   allFlagged: boolean;
   noneFlagged: boolean;
   allUnverifiable: boolean;
@@ -49,6 +49,6 @@ export interface ModerationState {
 }
 
 // Re-export commonly used types
-export type { TableEntry, Frame, PaginatedResult, PaginationParams } from '@/lib/types';
-export type { FilterState } from '@/components/FilterPanel';
+export type { TableLexicalUnit, Frame, PaginatedResult, PaginationParams } from '@/lib/types';
+export type { FilterState } from './filterState';
 export type { ColumnConfig, ColumnVisibilityState } from '@/components/ColumnVisibilityPanel';

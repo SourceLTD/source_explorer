@@ -1,28 +1,28 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal } from '@/components/ui';
 import LoadingSpinner from '@/components/LoadingSpinner';
-import { TableEntry, Frame } from '@/lib/types';
-import { ModerationModalState, FrameOption } from './types';
+import { TableLexicalUnit, Frame } from '@/lib/types';
+import { FlagModalState, FrameOption } from './types';
 
 interface ExistingReason {
   id: string;
   reason: string;
 }
 
-interface ModerationModalProps {
+interface FlagModalProps {
   isOpen: boolean;
-  modalState: ModerationModalState;
+  modalState: FlagModalState;
   selectedCount: number;
-  selectedEntriesOnPage: (TableEntry | Frame)[];
+  selectedEntriesOnPage: (TableLexicalUnit | Frame)[];
   isLoading: boolean;
   onClose: () => void;
   onConfirm: () => void;
   onReasonChange: (reason: string) => void;
 }
 
-export function ModerationModal({
+export function FlagModal({
   isOpen,
   modalState,
   selectedCount,
@@ -31,18 +31,18 @@ export function ModerationModal({
   onClose,
   onConfirm,
   onReasonChange,
-}: ModerationModalProps) {
+}: FlagModalProps) {
   if (!isOpen) return null;
 
   const hasMultiPageSelection = selectedCount > selectedEntriesOnPage.length;
   
-  // Filter to only TableEntry items (frames don't have flagged/verifiable)
-  const moderatableEntries = selectedEntriesOnPage.filter((e): e is TableEntry => 'flagged' in e);
+  // Filter to only TableLexicalUnit items (frames don't have flagged/verifiable)
+  const flaggableEntries = selectedEntriesOnPage.filter((e): e is TableLexicalUnit => 'flagged' in e);
   const existingReasons = {
-    flagged: moderatableEntries
+    flagged: flaggableEntries
       .filter(e => e.flagged && e.flaggedReason)
       .map(e => ({ id: e.id, reason: e.flaggedReason! })),
-    unverifiable: moderatableEntries
+    unverifiable: flaggableEntries
       .filter(e => e.verifiable === false && e.unverifiableReason)
       .map(e => ({ id: e.id, reason: e.unverifiableReason! }))
   };
@@ -66,8 +66,8 @@ export function ModerationModal({
         onClick={onConfirm}
         disabled={isLoading}
         className={`px-4 py-2 text-sm font-medium rounded-xl focus:outline-none focus:ring-2 focus:ring-offset-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 ${
-          modalState.action === 'flag' 
-            ? 'bg-orange-600 hover:bg-orange-700 text-white focus:ring-orange-500'
+          modalState.action === 'flag' || modalState.action === 'unflag'
+            ? 'bg-blue-600 hover:bg-blue-700 text-white focus:ring-blue-500'
             : modalState.action === 'forbid'
             ? 'text-gray-900 focus:ring-red-300'
             : 'bg-green-600 hover:bg-green-700 text-white focus:ring-green-500'
@@ -232,7 +232,7 @@ function ExistingReasonsSection({
 interface FrameChangeModalProps {
   isOpen: boolean;
   selectedCount: number;
-  selectedEntriesOnCurrentPage: (TableEntry | Frame)[];
+  selectedEntriesOnCurrentPage: (TableLexicalUnit | Frame)[];
   frameOptions: FrameOption[];
   filteredFrameOptions: FrameOption[];
   frameOptionsLoading: boolean;
@@ -267,12 +267,14 @@ export function FrameChangeModal({
   onRetryLoad,
 }: FrameChangeModalProps) {
   const hasMultiPageSelection = selectedCount > selectedEntriesOnCurrentPage.length;
+  const [frameDropdownOpen, setFrameDropdownOpen] = useState(false);
+  const frameDropdownContainerRef = useRef<HTMLDivElement>(null);
   
   const frameSummary = useMemo(() => {
     if (selectedEntriesOnCurrentPage.length === 0) return [];
     const counts = new Map<string, { label: string; count: number }>();
     // Only verbs have frame property
-    const verbEntries = selectedEntriesOnCurrentPage.filter((e): e is TableEntry => 'frame' in e);
+    const verbEntries = selectedEntriesOnCurrentPage.filter((e): e is TableLexicalUnit => 'frame' in e);
     verbEntries.forEach(entry => {
       const key = entry.frame ?? '__NONE__';
       const label = entry.frame ?? 'No frame assigned';
@@ -285,6 +287,21 @@ export function FrameChangeModal({
     });
     return Array.from(counts.values()).sort((a, b) => b.count - a.count);
   }, [selectedEntriesOnCurrentPage]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    if (!frameDropdownOpen) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        frameDropdownContainerRef.current &&
+        !frameDropdownContainerRef.current.contains(event.target as Node)
+      ) {
+        setFrameDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [frameDropdownOpen]);
 
   if (!isOpen) return null;
 
@@ -353,70 +370,117 @@ export function FrameChangeModal({
           </div>
         )}
 
-        <div className="space-y-3">
-          <div>
-            <label htmlFor="frame-search" className="block text-sm font-medium text-gray-700 mb-1">
-              Search frames
-            </label>
+        <div className="space-y-2" ref={frameDropdownContainerRef}>
+          <label htmlFor="frame-search" className="block text-sm font-medium text-gray-700">
+            Frame ID
+          </label>
+          <div className="relative">
             <input
               id="frame-search"
               type="text"
               value={frameSearchQuery}
-              onChange={(e) => onSearchQueryChange(e.target.value)}
-              placeholder="Filter by frame name or code..."
-              className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-gray-900"
+              onChange={(e) => {
+                onClearError();
+                onSearchQueryChange(e.target.value);
+              }}
+              onFocus={() => setFrameDropdownOpen(true)}
+              placeholder="Search frames by id, code, or label..."
+              disabled={isFrameUpdating}
+              className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-gray-900 disabled:bg-gray-50"
             />
-          </div>
 
-          <div className="space-y-2">
-            <label htmlFor="frame-select" className="block text-sm font-medium text-gray-700">
-              New frame
-            </label>
-            <div className="relative">
-              <select
-                id="frame-select"
-                value={selectedFrameValue}
-                onChange={(e) => {
-                  onClearError();
-                  onFrameValueChange(e.target.value);
-                }}
-                disabled={frameOptionsLoading}
-                className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-gray-900 disabled:bg-gray-50"
-              >
-                <option value="">Select a new frame…</option>
-                <option value="__CLEAR__">No frame (clear existing frame)</option>
-                {filteredFrameOptions.map(frame => (
-                  <option key={frame.id} value={frame.id}>
-                    {frame.label}
-                  </option>
-                ))}
-              </select>
-              {frameOptionsLoading && (
-                <div className="absolute inset-0 flex items-center justify-center bg-gray-50/50 rounded-xl">
-                  <LoadingSpinner size="sm" noPadding />
-                </div>
-              )}
-            </div>
-            
-            {frameOptionsError && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700 space-y-2">
-                <p>{frameOptionsError}</p>
-                <button
-                  type="button"
-                  onClick={onRetryLoad}
-                  className="inline-flex items-center gap-1 px-3 py-1 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded cursor-pointer"
-                >
-                  Retry
-                </button>
+            {frameDropdownOpen && (
+              <div className="absolute z-50 w-full mt-1 max-h-60 overflow-y-auto border border-gray-300 rounded-xl bg-white shadow-sm">
+                {frameOptionsLoading ? (
+                  <div className="flex items-center justify-center py-6">
+                    <LoadingSpinner size="sm" noPadding />
+                  </div>
+                ) : frameOptionsError ? (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700 space-y-2 m-2">
+                    <p>{frameOptionsError}</p>
+                    <button
+                      type="button"
+                      onClick={onRetryLoad}
+                      className="inline-flex items-center gap-1 px-3 py-1 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded cursor-pointer"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onFrameValueChange('__CLEAR__');
+                        onSearchQueryChange('');
+                        setFrameDropdownOpen(false);
+                      }}
+                      className="w-full text-left px-3 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-sm font-medium text-gray-900">
+                          No frame (clear existing frame)
+                        </div>
+                        {selectedFrameValue === '__CLEAR__' && (
+                          <span className="text-xs text-blue-600 font-medium">Selected</span>
+                        )}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        Removes the frame assignment from all selected entries.
+                      </div>
+                    </button>
+
+                    {filteredFrameOptions.length === 0 ? (
+                      <div className="px-3 py-2 text-sm text-gray-500">No frames found</div>
+                    ) : (
+                      filteredFrameOptions.map(frame => {
+                        const isSelected = selectedFrameValue === frame.id;
+                        const displayValue = frame.code?.trim() || frame.label;
+                        const dotIndex = displayValue.indexOf('.');
+                        return (
+                          <button
+                            key={frame.id}
+                            type="button"
+                            onClick={() => {
+                              onFrameValueChange(frame.id);
+                              onSearchQueryChange('');
+                              setFrameDropdownOpen(false);
+                            }}
+                            className="w-full text-left px-3 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1 min-w-0">
+                                <div className="text-sm font-medium text-gray-900 truncate">
+                                  {dotIndex !== -1 ? (
+                                    <>
+                                      {displayValue.substring(0, dotIndex + 1)}
+                                      <span className="font-bold">{displayValue.substring(dotIndex + 1)}</span>
+                                    </>
+                                  ) : (
+                                    displayValue
+                                  )}
+                                </div>
+                                <div className="text-xs text-gray-500 font-mono truncate">
+                                  {frame.id}{frame.code ? ` · ${frame.label}` : ''}
+                                </div>
+                              </div>
+                              {isSelected && <span className="text-xs text-blue-600 font-medium">Selected</span>}
+                            </div>
+                          </button>
+                        );
+                      })
+                    )}
+                  </>
+                )}
               </div>
             )}
-            
-            {!frameOptionsError && (
-              <p className="text-xs text-gray-500">
-                Selecting &quot;No frame&quot; will remove the frame assignment from all selected entries.
-              </p>
-            )}
           </div>
+
+          {!frameOptionsError && (
+            <p className="text-xs text-gray-500">
+              Selecting &quot;No frame&quot; will remove the frame assignment from all selected entries.
+            </p>
+          )}
         </div>
       </div>
     </Modal>

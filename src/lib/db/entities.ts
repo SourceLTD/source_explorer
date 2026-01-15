@@ -8,7 +8,7 @@
 import { prisma } from '../prisma';
 import { withRetry } from '../db-utils';
 import { Prisma, entity_type, change_operation, part_of_speech } from '@prisma/client';
-import type { PartOfSpeech, PaginationParams, PaginatedResult, TableEntry, VendlerClass } from '../types';
+import type { PartOfSpeech, PaginationParams, PaginatedResult, TableLexicalUnit, VendlerClass } from '../types';
 import { getPOSConfig, parsePOSFilter, isValidPOS } from './config';
 
 /**
@@ -295,7 +295,7 @@ async function fetchRelationCounts(
       FROM (SELECT unnest(${entryIds}::bigint[]) as id) lu
     `,
     undefined,
-    'getPaginatedEntities:relationCounts'
+    'getPaginatedLexicalUnits:relationCounts'
   );
 
   return new Map(countsData.map(c => [
@@ -305,14 +305,14 @@ async function fetchRelationCounts(
 }
 
 /**
- * Apply post-fetch filters and sorting for computed fields
+ * Apply post-fetch filters and sorting for computed field filters
  */
 function applyComputedFieldFilters(
-  data: TableEntry[],
+  data: TableLexicalUnit[],
   params: PaginationParams,
   sortBy: string,
   sortOrder: 'asc' | 'desc'
-): TableEntry[] {
+): TableLexicalUnit[] {
   const { parentsCountMin, parentsCountMax, childrenCountMin, childrenCountMax } = params;
 
   let result = data;
@@ -348,12 +348,12 @@ function applyComputedFieldFilters(
 }
 
 /**
- * Transform database entry to TableEntry format
+ * Transform database entry to TableLexicalUnit format
  */
-function transformToTableEntry(
+function transformToTableLexicalUnit(
   entry: Prisma.lexical_unitsGetPayload<{ include: { frames: { select: { id: true; label: true; code: true } } } }>,
   counts: { parents: number; children: number }
-): TableEntry {
+): TableLexicalUnit {
   const entryCode = entry.code || entry.id.toString();
   const numericId = entry.id.toString();
 
@@ -401,12 +401,12 @@ function transformToTableEntry(
 }
 
 /**
- * Unified paginated entities function
+ * Unified paginated lexical units function
  * Queries the lexical_units table with optional POS filtering
  */
-export async function getPaginatedEntities(
+async function getPaginatedLexicalUnits(
   params: PaginationParams = {}
-): Promise<PaginatedResult<TableEntry>> {
+): Promise<PaginatedResult<TableLexicalUnit>> {
   const {
     page = 1,
     limit: rawLimit = 10,
@@ -433,7 +433,7 @@ export async function getPaginatedEntities(
   const total = await withRetry(
     () => prisma.lexical_units.count({ where: whereClause }),
     undefined,
-    'getPaginatedEntities:count'
+    'getPaginatedLexicalUnits:count'
   );
 
   // Fetch entries with frames
@@ -450,7 +450,7 @@ export async function getPaginatedEntities(
       },
     }),
     undefined,
-    'getPaginatedEntities:findMany'
+    'getPaginatedLexicalUnits:findMany'
   );
 
   // Get entry IDs and determine POS values for relation counting
@@ -461,9 +461,9 @@ export async function getPaginatedEntities(
   // Fetch relation counts
   const countsByEntryId = await fetchRelationCounts(entryIds, posValues);
 
-  // Transform to TableEntry format
-  let data: TableEntry[] = entries.map(entry => 
-    transformToTableEntry(
+  // Transform to TableLexicalUnit format
+  let data: TableLexicalUnit[] = entries.map(entry => 
+    transformToTableLexicalUnit(
       entry,
       countsByEntryId.get(entry.id.toString()) || { parents: 0, children: 0 }
     )
@@ -488,9 +488,9 @@ export async function getPaginatedEntities(
 /**
  * Get a single lexical unit by ID or code
  */
-export async function getLexicalUnitById(
+async function getLexicalUnitById(
   idOrCode: string
-): Promise<TableEntry | null> {
+): Promise<TableLexicalUnit | null> {
   // Try to parse as BigInt first
   let entry;
   
@@ -524,8 +524,10 @@ export async function getLexicalUnitById(
   // Fetch relation counts for this single entry
   const countsByEntryId = await fetchRelationCounts([entry.id], [entry.pos as PartOfSpeech]);
 
-  return transformToTableEntry(
+  return transformToTableLexicalUnit(
     entry,
     countsByEntryId.get(entry.id.toString()) || { parents: 0, children: 0 }
   );
 }
+
+export { getPaginatedLexicalUnits, getLexicalUnitById };

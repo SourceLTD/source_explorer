@@ -335,6 +335,11 @@ export interface TableEntry {
   pending?: PendingChangeInfo | null;
 }
 
+/**
+ * @deprecated Use TableEntry
+ */
+export type TableLexicalUnit = TableEntry;
+
 // ============================================
 // Stats Types
 // ============================================
@@ -411,6 +416,12 @@ export interface FramePaginationParams {
   createdBefore?: string;
   updatedAfter?: string;
   updatedBefore?: string;
+  /**
+   * String form because this is typically sourced from URLSearchParams.
+   * - 'true' => super frames only (super_frame_id is null)
+   * - 'false' => non-super frames only (super_frame_id is not null)
+   */
+  isSuperFrame?: 'true' | 'false';
   super_frame_id?: string;
 }
 

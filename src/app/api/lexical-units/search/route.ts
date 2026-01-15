@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { searchEntries } from '@/lib/db';
+import { searchLexicalUnits } from '@/lib/db';
 import { handleDatabaseError } from '@/lib/db-utils';
 import type { PartOfSpeech } from '@/lib/types';
 
@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'query is required' }, { status: 400 });
     }
 
-    const results = await searchEntries(query, limit, pos);
+    const results = await searchLexicalUnits(query, limit, pos);
     return NextResponse.json({ results });
   } catch (error) {
     const { message, status, shouldRetry } = handleDatabaseError(error, 'POST /api/lexical-units/search');

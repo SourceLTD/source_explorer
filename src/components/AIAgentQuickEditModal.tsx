@@ -3,28 +3,30 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { Modal } from '@/components/ui';
 import LoadingSpinner from '@/components/LoadingSpinner';
-import { TableEntry, Frame } from '@/lib/types';
+import { TableLexicalUnit, Frame } from '@/lib/types';
 import { api } from '@/lib/api-client';
 import { showGlobalAlert } from '@/lib/alerts';
 import type { SerializedJob } from '@/lib/llm/types';
+import type { JobTargetType } from '@/lib/llm/types';
 import type { DataTableMode } from '@/components/DataTable/types';
+import { createClient } from '@/utils/supabase/client';
 
 interface AIAgentQuickEditModalProps {
   isOpen: boolean;
   onClose: () => void;
-  entry: TableEntry | Frame;
+  entry: TableLexicalUnit | Frame;
   mode: DataTableMode;
   onJobSubmitted?: (jobId: string) => void;
 }
 
 // Helper to get editable fields by entity type
-function getEditableFields(entry: TableEntry | Frame, mode: DataTableMode): string[] {
-  if (mode === 'frames') {
+function getEditableFields(entry: TableLexicalUnit | Frame, mode: DataTableMode): string[] {
+  if (mode === 'frames' || mode === 'super_frames' || mode === 'frames_only') {
     return ['definition', 'short_definition'];
   }
 
   // For lexical units, determine fields based on POS
-  const pos = (entry as TableEntry).pos;
+  const pos = (entry as TableLexicalUnit).pos;
   switch (pos) {
     case 'verb':
       return ['gloss', 'lemmas', 'examples', 'vendler_class'];
@@ -40,8 +42,8 @@ function getEditableFields(entry: TableEntry | Frame, mode: DataTableMode): stri
 }
 
 // Helper to get entry identifier for display
-function getEntryDisplayId(entry: TableEntry | Frame, mode: DataTableMode): string {
-  if (mode === 'frames' && 'label' in entry) {
+function getEntryDisplayId(entry: TableLexicalUnit | Frame, mode: DataTableMode): string {
+  if ((mode === 'frames' || mode === 'super_frames' || mode === 'frames_only') && 'label' in entry) {
     return entry.label;
   }
   return entry.id;
@@ -57,6 +59,7 @@ export function AIAgentQuickEditModal({
   const [prompt, setPrompt] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
 
   // Reset state when modal opens with new entry
   useEffect(() => {
@@ -66,6 +69,31 @@ export function AIAgentQuickEditModal({
       setErrorMessage(null);
     }
   }, [isOpen, entry.id]);
+
+  // Load user email for attribution (submittedBy)
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    try {
+      const supabase = createClient();
+      supabase.auth.getUser()
+        .then(({ data: { user } }) => {
+          if (cancelled) return;
+          setUserEmail(user?.email ?? null);
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setUserEmail(null);
+        });
+    } catch (e) {
+      // Don't fail quick edits if auth isn't configured
+      console.warn('[AIAgentQuickEditModal] Failed to load user email', e);
+      setUserEmail(null);
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen]);
 
   const handleSubmit = useCallback(async () => {
     if (!prompt.trim()) {
@@ -77,31 +105,43 @@ export function AIAgentQuickEditModal({
     setErrorMessage(null);
 
     try {
-      const entryId = entry.id;
+      const unitId = entry.id;
       const displayId = getEntryDisplayId(entry, mode);
       const targetFields = getEditableFields(entry, mode);
 
       // Simple system prompt for quick edits - just do what the user asks
-      const quickEditSystemPrompt = `You are editing a lexical database entry. Follow the user's instructions exactly. Only make the changes they request - do not add extra improvements or modifications beyond what was asked. Be concise and precise.`;
+      const quickEditSystemPrompt = `You are editing a lexical database unit. Follow the user's instructions exactly. Only make the changes they request - do not add extra improvements or modifications beyond what was asked. Be concise and precise.`;
 
-      // Map mode to targetType - DataTableMode to JobTargetType
-      const targetType = mode === 'frames' ? 'frames' : 
-                        mode === 'super_frames' ? 'frames' :
-                        mode === 'lexical_units' ? 'verb' : // Default to verb for lexical units
-                        (entry as TableEntry).pos || 'verb'; // Use entry's actual POS if available
+      const isFrameMode = mode === 'frames' || mode === 'super_frames' || mode === 'frames_only';
+      const isSuperFrame = mode === 'super_frames' ? true : mode === 'frames_only' ? false : undefined;
+
+      // Map mode/entry to targetType (must match how the backend resolves scopes)
+      const rawPos = (entry as TableLexicalUnit).pos;
+      const lexicalPos: JobTargetType =
+        rawPos === 'verb' || rawPos === 'noun' || rawPos === 'adjective' || rawPos === 'adverb'
+          ? rawPos
+          : 'lexical_units';
+
+      const targetType: JobTargetType = isFrameMode ? 'frames' : lexicalPos;
 
       // Create job with single item scope
       const jobPayload = {
         label: `Quick Edit: ${displayId}`,
+        submittedBy: userEmail,
         promptTemplate: prompt.trim(),
         systemPrompt: quickEditSystemPrompt,
         model: 'gpt-5-nano',
+        metadata: {
+          source: 'quick-edit',
+          includeFrameRelationsInContext: true,
+        },
         scope: {
           kind: 'ids' as const,
           targetType,
-          ids: [entryId],
+          ids: [unitId],
+          ...(isSuperFrame !== undefined ? { isSuperFrame } : {}),
         },
-        jobType: 'editing' as const,
+        jobType: 'edit' as const,
         targetFields,
         serviceTier: 'default' as const,
         mcpEnabled: false, // Disable MCP tools for quick edits
@@ -180,6 +220,7 @@ export function AIAgentQuickEditModal({
             disabled={isSubmitting}
             placeholder="e.g., Improve the gloss to be more precise and add better examples..."
             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none disabled:bg-gray-100 disabled:cursor-not-allowed"
+            style={{ scrollbarGutter: 'stable' }}
             rows={4}
           />
         </div>

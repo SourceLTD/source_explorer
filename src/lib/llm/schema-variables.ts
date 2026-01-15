@@ -43,7 +43,7 @@ const LU_ITEM_FIELDS = [
   { key: 'code', label: 'Code (e.g., say.v.01)' },
   { key: 'pos', label: 'Part of Speech' },
   { key: 'gloss', label: 'Gloss/Definition' },
-  { key: 'lemmas', label: 'Lemmas (array)' },
+  { key: 'lemmas', label: 'Lemmas (comma-separated list)' },
   { key: 'examples', label: 'Examples (array)' },
   { key: 'flagged', label: 'Is Flagged (boolean)' },
 ];

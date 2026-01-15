@@ -16,10 +16,108 @@ import {
   ChangesetWithFieldChanges,
 } from './types';
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== 'object') return false;
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+
+/**
+ * Normalize a value into a JSON-safe, stable representation.
+ *
+ * - Converts `bigint` to string (JSON doesn't support bigint)
+ * - Converts `Date` to ISO string
+ * - Converts empty string (`""`) to `null` (system semantics: empty string = null)
+ * - Uses `toJSON()` for non-plain objects (e.g. Prisma Decimal)
+ * - Sorts object keys for stable ordering
+ */
+function normalizeForJson(value: unknown): unknown {
+  if (value === null || value === undefined) return null;
+
+  if (typeof value === 'bigint') return value.toString();
+
+  if (typeof value === 'string') {
+    // In this system, editing a string field to "" means setting it NULL.
+    // Normalizing here keeps equality checks and stored changes consistent.
+    if (value === '') return null;
+    return value;
+  }
+
+  if (typeof value === 'boolean') return value;
+
+  if (typeof value === 'number') {
+    // JSON.stringify turns NaN/Infinity into null; preserve a stable string instead.
+    if (!Number.isFinite(value)) return String(value);
+    return value;
+  }
+
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(normalizeForJson);
+  }
+
+  if (value instanceof Map) {
+    const entries = Array.from(value.entries())
+      .map(([k, v]) => [String(k), normalizeForJson(v)] as const)
+      .sort((a, b) => a[0].localeCompare(b[0]));
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of entries) out[k] = v;
+    return out;
+  }
+
+  if (value instanceof Set) {
+    // Preserve deterministic order for equality checks/snapshots.
+    return Array.from(value)
+      .map(normalizeForJson)
+      .sort((a, b) => String(a).localeCompare(String(b)));
+  }
+
+  // Respect toJSON() on non-plain objects (e.g. Decimal.js), but avoid altering plain objects.
+  const maybeToJson = value as { toJSON?: () => unknown };
+  if (!isPlainObject(value) && typeof maybeToJson.toJSON === 'function') {
+    try {
+      return normalizeForJson(maybeToJson.toJSON());
+    } catch {
+      // Fall through to best-effort object handling
+    }
+  }
+
+  // Best-effort: normalize enumerable keys (stable key ordering)
+  const obj = value as Record<string, unknown>;
+  const keys = Object.keys(obj).sort();
+  const out: Record<string, unknown> = {};
+  for (const k of keys) {
+    out[k] = normalizeForJson(obj[k]);
+  }
+  return out;
+}
+
+function stableJsonStringify(value: unknown): string {
+  return JSON.stringify(normalizeForJson(value));
+}
+
 // Helper to convert value to Prisma JSON value (handling null)
 function toJsonValue(value: unknown): Prisma.InputJsonValue | typeof Prisma.DbNull {
-  if (value === null || value === undefined) return Prisma.DbNull;
-  return value as Prisma.InputJsonValue;
+  const normalized = normalizeForJson(value);
+  if (normalized === null || normalized === undefined) return Prisma.DbNull;
+  return normalized as Prisma.InputJsonValue;
+}
+
+/**
+ * Compare two values for equality using JSON.stringify.
+ * Handles null, undefined, objects, and arrays consistently.
+ * 
+ * @param a - First value to compare
+ * @param b - Second value to compare
+ * @returns true if values are equal (same JSON representation)
+ */
+export function valuesAreEqual(a: unknown, b: unknown): boolean {
+  // Use stable JSON stringify for deep comparison (BigInt-safe, key-order-stable).
+  // Note: `normalizeForJson()` implements our edit semantics ("" -> null).
+  return stableJsonStringify(a) === stableJsonStringify(b);
 }
 
 // ============================================
@@ -146,11 +244,28 @@ export async function getPendingChangesetsForEntities(
 // ============================================
 
 /**
+ * Custom error class for no-op field changes.
+ */
+export class NoOpFieldChangeError extends Error {
+  constructor(fieldName: string) {
+    super(`No-op field change: old_value equals new_value for field "${fieldName}"`);
+    this.name = 'NoOpFieldChangeError';
+  }
+}
+
+/**
  * Create a new field change within a changeset.
+ * 
+ * @throws {NoOpFieldChangeError} If old_value equals new_value (no actual change)
  */
 export async function createFieldChange(
   input: CreateFieldChangeInput
 ): Promise<FieldChange> {
+  // Validate that values are actually different
+  if (valuesAreEqual(input.old_value, input.new_value)) {
+    throw new NoOpFieldChangeError(input.field_name);
+  }
+  
   const result = await prisma.field_changes.create({
     data: {
       changeset_id: input.changeset_id,
@@ -165,37 +280,114 @@ export async function createFieldChange(
 }
 
 /**
+ * Result of an upsert field change operation.
+ */
+export interface UpsertFieldChangeResult {
+  /** What action was taken */
+  action: 'created' | 'updated' | 'deleted' | 'skipped';
+  /** The field change record (null if skipped or deleted) */
+  fieldChange: FieldChange | null;
+  /** Whether the changeset was auto-discarded (only applies to 'deleted' action) */
+  changesetDiscarded?: boolean;
+}
+
+/**
  * Create or update a field change.
  * If a field change already exists for this field, update it.
+ * 
+ * If old_value equals new_value (no actual change):
+ * - If no existing field change: returns 'skipped' action with null fieldChange
+ * - If existing field change: deletes it and returns 'deleted' action
+ *   (also auto-discards the changeset if no field changes remain)
  */
 export async function upsertFieldChange(
   changesetId: bigint,
   fieldName: string,
   oldValue: unknown,
   newValue: unknown
-): Promise<FieldChange> {
-  const result = await prisma.field_changes.upsert({
+): Promise<UpsertFieldChangeResult> {
+  // Check if this is a no-op (values are equal)
+  const isNoOp = valuesAreEqual(oldValue, newValue);
+  
+  // Check if there's an existing field change for this field
+  const existing = await prisma.field_changes.findUnique({
     where: {
       changeset_id_field_name: {
         changeset_id: changesetId,
         field_name: fieldName,
       },
     },
-    update: {
-      old_value: toJsonValue(oldValue),
-      new_value: toJsonValue(newValue),
-      status: 'pending',  // Reset to pending if updated
-    },
-    create: {
-      changeset_id: changesetId,
-      field_name: fieldName,
-      old_value: toJsonValue(oldValue),
-      new_value: toJsonValue(newValue),
-      status: 'pending',
-    },
   });
-
-  return transformFieldChange(result);
+  
+  if (isNoOp) {
+    if (existing) {
+      // Delete the existing field change since values are now equal (reverted)
+      await prisma.field_changes.delete({
+        where: { id: existing.id },
+      });
+      
+      // Check if there are any remaining field changes in the changeset
+      const remainingCount = await prisma.field_changes.count({
+        where: { changeset_id: changesetId },
+      });
+      
+      // If no remaining field changes, discard the changeset
+      let changesetDiscarded = false;
+      if (remainingCount === 0) {
+        await prisma.changesets.update({
+          where: { id: changesetId },
+          data: { status: 'discarded' },
+        });
+        changesetDiscarded = true;
+      }
+      
+      return {
+        action: 'deleted',
+        fieldChange: null,
+        changesetDiscarded,
+      };
+    } else {
+      // No existing field change and values are equal - skip creation
+      return {
+        action: 'skipped',
+        fieldChange: null,
+      };
+    }
+  }
+  
+  // Values are different - proceed with upsert
+  if (existing) {
+    // Update existing field change
+    const result = await prisma.field_changes.update({
+      where: { id: existing.id },
+      data: {
+        old_value: toJsonValue(oldValue),
+        new_value: toJsonValue(newValue),
+        status: 'pending',  // Reset to pending if updated
+      },
+    });
+    
+    return {
+      action: 'updated',
+      fieldChange: transformFieldChange(result),
+    };
+  } else {
+    // Create new field change
+    const result = await prisma.field_changes.create({
+      data: {
+        changeset_id: changesetId,
+        field_name: fieldName,
+        old_value: toJsonValue(oldValue),
+        new_value: toJsonValue(newValue),
+        status: 'pending',
+      },
+    });
+    
+    return {
+      action: 'created',
+      fieldChange: transformFieldChange(result),
+    };
+  }
 }
 
 /**
@@ -404,30 +596,66 @@ export async function createChangesetFromUpdate(
   llmJobId?: bigint,
 ): Promise<ChangesetWithFieldChanges> {
   // Check if there's already a pending changeset for this entity
-  let changeset = await findPendingChangeset(entityType, entityId);
+  const changeset = await findPendingChangeset(entityType, entityId);
   
   if (changeset) {
     // Add/update field changes in the existing changeset
-    const fieldChanges: FieldChange[] = [];
-    
     for (const [fieldName, newValue] of Object.entries(updates)) {
       const oldValue = currentEntity[fieldName];
       
-      // Only create field change if value actually changed
-      if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
-        const fc = await upsertFieldChange(
-          changeset.id,
-          fieldName,
-          oldValue,
-          newValue
-        );
-        fieldChanges.push(fc);
-      }
+      // upsertFieldChange now handles no-op detection internally
+      // It will skip creation or delete existing if values are equal
+      await upsertFieldChange(
+        changeset.id,
+        fieldName,
+        oldValue,
+        newValue
+      );
     }
     
     // Refresh the changeset to get all field changes
-    changeset = await getChangeset(changeset.id);
-    return changeset!;
+    // Note: changeset may have been auto-discarded if all fields were reverted
+    const refreshed = await getChangeset(changeset.id);
+    if (!refreshed) {
+      // Changeset was discarded - return empty result
+      return {
+        ...changeset,
+        field_changes: [],
+      };
+    }
+    return refreshed;
+  }
+  
+  // Filter updates to only include actual changes before creating changeset
+  const actualUpdates: Record<string, unknown> = {};
+  for (const [fieldName, newValue] of Object.entries(updates)) {
+    const oldValue = currentEntity[fieldName];
+    if (!valuesAreEqual(oldValue, newValue)) {
+      actualUpdates[fieldName] = newValue;
+    }
+  }
+  
+  // If no actual changes, don't create a changeset
+  if (Object.keys(actualUpdates).length === 0) {
+    // Return a "virtual" empty changeset to indicate no changes
+    // Callers can check field_changes.length === 0
+    return {
+      id: BigInt(0),
+      entity_type: entityType,
+      entity_id: entityId,
+      operation: 'update',
+      entity_version: (currentEntity.version as number) ?? 1,
+      before_snapshot: currentEntity,
+      after_snapshot: null,
+      status: 'discarded',
+      created_by: createdBy,
+      created_at: new Date(),
+      reviewed_by: null,
+      reviewed_at: null,
+      committed_at: null,
+      llm_job_id: llmJobId ?? null,
+      field_changes: [],
+    };
   }
   
   // Create a new changeset
@@ -441,22 +669,20 @@ export async function createChangesetFromUpdate(
     created_by: createdBy,
   });
   
-  // Create field changes for each updated field
+  // Create field changes for each actual change
   const fieldChanges: FieldChange[] = [];
   
-  for (const [fieldName, newValue] of Object.entries(updates)) {
+  for (const [fieldName, newValue] of Object.entries(actualUpdates)) {
     const oldValue = currentEntity[fieldName];
     
-    // Only create field change if value actually changed
-    if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
-      const fc = await createFieldChange({
-        changeset_id: newChangeset.id,
-        field_name: fieldName,
-        old_value: oldValue,
-        new_value: newValue,
-      });
-      fieldChanges.push(fc);
-    }
+    // createFieldChange will throw if values are equal (shouldn't happen here)
+    const fc = await createFieldChange({
+      changeset_id: newChangeset.id,
+      field_name: fieldName,
+      old_value: oldValue,
+      new_value: newValue,
+    });
+    fieldChanges.push(fc);
   }
   
   return {

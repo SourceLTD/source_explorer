@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { getChangeset, upsertFieldChange } from '@/lib/version-control';
+import { getChangeset, upsertFieldChange, valuesAreEqual } from '@/lib/version-control';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -68,6 +68,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     
     // Apply accepted fields
     const appliedFields: string[] = [];
+    const skippedFields: string[] = [];
+    let changesetDiscarded = false;
+    
     for (const fieldName of accepted_fields) {
       const mod = modifications.find(m => m.field === fieldName);
       if (mod) {
@@ -79,14 +82,27 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           ? existingFieldChange.old_value 
           : (changeset.before_snapshot as Record<string, unknown> | null)?.[fieldName];
 
+        // Skip if the new value equals the original old value (no-op)
+        if (valuesAreEqual(originalOldValue, mod.new_value)) {
+          skippedFields.push(fieldName);
+          continue;
+        }
+
         // Upsert the field change with the AI's suggested value
-        await upsertFieldChange(
+        const result = await upsertFieldChange(
           revision.changeset_id,
           fieldName,
           originalOldValue,
           mod.new_value
         );
-        appliedFields.push(fieldName);
+        
+        if (result.action === 'skipped') {
+          skippedFields.push(fieldName);
+        } else if (result.changesetDiscarded) {
+          changesetDiscarded = true;
+        } else {
+          appliedFields.push(fieldName);
+        }
       }
     }
 
@@ -119,8 +135,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       success: true,
       status: finalStatus,
       applied_fields: appliedFields,
+      skipped_fields: skippedFields,
       accepted_count: acceptedCount,
       rejected_count: rejectedCount,
+      changeset_discarded: changesetDiscarded,
     });
   } catch (error) {
     console.error('Error resolving AI revision:', error);

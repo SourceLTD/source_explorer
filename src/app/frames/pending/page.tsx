@@ -6,7 +6,6 @@ import SearchBox from '@/components/SearchBox';
 import ViewToggle, { ViewMode } from '@/components/ViewToggle';
 import PendingChangesButton from '@/components/PendingChangesButton';
 import SignOutButton from '@/components/SignOutButton';
-import CategoryDropdown from '@/components/CategoryDropdown';
 import { SearchResult } from '@/lib/types';
 import PendingChangesList from '@/components/PendingChangesList';
 import LoadingSpinner from '@/components/LoadingSpinner';
@@ -24,15 +23,13 @@ function PendingChangesContent() {
       {/* Header */}
       <header className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-8">
+          <div className="flex items-center">
             <button
               onClick={() => router.push('/')}
               className="text-xl font-bold text-gray-900 hover:text-gray-700 cursor-pointer"
             >
               Source Console
             </button>
-            <div className="h-6 w-px bg-gray-300"></div>
-            <CategoryDropdown currentCategory="frames" currentView="table" />
           </div>
           
           <div className="flex items-center gap-4 flex-1 justify-end">

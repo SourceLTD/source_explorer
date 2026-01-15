@@ -20,6 +20,11 @@ import {
   PendingFieldChange,
   PendingChangeOperation,
 } from '@/lib/types';
+import {
+  applyFrameRolesSubChanges,
+  parseFrameRolesFieldName,
+  type NormalizedFrameRole,
+} from './frameRolesSubfields';
 
 // ============================================
 // Core Merge Functions
@@ -420,6 +425,121 @@ export function toPendingChangeInfo(
   };
 }
 
+// ============================================
+// Pending Field Hydration (API preview helpers)
+// ============================================
+
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  v !== null && typeof v === 'object' && !Array.isArray(v);
+
+function extractRoleTypeLabel(v: unknown): string {
+  if (!isRecord(v)) return '';
+  const label =
+    (typeof v.roleType === 'string' ? v.roleType.trim() : '') ||
+    (typeof v.role_type_label === 'string' ? v.role_type_label.trim() : '') ||
+    (isRecord(v.role_type) && typeof v.role_type.label === 'string' ? v.role_type.label.trim() : '') ||
+    (isRecord(v.role_types) && typeof v.role_types.label === 'string' ? v.role_types.label.trim() : '');
+
+  return label || '';
+}
+
+function normalizeFrameRolesFromApiValue(rawValue: unknown): NormalizedFrameRole[] {
+  if (!Array.isArray(rawValue)) return [];
+  const normalized: NormalizedFrameRole[] = [];
+  for (const role of rawValue) {
+    const obj = isRecord(role) ? role : {};
+    const roleType = extractRoleTypeLabel(obj);
+    if (!roleType) continue;
+
+    const examples = Array.isArray(obj.examples)
+      ? obj.examples.filter((ex): ex is string => typeof ex === 'string')
+      : [];
+
+    normalized.push({
+      roleType,
+      description: typeof obj.description === 'string' ? obj.description : null,
+      notes: typeof obj.notes === 'string' ? obj.notes : null,
+      main: typeof obj.main === 'boolean' ? obj.main : Boolean(obj.main),
+      examples,
+      label: typeof obj.label === 'string' ? obj.label : null,
+    });
+  }
+  normalized.sort((a, b) => a.roleType.localeCompare(b.roleType));
+  return normalized;
+}
+
+function normalizedFrameRolesToClientPayload(roles: NormalizedFrameRole[]): Array<Record<string, unknown>> {
+  return roles.map(r => ({
+    roleType: r.roleType,
+    description: r.description,
+    notes: r.notes,
+    main: r.main,
+    examples: r.examples,
+    label: r.label,
+  }));
+}
+
+function hydratePendingFrameRolesForApi(
+  entity: Record<string, unknown>,
+  rawValue: unknown,
+  roleTypeByLabel: Map<string, { id: bigint; code: string; label: string; generic_description: string; explanation: string | null }>
+): unknown {
+  if (!Array.isArray(rawValue)) return rawValue;
+
+  // Map existing role IDs/labels by role type label so pending previews stay stable.
+  const existingRoles = Array.isArray((entity as any).frame_roles) ? (entity as any).frame_roles : [];
+  const existingByRoleTypeLabel = new Map<string, any>();
+  for (const r of existingRoles) {
+    const roleTypeLabel = isRecord(r) && isRecord((r as any).role_type) && typeof (r as any).role_type.label === 'string'
+      ? (r as any).role_type.label
+      : '';
+    if (roleTypeLabel) existingByRoleTypeLabel.set(roleTypeLabel, r);
+  }
+
+  return rawValue.map((role, idx) => {
+    const obj = isRecord(role) ? role : {};
+    const roleTypeLabel = extractRoleTypeLabel(obj);
+    const existing = existingByRoleTypeLabel.get(roleTypeLabel);
+    const rt = roleTypeByLabel.get(roleTypeLabel);
+
+    const role_type = rt
+      ? {
+          id: rt.id.toString(),
+          code: rt.code,
+          label: rt.label,
+          generic_description: rt.generic_description,
+          explanation: rt.explanation,
+        }
+      : {
+          id: '',
+          code: undefined,
+          label: roleTypeLabel || 'Unknown',
+          generic_description: '',
+          explanation: null,
+        };
+
+    const examples = Array.isArray(obj.examples)
+      ? obj.examples.filter((ex): ex is string => typeof ex === 'string')
+      : [];
+
+    return {
+      id:
+        typeof obj.id === 'string'
+          ? obj.id
+          : (existing && typeof existing.id === 'string' ? existing.id : `pending-role-${idx}`),
+      description: typeof obj.description === 'string' ? obj.description : null,
+      notes: typeof obj.notes === 'string' ? obj.notes : null,
+      main: typeof obj.main === 'boolean' ? obj.main : Boolean(obj.main),
+      examples,
+      label:
+        typeof obj.label === 'string'
+          ? obj.label
+          : (existing && typeof existing.label === 'string' ? existing.label : null),
+      role_type,
+    };
+  });
+}
+
 /**
  * Attach pending change info to entities for API responses.
  * Returns entities with their data plus a `pending` field.
@@ -444,6 +564,38 @@ export async function attachPendingInfoToEntities<T extends object>(
   // Fetch pending changesets for these entities
   const pendingChangesets = await getPendingChangesetsMap(entityType, entityIds);
 
+  // Preload role types used by pending frame_roles so list/table endpoints can
+  // render the same API shape as "live" records (role_type nested object).
+  let roleTypeByLabel: Map<string, { id: bigint; code: string; label: string; generic_description: string; explanation: string | null }> | null = null;
+  if (entityType === 'frame') {
+    const labels = new Set<string>();
+    for (const cs of pendingChangesets.values()) {
+      for (const fc of cs.field_changes) {
+        if (fc.status !== 'pending' && fc.status !== 'approved') continue;
+        if (fc.field_name === 'frame_roles') {
+          if (!Array.isArray(fc.new_value)) continue;
+          for (const r of fc.new_value) {
+            const label = extractRoleTypeLabel(r);
+            if (label) labels.add(label);
+          }
+          continue;
+        }
+
+        const parsed = parseFrameRolesFieldName(fc.field_name);
+        if (parsed?.roleType) labels.add(parsed.roleType);
+      }
+    }
+
+    if (labels.size > 0) {
+      const roleTypes = await prisma.role_types.findMany({
+        where: { label: { in: Array.from(labels) } },
+      });
+      roleTypeByLabel = new Map(roleTypes.map(rt => [rt.label, rt]));
+    } else {
+      roleTypeByLabel = new Map();
+    }
+  }
+
   // Attach pending info to each entity
   return entities.map(entity => {
     const entityId = getId(entity);
@@ -458,11 +610,39 @@ export async function attachPendingInfoToEntities<T extends object>(
 
     // Apply pending field values to entity for preview
     const updatedEntity = { ...entity };
+    const pendingFrameRoleSubChanges: Array<{ field_name: string; new_value: unknown }> = [];
     for (const fc of changeset.field_changes) {
       // Apply all pending changes (not just approved) for preview
       if (fc.status === 'pending' || fc.status === 'approved') {
+        if (entityType === 'frame') {
+          if (fc.field_name === 'frame_roles' && roleTypeByLabel) {
+            (updatedEntity as Record<string, unknown>).frame_roles = hydratePendingFrameRolesForApi(
+              updatedEntity as unknown as Record<string, unknown>,
+              fc.new_value,
+              roleTypeByLabel
+            );
+            continue;
+          }
+
+          if (fc.field_name.startsWith('frame_roles.')) {
+            pendingFrameRoleSubChanges.push({ field_name: fc.field_name, new_value: fc.new_value });
+            continue;
+          }
+        }
+
         (updatedEntity as Record<string, unknown>)[fc.field_name] = fc.new_value;
       }
+    }
+
+    // Apply granular frame_roles.* patches on top of the current preview frame_roles.
+    if (entityType === 'frame' && roleTypeByLabel && pendingFrameRoleSubChanges.length > 0) {
+      const baseRoles = normalizeFrameRolesFromApiValue((updatedEntity as any).frame_roles);
+      const patched = applyFrameRolesSubChanges(baseRoles, pendingFrameRoleSubChanges);
+      (updatedEntity as Record<string, unknown>).frame_roles = hydratePendingFrameRolesForApi(
+        updatedEntity as unknown as Record<string, unknown>,
+        normalizedFrameRolesToClientPayload(patched),
+        roleTypeByLabel
+      );
     }
 
     return {
@@ -556,11 +736,63 @@ export async function applyPendingToEntity<T extends object>(
 
   // Apply pending field values to entity for preview
   const updatedEntity = { ...entity };
+  const pendingFrameRoleSubChanges: Array<{ field_name: string; new_value: unknown }> = [];
+  let roleTypeByLabel: Map<string, { id: bigint; code: string; label: string; generic_description: string; explanation: string | null }> | null = null;
+
+  if (entityType === 'frame') {
+    const labels = new Set<string>();
+    for (const fc of changeset.field_changes) {
+      if (fc.status !== 'pending' && fc.status !== 'approved') continue;
+      if (fc.field_name === 'frame_roles') {
+        if (!Array.isArray(fc.new_value)) continue;
+        for (const r of fc.new_value) {
+          const label = extractRoleTypeLabel(r);
+          if (label) labels.add(label);
+        }
+        continue;
+      }
+
+      const parsed = parseFrameRolesFieldName(fc.field_name);
+      if (parsed?.roleType) labels.add(parsed.roleType);
+    }
+
+    const roleTypes = labels.size > 0
+      ? await prisma.role_types.findMany({ where: { label: { in: Array.from(labels) } } })
+      : [];
+    roleTypeByLabel = new Map(roleTypes.map(rt => [rt.label, rt]));
+  }
+
   for (const fc of changeset.field_changes) {
     // Apply all pending changes (not just approved) for preview
     if (fc.status === 'pending' || fc.status === 'approved') {
+      if (entityType === 'frame') {
+        if (fc.field_name === 'frame_roles' && roleTypeByLabel) {
+          (updatedEntity as Record<string, unknown>).frame_roles = hydratePendingFrameRolesForApi(
+            updatedEntity as unknown as Record<string, unknown>,
+            fc.new_value,
+            roleTypeByLabel
+          );
+          continue;
+        }
+
+        if (fc.field_name.startsWith('frame_roles.')) {
+          pendingFrameRoleSubChanges.push({ field_name: fc.field_name, new_value: fc.new_value });
+          continue;
+        }
+      }
+
       (updatedEntity as Record<string, unknown>)[fc.field_name] = fc.new_value;
     }
+  }
+
+  if (entityType === 'frame' && roleTypeByLabel && pendingFrameRoleSubChanges.length > 0) {
+    const baseRoles = normalizeFrameRolesFromApiValue((updatedEntity as any).frame_roles);
+    const patched = applyFrameRolesSubChanges(baseRoles, pendingFrameRoleSubChanges);
+    (updatedEntity as Record<string, unknown>).frame_roles = hydratePendingFrameRolesForApi(
+      updatedEntity as unknown as Record<string, unknown>,
+      normalizedFrameRolesToClientPayload(patched),
+      roleTypeByLabel
+    );
   }
 
   const pendingInfo = toPendingChangeInfo({

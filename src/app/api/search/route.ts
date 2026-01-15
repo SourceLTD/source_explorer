@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { searchEntries } from '@/lib/db';
+import { searchLexicalUnits } from '@/lib/db';
 import { handleDatabaseError } from '@/lib/db-utils';
 import { PartOfSpeech } from '@/lib/types';
 
@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
 
   try {
     // Search across all lexical units if pos is not specified
-    const results = await searchEntries(query, limit, pos);
+    const results = await searchLexicalUnits(query, limit, pos);
     return NextResponse.json(results);
   } catch (error) {
     const { message, status, shouldRetry } = handleDatabaseError(error, 'GET /api/search');

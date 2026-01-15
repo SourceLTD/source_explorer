@@ -2,14 +2,13 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { FrameGraphNode, FrameRecipeData, SearchResult } from '@/lib/types';
+import { Frame, FrameGraphNode, FrameRecipeData, SearchResult } from '@/lib/types';
 import FrameGraph from './FrameGraph';
 import FrameRecipeView from './FrameRecipeView';
 import SearchBox from './SearchBox';
 import ViewToggle, { ViewMode } from './ViewToggle';
 import PendingChangesButton from './PendingChangesButton';
 import SignOutButton from './SignOutButton';
-import CategoryDropdown from './CategoryDropdown';
 import { EditOverlay } from './editing/EditOverlay';
 import LoadingSpinner from './LoadingSpinner';
 
@@ -26,6 +25,7 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
   const [error, setError] = useState<string | null>(null);
   const [currentView, setCurrentView] = useState<ViewMode>('graph');
   const [isEditOverlayOpen, setIsEditOverlayOpen] = useState(false);
+  const [frameForEdit, setFrameForEdit] = useState<Frame | null>(null);
   
   // Track last loaded frame to prevent duplicate calls
   const lastLoadedFrameRef = useRef<string | null>(null);
@@ -120,9 +120,26 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
     }
   };
 
+  const loadFrameForEdit = useCallback(async (frameId: string) => {
+    try {
+      const response = await fetch(`/api/frames/${frameId}?t=${Date.now()}`, { cache: 'no-store' });
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to load frame details (${response.status}): ${errorText}`);
+      }
+      const data: Frame = await response.json();
+      setFrameForEdit(data);
+    } catch (err) {
+      console.error('Error loading frame details for edit overlay:', err);
+      // Keep overlay open, but it will continue showing the loading spinner.
+      // Users can close/reopen if needed.
+    }
+  }, []);
+
   const handleUpdate = async () => {
     if (currentFrame) {
       lastLoadedFrameRef.current = null;
+      setFrameForEdit(null); // show loading spinner while we refresh
       await loadFrame(currentFrame.id, true);
     }
   };
@@ -130,12 +147,14 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
   const handleFlagToggle = async () => {
     if (!currentFrame) return;
     try {
-      await fetch('/api/frames/moderation', {
-        method: 'PUT',
+      await fetch('/api/frames/flag', {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ids: [currentFrame.id],
-          flagged: !currentFrame.flagged,
+          updates: {
+            flagged: !currentFrame.flagged,
+          },
         }),
       });
       await handleUpdate();
@@ -147,12 +166,14 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
   const handleVerifiableToggle = async () => {
     if (!currentFrame) return;
     try {
-      await fetch('/api/frames/moderation', {
-        method: 'PUT',
+      await fetch('/api/frames/flag', {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ids: [currentFrame.id],
-          verifiable: currentFrame.verifiable === false ? true : false,
+          updates: {
+            verifiable: currentFrame.verifiable === false ? true : false,
+          },
         }),
       });
       await handleUpdate();
@@ -173,48 +194,26 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
     }
   }, [searchParams, initialFrameId, loadFrame]);
 
-  // Convert FrameGraphNode to Frame for EditOverlay
-  const frameForEdit = currentFrame ? {
-    id: currentFrame.id,
-    label: currentFrame.label,
-    definition: currentFrame.gloss,
-    short_definition: currentFrame.short_definition,
-    flagged: currentFrame.flagged,
-    flaggedReason: currentFrame.flaggedReason,
-    verifiable: currentFrame.verifiable,
-    unverifiableReason: currentFrame.unverifiableReason,
-    frame_roles: currentFrame.roles?.map(r => ({
-      id: r.id,
-      description: r.description,
-      notes: r.notes,
-      main: r.main,
-      examples: r.examples,
-      role_type: {
-        id: r.role_type_id,
-        code: r.role_type_code,
-        label: r.role_type_label,
-        generic_description: '',
-      },
-    })),
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    pending: currentFrame.pending,
-  } : null;
+  // When opening the overlay, fetch the full Frame payload used by the editor.
+  useEffect(() => {
+    if (!isEditOverlayOpen) return;
+    if (!currentFrame) return;
+    setFrameForEdit(null); // show loading spinner inside EditOverlay
+    void loadFrameForEdit(currentFrame.id);
+  }, [isEditOverlayOpen, currentFrame?.id, currentFrame, loadFrameForEdit]);
 
   return (
     <div className="h-screen flex flex-col bg-gray-50">
       {/* Header */}
       <header className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-8">
+          <div className="flex items-center gap-4">
             <button
               onClick={() => router.push('/')}
               className="text-xl font-bold text-gray-900 hover:text-gray-700 cursor-pointer"
             >
               Source Console
             </button>
-            <div className="h-6 w-px bg-gray-300"></div>
-            <CategoryDropdown currentCategory="frames" currentView="graph" />
             <p className="text-sm text-gray-600">
               Explore frame relationships
             </p>
@@ -360,7 +359,10 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
             nodeId={currentFrame?.id || ""}
             mode="frames"
             isOpen={isEditOverlayOpen}
-            onClose={() => setIsEditOverlayOpen(false)}
+            onClose={() => {
+              setIsEditOverlayOpen(false);
+              setFrameForEdit(null);
+            }}
             onUpdate={handleUpdate}
           />
         )}

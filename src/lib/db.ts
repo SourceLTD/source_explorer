@@ -32,7 +32,10 @@ import type {
 } from './types';
 
 // Re-export the unified pagination function
-export { getPaginatedEntities, getLexicalUnitById } from './db/entities';
+export { getPaginatedLexicalUnits, getLexicalUnitById } from '@/lib/db/entities';
+
+// Back-compat: some routes import prisma from '@/lib/db'
+export { prisma };
 
 // ============================================
 // Helper Functions
@@ -210,7 +213,7 @@ function transformToLexicalUnit(entry: any): LexicalUnit {
 /**
  * Search lexical units by query
  */
-export async function searchEntries(
+export async function searchLexicalUnits(
   query: string,
   limit = 20,
   pos?: PartOfSpeech | PartOfSpeech[]
@@ -256,7 +259,7 @@ export async function searchEntries(
       },
     }),
     undefined,
-    `searchEntries(${query})`
+    `searchLexicalUnits(${query})`
   );
 
   return entries.map((entry, index) => ({
@@ -270,6 +273,11 @@ export async function searchEntries(
     rank: index + 1,
   }));
 }
+
+/**
+ * @deprecated Use searchLexicalUnits
+ */
+export const searchEntries = searchLexicalUnits;
 
 // ============================================
 // Graph Operations
@@ -599,13 +607,13 @@ export async function deleteEntry(code: string): Promise<LexicalUnitWithRelation
 }
 
 // ============================================
-// Moderation Operations
+// Flag Operations
 // ============================================
 
 /**
- * Update moderation status for multiple entries
+ * Update flag status for multiple entries
  */
-export async function updateModerationStatus(
+export async function updateFlagStatus(
   ids: string[],
   updates: {
     flagged?: boolean;
@@ -678,6 +686,16 @@ export async function updateFramesForEntries(
     success: true,
     updatedCount: result.count,
   };
+}
+
+/**
+ * @deprecated Use `updateFramesForEntries` (same behavior).
+ */
+export async function updateFramesForLexicalUnits(
+  ids: string[],
+  frameId: string | null
+): Promise<{ success: boolean; updatedCount: number }> {
+  return updateFramesForEntries(ids, frameId);
 }
 
 // ============================================
@@ -1050,8 +1068,6 @@ export async function getPaginatedFrames(
         explanation: role.role_types.explanation,
       },
     })),
-    roles_count: frame._count.frame_roles,
-    lexical_units_count: frame._count.lexical_units,
   }));
 
   const totalPages = Math.ceil(total / limit);
@@ -1081,27 +1097,34 @@ export function revalidateAllEntryCaches() {
   revalidateTag('frames');
 }
 
+/**
+ * @deprecated Use `revalidateAllEntryCaches` (same behavior).
+ */
+export function revalidateAllUnitCaches() {
+  return revalidateAllEntryCaches();
+}
+
 // ============================================
 // Legacy Exports (for backward compatibility)
 // ============================================
 
 // These functions now delegate to the unified implementation
 export async function getPaginatedEntries(params: PaginationParams = {}): Promise<PaginatedResult<TableEntry>> {
-  const { getPaginatedEntities } = await import('./db/entities');
-  return getPaginatedEntities({ ...params, pos: 'verb' });
+  const { getPaginatedLexicalUnits } = await import('@/lib/db/entities');
+  return getPaginatedLexicalUnits({ ...params, pos: 'verb' }) as any;
 }
 
 export async function getPaginatedNouns(params: PaginationParams = {}): Promise<PaginatedResult<TableEntry>> {
-  const { getPaginatedEntities } = await import('./db/entities');
-  return getPaginatedEntities({ ...params, pos: 'noun' });
+  const { getPaginatedLexicalUnits } = await import('@/lib/db/entities');
+  return getPaginatedLexicalUnits({ ...params, pos: 'noun' }) as any;
 }
 
 export async function getPaginatedAdjectives(params: PaginationParams = {}): Promise<PaginatedResult<TableEntry>> {
-  const { getPaginatedEntities } = await import('./db/entities');
-  return getPaginatedEntities({ ...params, pos: 'adjective' });
+  const { getPaginatedLexicalUnits } = await import('@/lib/db/entities');
+  return getPaginatedLexicalUnits({ ...params, pos: 'adjective' }) as any;
 }
 
 export async function getPaginatedAdverbs(params: PaginationParams = {}): Promise<PaginatedResult<TableEntry>> {
-  const { getPaginatedEntities } = await import('./db/entities');
-  return getPaginatedEntities({ ...params, pos: 'adverb' });
+  const { getPaginatedLexicalUnits } = await import('@/lib/db/entities');
+  return getPaginatedLexicalUnits({ ...params, pos: 'adverb' }) as any;
 }

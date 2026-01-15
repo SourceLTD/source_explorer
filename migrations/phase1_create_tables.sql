@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS lexical_units (
     examples TEXT[] DEFAULT '{}',
     is_mwe BOOLEAN DEFAULT false,
     
-    -- Shared moderation fields
+    -- Shared flag fields
     flagged BOOLEAN DEFAULT false,
     flagged_reason TEXT,
     verifiable BOOLEAN DEFAULT false,

@@ -4,11 +4,10 @@ import React, { useState, useEffect } from 'react';
 import { GraphNode, Frame, RoleType } from '@/lib/types';
 import { Mode, OverlaySectionsState, FrameOption } from './types';
 import { EditOverlayModal } from './EditOverlayModal';
-import { ModerationButtons } from './ModerationButtons';
+import { FlagButtons } from './FlagButtons';
 import { DeleteConfirmDialog } from './DeleteConfirmDialog';
 import { BasicInfoSection } from './BasicInfoSection';
 import { LexicalPropertiesSection } from './LexicalPropertiesSection';
-import { RolesSection } from './RolesSection';
 import { RelationsSection } from './RelationsSection';
 import { FramePropertiesSection } from './FramePropertiesSection';
 import { FrameRolesSection } from './FrameRolesSection';
@@ -38,7 +37,6 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
   const [overlaySections, setOverlaySections] = useState<OverlaySectionsState>({
     basicInfo: true,
     lexicalProperties: false,
-    roles: false,
     relations: false,
     frameProperties: mode === 'frames',
     frameRoles: false,
@@ -121,16 +119,53 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
 
   // Helper to compare values for detecting revert-to-original
   const valuesAreEqual = (a: unknown, b: unknown): boolean => {
-    // Handle arrays
-    if (Array.isArray(a) && Array.isArray(b)) {
-      if (a.length !== b.length) return false;
-      return a.every((val, idx) => valuesAreEqual(val, b[idx]));
+    if (a == null && b == null) return true;
+    if (a == null || b == null) return false;
+
+    const isPlainObject = (v: unknown): v is Record<string, unknown> => {
+      if (v === null || typeof v !== 'object') return false;
+      const proto = Object.getPrototypeOf(v);
+      return proto === Object.prototype || proto === null;
+    };
+
+    const normalizeForJson = (v: unknown): unknown => {
+      if (v === null || v === undefined) return null;
+      if (typeof v === 'bigint') return v.toString();
+      if (typeof v === 'number') {
+        if (!Number.isFinite(v)) return String(v);
+        return v;
+      }
+      if (typeof v === 'string') {
+        // In this system, editing a string field to "" means setting it NULL.
+        // Match backend `valuesAreEqual()` semantics for revert-to-original detection.
+        if (v === '') return null;
+        return v;
+      }
+      if (typeof v === 'boolean') return v;
+      if (v instanceof Date) return v.toISOString();
+      if (Array.isArray(v)) return v.map(normalizeForJson);
+
+      const maybeToJson = v as { toJSON?: () => unknown };
+      if (!isPlainObject(v) && typeof maybeToJson.toJSON === 'function') {
+        try {
+          return normalizeForJson(maybeToJson.toJSON());
+        } catch {
+          // fall through
+        }
+      }
+
+      const obj = v as Record<string, unknown>;
+      const keys = Object.keys(obj).sort();
+      const out: Record<string, unknown> = {};
+      for (const k of keys) out[k] = normalizeForJson(obj[k]);
+      return out;
+    };
+
+    try {
+      return JSON.stringify(normalizeForJson(a)) === JSON.stringify(normalizeForJson(b));
+    } catch {
+      return false;
     }
-    // Handle nulls/undefined
-    if (a === null || a === undefined) return b === null || b === undefined;
-    if (b === null || b === undefined) return false;
-    // Handle primitives
-    return JSON.stringify(a) === JSON.stringify(b);
   };
 
   const handleSave = async () => {
@@ -167,16 +202,6 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
         await mutations.updateHypernym(node.id, oldHypernym, newHypernym, hyponymsToMove, hyponymsToStay);
         
         editor.setCodeValidationMessage('✓ Hypernym updated successfully');
-        await onUpdate();
-        editor.cancelEditing();
-        editor.setCodeValidationMessage('');
-        return;
-      }
-
-      // Handle roles
-      if (editor.editingField === 'roles') {
-        await mutations.updateRoles(node.id, editor.editRoles, editor.editRoleGroups);
-        editor.setCodeValidationMessage('✓ Roles updated successfully');
         await onUpdate();
         editor.cancelEditing();
         editor.setCodeValidationMessage('');
@@ -222,10 +247,16 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
           value = editor.editValue.trim();
           break;
         case 'definition':
-          value = editor.editValue.trim();
+          {
+            const trimmed = editor.editValue.trim();
+            value = trimmed.length > 0 ? trimmed : null;
+          }
           break;
         case 'short_definition':
-          value = editor.editValue.trim();
+          {
+            const trimmed = editor.editValue.trim();
+            value = trimmed.length > 0 ? trimmed : null;
+          }
           break;
         case 'super_frame_id':
           value = editor.editValue || null;
@@ -360,8 +391,8 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
             </div>
           )}
 
-          {/* Moderation Section */}
-          <ModerationButtons
+          {/* Flagging Section */}
+          <FlagButtons
             flagged={node.flagged ?? false}
             verifiable={node.verifiable ?? true}
             onFlagToggle={handleFlagToggle}
@@ -425,30 +456,6 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
               onCancel={editor.cancelEditing}
               isSaving={editor.isSaving}
               pending={node.pending}
-            />
-          )}
-
-          {/* Roles Section (Verbs only) */}
-          {(mode === 'verbs' || (mode === 'lexical_units' && 'pos' in node && node.pos === 'verb')) && 'gloss' in node && (
-            <RolesSection
-              node={node as GraphNode}
-              editingField={editor.editingField}
-              editRoles={editor.editRoles}
-              editRoleGroups={editor.editRoleGroups}
-              roleTypes={roleTypes}
-              isOpen={overlaySections.roles}
-              onToggle={() => setOverlaySections(prev => ({ ...prev, roles: !prev.roles }))}
-              onStartEdit={editor.startEditing}
-              onRoleChange={editor.updateRole}
-              onRoleAdd={editor.addRole}
-              onRoleRemove={editor.removeRole}
-              onRoleGroupAdd={editor.addRoleGroup}
-              onRoleGroupRemove={editor.removeRoleGroup}
-              onRoleGroupChange={editor.updateRoleGroup}
-              onToggleRoleInGroup={editor.toggleRoleInGroup}
-              onSave={handleSave}
-              onCancel={editor.cancelEditing}
-              isSaving={editor.isSaving}
             />
           )}
 

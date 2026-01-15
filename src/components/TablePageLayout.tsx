@@ -7,11 +7,9 @@ import SearchBox from '@/components/SearchBox';
 import ViewToggle, { ViewMode } from '@/components/ViewToggle';
 import PendingChangesButton from '@/components/PendingChangesButton';
 import SignOutButton from '@/components/SignOutButton';
-import CategoryDropdown from '@/components/CategoryDropdown';
 import { EditOverlay } from '@/components/editing/EditOverlay';
 import { Mode } from '@/components/editing/types';
 import { SearchResult, TableEntry, Frame, GraphNode } from '@/lib/types';
-import { DataTableMode } from '@/components/DataTable/types';
 
 interface TablePageLayoutProps {
   mode: Mode;
@@ -104,7 +102,7 @@ export function TablePageLayout({
   const handleViewChange = (view: ViewMode) => {
     if (view === 'graph') {
       router.push(`${config.graphPath}?view=graph`);
-    } else if (view === 'recipes' && config.showRecipes) {
+    } else if (view === 'recipes') {
       router.push(`${config.graphPath}?view=recipes`);
     }
   };
@@ -114,15 +112,13 @@ export function TablePageLayout({
       {/* Header */}
       <header className={`bg-white border-b border-gray-200 px-6 ${tabs ? 'pt-4 pb-0' : 'py-4'}`}>
         <div className={`flex items-center justify-between ${tabs ? 'pb-4' : ''}`}>
-          <div className="flex items-center space-x-8">
+          <div className="flex items-center">
             <button
               onClick={() => router.push('/')}
               className="text-xl font-bold text-gray-900 hover:text-gray-700 cursor-pointer"
             >
               Source Console
             </button>
-            <div className="h-6 w-px bg-gray-300"></div>
-            <CategoryDropdown currentCategory={mode} currentView="table" />
           </div>
           
           <div className="flex items-center gap-4 flex-1 justify-end">
@@ -137,8 +133,6 @@ export function TablePageLayout({
             <ViewToggle 
               currentView="table"
               onViewChange={handleViewChange}
-              hideRecipes={!config.showRecipes}
-              hideGraph={mode !== 'frames'}
             />
             {config.showPendingChanges && <PendingChangesButton />}
             <SignOutButton />

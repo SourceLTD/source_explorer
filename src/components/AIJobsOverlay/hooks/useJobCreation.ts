@@ -6,6 +6,7 @@ import type { SerializedJob, JobScope } from '@/lib/llm/types';
 import type { PartOfSpeech as POSType } from '@/lib/types';
 import type { DataTableMode } from '../../DataTable/types';
 import { getVariablesForEntityType, getIterableVariablesForEntityType } from '@/lib/llm/schema-variables';
+import { buildSystemPrompt } from '@/lib/llm/system-prompts';
 import type { PreviewResponse, ScopeMode } from '../types';
 import { 
   MODEL_OPTIONS, 
@@ -60,8 +61,8 @@ export interface UseJobCreationReturn {
   setLabelManuallyEdited: (edited: boolean) => void;
   model: string;
   setModel: (model: string) => void;
-  jobType: 'moderation' | 'editing' | 'reallocation' | 'allocate' | 'split';
-  setJobType: (type: 'moderation' | 'editing' | 'reallocation' | 'allocate' | 'split') => void;
+  jobType: 'flag' | 'edit' | 'allocate_contents' | 'allocate' | 'split';
+  setJobType: (type: 'flag' | 'edit' | 'allocate_contents' | 'allocate' | 'split') => void;
   targetFields: string[];
   setTargetFields: (fields: string[]) => void;
   reallocationEntityTypes: POSType[];
@@ -128,7 +129,15 @@ export interface UseJobCreationReturn {
   promptTemplate: string;
   setPromptTemplate: (template: string) => void;
   promptManuallyEdited: boolean;
+  /** Effective system prompt sent as the OpenAI "system" message (derived from job type + agentic mode) */
+  systemPrompt: string;
   promptRef: React.RefObject<HTMLTextAreaElement>;
+  // Prompt clustering (render-only, affects preview/estimate/job creation)
+  clusterLoopListsEnabled: boolean;
+  setClusterLoopListsEnabled: (enabled: boolean) => void;
+  /** Optional manual k override (empty string = auto). */
+  clusterKOverrideText: string;
+  setClusterKOverrideText: (value: string) => void;
   showVariableMenu: boolean;
   variableMenuPosition: { top: number; left: number };
   variableActiveIndex: number;
@@ -199,7 +208,7 @@ export function useJobCreation({
   const [label, setLabel] = useState(DEFAULT_LABEL);
   const [labelManuallyEdited, setLabelManuallyEdited] = useState(false);
   const [model, setModel] = useState<string>(MODEL_OPTIONS[0].value);
-  const [jobType, setJobType] = useState<'moderation' | 'editing' | 'reallocation' | 'allocate' | 'split'>('moderation');
+  const [jobType, setJobType] = useState<'flag' | 'edit' | 'allocate_contents' | 'allocate' | 'split'>('flag');
   const [targetFields, setTargetFields] = useState<string[]>([]);
   const [reallocationEntityTypes, setReallocationEntityTypes] = useState<POSType[]>([]);
   const [priority, setPriority] = useState<'flex' | 'normal' | 'priority'>('normal');
@@ -228,13 +237,41 @@ export function useJobCreation({
   const [promptMode, setPromptMode] = useState<'simple' | 'advanced'>('simple');
   const [promptTemplate, setPromptTemplate] = useState(() => buildPrompt({
     entityType: mode,
-    jobType: 'moderation',
+    jobType: 'flag',
     agenticMode: true, // Default matches initial agenticMode state
     scopeMode: 'all',  // Default matches initial scopeMode state
     isSuperFrame: mode === 'super_frames',
   }));
   const [promptManuallyEdited, setPromptManuallyEdited] = useState(false);
   const promptRef = useRef<HTMLTextAreaElement>(null);
+
+  // Prompt clustering (render-only): group loop lists (lexical_units / child_frames) via source-clustering.
+  const [clusterLoopListsEnabled, setClusterLoopListsEnabled] = useState(false);
+  const [clusterKOverrideText, setClusterKOverrideText] = useState('');
+  const clusterKOverride = useMemo(() => {
+    const n = Number.parseInt(clusterKOverrideText, 10);
+    if (!Number.isFinite(n) || !Number.isInteger(n) || n <= 0) return null;
+    return n;
+  }, [clusterKOverrideText]);
+
+  // Effective prompt used for previews, estimates, and submission
+  // In simple mode, always use the default prompt
+  // In advanced mode, use the manually edited template
+  const effectivePrompt = useMemo(() => {
+    if (promptMode === 'simple') {
+      return buildPrompt({
+        entityType: mode,
+        jobType,
+        agenticMode,
+        scopeMode,
+        isSuperFrame: mode === 'super_frames',
+      });
+    }
+    return promptTemplate;
+  }, [promptMode, promptTemplate, mode, jobType, agenticMode, scopeMode]);
+
+  const systemPrompt = useMemo(() => buildSystemPrompt({ jobType, agenticMode }), [jobType, agenticMode]);
+
   const [showVariableMenu, setShowVariableMenu] = useState(false);
   const [variableQuery, setVariableQuery] = useState('');
   const [variableMenuPosition, setVariableMenuPosition] = useState({ top: 0, left: 0 });
@@ -440,9 +477,30 @@ export function useJobCreation({
   const stepIndex = STEPPER_STEPS.indexOf(currentStep);
   const isLastStep = stepIndex === STEPPER_STEPS.length - 1;
 
+  const isAllocateAllowed = useCallback((tableMode: DataTableMode) => {
+    return tableMode === 'lexical_units' || tableMode === 'frames_only' || tableMode === 'frames';
+  }, []);
+
+  const isReallocateAllowed = useCallback((tableMode: DataTableMode) => {
+    return tableMode === 'frames' || tableMode === 'frames_only' || tableMode === 'super_frames';
+  }, []);
+
+  const isSplitAllowed = useCallback((tableMode: DataTableMode) => {
+    return tableMode === 'frames' || tableMode === 'frames_only' || tableMode === 'super_frames';
+  }, []);
+
   // Generate dynamic label based on job type, scope, and timestamp
   const generateDynamicLabel = useCallback(() => {
-    const action = jobType === 'moderation' ? 'Flag' : jobType === 'editing' ? 'Edit' : jobType === 'split' ? 'Split' : jobType === 'allocate' ? 'Allocate' : 'Reallocate';
+    const action =
+      jobType === 'flag'
+        ? 'Flag'
+        : jobType === 'edit'
+          ? 'Edit'
+          : jobType === 'split'
+            ? 'Split'
+            : jobType === 'allocate'
+              ? 'Allocate'
+              : 'Allocate Contents';
     
     let scopeDesc: string;
     switch (scopeMode) {
@@ -496,7 +554,7 @@ export function useJobCreation({
     }
   }, [scopeMode, parsedSelectionCount, manualIds, frameIds, validatedManualIds, validatedFrameIds, mode]);
 
-  const promptIsValid = useMemo(() => promptTemplate.trim().length > 0, [promptTemplate]);
+  const promptIsValid = useMemo(() => effectivePrompt.trim().length > 0, [effectivePrompt]);
 
   const isSubmitDisabled = useMemo(() => {
     if (submissionLoading) return true;
@@ -521,9 +579,9 @@ export function useJobCreation({
 
   const nextDisabled = useMemo(() => {
     if (currentStep === 'scope') {
-      if (jobType === 'editing' && targetFields.length === 0) return true;
-      // For superframes, reallocation targets child frames, so no entity type selection needed
-      if (jobType === 'reallocation' && mode !== 'super_frames' && reallocationEntityTypes.length === 0) return true;
+      if (jobType === 'edit' && targetFields.length === 0) return true;
+      // For superframes, allocate_contents targets child frames, so no entity type selection needed
+      if (jobType === 'allocate_contents' && mode !== 'super_frames' && reallocationEntityTypes.length === 0) return true;
       return !isScopeValid;
     }
     if (currentStep === 'model') return false;
@@ -567,7 +625,7 @@ export function useJobCreation({
     setLabel(DEFAULT_LABEL);
     setLabelManuallyEdited(false);
     setModel(MODEL_OPTIONS[0].value);
-    setJobType('moderation');
+    setJobType('flag');
     setTargetFields([]);
     setReallocationEntityTypes([]);
     setPriority('normal');
@@ -581,7 +639,7 @@ export function useJobCreation({
     setPromptMode('simple');
     setPromptTemplate(buildPrompt({
       entityType: mode,
-      jobType: 'moderation',
+      jobType: 'flag',
       agenticMode: true,
       scopeMode: 'all',
       isSuperFrame: mode === 'super_frames',
@@ -625,25 +683,30 @@ export function useJobCreation({
   const loadJobSettings = useCallback((job: SerializedJob) => {
     const config = job.config as { 
       model?: string; 
-      promptTemplate?: string; 
+      userPromptTemplate?: string; 
       serviceTier?: string | null;
-      jobType?: 'moderation' | 'editing' | 'reallocation' | 'allocate';
+      jobType?: 'flag' | 'edit' | 'allocate_contents' | 'allocate' | 'split';
       targetFields?: string[];
       reallocationEntityTypes?: POSType[];
       reasoning?: { effort?: 'low' | 'medium' | 'high' } | null;
       mcpEnabled?: boolean | null;
+      splitMinFrames?: number | null;
+      splitMaxFrames?: number | null;
     } | null;
     
     const scope = job.scope as JobScope | null;
 
-    let loadedJobType = config?.jobType ?? (job.job_type as 'moderation' | 'editing' | 'reallocation' | 'allocate') ?? 'moderation';
-    // Reallocation is only valid for frames mode - reset to moderation if not
-    if (loadedJobType === 'reallocation' && mode !== 'frames') {
-      loadedJobType = 'moderation';
+    let loadedJobType =
+      config?.jobType ?? (job.job_type as 'flag' | 'edit' | 'allocate_contents' | 'allocate' | 'split') ?? 'flag';
+    // Normalize job type to what is valid for the current table mode
+    if (loadedJobType === 'allocate' && !isAllocateAllowed(mode)) {
+      loadedJobType = 'flag';
     }
-    // Allocate is only valid for non-frames mode - reset to moderation if frames
-    if (loadedJobType === 'allocate' && mode === 'frames') {
-      loadedJobType = 'moderation';
+    if (loadedJobType === 'allocate_contents' && !isReallocateAllowed(mode)) {
+      loadedJobType = 'flag';
+    }
+    if (loadedJobType === 'split' && !isSplitAllowed(mode)) {
+      loadedJobType = 'flag';
     }
     setLabel(job.label ?? DEFAULT_LABEL);
     setLabelManuallyEdited(true);
@@ -656,13 +719,20 @@ export function useJobCreation({
     // Agentic mode is enabled if mcpEnabled is not false
     const loadedAgenticMode = config?.mcpEnabled !== false;
     setAgenticMode(loadedAgenticMode);
-    setPromptTemplate(config?.promptTemplate ?? buildPrompt({
+    // Split job settings
+    if (loadedJobType === 'split') {
+      setSplitMinFrames(config?.splitMinFrames ?? 2);
+      setSplitMaxFrames(config?.splitMaxFrames ?? 5);
+    }
+    // Use || instead of ?? so empty strings also fall back to default prompt
+    const loadedPrompt = config?.userPromptTemplate || buildPrompt({
       entityType: mode,
       jobType: loadedJobType,
       agenticMode: loadedAgenticMode,
       scopeMode: 'all', // Will be determined later, but prompt is already stored in job
       isSuperFrame: mode === 'super_frames',
-    }));
+    });
+    setPromptTemplate(loadedPrompt);
     setPromptManuallyEdited(true);
     setPromptMode('advanced'); // When loading a job, use advanced mode since prompt may be customized
 
@@ -702,7 +772,7 @@ export function useJobCreation({
 
     setIsCreating(true);
     setCurrentStep('scope');
-  }, [selectedIds, mode, manualIdAutocomplete, frameIdAutocomplete]);
+  }, [selectedIds, mode, manualIdAutocomplete, frameIdAutocomplete, isAllocateAllowed, isReallocateAllowed, isSplitAllowed]);
 
   // Prompt handlers
   const handlePromptChange = useCallback((event: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -760,7 +830,11 @@ export function useJobCreation({
     if (!textarea) return;
 
     const { selectionStart, value } = textarea;
-    const toInsert = `{{${key}}}`;
+    // Special-case lemma arrays in loop contexts so insertion renders as a comma-separated list.
+    // Top-level `lemmas` is already a string in buildVariableMap, but loop vars like `lu.lemmas` are arrays.
+    const toInsert = key.includes('.') && key.endsWith('.lemmas')
+      ? `{{${key} | join(', ')}}`
+      : `{{${key}}}`;
 
     // Find the {{ before the cursor
     const textBeforeCursor = value.slice(0, selectionStart);
@@ -812,12 +886,27 @@ export function useJobCreation({
       const scope = buildScope(scopeMode, mode, selectedIds, manualIdAutocomplete.text, frameIdAutocomplete.text, filterGroup, filterLimit, frameIncludeLexicalUnits, frameFlagTarget);
       const response = await api.post<PreviewResponse>('/api/llm-jobs/preview', {
         model,
-        promptTemplate,
+        promptTemplate: effectivePrompt,
+        systemPrompt,
         scope,
+        metadata: {
+          promptClustering: {
+            enabled: clusterLoopListsEnabled,
+            kOverride: clusterKOverride,
+          },
+        },
         serviceTier: priority === 'normal' ? 'default' : priority,
         reasoning: { effort: reasoningEffort },
       });
       setPreview(response);
+      if (response.clusteringError) {
+        showGlobalAlert({
+          type: 'error',
+          title: 'Clustering unavailable',
+          message: response.clusteringError,
+          durationMs: 12000,
+        });
+      }
     } catch (error) {
       setPreview({
         previews: [{
@@ -829,7 +918,7 @@ export function useJobCreation({
     } finally {
       setPreviewLoading(false);
     }
-  }, [scopeMode, mode, selectedIds, manualIdAutocomplete.text, frameIdAutocomplete.text, filterGroup, filterLimit, frameIncludeLexicalUnits, frameFlagTarget, model, promptTemplate, priority, reasoningEffort]);
+  }, [scopeMode, mode, selectedIds, manualIdAutocomplete.text, frameIdAutocomplete.text, filterGroup, filterLimit, frameIncludeLexicalUnits, frameFlagTarget, model, effectivePrompt, systemPrompt, clusterLoopListsEnabled, clusterKOverride, priority, reasoningEffort]);
 
   const handleEstimate = useCallback(async () => {
     setEstimateLoading(true);
@@ -845,21 +934,37 @@ export function useJobCreation({
         totalInputTokens: number;
         totalOutputTokens: number;
         estimatedCostUSD: number | null;
+        clusteringError?: string;
       }>('/api/llm-jobs/estimate', {
         model,
-        promptTemplate,
+        promptTemplate: effectivePrompt,
+        systemPrompt,
         scope,
+        metadata: {
+          promptClustering: {
+            enabled: clusterLoopListsEnabled,
+            kOverride: clusterKOverride,
+          },
+        },
         serviceTier: priority === 'normal' ? 'default' : priority,
         reasoning: { effort: reasoningEffort },
         outputTokensPerItem: 5000,
       });
       setEstimate(response);
+      if (response.clusteringError) {
+        showGlobalAlert({
+          type: 'error',
+          title: 'Clustering unavailable',
+          message: response.clusteringError,
+          durationMs: 12000,
+        });
+      }
     } catch (error) {
       setEstimateError(error instanceof Error ? error.message : 'Failed to estimate cost');
     } finally {
       setEstimateLoading(false);
     }
-  }, [scopeMode, mode, selectedIds, manualIdAutocomplete.text, frameIdAutocomplete.text, filterGroup, filterLimit, frameIncludeLexicalUnits, frameFlagTarget, model, promptTemplate, priority, reasoningEffort]);
+  }, [scopeMode, mode, selectedIds, manualIdAutocomplete.text, frameIdAutocomplete.text, filterGroup, filterLimit, frameIncludeLexicalUnits, frameFlagTarget, model, effectivePrompt, systemPrompt, clusterLoopListsEnabled, clusterKOverride, priority, reasoningEffort]);
 
   // Submission
   const handleSubmit = useCallback(async () => {
@@ -899,16 +1004,23 @@ export function useJobCreation({
           label,
           submittedBy: userEmail,
           model,
-          promptTemplate,
+          promptTemplate: effectivePrompt,
+          systemPrompt,
           scope: firstBatchScope,
           jobType,
           targetFields,
           reallocationEntityTypes,
           serviceTier: priority === 'normal' ? 'default' : priority,
           reasoning: { effort: reasoningEffort },
-          // When agentic mode is OFF, don't attach MCP tools at all
+          // MCP tools are optional. When enabled, the AI may use tools for additional context (no direct edits).
           mcpEnabled: agenticMode,
-          metadata: { source: 'table-mode' },
+          metadata: {
+            source: 'table-mode',
+            promptClustering: {
+              enabled: clusterLoopListsEnabled,
+              kOverride: clusterKOverride,
+            },
+          },
           initialBatchSize: BATCH_SIZE,
           // Split configuration (only relevant for split jobs)
           ...(jobType === 'split' && { splitMinFrames, splitMaxFrames }),
@@ -959,16 +1071,23 @@ export function useJobCreation({
           label,
           submittedBy: userEmail,
           model,
-          promptTemplate,
+          promptTemplate: effectivePrompt,
+          systemPrompt,
           scope,
           jobType,
           targetFields,
           reallocationEntityTypes,
           serviceTier: priority === 'normal' ? 'default' : priority,
           reasoning: { effort: reasoningEffort },
-          // When agentic mode is OFF, don't attach MCP tools at all
+          // MCP tools are optional. When enabled, the AI may use tools for additional context (no direct edits).
           mcpEnabled: agenticMode,
-          metadata: { source: 'table-mode' },
+          metadata: {
+            source: 'table-mode',
+            promptClustering: {
+              enabled: clusterLoopListsEnabled,
+              kOverride: clusterKOverride,
+            },
+          },
           // Split configuration (only relevant for split jobs)
           ...(jobType === 'split' && { splitMinFrames, splitMaxFrames }),
         };
@@ -992,7 +1111,7 @@ export function useJobCreation({
         title: 'Job Created',
         message: `Job ${job.id} created with ${job.total_items} item${job.total_items === 1 ? '' : 's'}.${
           needsBatching ? ` Prepared in ${Math.ceil(totalEntries / BATCH_SIZE)} batches.` : ''
-        } Lambda will submit items automatically.`,
+        }`,
         durationMs: 5000,
       });
       
@@ -1018,7 +1137,7 @@ export function useJobCreation({
     } finally {
       setSubmissionLoading(false);
     }
-  }, [isSubmitDisabled, scopeMode, mode, selectedIds, manualIdAutocomplete.text, frameIdAutocomplete.text, filterGroup, filterLimit, frameIncludeLexicalUnits, frameFlagTarget, label, userEmail, model, promptTemplate, jobType, targetFields, reallocationEntityTypes, priority, reasoningEffort, agenticMode, onJobCreated, closeCreateFlow]);
+  }, [isSubmitDisabled, scopeMode, mode, selectedIds, manualIdAutocomplete.text, frameIdAutocomplete.text, filterGroup, filterLimit, frameIncludeLexicalUnits, frameFlagTarget, label, userEmail, model, effectivePrompt, systemPrompt, jobType, targetFields, reallocationEntityTypes, clusterLoopListsEnabled, clusterKOverride, priority, reasoningEffort, agenticMode, onJobCreated, closeCreateFlow]);
 
   // Effects
   // Auto-update label when job type or scope changes
@@ -1041,18 +1160,24 @@ export function useJobCreation({
     }
   }, [jobType, mode, agenticMode, scopeMode, promptManuallyEdited, isCreating]);
 
-  // Reset job type to moderation if it's not valid for the current mode
-  // - Reallocation is only valid for frames mode
-  // - Allocate is only valid for non-frames mode
+  // Reset job type to flag if it's not valid for the current mode
+  // - Allocate is only valid for lexical_units and frames (frames_only/frames)
+  // - Allocate Contents is only valid for frames and super frames
+  // - Split is only valid for frames and super frames
   useEffect(() => {
-    if (jobType === 'reallocation' && mode !== 'frames') {
-      setJobType('moderation');
+    if (jobType === 'allocate' && !isAllocateAllowed(mode)) {
+      setJobType('flag');
+      setTargetFields([]);
       setReallocationEntityTypes([]);
     }
-    if (jobType === 'allocate' && mode === 'frames') {
-      setJobType('moderation');
+    if (jobType === 'allocate_contents' && !isReallocateAllowed(mode)) {
+      setJobType('flag');
+      setReallocationEntityTypes([]);
     }
-  }, [mode, jobType]);
+    if (jobType === 'split' && !isSplitAllowed(mode)) {
+      setJobType('flag');
+    }
+  }, [mode, jobType, isAllocateAllowed, isReallocateAllowed, isSplitAllowed]);
 
   // Close variable menu when leaving prompt step
   useEffect(() => {
@@ -1126,7 +1251,7 @@ export function useJobCreation({
         previewTimerRef.current = null;
       }
     };
-  }, [isOpen, isCreating, currentStep, isScopeValid, promptIsValid, scopeMode, manualIdAutocomplete.text, frameIdAutocomplete.text, promptTemplate, model, selectedIds, handlePreview, handleEstimate]);
+  }, [isOpen, isCreating, currentStep, isScopeValid, promptIsValid, scopeMode, manualIdAutocomplete.text, frameIdAutocomplete.text, effectivePrompt, model, selectedIds, handlePreview, handleEstimate]);
 
   // Validate manual IDs
   useEffect(() => {
@@ -1285,7 +1410,12 @@ export function useJobCreation({
     promptTemplate,
     setPromptTemplate,
     promptManuallyEdited,
+    systemPrompt,
     promptRef,
+    clusterLoopListsEnabled,
+    setClusterLoopListsEnabled,
+    clusterKOverrideText,
+    setClusterKOverrideText,
     showVariableMenu,
     variableMenuPosition,
     variableActiveIndex,

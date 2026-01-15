@@ -3,6 +3,12 @@ import { Frame, RoleType, sortRolesByPrecedence } from '@/lib/types';
 import { EditableField, EditableFrameRole } from './types';
 import { OverlaySection } from './OverlaySection';
 import { FrameRoleEditor } from './FrameRoleEditor';
+import {
+  getFrameRoleOperation,
+  getFrameRolePendingCellClasses,
+  getFrameRoleChangeSummary,
+  getFrameRoleOldSnapshot,
+} from '@/components/PendingChangeIndicator';
 
 interface FrameRolesSectionProps {
   frame: Frame;
@@ -12,7 +18,7 @@ interface FrameRolesSectionProps {
   isOpen: boolean;
   onToggle: () => void;
   onStartEdit: (field: EditableField) => void;
-  onFrameRoleChange: (clientId: string, field: 'description' | 'notes' | 'roleType' | 'main' | 'examples', value: string | boolean | string[]) => void;
+  onFrameRoleChange: (clientId: string, field: 'label' | 'description' | 'notes' | 'roleType' | 'main' | 'examples', value: string | boolean | string[]) => void;
   onFrameRoleAdd: (main: boolean) => void;
   onFrameRoleRemove: (clientId: string) => void;
   onSave: () => void;
@@ -37,6 +43,9 @@ export function FrameRolesSection({
   isSaving,
   isSuperFrame
 }: FrameRolesSectionProps) {
+  const pending = frame.pending;
+  const summary = getFrameRoleChangeSummary(pending);
+
   return (
     <OverlaySection
       title={isSuperFrame ? "Frame Roles" : "Inherited Roles"}
@@ -84,22 +93,78 @@ export function FrameRolesSection({
           <div>
             {frame.frame_roles && frame.frame_roles.length > 0 ? (
               <div className="space-y-2">
-                {sortRolesByPrecedence(frame.frame_roles).map((role, index) => (
-                  <div key={index} className="text-sm">
-                    <span className={`font-medium ${role.main ? 'text-blue-600' : 'text-purple-800'}`}>
-                      {role.role_type.label}:
-                    </span>{' '}
-                    <span className="text-gray-900">{role.description || 'No description'}</span>
-                    {role.notes && (
-                      <div className="text-xs text-gray-600 italic mt-1">
-                        Note: {role.notes}
-                      </div>
-                    )}
-                  </div>
-                ))}
+                {sortRolesByPrecedence(frame.frame_roles).map((role, index) => {
+                  const roleTypeLabel = role.role_type.label;
+                  const op = getFrameRoleOperation(pending, roleTypeLabel);
+                  const rowHighlight = op ? getFrameRolePendingCellClasses(op) : '';
+
+                  return (
+                    <div
+                      key={index}
+                      className={`text-sm ${op ? `rounded px-2 py-1 ${rowHighlight}` : ''}`}
+                    >
+                      <span className={`font-medium ${role.main ? 'text-blue-600' : 'text-gray-700'}`}>
+                        {role.label ? (
+                          <>
+                            {role.label}
+                            <span className="text-gray-500 ml-1">({roleTypeLabel})</span>:
+                          </>
+                        ) : (
+                          <>
+                            {roleTypeLabel}:
+                          </>
+                        )}
+                      </span>{' '}
+                      <span className="text-gray-900">{role.description || 'No description'}</span>
+                      {role.notes && (
+                        <div className="text-xs text-gray-600 italic mt-1">
+                          Note: {role.notes}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             ) : (
               <p className="text-gray-500 text-sm italic">No roles defined</p>
+            )}
+
+            {summary.deleted.length > 0 && (
+              <div className="mt-2 space-y-1">
+                {summary.deleted.map((rt) => {
+                  const old = getFrameRoleOldSnapshot(pending, rt);
+                  const displayLabel = old?.label || rt;
+                  const description = old?.description || 'No description';
+                  const notes = old?.notes || null;
+                  const examples = old?.examples || [];
+                  const wasMain = Boolean(old?.main);
+
+                  return (
+                    <div
+                      key={rt}
+                      className={`text-sm rounded px-2 py-1 ${getFrameRolePendingCellClasses('delete')}`}
+                    >
+                      <span className="font-medium text-red-800">
+                        {displayLabel}
+                        <span className="text-red-700 ml-1">({rt})</span>
+                        {wasMain && <span className="ml-2 text-xs font-medium text-red-800">(main)</span>}
+                        :
+                      </span>{' '}
+                      <span className="text-red-900">{description}</span>
+                      {notes && (
+                        <div className="text-xs text-red-800 italic mt-1">
+                          Note: {notes}
+                        </div>
+                      )}
+                      {examples.length > 0 && (
+                        <div className="text-xs text-red-800 mt-1">
+                          Examples: {examples.join(', ')}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
         )}

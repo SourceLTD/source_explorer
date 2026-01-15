@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getComments, addComment, getCommentCounts } from '@/lib/version-control';
 import { getCurrentUserName } from '@/utils/supabase/server';
-import { prisma } from '@/lib/db';
+import { prisma } from '@/lib/prisma';
 
 // Types for AI revision data
 interface AIRevisionData {

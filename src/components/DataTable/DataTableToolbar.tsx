@@ -1,12 +1,13 @@
 'use client';
 
 import React from 'react';
-import { SparklesIcon } from '@heroicons/react/24/outline';
-import FilterPanel, { FilterState } from '@/components/FilterPanel';
+import { SparklesIcon, FlagIcon } from '@heroicons/react/24/outline';
+import FilterPanel from '@/components/FilterPanel';
+import type { FilterState } from './filterState';
 import ColumnVisibilityPanel, { ColumnConfig, ColumnVisibilityState } from '@/components/ColumnVisibilityPanel';
 import PageSizeSelector from '@/components/PageSizeSelector';
 import { DataTableMode } from './config';
-import { ModerationState } from './types';
+import { FlagState } from './types';
 
 interface DataTableToolbarProps {
   mode: DataTableMode;
@@ -33,10 +34,10 @@ interface DataTableToolbarProps {
   pendingAIJobs: number;
   onOpenAIOverlay: () => void;
   
-  // Selection & Moderation
+  // Selection & Flags
   selectedCount: number;
-  moderationState: ModerationState;
-  onOpenModerationModal: (action: 'flag' | 'unflag' | 'forbid' | 'allow') => void;
+  flagState: FlagState;
+  onOpenFlagModal: (action: 'flag' | 'unflag' | 'forbid' | 'allow') => void;
   onOpenFrameModal: () => void;
   
   // Page size
@@ -71,22 +72,22 @@ function RowStatusLegend() {
   );
 }
 
-interface ModerationActionsProps {
+interface FlagActionsProps {
   mode: DataTableMode;
   selectedCount: number;
-  moderationState: ModerationState;
-  onOpenModerationModal: (action: 'flag' | 'unflag' | 'forbid' | 'allow') => void;
+  flagState: FlagState;
+  onOpenFlagModal: (action: 'flag' | 'unflag' | 'forbid' | 'allow') => void;
   onOpenFrameModal: () => void;
 }
 
-function ModerationActions({
+function FlagActions({
   mode,
   selectedCount,
-  moderationState,
-  onOpenModerationModal,
+  flagState,
+  onOpenFlagModal,
   onOpenFrameModal,
-}: ModerationActionsProps) {
-  const { allFlagged, noneFlagged, allUnverifiable, noneUnverifiable } = moderationState;
+}: FlagActionsProps) {
+  const { allFlagged, noneFlagged, allUnverifiable, noneUnverifiable } = flagState;
   const mixedFlagged = !allFlagged && !noneFlagged;
   const mixedUnverifiable = !allUnverifiable && !noneUnverifiable;
 
@@ -100,18 +101,16 @@ function ModerationActions({
       {/* Flagged Actions */}
       {(noneFlagged || mixedFlagged) && (
         <button
-          onClick={() => onOpenModerationModal('flag')}
-          className="flex items-center gap-1 px-3 py-1 text-sm font-medium text-orange-700 bg-orange-100 border border-orange-200 rounded-xl hover:bg-orange-200 transition-colors cursor-pointer"
+          onClick={() => onOpenFlagModal('flag')}
+          className="flex items-center gap-1 px-3 py-1 text-sm font-medium text-blue-700 bg-blue-100 border border-blue-200 rounded-xl hover:bg-blue-200 transition-colors cursor-pointer"
         >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 2H21l-3 6 3 6h-8.5l-1-2H5a2 2 0 00-2 2zm9-13.5V9" />
-          </svg>
+          <FlagIcon className="w-4 h-4" />
           Mark Flagged
         </button>
       )}
       {(allFlagged || mixedFlagged) && (
         <button
-          onClick={() => onOpenModerationModal('unflag')}
+          onClick={() => onOpenFlagModal('unflag')}
           className="flex items-center gap-1 px-3 py-1 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-200 rounded-xl hover:bg-gray-200 transition-colors cursor-pointer"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -124,7 +123,7 @@ function ModerationActions({
       {/* Verifiable Actions */}
       {(noneUnverifiable || mixedUnverifiable) && (
         <button
-          onClick={() => onOpenModerationModal('forbid')}
+          onClick={() => onOpenFlagModal('forbid')}
           className="flex items-center gap-1 px-3 py-1 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-200 rounded-xl hover:bg-gray-200 transition-colors cursor-pointer"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -135,7 +134,7 @@ function ModerationActions({
       )}
       {(allUnverifiable || mixedUnverifiable) && (
         <button
-          onClick={() => onOpenModerationModal('allow')}
+          onClick={() => onOpenFlagModal('allow')}
           className="flex items-center gap-1 px-3 py-1 text-sm font-medium text-green-700 bg-green-100 border border-green-200 rounded-xl hover:bg-green-200 transition-colors cursor-pointer"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -176,8 +175,8 @@ export function DataTableToolbar({
   pendingAIJobs,
   onOpenAIOverlay,
   selectedCount,
-  moderationState,
-  onOpenModerationModal,
+  flagState,
+  onOpenFlagModal,
   onOpenFrameModal,
   isPageSizePanelOpen,
   onPageSizePanelToggle,
@@ -226,8 +225,8 @@ export function DataTableToolbar({
           <button
             onClick={onOpenAIOverlay}
             className="relative inline-flex items-center gap-2 rounded-xl px-3 py-2 text-white transition-colors hover:brightness-110 focus:outline-none focus:ring-2 bg-gradient-to-r from-blue-500 to-blue-600 focus:ring-blue-500 cursor-pointer"
-            title="Open AI batch moderation"
-            aria-label="Open AI batch moderation"
+            title="Open AI batch flagging"
+            aria-label="Open AI batch flagging"
             type="button"
           >
             <SparklesIcon className="h-5 w-5 flex-shrink-0" aria-hidden="true" />
@@ -238,13 +237,13 @@ export function DataTableToolbar({
             )}
           </button>
           
-          {/* Moderation Actions */}
+          {/* Flag Actions */}
           {selectedCount > 0 && (
-            <ModerationActions
+            <FlagActions
               mode={mode}
               selectedCount={selectedCount}
-              moderationState={moderationState}
-              onOpenModerationModal={onOpenModerationModal}
+              flagState={flagState}
+              onOpenFlagModal={onOpenFlagModal}
               onOpenFrameModal={onOpenFrameModal}
             />
           )}

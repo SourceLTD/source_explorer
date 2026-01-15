@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { QueueListIcon } from '@heroicons/react/24/outline';
 import { NotificationBadge } from './NotificationBadge';
+import { usePendingChangesCount } from '@/hooks/usePendingChangesCount';
 
 interface PendingChangesButtonProps {
   className?: string;
@@ -12,30 +12,7 @@ interface PendingChangesButtonProps {
 
 export default function PendingChangesButton({ className, isActive = false }: PendingChangesButtonProps) {
   const router = useRouter();
-  const [pendingCount, setPendingCount] = useState(0);
-  const [isLoading, setIsLoading] = useState(true);
-
-  const fetchPendingCount = async () => {
-    try {
-      const response = await fetch('/api/changesets/pending');
-      if (response.ok) {
-        const data = await response.json();
-        setPendingCount(data.total_pending_changesets || 0);
-      }
-    } catch (error) {
-      console.error('Error fetching pending count:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchPendingCount();
-    
-    // Refresh count every 30 seconds
-    const interval = setInterval(fetchPendingCount, 30000);
-    return () => clearInterval(interval);
-  }, []);
+  const { pendingCount, isLoading } = usePendingChangesCount();
 
   return (
     <button

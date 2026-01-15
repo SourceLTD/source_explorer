@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { 
   getEntryById, 
-  searchEntries,
+  searchLexicalUnits,
   getGraphNode,
   getGraphNodeUncached,
-  updateModerationStatus,
-} from './db';
-import { getPaginatedEntities } from './db/entities';
+  updateFlagStatus,
+} from '@/lib/db';
+import { getPaginatedLexicalUnits } from '@/lib/db/entities';
 import { handleDatabaseError } from './db-utils';
-import { stageUpdate, stageDelete, stageModerationUpdates, EntityType, attachPendingInfoToEntities, getPendingInfoForEntity, applyPendingToEntity } from './version-control';
-import type { LexicalType, PaginationParams, TableEntry } from './types';
+import { stageUpdate, stageDelete, stageFlagUpdates, EntityType, attachPendingInfoToEntities, getPendingInfoForEntity, applyPendingToEntity } from './version-control';
+import type { LexicalType, PaginationParams, TableLexicalUnit } from './types';
 import { getCurrentUserName } from '@/utils/supabase/server';
 
 /**
@@ -139,13 +139,13 @@ export async function handlePaginatedRequest(
       return NextResponse.json({ error: validationError }, { status: 400 });
     }
 
-    const result = await getPaginatedEntities(params);
+    const result = await getPaginatedLexicalUnits(params);
     
     const entityType = lexicalTypeToEntityType(lexicalType);
     const dataWithPending = await attachPendingInfoToEntities(
       result.data,
       entityType,
-      (entry: TableEntry) => BigInt(entry.numericId)
+      (entry: TableLexicalUnit) => BigInt(entry.numericId)
     );
     
     return NextResponse.json({
@@ -240,17 +240,17 @@ export async function handleUpdateById(
     }
 
     if ('flagged' in updateData || 'flaggedReason' in updateData) {
-      const moderationUpdates: Record<string, any> = {};
+      const flagUpdates: Record<string, any> = {};
       if ('flagged' in updateData) {
-        moderationUpdates.flagged = updateData.flagged;
+        flagUpdates.flagged = updateData.flagged;
         delete updateData.flagged;
       }
       if ('flaggedReason' in updateData) {
-        moderationUpdates.flaggedReason = updateData.flaggedReason;
+        flagUpdates.flaggedReason = updateData.flaggedReason;
         delete updateData.flaggedReason;
       }
       
-      await updateModerationStatus([id], moderationUpdates);
+      await updateFlagStatus([id], flagUpdates);
       
       if (Object.keys(updateData).length === 0) {
         return NextResponse.json({ 
@@ -350,7 +350,7 @@ export async function handleSearchRequest(
       pos = posMap[lexicalType];
     }
 
-    const results = await searchEntries(query, limit, pos);
+    const results = await searchLexicalUnits(query, limit, pos);
     return NextResponse.json(results);
   } catch (error) {
     const { message, status, shouldRetry } = handleDatabaseError(error, `GET /api/${lexicalType}/search`);
@@ -475,14 +475,14 @@ export async function handleGetGraph(
 }
 
 /**
- * Valid moderation fields
+ * Valid flag fields
  */
-const VALID_MODERATION_FIELDS = ['flagged', 'flaggedReason', 'verifiable', 'unverifiableReason'];
+const VALID_FLAG_FIELDS = ['flagged', 'flaggedReason', 'verifiable', 'unverifiableReason'];
 
 /**
- * Handles PATCH moderation requests
+ * Handles PATCH flag requests
  */
-export async function handleModerationRequest(
+export async function handleFlagRequest(
   request: NextRequest,
   lexicalType: LexicalType | 'lexical_units'
 ): Promise<NextResponse> {
@@ -504,10 +504,10 @@ export async function handleModerationRequest(
       );
     }
 
-    const hasValidUpdate = Object.keys(updates).some(key => VALID_MODERATION_FIELDS.includes(key));
+    const hasValidUpdate = Object.keys(updates).some(key => VALID_FLAG_FIELDS.includes(key));
     if (!hasValidUpdate) {
       return NextResponse.json(
-        { error: 'At least one moderation field must be updated' },
+        { error: 'At least one flag field must be updated' },
         { status: 400 }
       );
     }
@@ -521,7 +521,7 @@ export async function handleModerationRequest(
     for (const [key, value] of Object.entries(updates)) {
       if (key === 'flagged' || key === 'flaggedReason') {
         directUpdates[key] = value;
-      } else if (VALID_MODERATION_FIELDS.includes(key)) {
+      } else if (VALID_FLAG_FIELDS.includes(key)) {
         stagedUpdates[key] = value;
       }
     }
@@ -532,23 +532,24 @@ export async function handleModerationRequest(
     let message = '';
 
     if (Object.keys(directUpdates).length > 0) {
-      const { updatedCount } = await updateModerationStatus(ids, directUpdates);
+      const { updatedCount } = await updateFlagStatus(ids, directUpdates);
       directCount = updatedCount;
       message = `Updated flagging status for ${directCount} entries. `;
     }
 
     if (Object.keys(stagedUpdates).length > 0) {
-      const result = await stageModerationUpdates(entityType, ids, stagedUpdates, userId);
+      const result = await stageFlagUpdates(entityType, ids, stagedUpdates, userId);
       stagedCount = result.staged_count;
       changesetIds = result.changeset_ids;
-      message += `Staged other moderation changes for ${result.staged_count} entries.`;
+      message += `Staged other flag changes for ${result.staged_count} entries.`;
     }
 
     return NextResponse.json({ 
       staged: Object.keys(stagedUpdates).length > 0,
       staged_count: stagedCount,
       updated_count: directCount,
-      count: directCount,
+      updatedCount: directCount,
+      count: directCount + stagedCount,
       changeset_ids: changesetIds,
       message: message.trim() || 'No changes applied'
     }, {
@@ -558,7 +559,7 @@ export async function handleModerationRequest(
       },
     });
   } catch (error) {
-    const { message, status, shouldRetry } = handleDatabaseError(error, `PATCH /api/${lexicalType}/moderation`);
+    const { message, status, shouldRetry } = handleDatabaseError(error, `PATCH /api/${lexicalType}/flag`);
     return NextResponse.json(
       { 
         error: message,

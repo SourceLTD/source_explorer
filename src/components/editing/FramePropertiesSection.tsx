@@ -34,6 +34,39 @@ export function FramePropertiesSection({
   pending,
   availableSuperFrames = []
 }: FramePropertiesSectionProps) {
+  const normalizeId = (v: unknown): string | null => {
+    if (v === null || v === undefined) return null;
+    if (typeof v === 'string') {
+      const trimmed = v.trim();
+      return trimmed ? trimmed : null;
+    }
+    if (typeof v === 'bigint') return v.toString();
+    if (typeof v === 'number' && Number.isInteger(v)) return String(v);
+    return null;
+  };
+
+  const formatFrameRef = (id: string | null, lookup?: (id: string) => { code?: string | null; label?: string | null } | null): string | null => {
+    if (!id) return null;
+    const idTrimmed = id.trim();
+    if (!idTrimmed) return null;
+
+    // Virtual negative IDs (rare here, but supported for consistency)
+    if (/^-\d+$/.test(idTrimmed)) {
+      return `${idTrimmed} (pending)`;
+    }
+
+    if (/^\d+$/.test(idTrimmed)) {
+      const info = lookup ? lookup(idTrimmed) : null;
+      const name =
+        (info?.code && info.code.trim() !== '' ? info.code.trim() : null) ||
+        (info?.label && info.label.trim() !== '' ? info.label.trim() : null) ||
+        'Unknown';
+      return `${name} (#${idTrimmed})`;
+    }
+
+    return idTrimmed;
+  };
+
   // Helper to check if a field has pending changes
   const hasPendingField = (fieldName: string) => {
     return !!pending?.pending_fields?.[fieldName];
@@ -48,19 +81,21 @@ export function FramePropertiesSection({
     return currentValue;
   };
 
-  // Helper to get super frame label from super_frame_id (handles pending changes)
-  const getSuperFrameLabel = (): string | null => {
-    const superFrameId = getDisplayValue('super_frame_id', frame.super_frame_id);
-    if (!superFrameId) return null;
-    
-    // If there's a pending change, look up from availableSuperFrames
-    if (hasPendingField('super_frame_id')) {
-      const superFrame = availableSuperFrames.find(f => f.id === superFrameId);
-      return superFrame?.label ?? null;
+  const lookupSuperFrameById = (id: string): { code?: string | null; label?: string | null } | null => {
+    // Prefer the currently loaded super_frame relation if it matches
+    if (frame.super_frame && frame.super_frame.id === id) {
+      return { code: frame.super_frame.code ?? null, label: frame.super_frame.label ?? null };
     }
-    
-    // Otherwise use the current frame's super_frame label
-    return frame.super_frame?.label ?? null;
+    const opt = availableSuperFrames.find(f => f.id === id);
+    if (!opt) return null;
+    return { code: opt.code ?? null, label: opt.label ?? null };
+  };
+
+  // Display for super_frame_id (handles pending changes)
+  const getSuperFrameDisplay = (): string | null => {
+    const superFrameIdRaw = getDisplayValue('super_frame_id', frame.super_frame_id);
+    const superFrameId = normalizeId(superFrameIdRaw);
+    return formatFrameRef(superFrameId, lookupSuperFrameById);
   };
 
   // Check if this is a regular frame (not a super frame)
@@ -259,9 +294,16 @@ export function FramePropertiesSection({
               isSaving={isSaving}
             />
           ) : (
-            <PendingFieldIndicator fieldName="super_frame_id" pending={pending}>
+            <PendingFieldIndicator
+              fieldName="super_frame_id"
+              pending={pending}
+              formatTooltipValue={(value) => {
+                const id = normalizeId(value);
+                return formatFrameRef(id, lookupSuperFrameById);
+              }}
+            >
               <span className="text-gray-900 text-sm">
-                {getSuperFrameLabel() || <span className="text-gray-500 italic">None</span>}
+                {getSuperFrameDisplay() || <span className="text-gray-500 italic">None</span>}
               </span>
             </PendingFieldIndicator>
           )}

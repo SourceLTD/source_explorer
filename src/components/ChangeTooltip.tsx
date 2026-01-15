@@ -10,6 +10,11 @@ interface ChangeTooltipProps {
   change: PendingFieldChange;
   /** The operation type (for styling) */
   operation: PendingChangeOperation;
+  /**
+   * Optional override for value formatting (e.g., resolve foreign-key IDs to human-friendly labels).
+   * Return null/undefined to fall back to the default formatter.
+   */
+  formatValueOverride?: (value: unknown, which: 'old' | 'new') => string | null | undefined;
   /** Position relative to anchor element */
   anchorRect: DOMRect | null;
   /** Callback to close the tooltip */
@@ -73,6 +78,7 @@ export default function ChangeTooltip({
   fieldName,
   change,
   operation,
+  formatValueOverride,
   anchorRect,
   onClose,
 }: ChangeTooltipProps) {
@@ -131,6 +137,14 @@ export default function ChangeTooltip({
 
   if (!anchorRect) return null;
 
+  const formatMaybeOverridden = (value: unknown, which: 'old' | 'new'): string => {
+    if (formatValueOverride) {
+      const out = formatValueOverride(value, which);
+      if (typeof out === 'string' && out.trim() !== '') return out;
+    }
+    return formatValue(value);
+  };
+
   return (
     <div
       ref={tooltipRef}
@@ -166,7 +180,7 @@ export default function ChangeTooltip({
           <div>
             <div className="text-xs text-gray-500 uppercase font-medium mb-1">Previous</div>
             <div className="text-sm text-gray-700 bg-white px-2 py-1 rounded border border-gray-200 line-through">
-              {formatValue(change.old_value)}
+              {formatMaybeOverridden(change.old_value, 'old')}
             </div>
           </div>
         )}
@@ -174,7 +188,7 @@ export default function ChangeTooltip({
           <div>
             <div className="text-xs text-gray-500 uppercase font-medium mb-1">New Value</div>
             <div className="text-sm text-gray-900 font-medium bg-white px-2 py-1 rounded border border-gray-200">
-              {formatValue(change.new_value)}
+              {formatMaybeOverridden(change.new_value, 'new')}
             </div>
           </div>
         )}

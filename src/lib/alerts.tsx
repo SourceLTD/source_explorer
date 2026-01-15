@@ -42,42 +42,44 @@ export function showGlobalAlert(detail: GlobalAlertDetail) {
       <div
         role="alert"
         aria-live={type === "error" ? "assertive" : "polite"}
-        className={`pointer-events-auto w-full max-w-md rounded-xl border border-white/15 bg-gradient-to-r from-blue-500 to-blue-600 px-5 py-4 text-white backdrop-blur-sm transition-all ${
+        className={`pointer-events-auto w-full max-w-md rounded-xl p-[2px] bg-gradient-to-r from-blue-500 to-blue-600 shadow-lg transition-all ${
           t.visible ? "animate-toast-in" : "animate-toast-out"
         }`}
         data-toast-type={type}
       >
-        <div className="flex items-start gap-3">
-          <span
-            className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/20"
-            aria-label={ICON_LABELS[type]}
-          >
-            <svg
-              aria-hidden="true"
-              viewBox="0 0 20 20"
-              fill="currentColor"
-              className="h-5 w-5"
+        <div className="rounded-[10px] bg-gray-50 px-5 py-4 overflow-hidden">
+          <div className="flex items-start gap-3">
+            <span
+              className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600"
+              aria-label={ICON_LABELS[type]}
             >
-              <path d={ICON_PATHS[type]} />
-            </svg>
-          </span>
-          <div className="flex-1 text-sm leading-5">
-            {title && <p className="font-semibold text-white">{title}</p>}
-            <p className="text-white/90">{message}</p>
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                className="h-5 w-5"
+              >
+                <path d={ICON_PATHS[type]} />
+              </svg>
+            </span>
+            <div className="flex-1 text-sm leading-5">
+              {title && <p className="font-semibold text-gray-900">{title}</p>}
+              <p className="text-gray-600">{message}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => toast.dismiss(t.id)}
+              className="ml-2 shrink-0 rounded-xl px-2 py-1 text-xs font-semibold uppercase tracking-wide text-gray-500 transition hover:bg-gray-200 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+            >
+              Dismiss
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => toast.dismiss(t.id)}
-            className="ml-2 shrink-0 rounded-xl px-2 py-1 text-xs font-semibold uppercase tracking-wide text-white/80 transition hover:bg-white/15 hover:text-white focus:outline-none focus:ring-2 focus:ring-white/40 focus:ring-offset-2 focus:ring-offset-blue-500/0"
-          >
-            Dismiss
-          </button>
-        </div>
-        <div className="mt-4 h-1 w-full overflow-hidden rounded-full bg-white/20">
-          <div
-            className="toast-progress-bar h-full bg-white/80"
-            style={{ animationDuration: `${duration}ms` }}
-          />
+          <div className="mt-4 h-1 w-full overflow-hidden rounded-full bg-gray-200">
+            <div
+              className="toast-progress-bar h-full bg-blue-500"
+              style={{ animationDuration: `${duration}ms` }}
+            />
+          </div>
         </div>
       </div>
     ),

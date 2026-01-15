@@ -5,7 +5,14 @@ import { useRouter } from 'next/navigation';
 import { TableEntry, Frame, POS_LABELS, PendingChangeInfo, getRoleTypeAcronym } from '@/lib/types';
 import { ColumnConfig } from '@/components/ColumnVisibilityPanel';
 import { CheckCircleIcon, XCircleIcon, SparklesIcon } from '@heroicons/react/24/outline';
-import { PendingFieldIndicator, getPendingRowClasses } from '@/components/PendingChangeIndicator';
+import {
+  getPendingCellClasses,
+  getPendingRowClasses,
+  getFrameRoleOperation,
+  getFrameRolePendingCellClasses,
+  getFrameRoleChangeSummary,
+  getFrameRoleOldSnapshot,
+} from '@/components/PendingChangeIndicator';
 import { EmptyState } from '@/components/ui';
 import { DataTableMode, getGraphBasePath, FIELD_NAME_MAP } from './config';
 import { SortState, EditingState, FilterState } from './types';
@@ -172,12 +179,35 @@ export function CellContent({
       case 'code': {
         const code = entry.code || '—';
         const dotIndex = code.indexOf('.');
+        const pending = entry.pending;
+        const labelChange = pending?.pending_fields?.label ?? null;
+        const codeChange = pending?.pending_fields?.code ?? null;
+        const hasActiveLabelChange = !!labelChange && labelChange.status !== 'rejected';
+        const hasActiveCodeChange = !!codeChange && codeChange.status !== 'rejected';
+        const shouldUsePendingLabelSuffix = hasActiveLabelChange && !hasActiveCodeChange && dotIndex !== -1;
+        const superFrameLabelRaw = entry.super_frame?.label;
+        const superFrameLabel = typeof superFrameLabelRaw === 'string' ? superFrameLabelRaw.trim() : '';
+        const originalPrefix = dotIndex !== -1 ? code.substring(0, dotIndex) : '';
+        const hasPendingSuperFrameLabel = dotIndex !== -1 && superFrameLabel !== '' && superFrameLabel !== originalPrefix;
         return (
           <span className="inline-block max-w-full text-sm font-mono text-gray-900 break-words">
             {dotIndex !== -1 ? (
               <>
-                {code.substring(0, dotIndex + 1)}
-                <span className="font-bold">{code.substring(dotIndex + 1)}</span>
+                {hasPendingSuperFrameLabel ? (
+                  <span className="font-bold bg-orange-200 text-orange-900 rounded px-0.5">
+                    {superFrameLabel}
+                  </span>
+                ) : (
+                  originalPrefix
+                )}
+                {'.'}
+                {shouldUsePendingLabelSuffix ? (
+                  <span className="font-bold bg-orange-200 text-orange-900 rounded px-0.5">
+                    {entry.label}
+                  </span>
+                ) : (
+                  <span className="font-bold">{code.substring(dotIndex + 1)}</span>
+                )}
               </>
             ) : code}
           </span>
@@ -194,27 +224,79 @@ export function CellContent({
       case 'subframes_count':
         return <div className="text-sm text-gray-600">{entry.subframes_count ?? 0}</div>;
       case 'frame_roles':
-        if (!entry.frame_roles || entry.frame_roles.length === 0) return <EmptyCell />;
-        return (
-          <div className="grid gap-y-1 gap-x-2 max-w-full" style={{ gridTemplateColumns: 'auto 1fr' }}>
-            {entry.frame_roles.map((role, idx) => {
-              const acronym = getRoleTypeAcronym(role.role_type.label);
-              return (
-                <React.Fragment key={idx}>
-                  <div className="flex justify-end">
-                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-600 whitespace-nowrap">
-                      <span className="font-bold">{role.label || '—'}</span>
-                      <span className="text-blue-400 ml-1">({acronym})</span>
+        {
+          const pending = entry.pending;
+          const summary = getFrameRoleChangeSummary(pending);
+          const deletedRoleTypes = summary.deleted;
+          const roles = entry.frame_roles || [];
+
+          if (roles.length === 0 && deletedRoleTypes.length === 0) return <EmptyCell />;
+
+          return (
+            <div className="space-y-1 max-w-full">
+              {roles.map((role, idx) => {
+                const roleTypeLabel =
+                  role.role_type?.label ??
+                  // Defensive fallback for staged/pending payload shapes (should not happen, but avoid crashing the table)
+                  (role as any)?.roleType ??
+                  (role as any)?.role_type_label ??
+                  'Unknown';
+
+                const op = getFrameRoleOperation(pending, roleTypeLabel);
+                const rowHighlight = op ? getFrameRolePendingCellClasses(op) : '';
+                const acronym = getRoleTypeAcronym(roleTypeLabel);
+
+                return (
+                  <div
+                    key={idx}
+                    className={`grid gap-y-0.5 gap-x-2 ${op ? `rounded px-1 py-0.5 ${rowHighlight}` : ''}`}
+                    style={{ gridTemplateColumns: 'auto 1fr' }}
+                  >
+                    <div className="flex justify-end">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-600 whitespace-nowrap">
+                        <span className="font-bold">{role.label || '—'}</span>
+                        <span className="text-blue-400 ml-1">({acronym})</span>
+                      </span>
+                    </div>
+                    <span className="text-xs text-gray-600 truncate self-center" title={role.description || ''}>
+                      {role.description || '—'}
                     </span>
                   </div>
-                  <span className="text-xs text-gray-600 truncate self-center" title={role.description || ''}>
-                    {role.description || '—'}
-                  </span>
-                </React.Fragment>
-              );
-            })}
-          </div>
-        );
+                );
+              })}
+
+              {deletedRoleTypes.length > 0 && (
+                <div className="pt-1 space-y-1">
+                  {deletedRoleTypes.map((rt) => {
+                    const old = getFrameRoleOldSnapshot(pending, rt);
+                    const displayLabel = old?.label || rt;
+                    const acronym = getRoleTypeAcronym(rt);
+                    const description = old?.description || '—';
+
+                    return (
+                      <div
+                        key={rt}
+                        className={`grid gap-x-2 rounded px-1 py-0.5 ${getFrameRolePendingCellClasses('delete')}`}
+                        style={{ gridTemplateColumns: 'auto 1fr' }}
+                        title="Role will be deleted"
+                      >
+                        <div className="flex justify-end">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-50 text-red-700 whitespace-nowrap">
+                            <span className="font-bold">{displayLabel}</span>
+                            <span className="text-red-400 ml-1">({acronym})</span>
+                          </span>
+                        </div>
+                        <span className="text-xs text-red-700 truncate self-center" title={typeof old?.description === 'string' ? old.description : ''}>
+                          {description}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        }
       case 'lexical_entries':
         if (!entry.lexical_entries || entry.lexical_entries.entries.length === 0) return <EmptyCell />;
         return (
@@ -249,7 +331,7 @@ export function CellContent({
   } else {
     // Lexical Units handling
     const dbFieldName = FIELD_NAME_MAP[columnKey] || columnKey;
-    const isEditingField = editing.entryId === entry.id && editing.field === dbFieldName;
+    const isEditingField = editing.unitId === entry.id && editing.field === dbFieldName;
 
     switch (columnKey) {
       case 'id':
@@ -261,14 +343,12 @@ export function CellContent({
             >
               {entry.id}
             </span>
-            <PendingFieldIndicator pending={entry.pending} fieldName="code" />
           </div>
         );
       case 'legacy_id':
         return (
           <div className="flex items-center gap-2">
             <span className="text-xs text-gray-500 font-mono break-all">{entry.legacy_id}</span>
-            <PendingFieldIndicator pending={entry.pending} fieldName="legacy_id" />
           </div>
         );
       case 'pos':
@@ -277,7 +357,6 @@ export function CellContent({
             <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
               {POS_LABELS[entry.pos] || entry.pos}
             </span>
-            <PendingFieldIndicator pending={entry.pending} fieldName="pos" />
           </div>
         );
       case 'frame': {
@@ -299,7 +378,6 @@ export function CellContent({
               ) : frameCode}
             </span>
           ) : <NoneCell />}
-          <PendingFieldIndicator pending={entry.pending} fieldName="frame_id" />
         </div>
       );
     }
@@ -311,7 +389,6 @@ export function CellContent({
                 {lemma}
               </span>
             ))}
-            <PendingFieldIndicator pending={entry.pending} fieldName="lemmas" />
         </div>
       );
     case 'gloss':
@@ -342,14 +419,12 @@ export function CellContent({
             <span className="text-sm text-gray-900 break-words leading-relaxed">
           {truncateText(entry.gloss, 150)}
             </span>
-            <PendingFieldIndicator pending={entry.pending} fieldName="gloss" />
         </div>
       );
       case 'vendler_class':
       return (
           <div className="flex items-center gap-2">
             <span className="text-sm text-gray-700 capitalize">{entry.vendler_class || '—'}</span>
-            <PendingFieldIndicator pending={entry.pending} fieldName="vendler_class" />
           </div>
       );
     case 'isMwe':
@@ -358,7 +433,6 @@ export function CellContent({
             {entry.isMwe ? (
               <CheckCircleIcon className="w-5 h-5 text-green-500" />
             ) : <NACell />}
-            <PendingFieldIndicator pending={entry.pending} fieldName="is_mwe" />
         </div>
       );
       case 'gradable':
@@ -367,7 +441,6 @@ export function CellContent({
             {entry.gradable ? (
               <CheckCircleIcon className="w-5 h-5 text-green-500" />
             ) : <NACell />}
-            <PendingFieldIndicator pending={entry.pending} fieldName="gradable" />
         </div>
       );
     case 'examples':
@@ -379,7 +452,6 @@ export function CellContent({
               ))}
               {entry.examples.length > 2 && <div className="text-gray-400">+{entry.examples.length - 2} more</div>}
             </div>
-            <PendingFieldIndicator pending={entry.pending} fieldName="examples" />
         </div>
       );
       default:
@@ -391,25 +463,35 @@ export function CellContent({
   switch (columnKey) {
     case 'flagged':
       return (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center justify-center gap-2">
           {entry.flagged ? (
             <XCircleIcon className="w-5 h-5 text-red-500" />
           ) : (
             <CheckCircleIcon className="w-5 h-5 text-gray-300" />
           )}
-          <PendingFieldIndicator pending={entry.pending} fieldName="flagged" />
         </div>
+      );
+    case 'flaggedReason':
+      return (
+        <span className="text-xs text-gray-600">
+          {entry.flaggedReason || ''}
+        </span>
       );
     case 'verifiable':
       return (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center justify-center gap-2">
           {entry.verifiable === false ? (
             <XCircleIcon className="w-5 h-5 text-orange-500" title="Unverifiable" />
           ) : (
             <CheckCircleIcon className="w-5 h-5 text-green-500" title="Verifiable" />
           )}
-          <PendingFieldIndicator pending={entry.pending} fieldName="verifiable" />
         </div>
+      );
+    case 'unverifiableReason':
+      return (
+        <span className="text-xs text-gray-600">
+          {entry.unverifiableReason || ''}
+        </span>
       );
     case 'createdAt':
       return <span className="text-xs text-gray-500 whitespace-nowrap">{formatDate(entry.createdAt)}</span>;
@@ -538,16 +620,18 @@ export function DataTableBody({
             />
           </th>
 
-          {visibleColumns.map(col => (
+          {visibleColumns.map(col => {
+            const isCenteredColumn = col.key === 'flagged' || col.key === 'verifiable';
+            return (
             <th
               key={col.key}
-              className={`relative px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-l border-gray-100 ${
+              className={`relative px-3 py-3 ${isCenteredColumn ? 'text-center' : 'text-left'} text-xs font-semibold text-gray-700 uppercase tracking-wider border-l border-gray-100 ${
                 col.sortable ? 'cursor-pointer select-none' : ''
               }`}
               style={{ width: getColumnWidth(col.key) }}
               onClick={() => col.sortable && onSort(col.key)}
             >
-              <div className="flex items-center gap-2">
+              <div className={`flex items-center gap-2 ${isCenteredColumn ? 'justify-center' : ''}`}>
                 <span>{col.label}</span>
                 {col.sortable && <SortIcon field={col.key} sortState={sortState} />}
               </div>
@@ -561,7 +645,8 @@ export function DataTableBody({
                 <div className="w-px h-full bg-gray-200 group-hover:bg-blue-500 ml-auto" />
               </div>
             </th>
-          ))}
+          );
+          })}
         </tr>
       </thead>
 
@@ -570,6 +655,8 @@ export function DataTableBody({
           const isSelected = selectedIds.has(entry.id);
           const rowClass = getRowBackgroundColor(entry, isSelected);
           const rowStyle = getRowInlineStyles(entry, isSelected);
+          const pending = (entry as TableEntry & { pending?: PendingChangeInfo | null }).pending;
+          const pendingFieldKeys = pending?.pending_fields ? Object.keys(pending.pending_fields) : [];
 
           return (
             <tr
@@ -590,24 +677,69 @@ export function DataTableBody({
               </td>
 
               {visibleColumns.map((col) => (
-                <td
-                  key={`${entry.id}:${col.key}`}
-                  className="px-3 py-3 align-top border-l border-gray-50"
-                  style={{ width: getColumnWidth(col.key) }}
-                >
-                  <CellContent
-                    entry={entry}
-                    columnKey={col.key}
-                    mode={mode}
-                    editing={editing}
-                    onEditClick={onEditClick}
-                    onAIClick={onAIClick}
-                    onStartEdit={onStartEdit}
-                    onEditChange={onEditChange}
-                    onSaveEdit={onSaveEdit}
-                    onCancelEdit={onCancelEdit}
-                  />
-                </td>
+                (() => {
+                  // Pending changes may use either mapped DB-ish field names (snake_case)
+                  // or API/UI field names (camelCase). Check both to be robust.
+                  const mappedFieldName = FIELD_NAME_MAP[col.key] || col.key;
+                  const fieldNamesToCheck = mappedFieldName === col.key
+                    ? [col.key]
+                    : [mappedFieldName, col.key];
+                  const baseHasPendingFieldChangeForField =
+                    !!pending &&
+                    fieldNamesToCheck.some((name) => (
+                      !!pending?.pending_fields?.[name] ||
+                      pendingFieldKeys.some((k) => k.startsWith(`${name}.`))
+                    ));
+
+                  // Special-case: frames `code` is derived from `{superFrameLabel}.{label}`.
+                  // If `label` is pending-changed (but `code` is not), preview the `code` cell as pending too.
+                  const labelChange = pending?.pending_fields?.label ?? null;
+                  const codeChange = pending?.pending_fields?.code ?? null;
+                  const hasActiveLabelChange = !!labelChange && labelChange.status !== 'rejected';
+                  const hasActiveCodeChange = !!codeChange && codeChange.status !== 'rejected';
+                  const isFramesMode = mode === 'frames' || mode === 'frames_only';
+                  const hasDerivedCodeChangeFromLabel =
+                    isFramesMode &&
+                    col.key === 'code' &&
+                    hasActiveLabelChange &&
+                    !hasActiveCodeChange &&
+                    typeof (entry as any).code === 'string' &&
+                    (entry as any).code.includes('.');
+
+                  const hasPendingFieldChangeForField =
+                    baseHasPendingFieldChangeForField || hasDerivedCodeChangeFromLabel;
+                  const isFrameRolesColumn = col.key === 'frame_roles';
+                  const cellOp = pending?.operation ?? 'update';
+
+                  const content = (
+                    <CellContent
+                      entry={entry}
+                      columnKey={col.key}
+                      mode={mode}
+                      editing={editing}
+                      onEditClick={onEditClick}
+                      onAIClick={onAIClick}
+                      onStartEdit={onStartEdit}
+                      onEditChange={onEditChange}
+                      onSaveEdit={onSaveEdit}
+                      onCancelEdit={onCancelEdit}
+                    />
+                  );
+
+                  return (
+                    <td
+                      key={`${entry.id}:${col.key}`}
+                      className="px-3 py-3 align-top border-l border-gray-50"
+                      style={{ width: getColumnWidth(col.key) }}
+                    >
+                      {hasPendingFieldChangeForField && pending && !isFrameRolesColumn ? (
+                        <div className={`inline-block max-w-full rounded px-1 ${getPendingCellClasses(cellOp)}`}>
+                          {content}
+                        </div>
+                      ) : content}
+                    </td>
+                  );
+                })()
               ))}
             </tr>
           );

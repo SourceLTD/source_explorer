@@ -19,6 +19,7 @@ import type {
  */
 function buildStructuredFrameData(frameRecord: {
   id: bigint;
+  code?: string | null;
   label: string;
   definition?: string | null;
   short_definition?: string | null;
@@ -37,6 +38,7 @@ function buildStructuredFrameData(frameRecord: {
     pos: part_of_speech;
     gloss: string;
     lemmas: string[];
+    src_lemmas?: string[] | null;
     examples: string[];
     flagged: boolean | null;
   }>;
@@ -61,10 +63,12 @@ function buildStructuredFrameData(frameRecord: {
 
   // Build structured lexical units array
   const lexical_units: FrameLexicalUnitData[] = (frameRecord.lexical_units ?? []).map(lu => ({
+    id: lu.id.toString(),
     code: lu.code,
     gloss: lu.gloss,
     pos: lu.pos as POSType,
-    lemmas: lu.lemmas,
+    // Abstract away src_lemmas vs lemmas: combine both into one list
+    lemmas: Array.from(new Set([...(lu.src_lemmas ?? []), ...(lu.lemmas ?? [])].filter(Boolean))),
     examples: lu.examples,
     flagged: lu.flagged ?? false,
   }));
@@ -72,6 +76,7 @@ function buildStructuredFrameData(frameRecord: {
   // Build flat additional data for backward compatibility
   const additional: Record<string, unknown> = {
     'frame.id': frameRecord.id.toString(),
+    'frame.code': frameRecord.code ?? frameRecord.label ?? frameRecord.id.toString(),
     'frame.label': frameRecord.label,
     'frame.definition': frameRecord.definition,
     'frame.short_definition': frameRecord.short_definition,
@@ -84,6 +89,7 @@ function buildStructuredFrameData(frameRecord: {
   // Build structured frame object for loop iteration
   const frame: FrameRelationData = {
     id: frameRecord.id.toString(),
+    code: frameRecord.code ?? frameRecord.label ?? frameRecord.id.toString(),
     label: frameRecord.label,
     definition: frameRecord.definition,
     short_definition: frameRecord.short_definition,
@@ -99,6 +105,7 @@ function buildStructuredFrameData(frameRecord: {
  */
 function buildChildFramesData(childFrames: Array<{
   id: bigint;
+  code: string | null;
   label: string;
   definition: string | null;
   short_definition: string | null;
@@ -109,6 +116,7 @@ function buildChildFramesData(childFrames: Array<{
 }>): ChildFrameData[] {
   return childFrames.map(frame => ({
     id: frame.id.toString(),
+    code: frame.code ?? frame.label ?? frame.id.toString(),
     label: frame.label,
     definition: frame.definition,
     short_definition: frame.short_definition,
@@ -120,93 +128,317 @@ function buildChildFramesData(childFrames: Array<{
 /**
  * Fetch lexical units based on job scope configuration.
  */
-export async function fetchEntriesForScope(scope: JobScope): Promise<LexicalUnitSummary[]> {
+export async function fetchUnitsForScope(scope: JobScope): Promise<LexicalUnitSummary[]> {
   switch (scope.kind) {
     case 'ids':
-      return fetchEntriesByIds(scope.targetType, scope.ids);
+      return fetchEntriesByIds(scope.targetType, scope.ids, scope.isSuperFrame);
     case 'frame_ids':
-      return fetchEntriesByFrameIds(scope.frameIds, scope.targetType, scope.includeLexicalUnits, scope.offset, scope.limit);
+      return fetchEntriesByFrameIds(scope.frameIds, scope.targetType, scope.includeLexicalUnits, scope.offset, scope.limit, scope.isSuperFrame);
     case 'filters':
-      return fetchEntriesByFilters(scope.targetType, scope.filters);
+      return fetchEntriesByFilters(scope.targetType, scope.filters, scope.isSuperFrame);
     default:
       return [];
   }
 }
 
 /**
+ * Quickly counts entries in a scope without fetching them all
+ */
+export async function countEntriesForScope(scope: JobScope): Promise<number> {
+  let count = 0;
+
+  if (scope.kind === 'ids') {
+    // For IDs, just return the array length
+    count = scope.ids.length;
+  } else if (scope.kind === 'frame_ids') {
+    // For frame IDs, count frames and/or associated lexical units depending on flagTarget
+    const MAX_BIND_VARS = 15000;
+    const frameIds: bigint[] = [];
+    
+    // Process frameIds in chunks to avoid bind variable limits
+    for (let i = 0; i < scope.frameIds.length; i += MAX_BIND_VARS) {
+      const chunk = scope.frameIds.slice(i, i + MAX_BIND_VARS);
+      const frames = await prisma.frames.findMany({
+        where: {
+          deleted: false,
+          OR: chunk.map(id =>
+            id.match(/^\d+$/)
+              ? { id: BigInt(id) }
+              : { label: { equals: id, mode: 'insensitive' as Prisma.QueryMode } }
+          ),
+          ...(scope.isSuperFrame === true
+            ? { super_frame_id: null }
+            : scope.isSuperFrame === false
+              ? { super_frame_id: { not: null } }
+              : {}),
+        },
+        select: { id: true },
+      });
+      frameIds.push(...frames.map(f => f.id));
+    }
+
+    const flagTarget = scope.flagTarget ?? 'lexical_unit';
+
+    if (flagTarget === 'frame' || flagTarget === 'both') {
+      count += frameIds.length;
+    }
+
+    if (flagTarget === 'lexical_unit' || flagTarget === 'both') {
+      const targetType = scope.targetType;
+      // Process in chunks if we have many frameIds to avoid "in" clause limits
+      for (let i = 0; i < frameIds.length; i += MAX_BIND_VARS) {
+        const chunk = frameIds.slice(i, i + MAX_BIND_VARS);
+        const luWhere: any = {
+          deleted: false,
+          frame_id: { in: chunk },
+        };
+        if (targetType && targetType !== 'frames' && targetType !== 'lexical_units') {
+          luWhere.pos = targetType;
+        }
+        const luCount = await prisma.lexical_units.count({ where: luWhere });
+        count += luCount;
+      }
+    }
+  } else if (scope.kind === 'filters') {
+    // For filters, we need to run a count query
+    const targetType = scope.targetType;
+    const legacyPos = targetType === 'frames' ? 'frames' : 
+                     targetType === 'lexical_units' ? 'lexical_units' : 
+                     targetType + 's';
+    const { where } = await translateFilterASTToPrisma(legacyPos as any, scope.filters.where);
+    const limit = scope.filters.limit;
+
+    if (targetType === 'frames') {
+      const framesWhere: Prisma.framesWhereInput = {
+        AND: [
+          where as Prisma.framesWhereInput,
+          { deleted: false },
+          ...(scope.isSuperFrame === true
+            ? [{ super_frame_id: null }]
+            : scope.isSuperFrame === false
+              ? [{ super_frame_id: { not: null } }]
+              : []),
+        ],
+      };
+      count = await prisma.frames.count({ where: framesWhere });
+    } else {
+      const luWhere: any = {
+        AND: [
+          where as Record<string, unknown>,
+          { deleted: false },
+          ...(targetType !== 'lexical_units' ? [{ pos: targetType as part_of_speech }] : []),
+        ],
+      };
+      count = await prisma.lexical_units.count({ where: luWhere });
+    }
+
+    // Apply limit if specified and less than actual count
+    if (limit && limit > 0 && limit < count) {
+      count = limit;
+    }
+  }
+
+  return count;
+}
+
+/**
  * Fetch units by their lexical codes (e.g., say.v.01) or frame IDs.
  */
-async function fetchEntriesByIds(targetType: JobTargetType, ids: string[]): Promise<LexicalUnitSummary[]> {
+async function fetchEntriesByIds(targetType: JobTargetType, ids: string[], isSuperFrame?: boolean): Promise<LexicalUnitSummary[]> {
   if (ids.length === 0) return [];
 
   const uniqueIds = Array.from(new Set(ids));
   let entries: LexicalUnitSummary[] = [];
 
   if (targetType === 'frames') {
-    const records = await prisma.frames.findMany({
-      where: { id: { in: uniqueIds.map(id => BigInt(id)) } },
-      select: {
-        id: true,
-        label: true,
-        definition: true,
-        short_definition: true,
-        super_frame_id: true,
-        flagged: true,
-        flagged_reason: true,
-        verifiable: true,
-        unverifiable_reason: true,
-        frame_roles: {
-          select: {
-            id: true,
-            description: true,
-            notes: true,
-            main: true,
-            examples: true,
-            label: true,
-            role_types: {
-              select: {
-                label: true,
-                code: true,
+    const numericIds = uniqueIds.filter(id => /^\d+$/.test(id)).map(id => BigInt(id));
+    const labels = uniqueIds.filter(id => !/^\d+$/.test(id));
+
+    const MAX_BIND_VARS = 15000;
+    const records: any[] = [];
+
+    // Process numeric IDs in chunks
+    for (let i = 0; i < numericIds.length; i += MAX_BIND_VARS) {
+      const chunk = numericIds.slice(i, i + MAX_BIND_VARS);
+      const chunkRecords = await prisma.frames.findMany({
+        where: {
+          id: { in: chunk },
+          deleted: false,
+          ...(isSuperFrame === true
+            ? { super_frame_id: null }
+            : isSuperFrame === false
+              ? { super_frame_id: { not: null } }
+              : {}),
+        },
+        select: {
+          id: true,
+          code: true,
+          label: true,
+          definition: true,
+          short_definition: true,
+          super_frame_id: true,
+          // Parent superframe (null for top-level superframes)
+          frames: {
+            select: {
+              id: true,
+              code: true,
+              label: true,
+              definition: true,
+              short_definition: true,
+            },
+          },
+          flagged: true,
+          flagged_reason: true,
+          verifiable: true,
+          unverifiable_reason: true,
+          frame_roles: {
+            select: {
+              id: true,
+              description: true,
+              notes: true,
+              main: true,
+              examples: true,
+              label: true,
+              role_types: {
+                select: {
+                  label: true,
+                  code: true,
+                },
               },
             },
           },
-        },
-        lexical_units: {
-          where: { deleted: false },
-          select: {
-            id: true,
-            code: true,
-            pos: true,
-            gloss: true,
-            lemmas: true,
-            examples: true,
-            flagged: true,
+          lexical_units: {
+            where: { deleted: false },
+            select: {
+              id: true,
+              code: true,
+              pos: true,
+              gloss: true,
+              lemmas: true,
+              src_lemmas: true,
+              examples: true,
+              flagged: true,
+            },
+            take: 100,
           },
-          take: 100,
+          // Include child frames for superframes
+          other_frames: {
+            where: { deleted: false },
+            select: {
+              id: true,
+              code: true,
+              label: true,
+              definition: true,
+              short_definition: true,
+              _count: {
+                select: {
+                  frame_roles: true,
+                  lexical_units: { where: { deleted: false } },
+                },
+              },
+            },
+            take: 100,
+          },
         },
-        // Include child frames for superframes
-        other_frames: {
-          where: { deleted: false },
-          select: {
-            id: true,
-            label: true,
-            definition: true,
-            short_definition: true,
-            _count: {
-              select: {
-                frame_roles: true,
-                lexical_units: { where: { deleted: false } },
+      });
+      records.push(...chunkRecords);
+    }
+
+    // Process labels in chunks
+    for (let i = 0; i < labels.length; i += MAX_BIND_VARS) {
+      const chunk = labels.slice(i, i + MAX_BIND_VARS);
+      const chunkRecords = await prisma.frames.findMany({
+        where: {
+          label: { in: chunk },
+          deleted: false,
+          ...(isSuperFrame === true
+            ? { super_frame_id: null }
+            : isSuperFrame === false
+              ? { super_frame_id: { not: null } }
+              : {}),
+        },
+        select: {
+          id: true,
+          code: true,
+          label: true,
+          definition: true,
+          short_definition: true,
+          super_frame_id: true,
+          // Parent superframe (null for top-level superframes)
+          frames: {
+            select: {
+              id: true,
+              code: true,
+              label: true,
+              definition: true,
+              short_definition: true,
+            },
+          },
+          flagged: true,
+          flagged_reason: true,
+          verifiable: true,
+          unverifiable_reason: true,
+          frame_roles: {
+            select: {
+              id: true,
+              description: true,
+              notes: true,
+              main: true,
+              examples: true,
+              label: true,
+              role_types: {
+                select: {
+                  label: true,
+                  code: true,
+                },
               },
             },
           },
-          take: 100,
+          lexical_units: {
+            where: { deleted: false },
+            select: {
+              id: true,
+              code: true,
+              pos: true,
+              gloss: true,
+              lemmas: true,
+              src_lemmas: true,
+              examples: true,
+              flagged: true,
+            },
+            take: 100,
+          },
+          // Include child frames for superframes
+          other_frames: {
+            where: { deleted: false },
+            select: {
+              id: true,
+              code: true,
+              label: true,
+              definition: true,
+              short_definition: true,
+              _count: {
+                select: {
+                  frame_roles: true,
+                  lexical_units: { where: { deleted: false } },
+                },
+              },
+            },
+            take: 100,
+          },
         },
-      },
-    });
+      });
+      records.push(...chunkRecords);
+    }
     
-    const byId = new Map(records.map(record => [record.id.toString(), record]));
+    const byIdOrLabel = new Map<string, typeof records[number]>();
+    for (const record of records) {
+      byIdOrLabel.set(record.id.toString(), record);
+      byIdOrLabel.set(record.label, record);
+    }
+
     entries = uniqueIds
-      .map(id => byId.get(id))
+      .map(id => byIdOrLabel.get(id))
       .filter((record): record is (typeof records)[number] => Boolean(record))
       .map(record => {
         const frameInfo = buildStructuredFrameData(record);
@@ -215,7 +447,7 @@ async function fetchEntriesByIds(targetType: JobTargetType, ids: string[]): Prom
         
         return {
           dbId: record.id,
-          code: record.id.toString(),
+          code: record.code ?? record.label ?? record.id.toString(),
           pos: 'frames',
           gloss: record.definition ?? '',
           lemmas: [],
@@ -223,76 +455,93 @@ async function fetchEntriesByIds(targetType: JobTargetType, ids: string[]): Prom
           label: record.label,
           definition: record.definition,
           short_definition: record.short_definition,
+          super_frame_id: record.super_frame_id ? record.super_frame_id.toString() : null,
+          super_frame: record.frames
+            ? {
+                id: record.frames.id.toString(),
+                code: record.frames.code ?? record.frames.label ?? record.frames.id.toString(),
+                label: record.frames.label,
+                definition: record.frames.definition,
+                short_definition: record.frames.short_definition,
+              }
+            : null,
           flagged: record.flagged,
           flagged_reason: record.flagged_reason,
           verifiable: record.verifiable,
           unverifiable_reason: record.unverifiable_reason,
           roles: frameInfo.frame.roles,
-          // Only include lexical_units for regular frames, not superframes
-          lexical_units: isSuperFrame ? [] : frameInfo.frame.lexical_units,
+          lexical_units: frameInfo.frame.lexical_units,
           // Superframe-specific fields
           isSuperFrame,
           child_frames: isSuperFrame ? buildChildFramesData(record.other_frames) : undefined,
         };
       });
   } else {
-    // Lexical units (verb, noun, adjective, adverb)
-    const posFilter = targetType as POSType;
-    const records = await prisma.lexical_units.findMany({
-      where: { 
-        code: { in: uniqueIds },
-        pos: posFilter as part_of_speech,
-        deleted: false,
-      },
-      select: {
-        id: true,
-        code: true,
-        pos: true,
-        gloss: true,
-        lemmas: true,
-        examples: true,
-        flagged: true,
-        flagged_reason: true,
-        lexfile: true,
-        frames: {
-          select: {
-            id: true,
-            label: true,
-            definition: true,
-            short_definition: true,
-            frame_roles: {
-              select: {
-                id: true,
-                description: true,
-                notes: true,
-                main: true,
-                examples: true,
-                label: true,
-                role_types: {
-                  select: {
-                    label: true,
-                    code: true,
+    // Lexical units (verb, noun, adjective, adverb, or generic lexical_units)
+    const MAX_BIND_VARS = 15000;
+    const records: any[] = [];
+    
+    for (let i = 0; i < uniqueIds.length; i += MAX_BIND_VARS) {
+      const chunk = uniqueIds.slice(i, i + MAX_BIND_VARS);
+      const chunkRecords = await prisma.lexical_units.findMany({
+        where: { 
+          code: { in: chunk },
+          ...(targetType !== 'lexical_units' ? { pos: targetType as part_of_speech } : {}),
+          deleted: false,
+        },
+        select: {
+          id: true,
+          code: true,
+          pos: true,
+          gloss: true,
+          lemmas: true,
+          examples: true,
+          flagged: true,
+          flagged_reason: true,
+          lexfile: true,
+          frames: {
+            select: {
+              id: true,
+              code: true,
+              label: true,
+              definition: true,
+              short_definition: true,
+              frame_roles: {
+                select: {
+                  id: true,
+                  description: true,
+                  notes: true,
+                  main: true,
+                  examples: true,
+                  label: true,
+                  role_types: {
+                    select: {
+                      label: true,
+                      code: true,
+                    },
                   },
                 },
               },
-            },
-            lexical_units: {
-              where: { deleted: false },
-              select: {
-                id: true,
-                code: true,
-                pos: true,
-                gloss: true,
-                lemmas: true,
-                examples: true,
-                flagged: true,
+              lexical_units: {
+                where: { deleted: false },
+                select: {
+                  id: true,
+                  code: true,
+                  pos: true,
+                  gloss: true,
+                  lemmas: true,
+            src_lemmas: true,
+                  examples: true,
+                  flagged: true,
+                },
+                take: 100,
               },
-              take: 100,
             },
           },
         },
-      },
-    });
+      });
+      records.push(...chunkRecords);
+    }
 
     const byCode = new Map(records.map(record => [record.code, record]));
     entries = uniqueIds
@@ -331,74 +580,197 @@ async function fetchEntriesByFrameIds(
   targetType?: JobTargetType, 
   includeLexicalUnits?: boolean,
   offset?: number,
-  limit?: number
+  limit?: number,
+  isSuperFrame?: boolean
 ): Promise<LexicalUnitSummary[]> {
   if (frameIds.length === 0) return [];
 
-  const frames = await prisma.frames.findMany({
-    where: {
-      id: { in: frameIds.filter(id => id.match(/^\d+$/)).map(id => BigInt(id)) }
-    },
-    select: {
-      id: true,
-      label: true,
-      definition: true,
-      short_definition: true,
-      super_frame_id: true,
-      flagged: true,
-      flagged_reason: true,
-      verifiable: true,
-      unverifiable_reason: true,
-      frame_roles: {
-        select: {
-          id: true,
-          description: true,
-          notes: true,
-          main: true,
-          examples: true,
-          label: true,
-          role_types: {
-            select: {
-              label: true,
-              code: true,
+  const numericIds = frameIds.filter(id => id.match(/^\d+$/)).map(id => BigInt(id));
+  const labels = frameIds.filter(id => !id.match(/^\d+$/));
+
+  // Chunking to avoid "too many bind variables" error (max 32767)
+  const MAX_BIND_VARS = 15000;
+  const frameRecords: any[] = [];
+  
+  // Process numeric IDs in chunks
+  for (let i = 0; i < numericIds.length; i += MAX_BIND_VARS) {
+    const chunk = numericIds.slice(i, i + MAX_BIND_VARS);
+    const records = await prisma.frames.findMany({
+      where: {
+        id: { in: chunk },
+        deleted: false,
+        ...(isSuperFrame === true
+          ? { super_frame_id: null }
+          : isSuperFrame === false
+            ? { super_frame_id: { not: null } }
+            : {}),
+      },
+      select: {
+        id: true,
+        code: true,
+        label: true,
+        definition: true,
+        short_definition: true,
+        super_frame_id: true,
+        // Parent superframe (null for top-level superframes)
+        frames: {
+          select: {
+            id: true,
+            code: true,
+            label: true,
+            definition: true,
+            short_definition: true,
+          },
+        },
+        flagged: true,
+        flagged_reason: true,
+        verifiable: true,
+        unverifiable_reason: true,
+        frame_roles: {
+          select: {
+            id: true,
+            description: true,
+            notes: true,
+            main: true,
+            examples: true,
+            label: true,
+            role_types: {
+              select: {
+                label: true,
+                code: true,
+              },
             },
           },
         },
-      },
-      lexical_units: {
-        where: { deleted: false },
-        select: {
-          id: true,
-          code: true,
-          pos: true,
-          gloss: true,
-          lemmas: true,
-          examples: true,
-          flagged: true,
-          flagged_reason: true,
-          lexfile: true,
+        lexical_units: {
+          where: { deleted: false },
+          select: {
+            id: true,
+            code: true,
+            pos: true,
+            gloss: true,
+            lemmas: true,
+            src_lemmas: true,
+            examples: true,
+            flagged: true,
+            flagged_reason: true,
+            lexfile: true,
+          },
+          take: 100,
         },
-        take: 100,
+        // Include child frames for superframes
+        other_frames: {
+          where: { deleted: false },
+          select: {
+            id: true,
+            code: true,
+            label: true,
+            definition: true,
+            short_definition: true,
+            _count: {
+              select: {
+                frame_roles: true,
+                lexical_units: { where: { deleted: false } },
+              },
+            },
+          },
+          take: 100,
+        },
       },
-      // Include child frames for superframes
-      other_frames: {
-        where: { deleted: false },
-        select: {
-          id: true,
-          label: true,
-          definition: true,
-          short_definition: true,
-          _count: {
-            select: {
-              frame_roles: true,
-              lexical_units: { where: { deleted: false } },
+    });
+    frameRecords.push(...records);
+  }
+
+  // Process labels in chunks
+  for (let i = 0; i < labels.length; i += MAX_BIND_VARS) {
+    const chunk = labels.slice(i, i + MAX_BIND_VARS);
+    const records = await prisma.frames.findMany({
+      where: {
+        label: { in: chunk },
+        deleted: false,
+        ...(isSuperFrame === true
+          ? { super_frame_id: null }
+          : isSuperFrame === false
+            ? { super_frame_id: { not: null } }
+            : {}),
+      },
+      select: {
+        id: true,
+        code: true,
+        label: true,
+        definition: true,
+        short_definition: true,
+        super_frame_id: true,
+        // Parent superframe (null for top-level superframes)
+        frames: {
+          select: {
+            id: true,
+            code: true,
+            label: true,
+            definition: true,
+            short_definition: true,
+          },
+        },
+        flagged: true,
+        flagged_reason: true,
+        verifiable: true,
+        unverifiable_reason: true,
+        frame_roles: {
+          select: {
+            id: true,
+            description: true,
+            notes: true,
+            main: true,
+            examples: true,
+            label: true,
+            role_types: {
+              select: {
+                label: true,
+                code: true,
+              },
             },
           },
         },
-        take: 100,
+        lexical_units: {
+          where: { deleted: false },
+          select: {
+            id: true,
+            code: true,
+            pos: true,
+            gloss: true,
+            lemmas: true,
+            src_lemmas: true,
+            examples: true,
+            flagged: true,
+            flagged_reason: true,
+            lexfile: true,
+          },
+          take: 100,
+        },
+        // Include child frames for superframes
+        other_frames: {
+          where: { deleted: false },
+          select: {
+            id: true,
+            code: true,
+            label: true,
+            definition: true,
+            short_definition: true,
+            _count: {
+              select: {
+                frame_roles: true,
+                lexical_units: { where: { deleted: false } },
+              },
+            },
+          },
+          take: 100,
+        },
       },
-    },
-  });
+    });
+    frameRecords.push(...records);
+  }
+
+  const frames = frameRecords;
 
   const entries: LexicalUnitSummary[] = [];
   
@@ -410,7 +782,7 @@ async function fetchEntriesByFrameIds(
       const isSuperFrame = frame.other_frames.length > 0;
       entries.push({
         dbId: frame.id,
-        code: frame.id.toString(),
+        code: frame.code ?? frame.label ?? frame.id.toString(),
         pos: 'frames',
         gloss: frame.definition ?? '',
         lemmas: [],
@@ -418,13 +790,22 @@ async function fetchEntriesByFrameIds(
         label: frame.label,
         definition: frame.definition,
         short_definition: frame.short_definition,
+        super_frame_id: frame.super_frame_id ? frame.super_frame_id.toString() : null,
+        super_frame: frame.frames
+          ? {
+              id: frame.frames.id.toString(),
+              code: frame.frames.code ?? frame.frames.label ?? frame.frames.id.toString(),
+              label: frame.frames.label,
+              definition: frame.frames.definition,
+              short_definition: frame.frames.short_definition,
+            }
+          : null,
         flagged: frame.flagged,
         flagged_reason: frame.flagged_reason,
         verifiable: frame.verifiable,
         unverifiable_reason: frame.unverifiable_reason,
         roles: frameInfo.frame.roles,
-        // Only include lexical_units for regular frames, not superframes
-        lexical_units: isSuperFrame ? [] : frameInfo.frame.lexical_units,
+        lexical_units: frameInfo.frame.lexical_units,
         // Superframe-specific fields
         isSuperFrame,
         child_frames: isSuperFrame ? buildChildFramesData(frame.other_frames) : undefined,
@@ -476,30 +857,54 @@ async function fetchEntriesByFrameIds(
  */
 async function fetchEntriesByFilters(
   targetType: JobTargetType, 
-  filters: { limit?: number; offset?: number; where?: BooleanFilterGroup | undefined } | Record<string, unknown>
+  filters: { limit?: number; offset?: number; where?: BooleanFilterGroup | undefined } | Record<string, unknown>,
+  isSuperFrame?: boolean
 ): Promise<LexicalUnitSummary[]> {
   const limit = typeof (filters as { limit?: unknown }).limit === 'number' ? Number((filters as { limit?: number }).limit) : undefined;
   const offset = typeof (filters as { offset?: unknown }).offset === 'number' ? Number((filters as { offset?: number }).offset) : undefined;
   const ast = (filters as { where?: BooleanFilterGroup }).where as BooleanFilterGroup | undefined;
   
   // translateFilterASTToPrisma expects 'verbs' style POS, but for lexical_units it's 'verb'
-  const legacyPos = targetType === 'frames' ? 'frames' : targetType + 's';
+  const legacyPos = targetType === 'frames' ? 'frames' : 
+                   targetType === 'lexical_units' ? 'lexical_units' : 
+                   targetType + 's';
   const { where, computedFilters } = await translateFilterASTToPrisma(legacyPos as any, ast);
 
   if (targetType === 'frames') {
     const takeArg = limit === 0 ? undefined : (limit ?? 50);
     const skipArg = offset;
     const records = await prisma.frames.findMany({
-      where: where as Prisma.framesWhereInput,
+      where: {
+        AND: [
+          where as Prisma.framesWhereInput,
+          { deleted: false },
+          ...(isSuperFrame === true
+            ? [{ super_frame_id: null }]
+            : isSuperFrame === false
+              ? [{ super_frame_id: { not: null } }]
+              : []),
+        ],
+      },
       take: takeArg,
       skip: skipArg,
       orderBy: { id: 'asc' },
       select: {
         id: true,
+        code: true,
         label: true,
         definition: true,
         short_definition: true,
         super_frame_id: true,
+        // Parent superframe (null for top-level superframes)
+        frames: {
+          select: {
+            id: true,
+            code: true,
+            label: true,
+            definition: true,
+            short_definition: true,
+          },
+        },
         flagged: true,
         flagged_reason: true,
         verifiable: true,
@@ -528,6 +933,7 @@ async function fetchEntriesByFilters(
             pos: true,
             gloss: true,
             lemmas: true,
+                src_lemmas: true,
             examples: true,
             flagged: true,
           },
@@ -538,6 +944,7 @@ async function fetchEntriesByFilters(
           where: { deleted: false },
           select: {
             id: true,
+            code: true,
             label: true,
             definition: true,
             short_definition: true,
@@ -558,7 +965,7 @@ async function fetchEntriesByFilters(
       const isSuperFrame = record.other_frames.length > 0;
       return {
         dbId: record.id,
-        code: record.id.toString(),
+        code: record.code ?? record.label ?? record.id.toString(),
         pos: 'frames',
         gloss: record.definition ?? '',
         lemmas: [] as string[],
@@ -566,13 +973,22 @@ async function fetchEntriesByFilters(
         label: record.label,
         definition: record.definition,
         short_definition: record.short_definition,
+        super_frame_id: record.super_frame_id ? record.super_frame_id.toString() : null,
+        super_frame: record.frames
+          ? {
+              id: record.frames.id.toString(),
+              code: record.frames.code ?? record.frames.label ?? record.frames.id.toString(),
+              label: record.frames.label,
+              definition: record.frames.definition,
+              short_definition: record.frames.short_definition,
+            }
+          : null,
         flagged: record.flagged,
         flagged_reason: record.flagged_reason,
         verifiable: record.verifiable,
         unverifiable_reason: record.unverifiable_reason,
         roles: frameInfo.frame.roles,
-        // Only include lexical_units for regular frames, not superframes
-        lexical_units: isSuperFrame ? [] : frameInfo.frame.lexical_units,
+        lexical_units: frameInfo.frame.lexical_units,
         // Superframe-specific fields
         isSuperFrame,
         child_frames: isSuperFrame ? buildChildFramesData(record.other_frames) : undefined,
@@ -589,7 +1005,7 @@ async function fetchEntriesByFilters(
   const finalWhere: Prisma.lexical_unitsWhereInput = {
     AND: [
       luWhere,
-      { pos: targetType as part_of_speech },
+      ...(targetType !== 'lexical_units' ? [{ pos: targetType as part_of_speech }] : []),
       { deleted: false },
     ],
   };
@@ -609,6 +1025,7 @@ async function fetchEntriesByFilters(
       frames: {
         select: {
           id: true,
+          code: true,
           label: true,
           definition: true,
           short_definition: true,
@@ -636,6 +1053,7 @@ async function fetchEntriesByFilters(
               pos: true,
               gloss: true,
               lemmas: true,
+              src_lemmas: true,
               examples: true,
               flagged: true,
             },

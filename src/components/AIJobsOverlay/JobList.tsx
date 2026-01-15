@@ -1,7 +1,11 @@
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import type { SerializedJob } from '@/lib/llm/types';
-import { StatusPill } from './components';
+import { McpModePill, parseJobConfig, StatusPill } from './components';
+import { formatEmailAsName, formatRelativeTime } from './utils';
 import LoadingSpinner from '@/components/LoadingSpinner';
+
+const INITIAL_VISIBLE_COUNT = 5;
+const LOAD_MORE_INCREMENT = 5;
 
 export interface JobListProps {
   jobs: SerializedJob[];
@@ -9,7 +13,6 @@ export interface JobListProps {
   jobsError: string | null;
   selectedJobId: string | null;
   onSelectJob: (jobId: string) => void;
-  onCloneSettings: (job: SerializedJob) => void;
   onStartCreateFlow: () => void;
   isCreating: boolean;
 }
@@ -20,10 +23,19 @@ export const JobList = memo(function JobList({
   jobsError,
   selectedJobId,
   onSelectJob,
-  onCloneSettings,
   onStartCreateFlow,
   isCreating,
 }: JobListProps) {
+  const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_COUNT);
+  
+  const visibleJobs = jobs.slice(0, visibleCount);
+  const hasMore = jobs.length > visibleCount;
+  const remainingCount = jobs.length - visibleCount;
+
+  const handleShowMore = () => {
+    setVisibleCount(prev => prev + LOAD_MORE_INCREMENT);
+  };
+
   return (
     <aside className="w-96 border-r border-gray-200 bg-gray-50">
       <div className="flex items-center justify-between gap-3 border-b border-gray-200 px-6 py-4">
@@ -54,51 +66,56 @@ export const JobList = memo(function JobList({
             No AI jobs yet. Use "Create New Job" to start a batch.
           </div>
         ) : (
-          <ul className="divide-y divide-gray-200">
-            {jobs.map(job => (
-              <li key={job.id} className="relative">
-                <button
-                  onClick={() => onSelectJob(job.id)}
-                  className={`cursor-pointer flex w-full flex-col items-start gap-1 rounded-xl px-4 py-3 text-left transition-colors ${
-                    job.id === selectedJobId ? 'bg-white' : 'hover:bg-white'
-                  }`}
-                  type="button"
-                >
-                  <div className="flex w-full items-center justify-between">
-                    <span className="text-sm font-medium text-gray-900">{job.label ?? `Job ${job.id}`}</span>
-                    <div className="flex items-center gap-2">
-                      <div
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onCloneSettings(job);
-                        }}
-                        className="cursor-pointer rounded p-1 text-blue-600 hover:bg-blue-50"
-                        title="Clone job settings"
-                        role="button"
-                        tabIndex={0}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            onCloneSettings(job);
-                          }
-                        }}
-                      >
-                        <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                        </svg>
+          <>
+            <ul className="divide-y divide-gray-200">
+              {visibleJobs.map(job => (
+                <li key={job.id} className="relative">
+                  <button
+                    onClick={() => onSelectJob(job.id)}
+                    className={`cursor-pointer flex w-full flex-col items-start gap-1 rounded-xl px-4 py-3 text-left transition-colors ${
+                      job.id === selectedJobId ? 'bg-white' : 'hover:bg-white'
+                    }`}
+                    type="button"
+                  >
+                    <div className="flex w-full items-center justify-between">
+                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900">
+                        {job.label ?? `Job ${job.id}`}
+                      </span>
+                      <div className="ml-2 flex flex-shrink-0 items-center gap-1.5">
+                        <McpModePill enabled={parseJobConfig(job.config)?.mcpEnabled !== false} />
+                        <StatusPill status={job.status} />
                       </div>
-                      <StatusPill status={job.status} />
                     </div>
-                  </div>
-                  <div className="flex w-full items-center justify-between text-xs text-gray-500">
-                    <span>{job.total_items} items</span>
-                    <span>{new Date(job.created_at).toLocaleString()}</span>
-                  </div>
-                </button>
-              </li>
-            ))}
-          </ul>
+                    <div className="flex w-full min-w-0 items-center justify-between text-xs text-gray-500">
+                      <span className="flex-shrink-0">{job.total_items} items</span>
+                      <span className="flex min-w-0 items-center gap-1">
+                        {job.submitted_by && (
+                          <>
+                            <span className="min-w-0 flex-1 truncate">
+                              {formatEmailAsName(job.submitted_by)}
+                            </span>
+                            <span aria-hidden="true" className="flex-shrink-0 text-gray-400">
+                              ·
+                            </span>
+                          </>
+                        )}
+                        <span className="flex-shrink-0">{formatRelativeTime(job.created_at)}</span>
+                      </span>
+                    </div>
+                  </button>
+                </li>
+              ))}
+            </ul>
+            {hasMore && (
+              <button
+                onClick={handleShowMore}
+                className="w-full py-3 text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer"
+                type="button"
+              >
+                ... More ({remainingCount})
+              </button>
+            )}
+          </>
         )}
       </div>
     </aside>

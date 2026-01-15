@@ -1,13 +1,11 @@
 import { useState, useCallback } from 'react';
 import { GraphNode, Frame, sortRolesByPrecedence } from '@/lib/types';
-import { EditableField, EditableRole, EditableRoleGroup, EditableFrameRole, Mode } from '@/components/editing/types';
+import { EditableField, EditableFrameRole, Mode } from '@/components/editing/types';
 
 export function useEntryEditor(node: GraphNode | Frame | null, mode: Mode) {
   const [editingField, setEditingField] = useState<EditableField | null>(null);
   const [editValue, setEditValue] = useState<string>('');
   const [editListItems, setEditListItems] = useState<string[]>([]);
-  const [editRoles, setEditRoles] = useState<EditableRole[]>([]);
-  const [editRoleGroups, setEditRoleGroups] = useState<EditableRoleGroup[]>([]);
   const [editFrameRoles, setEditFrameRoles] = useState<EditableFrameRole[]>([]);
   const [codeValidationMessage, setCodeValidationMessage] = useState<string>('');
   const [selectedHyponymsToMove, setSelectedHyponymsToMove] = useState<Set<string>>(new Set());
@@ -34,6 +32,7 @@ export function useEntryEditor(node: GraphNode | Frame | null, mode: Mode) {
           return {
             id: role.id,
             clientId,
+            label: role.label || '',
             description: role.description || '',
             notes: role.notes || '',
             roleType: role.role_type.label,
@@ -72,34 +71,6 @@ export function useEntryEditor(node: GraphNode | Frame | null, mode: Mode) {
       setEditValue(graphNode.lexfile || '');
     } else if (field === 'frame') {
       setEditValue(graphNode.frame_id || '');
-    } else if (field === 'roles') {
-      const preparedRoles = sortRolesByPrecedence(graphNode.roles || []).map((role, index) => {
-        const clientId = role.id && role.id.length > 0 ? role.id : `existing-role-${index}-${role.role_type.label}`;
-        return {
-          id: role.id,
-          clientId,
-          description: role.description || '',
-          roleType: role.role_type.label,
-          exampleSentence: role.example_sentence || '',
-          main: role.main ?? false,
-        };
-      });
-
-      const idToClientId = new Map<string, string>();
-      preparedRoles.forEach(role => {
-        if (role.id) {
-          idToClientId.set(role.id, role.clientId);
-        }
-      });
-
-      setEditRoles(preparedRoles);
-      setEditRoleGroups(
-        (graphNode.role_groups || []).map(group => ({
-          id: group.id,
-          description: group.description || '',
-          role_ids: group.role_ids.map(roleId => idToClientId.get(roleId) ?? roleId)
-        }))
-      );
     }
   }, [node, mode]);
 
@@ -107,8 +78,6 @@ export function useEntryEditor(node: GraphNode | Frame | null, mode: Mode) {
     setEditingField(null);
     setEditValue('');
     setEditListItems([]);
-    setEditRoles([]);
-    setEditRoleGroups([]);
     setEditFrameRoles([]);
     setCodeValidationMessage('');
     setSelectedHyponymsToMove(new Set());
@@ -130,68 +99,6 @@ export function useEntryEditor(node: GraphNode | Frame | null, mode: Mode) {
     setEditListItems(newItems);
   }, [editListItems]);
 
-  // Role editing helpers
-  const updateRole = useCallback((clientId: string, field: 'description' | 'roleType' | 'exampleSentence' | 'main', value: string | boolean) => {
-    setEditRoles(prev => prev.map((role) => 
-      role.clientId === clientId ? { ...role, [field]: value } : role
-    ));
-  }, []);
-
-  const addRole = useCallback((main: boolean) => {
-    const clientId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
-    setEditRoles(prev => [...prev, { id: '', clientId, description: '', roleType: '', exampleSentence: '', main }]);
-  }, []);
-
-  const removeRole = useCallback((clientId: string) => {
-    const identifiersToRemove: string[] = [];
-    setEditRoles(prev => prev.filter(role => {
-      if (role.clientId === clientId) {
-        identifiersToRemove.push(role.clientId);
-        if (role.id) {
-          identifiersToRemove.push(role.id);
-        }
-        return false;
-      }
-      return true;
-    }));
-
-    if (identifiersToRemove.length > 0) {
-      setEditRoleGroups(prev => prev.map(group => ({
-        ...group,
-        role_ids: group.role_ids.filter(id => !identifiersToRemove.includes(id))
-      })).filter(group => group.role_ids.length >= 2));
-    }
-  }, []);
-
-  // Role group editing helpers
-  const addRoleGroup = useCallback(() => {
-    const tempId = `temp-group-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
-    setEditRoleGroups(prev => [...prev, { id: tempId, description: '', role_ids: [] }]);
-  }, []);
-
-  const removeRoleGroup = useCallback((index: number) => {
-    setEditRoleGroups(prev => prev.filter((_, i) => i !== index));
-  }, []);
-
-  const updateRoleGroup = useCallback((index: number, field: 'description' | 'role_ids', value: string | string[]) => {
-    setEditRoleGroups(prev => prev.map((group, i) => 
-      i === index ? { ...group, [field]: value } : group
-    ));
-  }, []);
-
-  const toggleRoleInGroup = useCallback((groupIndex: number, roleId: string) => {
-    setEditRoleGroups(prev => prev.map((group, i) => {
-      if (i !== groupIndex) return group;
-      const isInGroup = group.role_ids.includes(roleId);
-      return {
-        ...group,
-        role_ids: isInGroup 
-          ? group.role_ids.filter(id => id !== roleId)
-          : [...group.role_ids, roleId]
-      };
-    }));
-  }, []);
-
   const toggleHyponymSelection = useCallback((hyponymId: string) => {
     setSelectedHyponymsToMove(prev => {
       const newSet = new Set(prev);
@@ -205,7 +112,7 @@ export function useEntryEditor(node: GraphNode | Frame | null, mode: Mode) {
   }, []);
 
   // Frame role editing helpers
-  const updateFrameRole = useCallback((clientId: string, field: 'description' | 'notes' | 'roleType' | 'main' | 'examples', value: string | boolean | string[]) => {
+  const updateFrameRole = useCallback((clientId: string, field: 'label' | 'description' | 'notes' | 'roleType' | 'main' | 'examples', value: string | boolean | string[]) => {
     setEditFrameRoles(prev => prev.map((role) => 
       role.clientId === clientId ? { ...role, [field]: value } : role
     ));
@@ -213,7 +120,7 @@ export function useEntryEditor(node: GraphNode | Frame | null, mode: Mode) {
 
   const addFrameRole = useCallback((main: boolean) => {
     const clientId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
-    setEditFrameRoles(prev => [...prev, { id: '', clientId, description: '', notes: '', roleType: '', main, examples: [] }]);
+    setEditFrameRoles(prev => [...prev, { id: '', clientId, label: '', description: '', notes: '', roleType: '', main, examples: [] }]);
   }, []);
 
   const removeFrameRole = useCallback((clientId: string) => {
@@ -224,8 +131,6 @@ export function useEntryEditor(node: GraphNode | Frame | null, mode: Mode) {
     editingField,
     editValue,
     editListItems,
-    editRoles,
-    editRoleGroups,
     editFrameRoles,
     codeValidationMessage,
     selectedHyponymsToMove,
@@ -240,13 +145,6 @@ export function useEntryEditor(node: GraphNode | Frame | null, mode: Mode) {
     updateListItem,
     addListItem,
     removeListItem,
-    updateRole,
-    addRole,
-    removeRole,
-    addRoleGroup,
-    removeRoleGroup,
-    updateRoleGroup,
-    toggleRoleInGroup,
     toggleHyponymSelection,
     updateFrameRole,
     addFrameRole,

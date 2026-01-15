@@ -114,7 +114,12 @@ export function buildScope(
                                    pos === 'adjectives' ? 'adjective' : 
                                    pos === 'adverbs' ? 'adverb' :
                                    pos === 'frames' || pos === 'super_frames' || pos === 'frames_only' ? 'frames' :
-                                   pos === 'lexical_units' ? 'verb' : 'frames';
+                                   pos === 'lexical_units' ? 'lexical_units' : 'frames';
+
+  // Track if this is a super frame job (true) or a regular-frame-only job (false)
+  // - super_frames: super_frame_id IS NULL
+  // - frames_only:  super_frame_id IS NOT NULL
+  const isSuperFrame = pos === 'super_frames' ? true : pos === 'frames_only' ? false : undefined;
 
   switch (mode) {
     case 'selection':
@@ -122,12 +127,14 @@ export function buildScope(
         kind: 'ids',
         targetType,
         ids: selectedIds,
+        isSuperFrame,
       };
     case 'all':
       return {
         kind: 'filters',
         targetType,
         filters: { limit: 0 },
+        isSuperFrame,
       };
     case 'filters':
       return {
@@ -137,12 +144,14 @@ export function buildScope(
           limit: typeof filterLimit === 'number' ? filterLimit : 50,
           where: filterGroup && filterGroup.children.length > 0 ? filterGroup : undefined,
         },
+        isSuperFrame,
       };
     case 'manual':
       return {
         kind: 'ids',
         targetType,
         ids: parseIds(manualIdsText).map(normalizeLexicalCode),
+        isSuperFrame,
       };
     case 'frames':
       return {
@@ -150,12 +159,14 @@ export function buildScope(
         frameIds: parseIds(frameIdsText),
         includeLexicalUnits: frameIncludeLexicalUnits,
         flagTarget: frameFlagTarget,
+        isSuperFrame,
       };
     default:
       return {
         kind: 'ids',
         targetType,
         ids: selectedIds,
+        isSuperFrame,
       };
   }
 }
@@ -172,7 +183,6 @@ export function normalizeLexicalCode(input: string): string {
 export function getManualIdPlaceholder(pos: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames' | 'lexical_units' | 'super_frames' | 'frames_only'): string {
   switch (pos) {
     case 'verbs':
-    case 'lexical_units':
       return 'e.g., say.v.01, run.v.02';
     case 'nouns':
       return 'e.g., dog.n.01, cat.n.02';
@@ -180,8 +190,14 @@ export function getManualIdPlaceholder(pos: 'verbs' | 'nouns' | 'adjectives' | '
       return 'e.g., big.a.01, small.a.02';
     case 'adverbs':
       return 'e.g., quickly.r.01, slowly.r.02';
+    case 'lexical_units':
+      return 'e.g., say.v.01, dog.n.01';
     case 'frames':
-      return 'e.g., Communication, Motion';
+      return 'e.g., COMMUNICATION, MOTION';
+    case 'super_frames':
+      return 'e.g., COMMUNICATION, COGNITION';
+    case 'frames_only':
+      return 'e.g., STATEMENT, BECOMING_AWARE';
     default:
       return 'e.g., word.pos.01';
   }
@@ -190,6 +206,21 @@ export function getManualIdPlaceholder(pos: 'verbs' | 'nouns' | 'adjectives' | '
 export function truncate(value: string, length: number) {
   if (value.length <= length) return value;
   return `${value.slice(0, length)}…`;
+}
+
+/**
+ * Formats an ISO timestamp as a human-readable relative time.
+ * Returns "Now" for < 1 minute, "Xm" for minutes, "Xh" for hours, "Xd" for days.
+ */
+export function formatRelativeTime(isoString: string): string {
+  const now = Date.now();
+  const then = new Date(isoString).getTime();
+  const diffMs = now - then;
+  
+  if (diffMs < 60_000) return 'Now';
+  if (diffMs < 3_600_000) return `${Math.floor(diffMs / 60_000)}m`;
+  if (diffMs < 86_400_000) return `${Math.floor(diffMs / 3_600_000)}h`;
+  return `${Math.floor(diffMs / 86_400_000)}d`;
 }
 
 export function formatRuntime(start: string | null, end?: string) {
@@ -202,6 +233,21 @@ export function formatRuntime(start: string | null, end?: string) {
   const seconds = Math.floor((diff % 60000) / 1000);
   if (minutes === 0) return `${seconds}s`;
   return `${minutes}m ${seconds}s`;
+}
+
+/**
+ * Formats an email address as a display name.
+ * Takes the substring before '@' and capitalizes the first letter
+ * and any letter after '.' or '_'.
+ * e.g., "john.doe@example.com" -> "John Doe"
+ *       "jane_smith@example.com" -> "Jane Smith"
+ */
+export function formatEmailAsName(email: string): string {
+  const localPart = email.split('@')[0];
+  return localPart
+    .split(/[._]/)
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(' ');
 }
 
 /**

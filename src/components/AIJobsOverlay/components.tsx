@@ -142,6 +142,62 @@ export const StatusPill = memo(function StatusPill({
   );
 });
 
+export const McpModePill = memo(function McpModePill({
+  enabled,
+  size = 'sm',
+}: {
+  enabled: boolean;
+  size?: 'sm' | 'lg';
+}) {
+  const { label, color, icon, title } = useMemo(() => {
+    if (enabled) {
+      return {
+        label: 'AGENT ON',
+        title: 'Agentic mode enabled (MCP tools allowed)',
+        color: 'bg-blue-50 text-blue-700 border-blue-200',
+        icon: (
+          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M13 10V3L4 14h7v7l9-11h-7z"
+            />
+          </svg>
+        ),
+      };
+    }
+
+    return {
+      label: 'AGENT OFF',
+      title: 'Agentic mode disabled (no MCP tools)',
+      color: 'bg-gray-100 text-gray-600 border-gray-200',
+      icon: (
+        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"
+          />
+        </svg>
+      ),
+    };
+  }, [enabled]);
+
+  const sizeClasses = size === 'lg' ? 'px-3 py-1.5 text-sm gap-2' : 'px-2 py-0.5 text-[11px] gap-1';
+
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border font-medium ${color} ${sizeClasses}`}
+      title={title}
+    >
+      {icon}
+      {label}
+    </span>
+  );
+});
+
 export const JobTypeBadge = memo(function JobTypeBadge({ 
   jobType 
 }: { 
@@ -149,12 +205,12 @@ export const JobTypeBadge = memo(function JobTypeBadge({
 }) {
   const { label, color } = useMemo(() => {
     switch (jobType) {
-      case 'moderation':
-        return { label: 'Moderation', color: 'bg-purple-50 text-purple-700 border-purple-200' };
-      case 'editing':
-        return { label: 'Editing', color: 'bg-sky-50 text-sky-700 border-sky-200' };
-      case 'reallocation':
-        return { label: 'Reallocation', color: 'bg-indigo-50 text-indigo-700 border-indigo-200' };
+      case 'flag':
+        return { label: 'Flag', color: 'bg-purple-50 text-purple-700 border-purple-200' };
+      case 'edit':
+        return { label: 'Edit', color: 'bg-sky-50 text-sky-700 border-sky-200' };
+      case 'allocate_contents':
+        return { label: 'Allocate Contents', color: 'bg-indigo-50 text-indigo-700 border-indigo-200' };
       case 'allocate':
         return { label: 'Allocate', color: 'bg-teal-50 text-teal-700 border-teal-200' };
       case 'split':
@@ -366,7 +422,7 @@ export const ConfigCard = memo(function ConfigCard({
                 <div className="text-sm font-medium text-gray-900 capitalize">{config.reasoning.effort}</div>
               </div>
             )}
-            {jobType === 'reallocation' && config.reallocationEntityTypes && config.reallocationEntityTypes.length > 0 && (
+            {jobType === 'allocate_contents' && config.reallocationEntityTypes && config.reallocationEntityTypes.length > 0 && (
               <div>
                 <div className="text-[11px] text-gray-500 mb-1">Entity Types</div>
                 <div className="flex flex-wrap gap-1">
@@ -579,12 +635,16 @@ export const ItemList = memo(function ItemList({
   emptyMessage,
   totalCount,
   onLoadMore,
+  jobIsSuperFrame,
+  showFlaggedStatus,
 }: {
   title: string;
   items: SerializedJob['items'];
   emptyMessage: string;
   totalCount: number;
   onLoadMore?: () => void;
+  jobIsSuperFrame?: boolean;
+  showFlaggedStatus?: boolean;
 }) {
   const hasMore = items.length < totalCount;
   const remaining = totalCount - items.length;
@@ -620,26 +680,37 @@ export const ItemList = memo(function ItemList({
                 }
               };
               
+              // Always show code (fallback to ID)
+              const displayName = item.entry.code ?? item.id;
+              
               return (
                 <li key={item.id} className={`rounded border px-3 py-2 text-[11px] ${getItemColors()}`}>
                   <div className="flex items-center justify-between">
                     <div>
-                      <span className="font-semibold">{item.entry.code ?? item.id}</span>
-                      <span className="ml-2 uppercase opacity-75">{item.entry.pos}</span>
+                      <span className="font-semibold">{displayName}</span>
+                      <span className="ml-2 uppercase opacity-75">
+                        {item.entry.pos === 'frames' 
+                          ? (item.entry.isSuperFrame ?? jobIsSuperFrame ? 'SUPER FRAME' : 'FRAME')
+                          : item.entry.pos}
+                      </span>
                     </div>
                     <span className="opacity-75">{item.status}</span>
                   </div>
                   {item.last_error && <div className="mt-1 text-[10px] text-red-600">{item.last_error}</div>}
-                  {item.response_payload && item.status === 'succeeded' && (
-                    <div className="mt-1 flex items-center gap-2 text-[10px] opacity-75">
-                      <span>Flagged: {item.flagged ? 'Yes' : 'No'}</span>
-                      {item.has_edits && (
-                        <span className="rounded bg-blue-100 px-1.5 py-0.5 font-semibold text-blue-600">
-                          AI Edits Staged
-                        </span>
-                      )}
-                    </div>
-                  )}
+                  {item.response_payload &&
+                    item.status === 'succeeded' &&
+                    ((showFlaggedStatus && item.flagged !== null && item.flagged !== undefined) || item.has_edits) && (
+                      <div className="mt-1 flex items-center gap-2 text-[10px] opacity-75">
+                        {showFlaggedStatus && (
+                          <span>Flagged: {item.flagged ? 'Yes' : 'No'}</span>
+                        )}
+                        {item.has_edits && (
+                          <span className="rounded bg-blue-100 px-1.5 py-0.5 font-semibold text-blue-600">
+                            AI Edits Staged
+                          </span>
+                        )}
+                      </div>
+                    )}
                 </li>
               );
             })}

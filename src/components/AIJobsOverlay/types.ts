@@ -26,6 +26,7 @@ export interface PreviewResponse {
     variables: Record<string, string>;
   }>;
   totalEntries: number;
+  clusteringError?: string;
 }
 
 // Re-export hook types for convenience

@@ -3,6 +3,7 @@ import { api } from '@/lib/api-client';
 import type { SerializedJob } from '@/lib/llm/types';
 import type { JobListResponse } from '../types';
 import type { DataTableMode } from '../../DataTable/types';
+import { broadcastJobCompletion } from '@/hooks/useJobCompletionBroadcast';
 
 export interface UseJobPollingOptions {
   mode: DataTableMode;
@@ -59,6 +60,13 @@ export function useJobPolling({
     onJobCompletedRef.current = onJobCompleted;
   }, [onJobCompleted]);
 
+  // Clear selection when mode changes to ensure we don't show jobs from other entity types
+  useEffect(() => {
+    setActiveJobId(null);
+    setSelectedJobDetails(null);
+    setJobs([]);
+  }, [mode]);
+
   const pendingJobsCount = useMemo(
     () => jobs.filter(job => job.status === 'queued' || job.status === 'running').length,
     [jobs]
@@ -105,8 +113,14 @@ export function useJobPolling({
       }
       
       // Call the completion callback if any job completed
-      if (jobCompleted && onJobCompletedRef.current) {
-        onJobCompletedRef.current();
+      if (jobCompleted) {
+        // Broadcast to all tabs and same-tab listeners
+        broadcastJobCompletion(mode);
+        
+        // Also call the local callback (for backward compatibility)
+        if (onJobCompletedRef.current) {
+          onJobCompletedRef.current();
+        }
       }
       
       // Smart update: only update state if jobs actually changed
@@ -143,8 +157,18 @@ export function useJobPolling({
       });
       
       // Auto-select: prioritize running/queued jobs, then fall back to latest job
+      // Also clear selection if the currently selected job is not in the filtered list
       setActiveJobId(prev => {
-        if (prev) return prev;
+        // If there's a previous selection, check if it's still in the filtered job list
+        if (prev) {
+          const prevJobStillInList = response.jobs.some(job => job.id === prev);
+          if (prevJobStillInList) {
+            return prev; // Keep the selection
+          }
+          // Previous selection is no longer in the filtered list, clear the details
+          setSelectedJobDetails(null);
+        }
+        // Auto-select: prioritize running/queued jobs, then fall back to latest job
         const runningJob = response.jobs.find(job => job.status === 'running' || job.status === 'queued');
         return runningJob?.id ?? response.jobs[0]?.id ?? null;
       });

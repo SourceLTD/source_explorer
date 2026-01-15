@@ -102,8 +102,38 @@ export async function GET(request: NextRequest) {
           select: { code: true, lemmas: true, src_lemmas: true, pos: true, gloss: true },
           take: 11, // Take up to 11 to indicate if there are more than 10
         },
+        // Parent super-frame (for regular frames); used to render derived code prefix + pending super-frame label previews.
+        frames: {
+          select: {
+            id: true,
+            label: true,
+            code: true,
+          },
+        },
       },
     });
+
+    // Attach pending info to super-frames referenced on this page so child frames can preview
+    // derived code prefix when the super-frame label is pending-changed.
+    const superFramesById = new Map<string, { id: string; label: string; code: string | null }>();
+    for (const f of frames) {
+      const sf = (f as any).frames as { id: bigint; label: string; code: string | null } | null | undefined;
+      if (!sf?.id) continue;
+      const id = sf.id.toString();
+      if (!superFramesById.has(id)) {
+        superFramesById.set(id, { id, label: sf.label, code: sf.code });
+      }
+    }
+
+    const superFramesWithPending =
+      superFramesById.size > 0
+        ? await attachPendingInfoToEntities(
+            Array.from(superFramesById.values()),
+            'frame',
+            (sf) => BigInt(sf.id)
+          )
+        : [];
+    const superFrameByIdWithPending = new Map(superFramesWithPending.map(sf => [sf.id, sf]));
 
     const serializedFrames = frames.map(frame => {
       const lexicalUnitsCount = frame._count.lexical_units;
@@ -119,6 +149,25 @@ export async function GET(request: NextRequest) {
         id: frame.id.toString(),
         label: frame.label,
         code: frame.code,
+        super_frame_id: frame.super_frame_id?.toString() ?? null,
+        super_frame: (() => {
+          const sf = (frame as any).frames as { id: bigint; label: string; code: string | null } | null | undefined;
+          const sfId = sf?.id ? sf.id.toString() : null;
+          const sfPendingApplied = sfId ? superFrameByIdWithPending.get(sfId) : null;
+          if (sfPendingApplied) {
+            return {
+              id: sfPendingApplied.id,
+              label: sfPendingApplied.label,
+              code: sfPendingApplied.code ?? null,
+            };
+          }
+          if (!sfId) return null;
+          return {
+            id: sfId,
+            label: sf?.label ?? 'Unknown',
+            code: sf?.code ?? null,
+          };
+        })(),
         definition: frame.definition,
         short_definition: frame.short_definition,
         flagged: frame.flagged ?? false,

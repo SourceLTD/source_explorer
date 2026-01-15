@@ -3,7 +3,7 @@ import { GraphNode, PendingChangeInfo } from '@/lib/types';
 import { Mode, EditableField, FrameOption } from './types';
 import { OverlaySection } from './OverlaySection';
 import { VendlerClassSelector } from './VendlerClassSelector';
-import { FrameSelector } from './FrameSelector';
+import { FrameSearchSelector } from './FrameSearchSelector';
 import { LexfileSelector } from './LexfileSelector';
 import { PendingFieldIndicator } from '@/components/PendingChangeIndicator';
 
@@ -146,10 +146,9 @@ export function LexicalPropertiesSection({
             )}
           </div>
           {editingField === 'frame' ? (
-            <FrameSelector
+            <FrameSearchSelector
               value={editValue}
               onChange={onValueChange}
-              availableFrames={availableFrames}
               onSave={onSave}
               onCancel={onCancel}
               isSaving={isSaving}

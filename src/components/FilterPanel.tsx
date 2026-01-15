@@ -16,56 +16,12 @@ import LoadingSpinner from './LoadingSpinner';
 import { SparklesIcon } from '@heroicons/react/24/outline';
 import { POS_LABELS } from '@/lib/types';
 import type { DataTableMode } from './DataTable/types';
+import type { FilterState } from './DataTable/filterState';
 
 interface Frame {
   id: string;
   label: string;
   code?: string | null;
-}
-
-export interface FilterState {
-  // Text filters
-  gloss?: string;
-  lemmas?: string;
-  examples?: string;
-  frames?: string;
-  flaggedReason?: string;
-  unverifiableReason?: string;
-  
-  // Categorical filters
-  pos?: string;
-  lexfile?: string;
-  frame_id?: string; // Comma-separated frame IDs
-  // AI jobs filters
-  flaggedByJobId?: string;
-  
-  // Boolean filters
-  isMwe?: boolean;
-  flagged?: boolean;
-  verifiable?: boolean;
-  excludeNullFrame?: boolean;
-  
-  // Pending state filters
-  pendingCreate?: boolean;
-  pendingUpdate?: boolean;
-  pendingDelete?: boolean;
-  
-  // Numeric filters
-  parentsCountMin?: number;
-  parentsCountMax?: number;
-  childrenCountMin?: number;
-  childrenCountMax?: number;
-  
-  // Date filters
-  createdAfter?: string;
-  createdBefore?: string;
-  updatedAfter?: string;
-  updatedBefore?: string;
-  
-  // Frame-specific text filters
-  label?: string;
-  definition?: string;
-  short_definition?: string;
 }
 
 interface FilterPanelProps {
@@ -134,6 +90,8 @@ export default function FilterPanel({
   const buttonRef = useRef<HTMLButtonElement>(null);
   const frameDropdownContainerRef = useRef<HTMLDivElement>(null);
   const jobDropdownContainerRef = useRef<HTMLDivElement>(null);
+  const isFramesMode = mode === 'frames' || mode === 'super_frames' || mode === 'frames_only';
+  const canFilterBySuperFrameId = mode === 'frames' || mode === 'frames_only';
   
   const toggleSection = (section: string) => {
     setOpenSections(prev => {
@@ -146,6 +104,18 @@ export default function FilterPanel({
       return newSet;
     });
   };
+
+  // If a deep link sets a super_frame_id, make sure the relevant section is visible when opening the panel.
+  useEffect(() => {
+    if (!canFilterBySuperFrameId) return;
+    if (!filters.super_frame_id) return;
+    setOpenSections(prev => {
+      if (prev.has('hierarchy')) return prev;
+      const next = new Set(prev);
+      next.add('hierarchy');
+      return next;
+    });
+  }, [canFilterBySuperFrameId, filters.super_frame_id]);
 
   // Fetch frames when searching or when dropdown opens
   useEffect(() => {
@@ -242,6 +212,14 @@ export default function FilterPanel({
       normalizedValue = normalizedValue.length > 0 ? normalizedValue : undefined;
     } else if (normalizedValue === '') {
       normalizedValue = undefined;
+    }
+
+    // Guard: super frame IDs must be numeric; strip non-digits to avoid server BigInt() errors.
+    if (key === 'super_frame_id' && typeof normalizedValue === 'string') {
+      normalizedValue = normalizedValue.replace(/[^\d]/g, '');
+      if (normalizedValue === '') {
+        normalizedValue = undefined;
+      }
     }
 
     onFiltersChange({
@@ -438,8 +416,8 @@ export default function FilterPanel({
 
           {/* Filter Sections */}
           <div className="max-h-[32rem] overflow-y-auto">
-            {/* Category Filters - only show for non-frames modes */}
-            {mode !== 'frames' && (
+            {/* Category Filters - only show for lexical units */}
+            {mode === 'lexical_units' && (
               <FilterSection
                 title="Categories"
                 icon={<HashtagIcon className="w-4 h-4 text-gray-600" />}
@@ -593,6 +571,32 @@ export default function FilterPanel({
               </FilterSection>
             )}
 
+            {/* Frame hierarchy filters */}
+            {canFilterBySuperFrameId && (
+              <FilterSection
+                title="Hierarchy"
+                icon={<HashtagIcon className="w-4 h-4 text-gray-600" />}
+                isOpen={openSections.has('hierarchy')}
+                onToggle={() => toggleSection('hierarchy')}
+              >
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Super Frame ID</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    value={filters.super_frame_id || ''}
+                    onChange={(e) => updateFilter('super_frame_id', e.target.value)}
+                    placeholder="e.g., 12345"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    Show only child frames whose parent super frame matches this ID.
+                  </p>
+                </div>
+              </FilterSection>
+            )}
+
             {/* Text Filters */}
             <FilterSection
               title="Text Search"
@@ -600,7 +604,7 @@ export default function FilterPanel({
               isOpen={openSections.has('text')}
               onToggle={() => toggleSection('text')}
             >
-              {mode === 'frames' ? (
+              {isFramesMode ? (
                 <>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Frame Name</label>
@@ -902,7 +906,7 @@ export default function FilterPanel({
             </FilterSection>
 
             {/* Numeric Filters - only show for non-frames modes */}
-            {mode !== 'frames' && (
+            {mode === 'lexical_units' && (
               <FilterSection
                 title="Relationships"
                 icon={<HashtagIcon className="w-4 h-4 text-gray-600" />}

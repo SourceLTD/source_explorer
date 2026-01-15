@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { GraphNode, Frame, TableEntry } from '@/lib/types';
+import { GraphNode, Frame, TableLexicalUnit } from '@/lib/types';
 import { Mode } from '@/components/editing/types';
 
 type EntityData = GraphNode | Frame | null;
@@ -10,7 +10,7 @@ interface UseTableEditOverlayReturn {
   selectedEntityId: string;
   refreshTrigger: number;
   isLoading: boolean;
-  handleEditClick: (entry: TableEntry | Frame) => Promise<void>;
+  handleEditClick: (entry: TableLexicalUnit | Frame) => Promise<void>;
   handleUpdate: () => Promise<void>;
   handleCloseOverlay: () => void;
 }
@@ -21,7 +21,8 @@ interface UseTableEditOverlayReturn {
 function getApiEndpoint(mode: Mode, id: string, forUpdate: boolean = false): string {
   if (mode === 'frames') {
     // Frames use a different endpoint structure
-    return `/api/frames/${id}`;
+    const baseUrl = `/api/frames/${id}`;
+    return forUpdate ? `${baseUrl}?t=${Date.now()}` : baseUrl;
   }
   // Lexical units use unified endpoint
   const baseUrl = `/api/lexical-units/${id}/graph`;
@@ -39,14 +40,15 @@ export function useTableEditOverlay(mode: Mode): UseTableEditOverlayReturn {
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleEditClick = useCallback(async (entry: TableEntry | Frame) => {
+  const handleEditClick = useCallback(async (entry: TableLexicalUnit | Frame) => {
     setIsEditOverlayOpen(true);
     setSelectedEntityId(entry.id);
     setCurrentEntity(null);
     setIsLoading(true);
 
     try {
-      const response = await fetch(getApiEndpoint(mode, entry.id));
+      const fetchOptions = { cache: 'no-store' as RequestCache };
+      const response = await fetch(getApiEndpoint(mode, entry.id), fetchOptions);
       
       if (!response.ok) {
         const errorText = await response.text();
@@ -72,7 +74,7 @@ export function useTableEditOverlay(mode: Mode): UseTableEditOverlayReturn {
     // Reload current entity if we have one
     if (currentEntity) {
       try {
-        const fetchOptions = mode !== 'frames' ? { cache: 'no-store' as RequestCache } : {};
+        const fetchOptions = { cache: 'no-store' as RequestCache };
         const response = await fetch(getApiEndpoint(mode, currentEntity.id, true), fetchOptions);
         
         if (response.ok) {

@@ -147,7 +147,34 @@ export function handleDatabaseError(error: unknown, context?: string): {
   }
   
   if (error instanceof Error) {
-    const message = error.message.toLowerCase();
+    const rawMessage = error.message;
+    const message = rawMessage.toLowerCase();
+
+    // Common schema drift issue: app tries to write a new enum value that the DB doesn't have yet.
+    // Example: invalid input value for enum llm_job_type: "allocate"
+    const llmJobTypeEnumMismatch =
+      rawMessage.match(/invalid input value for enum\s+llm_job_type:\s*"([^"]+)"/i) ??
+      rawMessage.match(/invalid input value for enum\s+llm_job_type:\s*'([^']+)'/i);
+    if (llmJobTypeEnumMismatch) {
+      const badValue = llmJobTypeEnumMismatch[1] ?? 'unknown';
+      const isDevelopment = process.env.NODE_ENV === 'development';
+
+      const migrationHint =
+        badValue === 'allocate'
+          ? `Run: psql "$DATABASE_URL" -f migrations/add_allocate_job_type.sql (or use your non-pooling Postgres URL).`
+          : badValue === 'split'
+            ? `Run: psql "$DATABASE_URL" -f migrations/add_split_job_type.sql (or use your non-pooling Postgres URL).`
+            : `Add it with: ALTER TYPE llm_job_type ADD VALUE IF NOT EXISTS '${badValue}';`;
+
+      return {
+        message: isDevelopment
+          ? `Database schema out of date: enum llm_job_type is missing value "${badValue}". ${migrationHint}`
+          : 'Database schema is out of date. Please contact an administrator.',
+        status: 500,
+        shouldRetry: false,
+      };
+    }
+
     if (
       message.includes('timeout') ||
       message.includes('connection') ||

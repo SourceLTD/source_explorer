@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { renderPrompt, fetchEntriesForScope } from '@/lib/llm/jobs';
+import { renderPromptAsync, fetchUnitsForScope } from '@/lib/llm/jobs';
 import type { JobScope } from '@/lib/llm/types';
 import type { Prisma } from '@prisma/client';
 
@@ -44,7 +44,7 @@ export async function POST(request: NextRequest, context: Context) {
     }
 
     // 2. Fetch entries for the provided scope
-    const entries = await fetchEntriesForScope(payload.scope);
+    const entries = await fetchUnitsForScope(payload.scope);
 
     if (entries.length === 0) {
       return NextResponse.json({ error: 'No entries found for provided scope' }, { status: 400 });
@@ -57,8 +57,8 @@ export async function POST(request: NextRequest, context: Context) {
       );
     }
 
-    // 3. Get job config to access userPromptTemplate (the key used when creating jobs)
-    const config = job.config as { userPromptTemplate?: string } | null;
+    // 3. Get job config to access userPromptTemplate + metadata (for clustering settings)
+    const config = job.config as { userPromptTemplate?: string; metadata?: Record<string, unknown> } | null;
     const promptTemplate = config?.userPromptTemplate;
     
     if (!promptTemplate) {
@@ -66,8 +66,8 @@ export async function POST(request: NextRequest, context: Context) {
     }
 
     // 4. Render prompts and prepare job items
-    const preparedJobItemsData = entries.map(entry => {
-      const { prompt, variables } = renderPrompt(promptTemplate, entry);
+    const preparedJobItemsData = await Promise.all(entries.map(async (entry) => {
+      const { prompt, variables } = await renderPromptAsync(promptTemplate, entry, { metadata: config?.metadata });
 
       const frameInfo = entry.frame ? {
         name: entry.frame.label,
@@ -104,7 +104,7 @@ export async function POST(request: NextRequest, context: Context) {
         frame_id: entry.pos === 'frames' ? entry.dbId : null,
         request_payload: requestPayload as Prisma.InputJsonObject,
       };
-    });
+    }));
 
     // 5. Insert new items in a transaction
     await prisma.$transaction(async (tx) => {

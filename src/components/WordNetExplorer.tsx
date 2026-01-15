@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { FlagIcon } from '@heroicons/react/24/outline';
 import { GraphNode, SearchResult, BreadcrumbItem, EntryRecipes } from '@/lib/types';
 import LexicalGraph from './LexicalGraph';
 import RecipesGraph from './RecipesGraph';
@@ -12,7 +13,6 @@ import PendingChangesButton from './PendingChangesButton';
 import SignOutButton from './SignOutButton';
 import RootNodesView from './RootNodesView';
 import { EditOverlay } from './editing/EditOverlay';
-import CategoryDropdown from './CategoryDropdown';
 import LoadingSpinner from './LoadingSpinner';
 
 interface WordNetExplorerProps {
@@ -219,7 +219,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'lexical_units'
   const handleFlagToggle = async () => {
     if (!currentNode) return;
     try {
-      await fetch('/api/lexical-units/moderation', {
+      await fetch('/api/lexical-units/flag', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -238,7 +238,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'lexical_units'
   const handleVerifiableToggle = async () => {
     if (!currentNode) return;
     try {
-      await fetch('/api/lexical-units/moderation', {
+      await fetch('/api/lexical-units/flag', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -271,15 +271,13 @@ export default function WordNetExplorer({ initialEntryId, mode = 'lexical_units'
       {/* Header */}
       <header className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-8">
+          <div className="flex items-center gap-4">
             <button
               onClick={() => router.push('/')}
               className="text-xl font-bold text-gray-900 hover:text-gray-700 cursor-pointer"
             >
               Source Console
             </button>
-            <div className="h-6 w-px bg-gray-300"></div>
-            <CategoryDropdown currentCategory={mode === 'verbs' || mode === 'nouns' || mode === 'adjectives' || mode === 'adverbs' ? 'lexical_units' : mode} currentView="graph" />
             <p className="text-sm text-gray-600">
               Explore lexical relationships
             </p>
@@ -298,17 +296,12 @@ export default function WordNetExplorer({ initialEntryId, mode = 'lexical_units'
               currentView={currentView}
               onViewChange={(view: ViewMode) => {
                 if (view === 'table') {
-                  let tablePath = '/table';
-                  if (mode === 'nouns') tablePath = '/table/nouns';
-                  else if (mode === 'adjectives') tablePath = '/table/adjectives';
-                  else if (mode === 'adverbs') tablePath = '/table/adverbs';
-                  router.push(tablePath);
+                  router.push('/table');
                 } else {
                   setCurrentView(view);
                   updateViewParam(view);
                 }
               }}
-              hideRecipes={mode === 'nouns' || mode === 'adjectives' || mode === 'adverbs'}
             />
             <PendingChangesButton />
             <SignOutButton />
@@ -353,10 +346,10 @@ export default function WordNetExplorer({ initialEntryId, mode = 'lexical_units'
                 {/* Status Indicators */}
                 <div className="flex items-center gap-2 mb-3">
                   {currentNode.flagged && (
-                    <span className="inline-block px-2 py-1 text-xs rounded font-medium bg-orange-100 text-orange-800">
+                    <span className="inline-block px-2 py-1 text-xs rounded font-medium bg-blue-100 text-blue-800">
                       Flagged
                       {currentNode.flaggedReason && (
-                        <span className="ml-1 text-orange-600">({currentNode.flaggedReason})</span>
+                        <span className="ml-1 text-blue-600">({currentNode.flaggedReason})</span>
                       )}
                     </span>
                   )}
@@ -370,19 +363,17 @@ export default function WordNetExplorer({ initialEntryId, mode = 'lexical_units'
                   )}
                 </div>
                 
-                {/* Moderation Actions */}
+                {/* Flagging Actions */}
                 <div className="flex items-center gap-2 mb-4">
                   <button
                     onClick={handleFlagToggle}
                     className={`flex items-center gap-1 px-3 py-1 text-sm font-medium border rounded-xl transition-colors cursor-pointer ${
                       currentNode.flagged 
-                        ? 'text-orange-700 bg-orange-100 border-orange-200 hover:bg-orange-200' 
+                        ? 'text-blue-700 bg-blue-100 border-blue-200 hover:bg-blue-200' 
                         : 'text-gray-700 bg-gray-100 border-gray-200 hover:bg-gray-200'
                     }`}
                   >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 2H21l-3 6 3 6h-8.5l-1-2H5a2 2 0 00-2 2zm9-13.5V9" />
-                    </svg>
+                    <FlagIcon className="w-4 h-4" />
                     {currentNode.flagged ? 'Unflag' : 'Flag'}
                   </button>
                   <button

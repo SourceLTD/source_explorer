@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { revalidateAllEntryCaches } from '@/lib/db'
+import { revalidateAllUnitCaches } from '@/lib/db'
 import type { lexical_unit_relation_type, Prisma } from '@prisma/client'
 
 // Force dynamic rendering
@@ -15,7 +15,7 @@ interface RelationRequest {
 
 interface ChangeHypernymRequest {
   action: 'change_hypernym';
-  entryId: string;
+  unitId: string;
   oldHypernym?: string;
   newHypernym: string;
   hyponymsToMove: string[];
@@ -23,12 +23,12 @@ interface ChangeHypernymRequest {
 }
 
 async function handleChangeHypernym(req: ChangeHypernymRequest): Promise<NextResponse> {
-  const { entryId, oldHypernym, newHypernym, hyponymsToMove, hyponymsToStay } = req;
+  const { unitId, oldHypernym, newHypernym, hyponymsToMove, hyponymsToStay } = req;
 
   // Get entry IDs
   const entry = await prisma.lexical_units.findFirst({
     where: { 
-      code: entryId,
+      code: unitId,
       deleted: false
     },
     select: { id: true }
@@ -38,7 +38,7 @@ async function handleChangeHypernym(req: ChangeHypernymRequest): Promise<NextRes
     return NextResponse.json({ error: 'Entry not found' }, { status: 404 });
   }
 
-  const newHypernymEntry = await prisma.lexical_units.findFirst({
+  const newHypernymUnit = await prisma.lexical_units.findFirst({
     where: { 
       code: newHypernym,
       deleted: false
@@ -46,13 +46,13 @@ async function handleChangeHypernym(req: ChangeHypernymRequest): Promise<NextRes
     select: { id: true }
   });
 
-  if (!newHypernymEntry) {
+  if (!newHypernymUnit) {
     return NextResponse.json({ error: 'New hypernym not found' }, { status: 404 });
   }
 
   // 1. Delete old hypernym relation (entry -> oldHypernym)
   if (oldHypernym) {
-    const oldHypernymEntry = await prisma.lexical_units.findFirst({
+    const oldHypernymUnit = await prisma.lexical_units.findFirst({
       where: { 
         code: oldHypernym,
         deleted: false
@@ -60,11 +60,11 @@ async function handleChangeHypernym(req: ChangeHypernymRequest): Promise<NextRes
       select: { id: true }
     });
 
-    if (oldHypernymEntry) {
+    if (oldHypernymUnit) {
       await prisma.lexical_unit_relations.deleteMany({
         where: {
           source_id: entry.id,
-          target_id: oldHypernymEntry.id,
+          target_id: oldHypernymUnit.id,
           type: 'hypernym'
         }
       });
@@ -76,13 +76,13 @@ async function handleChangeHypernym(req: ChangeHypernymRequest): Promise<NextRes
     where: {
       source_id_type_target_id: {
         source_id: entry.id,
-        target_id: newHypernymEntry.id,
+        target_id: newHypernymUnit.id,
         type: 'hypernym'
       }
     },
     create: {
       source_id: entry.id,
-      target_id: newHypernymEntry.id,
+      target_id: newHypernymUnit.id,
       type: 'hypernym'
     },
     update: {}
@@ -90,7 +90,7 @@ async function handleChangeHypernym(req: ChangeHypernymRequest): Promise<NextRes
 
   // 3. For hyponyms that stay: change their hypernym relation from entry to oldHypernym
   if (oldHypernym && hyponymsToStay.length > 0) {
-    const oldHypernymEntry = await prisma.lexical_units.findFirst({
+    const oldHypernymUnit = await prisma.lexical_units.findFirst({
       where: { 
         code: oldHypernym,
         deleted: false
@@ -98,9 +98,9 @@ async function handleChangeHypernym(req: ChangeHypernymRequest): Promise<NextRes
       select: { id: true }
     });
 
-    if (oldHypernymEntry) {
+    if (oldHypernymUnit) {
       for (const hyponymCode of hyponymsToStay) {
-        const hyponymEntry = await prisma.lexical_units.findFirst({
+        const hyponymUnit = await prisma.lexical_units.findFirst({
           where: { 
             code: hyponymCode,
             deleted: false
@@ -108,11 +108,11 @@ async function handleChangeHypernym(req: ChangeHypernymRequest): Promise<NextRes
           select: { id: true }
         });
 
-        if (hyponymEntry) {
+        if (hyponymUnit) {
           // Delete relation: hyponym -> entry
           await prisma.lexical_unit_relations.deleteMany({
             where: {
-              source_id: hyponymEntry.id,
+              source_id: hyponymUnit.id,
               target_id: entry.id,
               type: 'hypernym'
             }
@@ -122,14 +122,14 @@ async function handleChangeHypernym(req: ChangeHypernymRequest): Promise<NextRes
           await prisma.lexical_unit_relations.upsert({
             where: {
               source_id_type_target_id: {
-                source_id: hyponymEntry.id,
-                target_id: oldHypernymEntry.id,
+                source_id: hyponymUnit.id,
+                target_id: oldHypernymUnit.id,
                 type: 'hypernym'
               }
             },
             create: {
-              source_id: hyponymEntry.id,
-              target_id: oldHypernymEntry.id,
+              source_id: hyponymUnit.id,
+              target_id: oldHypernymUnit.id,
               type: 'hypernym'
             },
             update: {}
@@ -139,7 +139,7 @@ async function handleChangeHypernym(req: ChangeHypernymRequest): Promise<NextRes
     }
   }
 
-  revalidateAllEntryCaches();
+  revalidateAllUnitCaches();
 
   return NextResponse.json({ 
     success: true,
@@ -177,17 +177,17 @@ export async function POST(request: NextRequest) {
     }
     
     // Convert codes to numeric IDs
-    const sourceEntry = await prisma.lexical_units.findFirst({
+    const sourceUnit = await prisma.lexical_units.findFirst({
       where: { code: relationBody.sourceId, deleted: false },
       select: { id: true }
     })
     
-    const targetEntry = await prisma.lexical_units.findFirst({
+    const targetUnit = await prisma.lexical_units.findFirst({
       where: { code: relationBody.targetId, deleted: false },
       select: { id: true }
     })
     
-    if (!sourceEntry || !targetEntry) {
+    if (!sourceUnit || !targetUnit) {
       return NextResponse.json(
         { error: 'One or both entries do not exist' },
         { status: 400 }
@@ -196,8 +196,8 @@ export async function POST(request: NextRequest) {
     
     const relation = await prisma.lexical_unit_relations.create({
       data: {
-        source_id: sourceEntry.id,
-        target_id: targetEntry.id,
+        source_id: sourceUnit.id,
+        target_id: targetUnit.id,
         type: relationBody.type
       }
     })
@@ -226,25 +226,25 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
     
-    const sourceEntry = await prisma.lexical_units.findFirst({
+    const sourceUnit = await prisma.lexical_units.findFirst({
       where: { code: body.sourceId, deleted: false },
       select: { id: true }
     })
     
-    const targetEntry = await prisma.lexical_units.findFirst({
+    const targetUnit = await prisma.lexical_units.findFirst({
       where: { code: body.targetId, deleted: false },
       select: { id: true }
     })
     
-    if (!sourceEntry || !targetEntry) {
+    if (!sourceUnit || !targetUnit) {
       return NextResponse.json({ error: 'Entries not found' }, { status: 404 })
     }
     
     await prisma.lexical_unit_relations.delete({
       where: {
         source_id_type_target_id: {
-          source_id: sourceEntry.id,
-          target_id: targetEntry.id,
+          source_id: sourceUnit.id,
+          target_id: targetUnit.id,
           type: body.type
         }
       }
