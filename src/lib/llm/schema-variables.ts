@@ -151,6 +151,7 @@ const ADVERB_VARIABLES: VariableDefinition[] = [
 // Frame-specific variables (regular frames with lexical units)
 const FRAME_VARIABLES: VariableDefinition[] = [
   { key: 'id', label: 'Id', category: 'basic' },
+  { key: 'code', label: 'Code', category: 'basic' },
   { key: 'pos', label: 'Pos', category: 'computed' },
   { key: 'label', label: 'Label', category: 'basic' },
   { key: 'definition', label: 'Definition', category: 'basic' },
@@ -181,10 +182,12 @@ const FRAME_VARIABLES: VariableDefinition[] = [
 // Superframe-specific variables (frames that contain other frames, not lexical units)
 const SUPERFRAME_VARIABLES: VariableDefinition[] = [
   { key: 'id', label: 'Id', category: 'basic' },
+  { key: 'code', label: 'Code', category: 'basic' },
   { key: 'pos', label: 'Pos', category: 'computed' },
   { key: 'label', label: 'Label', category: 'basic' },
   { key: 'definition', label: 'Definition', category: 'basic' },
   { key: 'short_definition', label: 'Short Definition', category: 'basic' },
+  { key: 'roles', label: 'Roles', category: 'basic' },
   { key: 'flagged', label: 'Flagged', category: 'basic' },
   { key: 'flagged_reason', label: 'Flagged Reason', category: 'basic' },
   { key: 'verifiable', label: 'Verifiable', category: 'basic' },
@@ -222,12 +225,31 @@ export function getVariablesForEntityType(entityType: DataTableMode, isSuperFram
         ...ADVERB_VARIABLES
       ].map(v => [v.key, v])).values());
     case 'frames':
+    case 'frames_only':
       // Return superframe or regular frame variables based on flag
       return isSuperFrame ? SUPERFRAME_VARIABLES : FRAME_VARIABLES;
     case 'super_frames':
       return SUPERFRAME_VARIABLES;
     default:
       return COMMON_VARIABLES;
+  }
+}
+
+/**
+ * Get available variables for a specific lexical POS.
+ */
+export function getVariablesForLexicalPos(pos: 'verb' | 'noun' | 'adjective' | 'adverb' | 'lexical_units'): VariableDefinition[] {
+  switch (pos) {
+    case 'verb':
+      return VERB_VARIABLES;
+    case 'noun':
+      return NOUN_VARIABLES;
+    case 'adjective':
+      return ADJECTIVE_VARIABLES;
+    case 'adverb':
+      return ADVERB_VARIABLES;
+    default:
+      return getVariablesForEntityType('lexical_units');
   }
 }
 

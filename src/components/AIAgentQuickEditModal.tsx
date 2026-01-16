@@ -9,6 +9,7 @@ import { showGlobalAlert } from '@/lib/alerts';
 import type { SerializedJob } from '@/lib/llm/types';
 import type { JobTargetType } from '@/lib/llm/types';
 import type { DataTableMode } from '@/components/DataTable/types';
+import { getVariablesForEntityType, getVariablesForLexicalPos } from '@/lib/llm/schema-variables';
 import { createClient } from '@/utils/supabase/client';
 
 interface AIAgentQuickEditModalProps {
@@ -21,24 +22,24 @@ interface AIAgentQuickEditModalProps {
 
 // Helper to get editable fields by entity type
 function getEditableFields(entry: TableLexicalUnit | Frame, mode: DataTableMode): string[] {
+  const excludeKeys = new Set(['id', 'pos', 'flagged', 'flagged_reason']);
+  const toTargetFields = (variables: Array<{ key: string; category?: string }>) =>
+    variables
+      .filter(v => v.category === 'basic' && !excludeKeys.has(v.key))
+      .map(v => v.key);
+
   if (mode === 'frames' || mode === 'super_frames' || mode === 'frames_only') {
-    return ['definition', 'short_definition'];
+    const isSuperFrame =
+      mode === 'super_frames'
+        ? true
+        : mode === 'frames_only'
+          ? false
+          : (entry as Frame).super_frame_id == null;
+    return toTargetFields(getVariablesForEntityType('frames', isSuperFrame));
   }
 
-  // For lexical units, determine fields based on POS
-  const pos = (entry as TableLexicalUnit).pos;
-  switch (pos) {
-    case 'verb':
-      return ['gloss', 'lemmas', 'examples', 'vendler_class'];
-    case 'noun':
-      return ['gloss', 'lemmas', 'examples', 'countable', 'proper', 'collective', 'concrete', 'predicate'];
-    case 'adjective':
-      return ['gloss', 'lemmas', 'examples', 'gradable', 'predicative', 'attributive', 'subjective', 'relational'];
-    case 'adverb':
-      return ['gloss', 'lemmas', 'examples', 'gradable'];
-    default:
-      return ['gloss', 'lemmas', 'examples'];
-  }
+  const pos = (entry as TableLexicalUnit).pos as 'verb' | 'noun' | 'adjective' | 'adverb' | 'lexical_units';
+  return toTargetFields(getVariablesForLexicalPos(pos));
 }
 
 // Helper to get entry identifier for display

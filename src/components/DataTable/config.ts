@@ -9,6 +9,7 @@ export type { DataTableMode };
 export const LEXICAL_UNITS_DEFAULT_COLUMNS: ColumnConfig[] = [
   { key: 'id', label: 'ID', visible: false, sortable: true },
   { key: 'legacy_id', label: 'Legacy ID', visible: false, sortable: true },
+  { key: 'code', label: 'Code', visible: true, sortable: true },
   { key: 'pos', label: 'Part of Speech', visible: true, sortable: true },
   { key: 'frame', label: 'Frame Code', visible: true, sortable: true },
   { key: 'lemmas', label: 'Lemmas', visible: true, sortable: true },

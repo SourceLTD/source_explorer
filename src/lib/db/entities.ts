@@ -359,6 +359,7 @@ function transformToTableLexicalUnit(
 
   return {
     id: entryCode,
+    code: entryCode,
     numericId,
     legacy_id: entry.legacy_id,
     lemmas: entry.lemmas,

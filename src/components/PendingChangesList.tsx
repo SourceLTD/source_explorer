@@ -21,6 +21,11 @@ import type { ConflictError } from './ui';
 import { useTableSelection } from '@/hooks/useTableSelection';
 import { refreshPendingChangesCount } from '@/hooks/usePendingChangesCount';
 import ContextSection from '@/components/pending/ContextSection';
+import FrameReallocationContext from '@/components/pending/context/FrameReallocationContext';
+import LexicalUnitReallocationContext from '@/components/pending/context/LexicalUnitReallocationContext';
+import EntityHoverPopup from '@/components/pending/EntityHoverPopup';
+import ReferenceHoverPopup from '@/components/pending/ReferenceHoverPopup';
+import { buildVirtualIndex, type VirtualIndex } from '@/components/pending/virtualIndex';
 
 // --- Types ---
 
@@ -119,6 +124,21 @@ interface PendingChangesListProps {
 
 // --- Helpers ---
 
+function normalizeIntLike(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    return /^-?\d+$/.test(trimmed) ? trimmed : null;
+  }
+  if (typeof value === 'number') {
+    if (!Number.isInteger(value)) return null;
+    return String(value);
+  }
+  if (typeof value === 'bigint') return value.toString();
+  return null;
+}
+
 function formatValue(value: unknown): string {
   if (value === null || value === undefined) return 'null';
   if (typeof value === 'boolean') return value ? 'true' : 'false';
@@ -138,6 +158,9 @@ function parseFrameRolesFieldName(fieldName: string): { roleType: string; field:
 }
 
 function formatFieldName(fieldName: string, opts?: { short?: boolean }): string {
+  if (fieldName === 'super_frame_id') return 'Super Frame';
+  if (fieldName === 'frame_id') return 'Frame';
+
   const parsed = parseFrameRolesFieldName(fieldName);
   if (!parsed) return fieldName;
   if (opts?.short) {
@@ -213,6 +236,43 @@ function getInitials(user: string | null): string {
   if (formatted === 'System' || formatted === 'LLM Agent') return formatted[0];
   if (formatted === 'unknown') return '?';
   return formatted.slice(0, 2).toUpperCase();
+}
+
+function renderValueWithHover(
+  fc: FieldChange,
+  which: 'old' | 'new',
+  opts: { size?: 'xs' | 'sm' } | undefined,
+  virtualIndex?: VirtualIndex
+) {
+  const val = formatFieldChangeValue(fc, which);
+  const rawVal = which === 'old' ? fc.old_value : fc.new_value;
+  const size = opts?.size || 'sm';
+  const sizeClass = size === 'xs' ? 'text-xs' : 'text-sm';
+
+  const isSuperFrameRef = fc.field_name === 'super_frame_id';
+  const isFrameRef = fc.field_name === 'frame_id';
+  const isRef = isSuperFrameRef || isFrameRef;
+  const normalizedId = normalizeIntLike(rawVal);
+  
+  if (!isRef || !normalizedId) {
+    return (
+      <span className={`${sizeClass} break-all ${which === 'old' ? 'text-gray-500 line-through font-medium' : 'text-gray-900 font-bold'}`}>
+        {val}
+      </span>
+    );
+  }
+
+  return (
+    <ReferenceHoverPopup
+      mode={isSuperFrameRef ? 'super_frame_children' : 'frame_lexical_entries'}
+      entityId={normalizedId}
+      virtualIndex={virtualIndex}
+    >
+      <span className={`${sizeClass} break-all border-b border-dotted border-gray-400 cursor-help ${which === 'old' ? 'text-gray-500 line-through font-medium' : 'text-gray-900 font-bold'}`}>
+        {val}
+      </span>
+    </ReferenceHoverPopup>
+  );
 }
 
 // --- Column Configuration ---
@@ -477,6 +537,8 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
     return sets;
   }, [data]);
 
+  const virtualIndex = useMemo(() => buildVirtualIndex(flatChangesets), [flatChangesets]);
+
   // --- Filter Options ---
   const filterOptions = useMemo(() => {
     const entityTypes = new Set<string>();
@@ -659,7 +721,20 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
       case 'type':
         return <span className="text-xs font-semibold text-gray-500 uppercase">{cs.entity_type}</span>;
       case 'entity':
-        return <span className="text-sm font-medium text-gray-900">{cs.entity_display}</span>;
+        return (
+          <EntityHoverPopup
+            entityType={cs.entity_type}
+            entityId={cs.entity_id}
+            beforeSnapshot={cs.before_snapshot}
+            afterSnapshot={cs.after_snapshot}
+            operation={cs.operation}
+            fieldChanges={cs.field_changes}
+          >
+            <span className="text-sm font-medium text-gray-900 border-b border-dotted border-gray-400">
+              {cs.entity_display}
+            </span>
+          </EntityHoverPopup>
+        );
       case 'op':
         return (
           <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase ${getOperationColor(cs.operation)}`}>
@@ -740,9 +815,9 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
             {pendingChanges.map(f => (
               <div key={f.id} className="flex items-baseline gap-2 text-xs">
                 <span className="font-mono text-blue-600 flex-shrink-0">{formatFieldName(f.field_name)}</span>
-                <span className="text-gray-400 line-through whitespace-pre-wrap break-words">{formatFieldChangeValue(f, 'old')}</span>
+                {renderValueWithHover(f, 'old', { size: 'xs' }, virtualIndex)}
                 <span className="text-gray-300 flex-shrink-0">→</span>
-                <span className="text-gray-900 whitespace-pre-wrap break-words">{formatFieldChangeValue(f, 'new')}</span>
+                {renderValueWithHover(f, 'new', { size: 'xs' }, virtualIndex)}
               </div>
             ))}
             {pendingChanges.length === 0 && (approvedCount > 0 || rejectedCount > 0) && (
@@ -1037,7 +1112,9 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
           customHeader={
             <div className="flex-1">
               <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                <span>{selectedDetail.entity_display}</span>
+                <span>
+                  Pending {selectedDetail.entity_type === 'lexical_unit' ? 'Lexical Entry' : selectedDetail.entity_type.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')} Change
+                </span>
                 <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${getOperationColor(selectedDetail.operation)}`}>
                   {selectedDetail.operation}
                 </span>
@@ -1138,7 +1215,7 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
                 />
 
                 <div className="space-y-3">
-                  <div className="text-sm font-semibold text-gray-900">Changes</div>
+                  <div className="text-lg font-semibold text-gray-900">Changes</div>
 
                   {/* Handle delete operation */}
                   {selectedDetail.operation === 'delete' && (() => {
@@ -1262,16 +1339,34 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
                               </div>
                             </div>
                             <div className="flex items-start gap-3 text-sm">
-                              <div className="flex-1 min-w-0">
-                                <span className="text-xs text-gray-500 block mb-1">Current:</span>
-                                <span className="text-gray-500 line-through break-all">{formatFieldChangeValue(fc, 'old')}</span>
+                              <div className="flex-1 min-w-0 text-center">
+                                {renderValueWithHover(fc, 'old', undefined, virtualIndex)}
                               </div>
-                              <span className="text-gray-300 flex-shrink-0 mt-5">→</span>
-                              <div className="flex-1 min-w-0">
-                                <span className="text-xs text-gray-500 block mb-1">New:</span>
-                                <span className="text-gray-900 break-all">{formatFieldChangeValue(fc, 'new')}</span>
+                              <div className="flex-shrink-0 self-center px-2">
+                                <svg className="w-20 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 80 24" xmlns="http://www.w3.org/2000/svg">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M10 12h60m-8-8l8 8-8 8"></path>
+                                </svg>
+                              </div>
+                              <div className="flex-1 min-w-0 text-center">
+                                {renderValueWithHover(fc, 'new', undefined, virtualIndex)}
                               </div>
                             </div>
+
+                            {/* Injected Reallocation Context */}
+                            {fc.field_name === 'super_frame_id' && selectedDetail.entity_type === 'frame' && (
+                              <FrameReallocationContext
+                                oldSuperFrameRef={normalizeIntLike(fc.old_value)}
+                                newSuperFrameRef={normalizeIntLike(fc.new_value)}
+                                virtualIndex={virtualIndex}
+                              />
+                            )}
+                            {fc.field_name === 'frame_id' && selectedDetail.entity_type === 'lexical_unit' && (
+                              <LexicalUnitReallocationContext
+                                oldFrameRef={normalizeIntLike(fc.old_value)}
+                                newFrameRef={normalizeIntLike(fc.new_value)}
+                                virtualIndex={virtualIndex}
+                              />
+                            )}
                           </div>
                         );
 

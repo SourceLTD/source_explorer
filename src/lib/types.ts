@@ -293,6 +293,7 @@ export interface PaginatedSearchResult {
 
 export interface TableEntry {
   id: string;
+  code: string;
   numericId: string;
   legacy_id: string;
   lemmas: string[];

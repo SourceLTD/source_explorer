@@ -14,6 +14,10 @@ import type {
   ChildFrameData
 } from './types';
 
+function mergeLemmas(lemmas?: string[] | null, srcLemmas?: string[] | null): string[] {
+  return Array.from(new Set([...(srcLemmas ?? []), ...(lemmas ?? [])].filter(Boolean)));
+}
+
 /**
  * Build structured frame data for template loops.
  */
@@ -68,7 +72,7 @@ function buildStructuredFrameData(frameRecord: {
     gloss: lu.gloss,
     pos: lu.pos as POSType,
     // Abstract away src_lemmas vs lemmas: combine both into one list
-    lemmas: Array.from(new Set([...(lu.src_lemmas ?? []), ...(lu.lemmas ?? [])].filter(Boolean))),
+    lemmas: mergeLemmas(lu.lemmas, lu.src_lemmas),
     examples: lu.examples,
     flagged: lu.flagged ?? false,
   }));
@@ -495,6 +499,7 @@ async function fetchEntriesByIds(targetType: JobTargetType, ids: string[], isSup
           pos: true,
           gloss: true,
           lemmas: true,
+          src_lemmas: true,
           examples: true,
           flagged: true,
           flagged_reason: true,
@@ -557,7 +562,7 @@ async function fetchEntriesByIds(targetType: JobTargetType, ids: string[], isSup
           code: record.code,
           pos: targetType,
           gloss: record.gloss,
-          lemmas: record.lemmas,
+          lemmas: mergeLemmas(record.lemmas, record.src_lemmas),
           examples: record.examples,
           flagged: record.flagged,
           flagged_reason: record.flagged_reason,
@@ -829,7 +834,7 @@ async function fetchEntriesByFrameIds(
           code: lu.code,
           pos: lu.pos as POSType,
           gloss: lu.gloss,
-          lemmas: lu.lemmas,
+          lemmas: mergeLemmas(lu.lemmas, lu.src_lemmas),
           examples: lu.examples,
           flagged: lu.flagged,
           flagged_reason: lu.flagged_reason,
@@ -1074,7 +1079,7 @@ async function fetchEntriesByFilters(
       code: record.code,
       pos: targetType,
       gloss: record.gloss,
-      lemmas: record.lemmas,
+      lemmas: mergeLemmas(record.lemmas, record.src_lemmas),
       examples: record.examples,
       flagged: record.flagged ?? undefined,
       flagged_reason: record.flagged_reason ?? null,

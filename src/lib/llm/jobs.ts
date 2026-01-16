@@ -957,6 +957,8 @@ export async function createLLMJob(
         label: entry.label ?? null,
         flagged: entry.flagged ?? false,
         flagged_reason: entry.flagged_reason ?? null,
+          verifiable: entry.verifiable ?? null,
+          unverifiable_reason: entry.unverifiable_reason ?? null,
         lexfile: entry.lexfile ?? null,
         definition: entry.definition ?? null,
         short_definition: entry.short_definition ?? null,

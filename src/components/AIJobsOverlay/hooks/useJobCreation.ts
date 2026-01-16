@@ -17,6 +17,7 @@ import {
 } from '../constants';
 import {
   calculateCursorPosition,
+  getReplacementRange,
   parseIds,
   idsToText,
   serviceTierToPriority,
@@ -147,6 +148,8 @@ export interface UseJobCreationReturn {
   setEditorScroll: (scroll: { top: number; left: number }) => void;
   handlePromptChange: (event: React.ChangeEvent<HTMLTextAreaElement>) => void;
   handlePromptKeyDown: (event: React.KeyboardEvent<HTMLTextAreaElement>) => void;
+  handlePromptSelect: (event: React.SyntheticEvent<HTMLTextAreaElement>) => void;
+  handlePromptBlur: () => void;
   insertVariable: (key: string) => void;
   
   // Preview & estimate state
@@ -799,37 +802,67 @@ export function useJobCreation({
     setCurrentStep('scope');
   }, [selectedIds, mode, manualIdAutocomplete, frameIdAutocomplete, isAllocateAllowed, isReallocateAllowed, isSplitAllowed]);
 
-  // Prompt handlers
-  const handlePromptChange = useCallback((event: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const { value, selectionStart } = event.target;
-    setPromptTemplate(value);
-    setPromptManuallyEdited(true);
-    // Auto-switch to advanced mode when user edits the prompt
-    setPromptMode('advanced');
+  const updateVariableMenuFromCaret = useCallback((
+    textarea: HTMLTextAreaElement,
+    options?: { allowOpen?: boolean }
+  ) => {
+    const { value, selectionStart, selectionEnd } = textarea;
+    if (selectionStart === null || selectionEnd === null) return;
+
+    // Close menu when there's a selection range
+    if (selectionStart !== selectionEnd) {
+      if (showVariableMenu) {
+        setShowVariableMenu(false);
+        setVariableQuery('');
+        setVariableActiveIndex(-1);
+      }
+      return;
+    }
 
     const uptoCursor = value.slice(0, selectionStart);
     const openIndex = uptoCursor.lastIndexOf('{{');
     const closeIndex = uptoCursor.lastIndexOf('}}');
+    const insideToken = openIndex !== -1 && openIndex > closeIndex;
 
-    if (openIndex !== -1 && openIndex > closeIndex) {
-      setShowVariableMenu(true);
-      const query = uptoCursor.slice(openIndex + 2).trim();
-      setVariableQuery(query);
-      setVariableActiveIndex(0);
-      setVariableCursorPos(selectionStart); // Track cursor position for loop context detection
-      
-      requestAnimationFrame(() => {
-        if (promptRef.current) {
-          const position = calculateCursorPosition(promptRef.current, selectionStart);
-          setVariableMenuPosition(position);
-        }
-      });
-    } else {
-      setShowVariableMenu(false);
-      setVariableQuery('');
-      setVariableActiveIndex(-1);
+    if (!insideToken) {
+      if (showVariableMenu) {
+        setShowVariableMenu(false);
+        setVariableQuery('');
+        setVariableActiveIndex(-1);
+      }
+      return;
     }
-  }, []);
+
+    if (!showVariableMenu && !options?.allowOpen) {
+      return;
+    }
+
+    if (!showVariableMenu) {
+      setShowVariableMenu(true);
+      setVariableActiveIndex(0);
+    }
+
+    const query = uptoCursor.slice(openIndex + 2).trim();
+    setVariableQuery(query);
+    setVariableCursorPos(selectionStart); // Track cursor position for loop context detection
+
+    requestAnimationFrame(() => {
+      if (promptRef.current) {
+        const position = calculateCursorPosition(promptRef.current, selectionStart);
+        setVariableMenuPosition(position);
+      }
+    });
+  }, [showVariableMenu]);
+
+  // Prompt handlers
+  const handlePromptChange = useCallback((event: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const { value } = event.target;
+    setPromptTemplate(value);
+    setPromptManuallyEdited(true);
+    // Auto-switch to advanced mode when user edits the prompt
+    setPromptMode('advanced');
+    updateVariableMenuFromCaret(event.target, { allowOpen: true });
+  }, [updateVariableMenuFromCaret]);
 
   const handlePromptKeyDown = useCallback((event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (!showVariableMenu || filteredVariables.length === 0) return;
@@ -850,26 +883,31 @@ export function useJobCreation({
     }
   }, [showVariableMenu, filteredVariables, variableActiveIndex]);
 
+  const handlePromptSelect = useCallback((event: React.SyntheticEvent<HTMLTextAreaElement>) => {
+    updateVariableMenuFromCaret(event.currentTarget, { allowOpen: false });
+  }, [updateVariableMenuFromCaret]);
+
+  const handlePromptBlur = useCallback(() => {
+    setShowVariableMenu(false);
+    setVariableQuery('');
+    setVariableActiveIndex(-1);
+  }, []);
+
   const insertVariable = useCallback((key: string) => {
     const textarea = promptRef.current;
     if (!textarea) return;
 
-    const { selectionStart, value } = textarea;
+    const { selectionStart, selectionEnd, value } = textarea;
+    if (selectionStart === null || selectionEnd === null) return;
     // Special-case lemma arrays in loop contexts so insertion renders as a comma-separated list.
     // Top-level `lemmas` is already a string in buildVariableMap, but loop vars like `lu.lemmas` are arrays.
     const toInsert = key.includes('.') && key.endsWith('.lemmas')
       ? `{{${key} | join(', ')}}`
       : `{{${key}}}`;
 
-    // Find the {{ before the cursor
-    const textBeforeCursor = value.slice(0, selectionStart);
-    const openBraceIndex = textBeforeCursor.lastIndexOf('{{');
-    
-    if (openBraceIndex === -1) return; // No {{ found, shouldn't happen
-    
-    // Build new value: everything before {{ + the variable + everything after cursor
-    const before = value.slice(0, openBraceIndex);
-    const after = value.slice(selectionStart);
+    const range = getReplacementRange(value, selectionStart, selectionEnd);
+    const before = value.slice(0, range.start);
+    const after = value.slice(range.end);
     const newValue = before + toInsert + after;
     
     // Store where cursor should go (right after the }})
@@ -1238,35 +1276,40 @@ export function useJobCreation({
     }
   }, [currentStep]);
 
-  // Update variable menu position on scroll
+  // Update/close variable menu on caret changes, and position on scroll
   useEffect(() => {
     if (!showVariableMenu || !promptRef.current) return;
 
     const textarea = promptRef.current;
-    const updatePosition = () => {
-      if (textarea && showVariableMenu) {
-        const cursorPos = textarea.selectionStart;
-        const position = calculateCursorPosition(textarea, cursorPos);
-        setVariableMenuPosition(position);
-        if ((document as unknown as { fonts?: { ready: Promise<void> } }).fonts?.ready) {
-          (document as unknown as { fonts: { ready: Promise<void> } }).fonts.ready.then(() => {
-            if (textarea && showVariableMenu) {
-              const pos2 = calculateCursorPosition(textarea, textarea.selectionStart);
-              setVariableMenuPosition(pos2);
-            }
-          });
-        }
+    const updatePositionOnScroll = () => {
+      if (!showVariableMenu) return;
+      const cursorPos = textarea.selectionStart;
+      if (cursorPos === null) return;
+      const position = calculateCursorPosition(textarea, cursorPos);
+      setVariableMenuPosition(position);
+      if ((document as unknown as { fonts?: { ready: Promise<void> } }).fonts?.ready) {
+        (document as unknown as { fonts: { ready: Promise<void> } }).fonts.ready.then(() => {
+          if (textarea && showVariableMenu && textarea.selectionStart !== null) {
+            const pos2 = calculateCursorPosition(textarea, textarea.selectionStart);
+            setVariableMenuPosition(pos2);
+          }
+        });
       }
     };
 
-    textarea.addEventListener('scroll', updatePosition);
-    document.addEventListener('selectionchange', updatePosition);
+    const handleSelectionChange = () => {
+      if (document.activeElement !== textarea) return;
+      updateVariableMenuFromCaret(textarea, { allowOpen: false });
+    };
+
+    textarea.addEventListener('scroll', updatePositionOnScroll);
+    document.addEventListener('selectionchange', handleSelectionChange);
 
     return () => {
-      textarea.removeEventListener('scroll', updatePosition);
-      document.removeEventListener('selectionchange', updatePosition);
+      textarea.removeEventListener('scroll', updatePositionOnScroll);
+      document.removeEventListener('selectionchange', handleSelectionChange);
     };
-  }, [showVariableMenu]);
+  }, [showVariableMenu, updateVariableMenuFromCaret]);
 
   // Clear preview when closing creation flow
   useEffect(() => {
@@ -1476,6 +1519,8 @@ export function useJobCreation({
     setEditorScroll,
     handlePromptChange,
     handlePromptKeyDown,
+    handlePromptSelect,
+    handlePromptBlur,
     insertVariable,
     
     // Preview & estimate state

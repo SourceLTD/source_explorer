@@ -334,6 +334,22 @@ export function CellContent({
     const isEditingField = editing.unitId === entry.id && editing.field === dbFieldName;
 
     switch (columnKey) {
+      case 'code': {
+        const code = entry.code || entry.id || '—';
+        const dotIndex = code.indexOf('.');
+        return (
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-mono text-gray-900 break-words">
+              {dotIndex !== -1 ? (
+                <>
+                  {code.substring(0, dotIndex + 1)}
+                  <span className="font-bold">{code.substring(dotIndex + 1)}</span>
+                </>
+              ) : code}
+            </span>
+          </div>
+        );
+      }
       case 'id':
         return (
           <div className="flex items-center gap-2 group">

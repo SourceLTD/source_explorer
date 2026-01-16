@@ -14,6 +14,7 @@ export interface NodeCardProps {
   className?: string;
   noDivider?: boolean;
   subtitleInline?: boolean;
+  subtle?: boolean;
 }
 
 export default function NodeCard({
@@ -27,8 +28,10 @@ export default function NodeCard({
   className = '',
   noDivider = false,
   subtitleInline = false,
+  subtle = false,
 }: NodeCardProps) {
   const getBorderClass = () => {
+    if (subtle) return 'border-transparent bg-transparent shadow-none';
     if (active) return 'border-blue-500 ring-1 ring-blue-500';
     if (type === 'focus') return 'border-blue-600 bg-blue-50/30';
     if (type === 'origin') return 'border-gray-300 opacity-80';

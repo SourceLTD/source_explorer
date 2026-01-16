@@ -32,8 +32,8 @@ const MAX_WIDTH_CLASSES: Record<string, string> = {
   '2xl': 'max-w-2xl',
   '4xl': 'max-w-4xl',
   '5xl': 'max-w-5xl',
-  // Responsive wide modal: almost full width on small screens, ~90% viewport on md+.
-  wide: 'max-w-[95vw] md:max-w-[90vw]',
+  // Responsive wide modal: almost full width on small screens, ~60% viewport on md+.
+  wide: 'max-w-[95vw] md:max-w-[60vw]',
 };
 
 export default function Modal({

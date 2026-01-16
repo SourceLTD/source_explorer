@@ -100,6 +100,8 @@ export const CreationWizard = memo(function CreationWizard({
     setEditorScroll,
     handlePromptChange,
     handlePromptKeyDown,
+    handlePromptSelect,
+    handlePromptBlur,
     insertVariable,
     preview,
     previewLoading,
@@ -354,7 +356,7 @@ export const CreationWizard = memo(function CreationWizard({
                   <label className="block text-xs font-semibold text-gray-700">Target Fields</label>
                   <div className="flex flex-wrap gap-2">
                     {availableVariables
-                      .filter(v => v.category === 'basic' && !['id', 'code', 'pos', 'flagged', 'flagged_reason'].includes(v.key))
+                      .filter(v => v.category === 'basic' && !['id', 'pos', 'flagged', 'flagged_reason'].includes(v.key))
                       .map(variable => (
                         <label
                           key={variable.key}
@@ -729,6 +731,8 @@ export const CreationWizard = memo(function CreationWizard({
                     value={promptTemplate}
                     onChange={handlePromptChange}
                     onKeyDown={handlePromptKeyDown}
+                    onSelect={handlePromptSelect}
+                    onBlur={handlePromptBlur}
                     onScroll={event => {
                       const target = event.currentTarget;
                       setEditorScroll({ top: target.scrollTop, left: target.scrollLeft });
