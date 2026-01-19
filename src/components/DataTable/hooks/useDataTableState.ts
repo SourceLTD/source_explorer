@@ -162,11 +162,11 @@ function parseURLParams(
 
   // Parse pagination
   const page = parseInt(searchParams.get('page') || '1');
-  const limitParam = parseInt(searchParams.get('limit') || '10');
+  const limitParam = parseInt(searchParams.get('limit') || '100');
   // Validate limit: must be a valid number between 1-100
   const limit = (!isNaN(limitParam) && limitParam >= 1 && limitParam <= 100) 
     ? limitParam 
-    : 10;
+    : 100;
 
   return {
     filters,
@@ -380,8 +380,8 @@ export function useDataTableState({
     // Validate pageSize before writing to URL
     const validPageSize = (!isNaN(pageSize) && (pageSize === -1 || (pageSize >= 1 && pageSize <= 100))) 
       ? pageSize 
-      : 10;
-    if (validPageSize !== 10) {
+      : 100;
+    if (validPageSize !== 100) {
       params.set('limit', String(validPageSize));
     }
 
@@ -459,9 +459,9 @@ export function useDataTableState({
   const handleFiltersChange = useCallback((newFilters: FilterState) => {
     setFilters(toDeltaFilters(mode, newFilters));
     setCurrentPage(1);
-    // Reset to default page size (10) if currently showing all
+    // Reset to default page size (100) if currently showing all
     if (pageSize === -1) {
-      setPageSize(10);
+      setPageSize(100);
     }
   }, [mode, pageSize]);
 
