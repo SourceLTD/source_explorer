@@ -3,7 +3,55 @@ import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
 import { parseURLToFilterAST } from '@/lib/filters/url';
 import { translateFilterASTToPrisma } from '@/lib/filters/translate';
+import type { PostFilterCondition } from '@/lib/filters/types';
 import { attachPendingInfoToEntities } from '@/lib/version-control';
+
+type ChildCountMode = 'super' | 'frame' | 'mixed';
+
+function matchesComputedFilter(value: number, filter: PostFilterCondition): boolean {
+  switch (filter.operator) {
+    case 'eq':
+      return value === filter.value;
+    case 'neq':
+      return value !== filter.value;
+    case 'gt':
+      return value > filter.value;
+    case 'gte':
+      return value >= filter.value;
+    case 'lt':
+      return value < filter.value;
+    case 'lte':
+      return value <= filter.value;
+    case 'between':
+      if (filter.value2 === undefined) return true;
+      return value >= filter.value && value <= filter.value2;
+    default:
+      return true;
+  }
+}
+
+function getChildCount(
+  frame: { _count: { other_frames: number; lexical_units: number }; super_frame_id: bigint | null },
+  mode: ChildCountMode
+): number {
+  if (mode === 'super') return frame._count.other_frames;
+  if (mode === 'frame') return frame._count.lexical_units;
+  return frame.super_frame_id ? frame._count.lexical_units : frame._count.other_frames;
+}
+
+function applyChildrenCountFilters<T extends { _count: { other_frames: number; lexical_units: number }; super_frame_id: bigint | null }>(
+  frames: T[],
+  computedFilters: PostFilterCondition[],
+  mode: ChildCountMode
+): T[] {
+  const childFilters = computedFilters.filter(f => f.field === 'childrenCount');
+  if (childFilters.length === 0) return frames;
+
+  return frames.filter(frame => {
+    const childCount = getChildCount(frame, mode);
+    return childFilters.every(filter => matchesComputedFilter(childCount, filter));
+  });
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -41,7 +89,7 @@ export async function GET(request: NextRequest) {
 
     let where: Prisma.framesWhereInput = {};
     const filterAST = parseURLToFilterAST('frames', searchParams);
-    const { where: filterWhere } = await translateFilterASTToPrisma('frames', filterAST || undefined);
+    const { where: filterWhere, computedFilters } = await translateFilterASTToPrisma('frames', filterAST || undefined);
     
     const baseConditions: Prisma.framesWhereInput[] = [{ deleted: false }];
     
@@ -74,7 +122,7 @@ export async function GET(request: NextRequest) {
 
     const totalCount = await prisma.frames.count({ where });
 
-    const frames = await prisma.frames.findMany({
+    let frames = await prisma.frames.findMany({
       where,
       skip,
       take: limit,
@@ -112,6 +160,12 @@ export async function GET(request: NextRequest) {
         },
       },
     });
+
+    const childCountMode: ChildCountMode =
+      isSuperFrame === 'true' ? 'super' : isSuperFrame === 'false' ? 'frame' : 'mixed';
+    if (computedFilters.length > 0) {
+      frames = applyChildrenCountFilters(frames, computedFilters, childCountMode);
+    }
 
     // Attach pending info to super-frames referenced on this page so child frames can preview
     // derived code prefix when the super-frame label is pending-changed.

@@ -63,6 +63,7 @@ export function getFieldConfigsForPos(pos: string): FieldConfig[] {
       { key: 'verifiable', label: 'Verifiable', type: 'boolean', db: 'verifiable', operators: booleanOps },
       { key: 'created_at', label: 'Created At', type: 'date', db: 'created_at', operators: dateOps },
       { key: 'updated_at', label: 'Updated At', type: 'date', db: 'updated_at', operators: dateOps },
+      { key: 'childrenCount', label: 'Children Count', type: 'computed_number', operators: computedNumberOps },
     ];
   }
 

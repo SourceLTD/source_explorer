@@ -23,6 +23,15 @@ export function parseURLToFilterAST(pos: JobTargetType, input: string | URLSearc
 
     const shortDefinition = get('short_definition');
     if (shortDefinition) addRule(group, { kind: 'rule', field: 'short_definition', operator: 'contains', value: shortDefinition });
+    const childrenCountOp = get('childrenCountOp');
+    const childrenCountValue = get('childrenCountValue');
+    if (childrenCountOp && childrenCountValue) {
+      const op = ['gt', 'lt', 'eq', 'gte', 'lte', 'neq'].includes(childrenCountOp) ? childrenCountOp : null;
+      const value = parseInt(childrenCountValue, 10);
+      if (op && !Number.isNaN(value)) {
+        addRule(group, { kind: 'rule', field: 'childrenCount', operator: op, value });
+      }
+    }
   } else {
     // Entry-specific text filters (verbs, nouns, adjectives, adverbs)
     const gloss = get('gloss');

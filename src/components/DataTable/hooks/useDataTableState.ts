@@ -121,6 +121,16 @@ function parseURLParams(
       filters[key as 'parentsCountMin' | 'parentsCountMax' | 'childrenCountMin' | 'childrenCountMax'] = parseInt(value);
     }
   });
+
+  const childrenCountOp = searchParams.get('childrenCountOp');
+  if (childrenCountOp) {
+    filters.childrenCountOp = childrenCountOp as FilterState['childrenCountOp'];
+  }
+
+  const childrenCountValue = searchParams.get('childrenCountValue');
+  if (childrenCountValue !== null) {
+    filters.childrenCountValue = parseInt(childrenCountValue);
+  }
   
   // Parse date filters
   ['createdAfter', 'createdBefore', 'updatedAfter', 'updatedBefore'].forEach(key => {
@@ -346,6 +356,7 @@ export function useDataTableState({
       'isMwe', 'flagged', 'verifiable', 'excludeNullFrame',
       'pendingCreate', 'pendingUpdate', 'pendingDelete',
       'parentsCountMin', 'parentsCountMax', 'childrenCountMin', 'childrenCountMax',
+      'childrenCountOp', 'childrenCountValue',
       'createdAfter', 'createdBefore', 'updatedAfter', 'updatedBefore',
       'columns', 'sortBy', 'sortOrder', 'page', 'limit'
     ];

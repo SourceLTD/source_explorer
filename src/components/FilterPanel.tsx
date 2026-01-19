@@ -117,6 +117,17 @@ export default function FilterPanel({
     });
   }, [canFilterBySuperFrameId, filters.super_frame_id]);
 
+  useEffect(() => {
+    if (!isFramesMode) return;
+    if (filters.childrenCountValue === undefined) return;
+    setOpenSections(prev => {
+      if (prev.has('relationships')) return prev;
+      const next = new Set(prev);
+      next.add('relationships');
+      return next;
+    });
+  }, [isFramesMode, filters.childrenCountValue]);
+
   // Fetch frames when searching or when dropdown opens
   useEffect(() => {
     const fetchFrames = async () => {
@@ -225,6 +236,24 @@ export default function FilterPanel({
     onFiltersChange({
       ...filters,
       [key]: normalizedValue as FilterState[keyof FilterState]
+    });
+  };
+
+  const updateChildrenCountValue = (rawValue: string) => {
+    const value = rawValue === '' ? undefined : parseInt(rawValue, 10);
+    if (value === undefined || Number.isNaN(value)) {
+      onFiltersChange({
+        ...filters,
+        childrenCountValue: undefined,
+        childrenCountOp: undefined,
+      });
+      return;
+    }
+
+    onFiltersChange({
+      ...filters,
+      childrenCountValue: value,
+      childrenCountOp: filters.childrenCountOp ?? 'gt',
     });
   };
 
@@ -951,6 +980,38 @@ export default function FilterPanel({
                       onChange={(e) => updateFilter('childrenCountMax', e.target.value ? parseInt(e.target.value) : undefined)}
                       placeholder="Max"
                       min="0"
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+                    />
+                  </div>
+                </div>
+              </FilterSection>
+            )}
+
+            {isFramesMode && (
+              <FilterSection
+                title={mode === 'super_frames' ? 'Frames' : 'Lexical Units'}
+                icon={<HashtagIcon className="w-4 h-4 text-gray-600" />}
+                isOpen={openSections.has('relationships')}
+                onToggle={() => toggleSection('relationships')}
+              >
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Children Count</label>
+                  <div className="flex gap-2">
+                    <select
+                      value={filters.childrenCountOp ?? 'gt'}
+                      onChange={(e) => updateFilter('childrenCountOp', e.target.value as FilterState['childrenCountOp'])}
+                      className="w-24 px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
+                    >
+                      <option value="gt">{'>'}</option>
+                      <option value="lt">{'<'}</option>
+                      <option value="eq">=</option>
+                    </select>
+                    <input
+                      type="number"
+                      min="0"
+                      value={filters.childrenCountValue ?? ''}
+                      onChange={(e) => updateChildrenCountValue(e.target.value)}
+                      placeholder="Count"
                       className="flex-1 px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
                     />
                   </div>

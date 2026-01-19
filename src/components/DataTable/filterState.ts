@@ -33,6 +33,9 @@ export interface FilterState {
   parentsCountMax?: number;
   childrenCountMin?: number;
   childrenCountMax?: number;
+  // Frames children-count filter (operator + value)
+  childrenCountOp?: 'gt' | 'lt' | 'eq';
+  childrenCountValue?: number;
 
   // Date filters
   createdAfter?: string;
