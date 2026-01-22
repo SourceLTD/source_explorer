@@ -9,6 +9,7 @@ import { FlagModalState, FrameOption } from './types';
 interface ExistingReason {
   id: string;
   reason: string;
+  isFlagged?: boolean;
 }
 
 interface FlagModalProps {
@@ -40,8 +41,8 @@ export function FlagModal({
   const flaggableEntries = selectedEntriesOnPage.filter((e): e is TableLexicalUnit => 'flagged' in e);
   const existingReasons = {
     flagged: flaggableEntries
-      .filter(e => e.flagged && e.flaggedReason)
-      .map(e => ({ id: e.id, reason: e.flaggedReason! })),
+      .filter(e => e.flaggedReason)
+      .map(e => ({ id: e.id, reason: e.flaggedReason!, isFlagged: e.flagged })),
     unverifiable: flaggableEntries
       .filter(e => e.verifiable === false && e.unverifiableReason)
       .map(e => ({ id: e.id, reason: e.unverifiableReason! }))
@@ -127,7 +128,7 @@ export function FlagModal({
         {/* Show existing reasons */}
         {modalState.action === 'unflag' && existingReasons.flagged.length > 0 && (
           <ExistingReasonsSection
-            title="Existing Flag Reasons:"
+            title="Existing AI Reasons:"
             reasons={existingReasons.flagged}
             bgColor="bg-orange-50"
             borderColor="border-orange-200"
@@ -219,9 +220,13 @@ function ExistingReasonsSection({
     <div className={`mb-4 p-3 ${bgColor} border ${borderColor} rounded-xl`}>
       <h4 className={`text-sm font-medium ${textColor} mb-2`}>{title}</h4>
       <div className="space-y-2 max-h-32 overflow-y-auto">
-        {reasons.map(({ id, reason }) => (
+        {reasons.map(({ id, reason, isFlagged }) => (
           <div key={id} className={`text-xs ${itemTextColor}`}>
-            <span className={`font-mono ${idColor}`}>{id}:</span> {reason}
+            <span className={`font-mono ${idColor}`}>{id}:</span>{' '}
+            <span className={isFlagged ? 'font-medium' : 'font-normal text-gray-500'}>
+              {!isFlagged && <span className="italic">(not flagged) </span>}
+              {reason}
+            </span>
           </div>
         ))}
       </div>

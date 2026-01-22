@@ -345,12 +345,17 @@ export default function WordNetExplorer({ initialEntryId, mode = 'lexical_units'
                 
                 {/* Status Indicators */}
                 <div className="flex items-center gap-2 mb-3">
-                  {currentNode.flagged && (
+                  {currentNode.flagged ? (
                     <span className="inline-block px-2 py-1 text-xs rounded font-medium bg-blue-100 text-blue-800">
                       Flagged
                       {currentNode.flaggedReason && (
                         <span className="ml-1 text-blue-600">({currentNode.flaggedReason})</span>
                       )}
+                    </span>
+                  ) : currentNode.flaggedReason && (
+                    <span className="inline-block px-2 py-1 text-xs rounded bg-gray-100 text-gray-600">
+                      Not flagged
+                      <span className="ml-1">({currentNode.flaggedReason})</span>
                     </span>
                   )}
                   {currentNode.verifiable === false && (
