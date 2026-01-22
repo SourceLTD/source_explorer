@@ -12,12 +12,14 @@ import { useTableSelection } from '@/hooks/useTableSelection';
 import { refreshPendingChangesCount } from '@/hooks/usePendingChangesCount';
 import { useJobCompletionBroadcast } from '@/hooks/useJobCompletionBroadcast';
 
-import { useDataTableState } from './hooks';
+import { useDataTableState, useCopyFieldSelection } from './hooks';
 import { DataTableToolbar } from './DataTableToolbar';
 import { DataTableBody } from './DataTableBody';
 import { FlagModal, FrameChangeModal } from './DataTableModals';
 import { ContextMenu } from './ContextMenu';
+import { CopyFieldSelector } from './CopyFieldSelector';
 import AIAgentQuickEditModal from '@/components/AIAgentQuickEditModal';
+import { getColumnsForMode, hasNestedFields, NESTED_FIELD_CONFIGS } from './config';
 import {
   DataTableProps,
   FlagModalState,
@@ -85,6 +87,18 @@ export default function DataTable({
   const [selectedFrameValue, setSelectedFrameValue] = useState<string>('');
   const [frameSearchQuery, setFrameSearchQuery] = useState('');
   const [isFrameUpdating, setIsFrameUpdating] = useState(false);
+
+  // Copy field selector state
+  const copyFieldSelection = useCopyFieldSelection(mode);
+  const [copyMenuState, setCopyMenuState] = useState<{
+    isOpen: boolean;
+    entry: TableLexicalUnit | Frame | null;
+    anchorEl: HTMLElement | null;
+  }>({
+    isOpen: false,
+    entry: null,
+    anchorEl: null,
+  });
 
   // Selected entries on current page (for modals)
   const selectedEntriesOnCurrentPage = useMemo(() => {
@@ -601,6 +615,162 @@ export default function DataTable({
     setAiQuickEditEntry(null);
   }, []);
 
+  // Copy handlers
+  
+  // Helper to get a nested value from an object using dot notation
+  const getNestedValue = useCallback((obj: Record<string, unknown>, path: string): unknown => {
+    const parts = path.split('.');
+    let current: unknown = obj;
+    for (const part of parts) {
+      if (current === null || current === undefined) return undefined;
+      current = (current as Record<string, unknown>)[part];
+    }
+    return current;
+  }, []);
+
+  // Format a single value for display
+  const formatSingleValue = useCallback((value: unknown): string => {
+    if (value === null || value === undefined) {
+      return '—';
+    }
+    if (Array.isArray(value)) {
+      return value.join(', ');
+    }
+    if (value instanceof Date) {
+      return value.toLocaleDateString();
+    }
+    if (typeof value === 'boolean') {
+      return value ? 'Yes' : 'No';
+    }
+    if (typeof value === 'object') {
+      return JSON.stringify(value);
+    }
+    return String(value);
+  }, []);
+
+  // Format an array item (like a frame_role or lexical_entry) using selected sub-fields
+  const formatArrayItem = useCallback((item: Record<string, unknown>, selectedSubFields: string[]): string => {
+    if (selectedSubFields.length === 0) {
+      return '—';
+    }
+    
+    const parts = selectedSubFields.map(subField => {
+      const value = getNestedValue(item, subField);
+      return formatSingleValue(value);
+    }).filter(v => v !== '—');
+    
+    return parts.join(' | ') || '—';
+  }, [getNestedValue, formatSingleValue]);
+
+  // Format an entire column value, handling nested objects with selected sub-fields
+  const formatEntryValue = useCallback((
+    entry: TableLexicalUnit | Frame, 
+    columnKey: string,
+    selectedNestedFields?: string[]
+  ): string => {
+    const value = (entry as unknown as Record<string, unknown>)[columnKey];
+    
+    if (value === null || value === undefined) {
+      return '—';
+    }
+    
+    // Handle nested columns with sub-field selection
+    if (hasNestedFields(columnKey) && selectedNestedFields && selectedNestedFields.length > 0) {
+      if (columnKey === 'frame_roles' && 'frame_roles' in entry) {
+        const roles = entry.frame_roles as unknown as Array<Record<string, unknown>>;
+        if (!roles || roles.length === 0) return '—';
+        
+        return roles.map(role => formatArrayItem(role, selectedNestedFields)).join('\n  - ');
+      }
+      
+      if (columnKey === 'lexical_entries' && 'lexical_entries' in entry) {
+        const lexData = entry.lexical_entries as unknown as { entries: Array<Record<string, unknown>> };
+        if (!lexData?.entries || lexData.entries.length === 0) return '—';
+        
+        return lexData.entries.map(lex => formatArrayItem(lex, selectedNestedFields)).join('\n  - ');
+      }
+    }
+    
+    // Fallback for nested columns without sub-field selection
+    if (columnKey === 'frame_roles' && 'frame_roles' in entry) {
+      const roles = entry.frame_roles as unknown as Array<{ label?: string | null; role_type?: { label: string } }>;
+      if (!roles || roles.length === 0) return '—';
+      return roles.map(r => r.label || r.role_type?.label || '—').filter(Boolean).join(', ');
+    }
+    
+    if (columnKey === 'lexical_entries' && 'lexical_entries' in entry) {
+      const lexData = entry.lexical_entries as unknown as { entries: Array<{ gloss: string; lemmas?: string[] }> };
+      if (!lexData?.entries || lexData.entries.length === 0) return '—';
+      return lexData.entries.map(e => {
+        const lemmas = e.lemmas?.join(', ') || '';
+        return lemmas ? `${lemmas}: ${e.gloss}` : e.gloss;
+      }).join('; ');
+    }
+    
+    // Standard value formatting
+    return formatSingleValue(value);
+  }, [formatArrayItem, formatSingleValue]);
+
+  const handleCopyClick = useCallback((entry: TableLexicalUnit | Frame) => {
+    const columns = getColumnsForMode(mode).filter(col => col.key !== 'actions');
+    const selectedFieldKeys = copyFieldSelection.getSelectedFieldKeys();
+    
+    // If no fields selected, use all visible columns
+    const fieldsToCopy = selectedFieldKeys.length > 0 
+      ? columns.filter(col => selectedFieldKeys.includes(col.key))
+      : columns.filter(col => col.visible);
+    
+    const lines = fieldsToCopy.map(col => {
+      // Get selected nested fields for this column if it has nested config
+      const selectedNestedFields = hasNestedFields(col.key) 
+        ? copyFieldSelection.getSelectedNestedFieldKeys(col.key)
+        : undefined;
+      
+      const value = formatEntryValue(entry, col.key, selectedNestedFields);
+      
+      // For nested fields with multi-line output, format nicely
+      if (value.includes('\n')) {
+        return `${col.label}:\n  - ${value}`;
+      }
+      return `${col.label}: ${value}`;
+    });
+    
+    const textToCopy = lines.join('\n');
+    
+    navigator.clipboard.writeText(textToCopy).then(() => {
+      showGlobalAlert({
+        type: 'success',
+        title: 'Copied',
+        message: 'Entry copied to clipboard',
+        durationMs: 2000
+      });
+    }).catch((err) => {
+      console.error('Failed to copy:', err);
+      showGlobalAlert({
+        type: 'error',
+        title: 'Copy Failed',
+        message: 'Failed to copy to clipboard',
+        durationMs: 3000
+      });
+    });
+  }, [mode, copyFieldSelection, formatEntryValue]);
+
+  const handleCopyLongPress = useCallback((entry: TableLexicalUnit | Frame, buttonEl: HTMLButtonElement) => {
+    setCopyMenuState({
+      isOpen: true,
+      entry,
+      anchorEl: buttonEl,
+    });
+  }, []);
+
+  const handleCloseCopyMenu = useCallback(() => {
+    setCopyMenuState({
+      isOpen: false,
+      entry: null,
+      anchorEl: null,
+    });
+  }, []);
+
   // Get current columns with actions visible if onEditClick is provided
   const currentColumnsWithActions = useMemo(() => {
     return tableState.currentColumns.map(col => ({
@@ -699,6 +869,8 @@ export default function DataTable({
           onRowClick={onRowClick}
           onEditClick={onEditClick}
           onAIClick={handleAIClick}
+          onCopyClick={handleCopyClick}
+          onCopyLongPress={handleCopyLongPress}
           onSelectAll={selection.toggleSelectAll}
           onSelectRow={selection.toggleSelect}
           onContextMenu={handleContextMenu}
@@ -786,6 +958,21 @@ export default function DataTable({
           onJobSubmitted={handleAIQuickEditJobSubmitted}
         />
       )}
+
+      {/* Copy Field Selector */}
+      <CopyFieldSelector
+        isOpen={copyMenuState.isOpen}
+        onClose={handleCloseCopyMenu}
+        anchorEl={copyMenuState.anchorEl}
+        mode={mode}
+        selectedFields={copyFieldSelection.selectedFields}
+        onToggleField={copyFieldSelection.toggleField}
+        onToggleNestedField={copyFieldSelection.toggleNestedField}
+        onSelectAll={copyFieldSelection.selectAll}
+        onClearAll={copyFieldSelection.clearAll}
+        onSelectAllNestedFields={copyFieldSelection.selectAllNestedFields}
+        onClearAllNestedFields={copyFieldSelection.clearAllNestedFields}
+      />
     </div>
   );
 }

@@ -108,7 +108,7 @@ export const DEFAULT_COLUMN_WIDTHS: ColumnWidthState = {
   gradable: 100,
   createdAt: 100,
   updatedAt: 100,
-  actions: 80,
+  actions: 110,
   // Frame columns
   code: 150,
   label: 200,
@@ -216,3 +216,58 @@ export const FIELD_NAME_MAP: Record<string, string> = {
   'isMwe': 'is_mwe',
   'gradable': 'gradable',
 };
+
+/**
+ * Nested field configuration for complex columns
+ * These define the sub-fields available for selection when copying
+ */
+export interface NestedFieldConfig {
+  key: string;
+  label: string;
+  defaultSelected: boolean;
+}
+
+export interface NestedColumnConfig {
+  columnKey: string;
+  subFields: NestedFieldConfig[];
+}
+
+// Sub-fields for frame_roles column
+export const FRAME_ROLES_SUBFIELDS: NestedFieldConfig[] = [
+  { key: 'label', label: 'Label', defaultSelected: true },
+  { key: 'role_type.label', label: 'Role Type', defaultSelected: true },
+  { key: 'description', label: 'Description', defaultSelected: true },
+  { key: 'notes', label: 'Notes', defaultSelected: false },
+  { key: 'main', label: 'Main Role', defaultSelected: false },
+  { key: 'role_type.generic_description', label: 'Role Type Description', defaultSelected: false },
+  { key: 'examples', label: 'Examples', defaultSelected: false },
+];
+
+// Sub-fields for lexical_entries column
+export const LEXICAL_ENTRIES_SUBFIELDS: NestedFieldConfig[] = [
+  { key: 'lemmas', label: 'Lemmas', defaultSelected: true },
+  { key: 'gloss', label: 'Gloss', defaultSelected: true },
+  { key: 'code', label: 'Code', defaultSelected: false },
+  { key: 'pos', label: 'Part of Speech', defaultSelected: false },
+  { key: 'src_lemmas', label: 'Source Lemmas', defaultSelected: false },
+];
+
+// Map of column keys to their nested field configurations
+export const NESTED_FIELD_CONFIGS: Record<string, NestedFieldConfig[]> = {
+  'frame_roles': FRAME_ROLES_SUBFIELDS,
+  'lexical_entries': LEXICAL_ENTRIES_SUBFIELDS,
+};
+
+/**
+ * Check if a column has nested fields
+ */
+export function hasNestedFields(columnKey: string): boolean {
+  return columnKey in NESTED_FIELD_CONFIGS;
+}
+
+/**
+ * Get nested field config for a column
+ */
+export function getNestedFieldConfig(columnKey: string): NestedFieldConfig[] | null {
+  return NESTED_FIELD_CONFIGS[columnKey] || null;
+}

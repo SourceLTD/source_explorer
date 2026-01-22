@@ -4,7 +4,7 @@ import React from 'react';
 import { useRouter } from 'next/navigation';
 import { TableEntry, Frame, POS_LABELS, PendingChangeInfo, getRoleTypeAcronym } from '@/lib/types';
 import { ColumnConfig } from '@/components/ColumnVisibilityPanel';
-import { CheckCircleIcon, XCircleIcon, SparklesIcon } from '@heroicons/react/24/outline';
+import { CheckCircleIcon, XCircleIcon, SparklesIcon, ClipboardDocumentIcon } from '@heroicons/react/24/outline';
 import {
   getPendingCellClasses,
   getPendingRowClasses,
@@ -21,6 +21,61 @@ import { SortState, EditingState, FilterState } from './types';
 export const EmptyCell = () => <span className="text-gray-400 text-sm">—</span>;
 export const NACell = () => <span className="text-gray-400 text-sm">N/A</span>;
 export const NoneCell = () => <span className="text-gray-400 text-sm">None</span>;
+
+// Copy button with long-press detection
+interface CopyButtonProps {
+  entry: TableEntry | Frame;
+  onCopyClick?: (entry: TableEntry | Frame) => void;
+  onCopyLongPress?: (entry: TableEntry | Frame, buttonEl: HTMLButtonElement) => void;
+}
+
+function CopyButton({ entry, onCopyClick, onCopyLongPress }: CopyButtonProps) {
+  const buttonRef = React.useRef<HTMLButtonElement>(null);
+  const pressTimerRef = React.useRef<NodeJS.Timeout | null>(null);
+  const longPressTriggeredRef = React.useRef(false);
+
+  const handleMouseDown = () => {
+    longPressTriggeredRef.current = false;
+    pressTimerRef.current = setTimeout(() => {
+      longPressTriggeredRef.current = true;
+      if (buttonRef.current) {
+        onCopyLongPress?.(entry, buttonRef.current);
+      }
+    }, 1500);
+  };
+
+  const handleMouseUp = () => {
+    if (pressTimerRef.current) {
+      clearTimeout(pressTimerRef.current);
+      pressTimerRef.current = null;
+    }
+    // Only trigger click if long press wasn't triggered
+    if (!longPressTriggeredRef.current) {
+      onCopyClick?.(entry);
+    }
+  };
+
+  const handleMouseLeave = () => {
+    if (pressTimerRef.current) {
+      clearTimeout(pressTimerRef.current);
+      pressTimerRef.current = null;
+    }
+  };
+
+  return (
+    <button
+      ref={buttonRef}
+      onMouseDown={handleMouseDown}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseLeave}
+      onClick={(e) => e.stopPropagation()}
+      className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition-colors cursor-pointer"
+      title="Copy (hold for options)"
+    >
+      <ClipboardDocumentIcon className="w-4 h-4" />
+    </button>
+  );
+}
 
 export function truncateText(text: string | null | undefined, maxLength: number): string {
   if (!text) return '—';
@@ -144,6 +199,8 @@ interface CellContentProps {
   editing: EditingState;
   onEditClick?: (entry: TableEntry | Frame) => void;
   onAIClick?: (entry: TableEntry | Frame) => void;
+  onCopyClick?: (entry: TableEntry | Frame) => void;
+  onCopyLongPress?: (entry: TableEntry | Frame, buttonEl: HTMLButtonElement) => void;
   onStartEdit: (entryId: string, field: string, currentValue: string) => void;
   onEditChange: (value: string) => void;
   onSaveEdit: () => void;
@@ -157,6 +214,8 @@ export function CellContent({
   editing,
   onEditClick,
   onAIClick,
+  onCopyClick,
+  onCopyLongPress,
   onStartEdit,
   onEditChange,
   onSaveEdit,
@@ -538,6 +597,11 @@ export function CellContent({
           >
             <SparklesIcon className="w-4 h-4" />
           </button>
+          <CopyButton
+            entry={entry}
+            onCopyClick={onCopyClick}
+            onCopyLongPress={onCopyLongPress}
+          />
         </div>
       );
     default:
@@ -564,6 +628,8 @@ interface DataTableBodyProps {
   onRowClick?: (entry: TableEntry | Frame) => void;
   onEditClick?: (entry: TableEntry | Frame) => void;
   onAIClick?: (entry: TableEntry | Frame) => void;
+  onCopyClick?: (entry: TableEntry | Frame) => void;
+  onCopyLongPress?: (entry: TableEntry | Frame, buttonEl: HTMLButtonElement) => void;
   onSelectAll: () => void;
   onSelectRow: (id: string) => void;
   onContextMenu: (e: React.MouseEvent, entryId: string) => void;
@@ -590,6 +656,8 @@ export function DataTableBody({
   onRowClick,
   onEditClick,
   onAIClick,
+  onCopyClick,
+  onCopyLongPress,
   onSelectAll,
   onSelectRow,
   onContextMenu,
@@ -735,6 +803,8 @@ export function DataTableBody({
                       editing={editing}
                       onEditClick={onEditClick}
                       onAIClick={onAIClick}
+                      onCopyClick={onCopyClick}
+                      onCopyLongPress={onCopyLongPress}
                       onStartEdit={onStartEdit}
                       onEditChange={onEditChange}
                       onSaveEdit={onSaveEdit}
