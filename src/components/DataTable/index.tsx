@@ -385,9 +385,7 @@ export default function DataTable({
     switch (action) {
       case 'flag':
         updates.flagged = true;
-        if (reason.trim()) {
-          updates.flaggedReason = reason.trim();
-        }
+        updates.flaggedReason = null as unknown as string;
         break;
       case 'unflag':
         updates.flagged = false;

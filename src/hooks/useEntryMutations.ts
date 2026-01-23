@@ -131,7 +131,8 @@ export function useEntryMutations(mode: Mode) {
       body: JSON.stringify({
         ids: [unitId],
         updates: {
-          flagged: !currentFlagged
+          flagged: !currentFlagged,
+          flaggedReason: null
         }
       })
     });
