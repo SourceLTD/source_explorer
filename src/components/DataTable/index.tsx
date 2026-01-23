@@ -385,11 +385,11 @@ export default function DataTable({
     switch (action) {
       case 'flag':
         updates.flagged = true;
-        updates.flaggedReason = null as unknown as string;
+        updates.flaggedReason = reason.trim() || null as unknown as string;
         break;
       case 'unflag':
         updates.flagged = false;
-        updates.flaggedReason = null as unknown as string;
+        updates.flaggedReason = reason.trim() || null as unknown as string;
         break;
       case 'forbid':
         updates.verifiable = false;
