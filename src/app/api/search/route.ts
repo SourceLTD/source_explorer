@@ -3,6 +3,8 @@ import { searchLexicalUnits } from '@/lib/db';
 import { handleDatabaseError } from '@/lib/db-utils';
 import { PartOfSpeech } from '@/lib/types';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const query = searchParams.get('q');

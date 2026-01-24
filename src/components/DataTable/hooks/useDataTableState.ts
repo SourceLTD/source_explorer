@@ -314,18 +314,36 @@ export function useDataTableState({
     }
   }, [initialState.columnVisibility, mode]);
 
-  // Reset state when mode changes
+  // Track the previous URL to detect external navigation
+  const prevSearchParamsRef = useRef<string | null>(null);
+  // Track when we're syncing FROM URL to avoid immediately syncing back TO URL
+  const isSyncingFromUrlRef = useRef(false);
+  // Track if we've done the initial URL sync
+  const hasInitialSyncRef = useRef(false);
+  
+  // Reset state when mode changes OR when URL changes externally (e.g., navigation)
   useEffect(() => {
     if (!isInitialized) return;
     
-    // Only reset if mode actually changed
-    if (prevModeRef.current === mode) return;
+    const currentSearchParamsStr = searchParams?.toString() || '';
+    const modeChanged = prevModeRef.current !== mode;
+    const urlChanged = prevSearchParamsRef.current !== null && prevSearchParamsRef.current !== currentSearchParamsStr;
+    const isFirstSync = !hasInitialSyncRef.current;
     
-    // Update the ref
+    // Update refs
     prevModeRef.current = mode;
+    prevSearchParamsRef.current = currentSearchParamsStr;
     
-    // Re-read state from URL params when mode changes
-    const params = new URLSearchParams(searchParams?.toString() || '');
+    // Sync from URL on first run (after init), mode change, or external URL change
+    if (!isFirstSync && !modeChanged && !urlChanged) return;
+    
+    hasInitialSyncRef.current = true;
+    
+    // Mark that we're syncing from URL to prevent the TO-URL effect from immediately overwriting
+    isSyncingFromUrlRef.current = true;
+    
+    // Re-read state from URL params
+    const params = new URLSearchParams(currentSearchParamsStr);
     const newState = parseURLParams(params, mode);
     
     // Reset filters to URL state or empty
@@ -343,9 +361,15 @@ export function useDataTableState({
     setPageSize(newState.pageSize);
   }, [mode, isInitialized, searchParams]);
 
-  // Update URL params when state changes (but not on initial load)
+  // Update URL params when state changes (but not on initial load or right after URL sync)
   useEffect(() => {
     if (!isInitialized) return;
+    
+    // Skip this sync if we just synced FROM URL
+    if (isSyncingFromUrlRef.current) {
+      isSyncingFromUrlRef.current = false;
+      return;
+    }
 
     const params = new URLSearchParams(searchParams?.toString() || '');
     
@@ -453,8 +477,13 @@ export function useDataTableState({
     fetchData();
   }, [fetchData, refreshTrigger]);
 
-  // Reset to first page when search query changes
+  // Reset to first page when search query changes (but not on initial mount)
+  const isFirstSearchQueryRef = useRef(true);
   useEffect(() => {
+    if (isFirstSearchQueryRef.current) {
+      isFirstSearchQueryRef.current = false;
+      return; // Skip the first run (initial mount)
+    }
     setCurrentPage(1);
   }, [searchQuery]);
 

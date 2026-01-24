@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { TableEntry, Frame, POS_LABELS, PendingChangeInfo, getRoleTypeAcronym } from '@/lib/types';
 import { ColumnConfig } from '@/components/ColumnVisibilityPanel';
@@ -624,6 +624,7 @@ interface DataTableBodyProps {
   filters: FilterState;
   searchQuery?: string;
   isResizing: boolean;
+  highlightId?: string | null;
   onSort: (field: string) => void;
   onRowClick?: (entry: TableEntry | Frame) => void;
   onEditClick?: (entry: TableEntry | Frame) => void;
@@ -639,6 +640,7 @@ interface DataTableBodyProps {
   onCancelEdit: () => void;
   onMouseDown: (columnKey: string, e: React.MouseEvent) => void;
   getColumnWidth: (columnKey: string) => string;
+  onHighlightComplete?: () => void;
 }
 
 export function DataTableBody({
@@ -652,6 +654,7 @@ export function DataTableBody({
   filters,
   searchQuery,
   isResizing,
+  highlightId,
   onSort,
   onRowClick,
   onEditClick,
@@ -667,8 +670,47 @@ export function DataTableBody({
   onCancelEdit,
   onMouseDown,
   getColumnWidth,
+  onHighlightComplete,
 }: DataTableBodyProps) {
   const rows = data ?? [];
+  const highlightRowRef = useRef<HTMLTableRowElement>(null);
+  const hasScrolledRef = useRef<string | null>(null);
+
+  // Scroll to highlighted row and trigger animation completion
+  // Need to depend on data loading so we re-run when data becomes available
+  useEffect(() => {
+    // Only scroll once per highlightId
+    if (highlightId && highlightRowRef.current && hasScrolledRef.current !== highlightId) {
+      hasScrolledRef.current = highlightId;
+      
+      // Small delay to ensure DOM is fully rendered
+      requestAnimationFrame(() => {
+        if (highlightRowRef.current) {
+          // Scroll the row into view
+          highlightRowRef.current.scrollIntoView({
+            behavior: 'smooth',
+            block: 'center',
+          });
+        }
+      });
+
+      // Listen for animation end to clear the highlight
+      const row = highlightRowRef.current;
+      const handleAnimationEnd = () => {
+        onHighlightComplete?.();
+      };
+      
+      row.addEventListener('animationend', handleAnimationEnd);
+      return () => {
+        row.removeEventListener('animationend', handleAnimationEnd);
+      };
+    }
+    
+    // Reset scroll tracking when highlightId changes
+    if (!highlightId) {
+      hasScrolledRef.current = null;
+    }
+  }, [highlightId, onHighlightComplete, data]); // Include data to re-run when data loads
 
   if (!data) {
     return null;
@@ -741,11 +783,13 @@ export function DataTableBody({
           const rowStyle = getRowInlineStyles(entry, isSelected);
           const pending = (entry as TableEntry & { pending?: PendingChangeInfo | null }).pending;
           const pendingFieldKeys = pending?.pending_fields ? Object.keys(pending.pending_fields) : [];
+          const isHighlighted = highlightId === entry.id;
 
           return (
             <tr
               key={entry.id}
-              className={`group ${rowClass}`}
+              ref={isHighlighted ? highlightRowRef : undefined}
+              className={`group ${rowClass} ${isHighlighted ? 'animate-highlight-flash' : ''}`}
               style={rowStyle}
               onClick={() => onRowClick?.(entry)}
               onContextMenu={(e) => onContextMenu(e, entry.id)}

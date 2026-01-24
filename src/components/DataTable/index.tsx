@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import { TableLexicalUnit, Frame } from '@/lib/types';
 import { showGlobalAlert } from '@/lib/alerts';
@@ -37,12 +38,36 @@ export default function DataTable({
   mode = 'lexical_units',
   refreshTrigger,
 }: DataTableProps) {
+  const searchParams = useSearchParams();
+  
   // Use our custom hook for data table state management
   const tableState = useDataTableState({
     mode,
     searchQuery,
     refreshTrigger,
   });
+
+  // Get highlightId from URL params for row highlighting
+  // Track if we've already shown the highlight animation to avoid re-triggering
+  const highlightIdFromUrl = searchParams.get('highlightId');
+  const [hasHighlighted, setHasHighlighted] = useState(false);
+  
+  // Reset hasHighlighted when URL highlightId changes (new navigation)
+  const prevHighlightIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (highlightIdFromUrl !== prevHighlightIdRef.current) {
+      prevHighlightIdRef.current = highlightIdFromUrl;
+      setHasHighlighted(false);
+    }
+  }, [highlightIdFromUrl]);
+
+  // Only pass highlightId if we haven't shown the animation yet
+  const activeHighlightId = hasHighlighted ? null : highlightIdFromUrl;
+
+  // Handler called when highlight animation completes - just mark as done, don't modify URL
+  const handleHighlightComplete = useCallback(() => {
+    setHasHighlighted(true);
+  }, []);
 
   // Use the existing useTableSelection hook for selection management
   const selection = useTableSelection<TableLexicalUnit | Frame>({
@@ -863,6 +888,7 @@ export default function DataTable({
           filters={tableState.filters}
           searchQuery={searchQuery}
           isResizing={tableState.isResizing}
+          highlightId={activeHighlightId}
           onSort={tableState.handleSort}
           onRowClick={onRowClick}
           onEditClick={onEditClick}
@@ -879,12 +905,13 @@ export default function DataTable({
           onMouseDown={tableState.handleMouseDown}
           getColumnWidth={tableState.getColumnWidth}
           selectAll={selection.selectAll}
+          onHighlightComplete={handleHighlightComplete}
         />
       </div>
 
       {/* Pagination */}
       <Pagination
-        currentPage={tableState.data?.page || 1}
+        currentPage={tableState.currentPage}
         totalPages={tableState.data?.totalPages || 1}
         totalItems={tableState.data?.total || 0}
         pageSize={tableState.data?.limit || tableState.pageSize}

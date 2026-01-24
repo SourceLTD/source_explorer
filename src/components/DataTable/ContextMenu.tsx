@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { FlagIcon } from '@heroicons/react/24/outline';
 import { TableEntry, Frame } from '@/lib/types';
@@ -24,6 +24,7 @@ export function ContextMenu({
 }: ContextMenuProps) {
   const router = useRouter();
   const graphBasePath = getGraphBasePath(mode);
+  const [isNavigating, setIsNavigating] = useState(false);
 
   if (!contextMenu.isOpen || !contextMenu.unitId || !entry) {
     return null;
@@ -53,6 +54,26 @@ export function ContextMenu({
     if (frameEntry) {
       // Navigate to the frames table filtered by super_frame_id
       router.push(`/table/frames?super_frame_id=${frameEntry.id}`);
+    }
+  };
+
+  const handleExploreSuperframe = async () => {
+    if (!frameEntry?.super_frame_id) return;
+    setIsNavigating(true);
+    
+    try {
+      const res = await fetch(`/api/frames/find-page?id=${frameEntry.super_frame_id}&limit=100`);
+      const { page } = await res.json();
+      onClose();
+      // Navigate with sortBy=code to match the page calculation
+      router.push(`/table/super-frames?page=${page}&sortBy=code&sortOrder=asc&highlightId=${frameEntry.super_frame_id}`);
+    } catch (error) {
+      console.error('Error finding superframe page:', error);
+      onClose();
+      // Fallback: navigate to first page with highlight and code sort
+      router.push(`/table/super-frames?sortBy=code&sortOrder=asc&highlightId=${frameEntry.super_frame_id}`);
+    } finally {
+      setIsNavigating(false);
     }
   };
 
@@ -115,15 +136,29 @@ export function ContextMenu({
                 View Child Frames
               </button>
             ) : (
-              <button
-                onClick={handleViewLexicalEntries}
-                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 flex items-center gap-2"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                </svg>
-                View Lexical Entries
-              </button>
+              <>
+                <button
+                  onClick={handleViewLexicalEntries}
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                  </svg>
+                  View Lexical Entries
+                </button>
+                {frameEntry.super_frame_id && (
+                  <button
+                    onClick={handleExploreSuperframe}
+                    disabled={isNavigating}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 flex items-center gap-2 disabled:opacity-50 disabled:cursor-wait"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 11l5-5m0 0l5 5m-5-5v12" />
+                    </svg>
+                    {isNavigating ? 'Finding...' : 'Explore Superframe'}
+                  </button>
+                )}
+              </>
             )}
           </>
         )}
