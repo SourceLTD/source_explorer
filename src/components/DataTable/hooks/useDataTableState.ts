@@ -173,8 +173,8 @@ function parseURLParams(
   // Parse pagination
   const page = parseInt(searchParams.get('page') || '1');
   const limitParam = parseInt(searchParams.get('limit') || '100');
-  // Validate limit: must be a valid number between 1-100
-  const limit = (!isNaN(limitParam) && limitParam >= 1 && limitParam <= 100) 
+  // Validate limit: must be a valid number between 1-2000 (matches backend limit)
+  const limit = (!isNaN(limitParam) && limitParam >= 1 && limitParam <= 2000) 
     ? limitParam 
     : 100;
 
@@ -412,8 +412,8 @@ export function useDataTableState({
     if (currentPage !== 1) {
       params.set('page', String(currentPage));
     }
-    // Validate pageSize before writing to URL
-    const validPageSize = (!isNaN(pageSize) && (pageSize === -1 || (pageSize >= 1 && pageSize <= 100))) 
+    // Validate pageSize before writing to URL (matches backend limit of 2000)
+    const validPageSize = (!isNaN(pageSize) && (pageSize === -1 || (pageSize >= 1 && pageSize <= 2000))) 
       ? pageSize 
       : 100;
     if (validPageSize !== 100) {
