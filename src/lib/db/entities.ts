@@ -114,7 +114,7 @@ function buildWhereConditions(
   }
 
   if (excludeNullFrame === true) {
-    conditions.push({ frame_id: { not: null } });
+    conditions.push({ frame_lexical_units: { some: {} } });
   }
 
   // Date filters
@@ -178,7 +178,7 @@ async function buildAdvancedWhereConditions(
       }
 
       if (numericIds.size > 0) {
-        conditions.push({ frame_id: { in: Array.from(numericIds) } });
+        conditions.push({ frame_lexical_units: { some: { frame_id: { in: Array.from(numericIds) } } } });
       }
     }
   }
@@ -351,11 +351,20 @@ function applyComputedFieldFilters(
  * Transform database entry to TableLexicalUnit format
  */
 function transformToTableLexicalUnit(
-  entry: Prisma.lexical_unitsGetPayload<{ include: { frames: { select: { id: true; label: true; code: true } } } }>,
+  entry: any,
   counts: { parents: number; children: number }
 ): TableLexicalUnit {
   const entryCode = entry.code || entry.id.toString();
   const numericId = entry.id.toString();
+
+  const frameLinks: Array<{ frames: { id: bigint; label: string; code: string | null } }> = entry.frame_lexical_units ?? [];
+  const primaryFrame = frameLinks[0]?.frames ?? null;
+  const frameIds = frameLinks.map((flu: any) => flu.frames.id.toString());
+  const frames = frameLinks.map((flu: any) => ({
+    id: flu.frames.id.toString(),
+    label: flu.frames.label,
+    code: flu.frames.code,
+  }));
 
   return {
     id: entryCode,
@@ -372,8 +381,9 @@ function transformToTableLexicalUnit(
     flaggedReason: entry.flagged_reason ?? undefined,
     verifiable: entry.verifiable ?? undefined,
     unverifiableReason: entry.unverifiable_reason ?? undefined,
-    frame_id: entry.frame_id ? entry.frame_id.toString() : null,
-    frame: entry.frames?.code || null,
+    frame_ids: frameIds,
+    frames,
+    frame: primaryFrame?.code || null,
     
     // Verb-specific
     vendler_class: entry.vendler_class as VendlerClass | null,
@@ -445,8 +455,12 @@ async function getPaginatedLexicalUnits(
       take: limit,
       orderBy,
       include: {
-        frames: {
-          select: { id: true, label: true, code: true },
+        frame_lexical_units: {
+          include: {
+            frames: {
+              select: { id: true, label: true, code: true },
+            },
+          },
         },
       },
     }),
@@ -499,8 +513,12 @@ async function getLexicalUnitById(
     entry = await prisma.lexical_units.findUnique({
       where: { id: BigInt(idOrCode) },
       include: {
-        frames: {
-          select: { id: true, label: true, code: true },
+        frame_lexical_units: {
+          include: {
+            frames: {
+              select: { id: true, label: true, code: true },
+            },
+          },
         },
       },
     });
@@ -511,8 +529,12 @@ async function getLexicalUnitById(
     entry = await prisma.lexical_units.findUnique({
       where: { code: idOrCode },
       include: {
-        frames: {
-          select: { id: true, label: true, code: true },
+        frame_lexical_units: {
+          include: {
+            frames: {
+              select: { id: true, label: true, code: true },
+            },
+          },
         },
       },
     });

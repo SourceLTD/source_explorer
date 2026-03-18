@@ -38,13 +38,18 @@ export const FRAMES_COLUMNS: ColumnConfig[] = [
   { key: 'frame_roles', label: 'Frame Roles', visible: true, sortable: false },
   { key: 'roles_count', label: 'Roles', visible: false, sortable: false },
   { key: 'lexical_units_count', label: 'Words', visible: false, sortable: false },
-  { key: 'lexical_entries', label: 'Lexical Entries', visible: true, sortable: false },
+  { key: 'lexical_units', label: 'Lexical Units', visible: true, sortable: false },
   { key: 'flagged', label: 'Flagged', visible: false, sortable: true },
   { key: 'flaggedReason', label: 'Flagged Reason', visible: false, sortable: false },
   { key: 'verifiable', label: 'Verifiable', visible: true, sortable: true },
   { key: 'unverifiableReason', label: 'Unverifiable Reason', visible: false, sortable: false },
   { key: 'createdAt', label: 'Created', visible: false, sortable: true },
   { key: 'updatedAt', label: 'Updated', visible: false, sortable: true },
+  { key: 'frame_type', label: 'Frame Type', visible: false, sortable: false },
+  { key: 'vendler', label: 'Vendler', visible: false, sortable: false },
+  { key: 'multi_perspective', label: 'Multi-Perspective', visible: false, sortable: false },
+  { key: 'wikidata_id', label: 'Wikidata ID', visible: false, sortable: false },
+  { key: 'recipe', label: 'Recipe', visible: false, sortable: false },
   { key: 'actions', label: 'Actions', visible: true, sortable: false },
 ];
 
@@ -75,7 +80,7 @@ export const FRAMES_ONLY_COLUMNS: ColumnConfig[] = [
   { key: 'definition', label: 'Definition', visible: true, sortable: false },
   { key: 'short_definition', label: 'Short Definition', visible: false, sortable: false },
   { key: 'lexical_units_count', label: 'Words', visible: false, sortable: false },
-  { key: 'lexical_entries', label: 'Lexical Entries', visible: true, sortable: false },
+  { key: 'lexical_units', label: 'Lexical Units', visible: true, sortable: false },
   { key: 'flagged', label: 'Flagged', visible: false, sortable: true },
   { key: 'flaggedReason', label: 'Flagged Reason', visible: false, sortable: false },
   { key: 'verifiable', label: 'Verifiable', visible: true, sortable: true },
@@ -117,8 +122,13 @@ export const DEFAULT_COLUMN_WIDTHS: ColumnWidthState = {
   frame_roles: 400,
   roles_count: 80,
   lexical_units_count: 80,
-  lexical_entries: 400,
+  lexical_units: 400,
   subframes_count: 100,
+  frame_type: 120,
+  vendler: 120,
+  multi_perspective: 120,
+  wikidata_id: 150,
+  recipe: 120,
 };
 
 /**
@@ -235,15 +245,14 @@ export interface NestedColumnConfig {
 // Sub-fields for frame_roles column
 export const FRAME_ROLES_SUBFIELDS: NestedFieldConfig[] = [
   { key: 'label', label: 'Label', defaultSelected: true },
-  { key: 'role_type.label', label: 'Role Type', defaultSelected: true },
   { key: 'description', label: 'Description', defaultSelected: true },
   { key: 'notes', label: 'Notes', defaultSelected: false },
   { key: 'main', label: 'Main Role', defaultSelected: false },
-  { key: 'role_type.generic_description', label: 'Role Type Description', defaultSelected: false },
+  { key: 'fillers', label: 'Fillers', defaultSelected: false },
   { key: 'examples', label: 'Examples', defaultSelected: false },
 ];
 
-// Sub-fields for lexical_entries column
+// Sub-fields for lexical_units column
 export const LEXICAL_ENTRIES_SUBFIELDS: NestedFieldConfig[] = [
   { key: 'lemmas', label: 'Lemmas', defaultSelected: true },
   { key: 'gloss', label: 'Gloss', defaultSelected: true },
@@ -255,7 +264,7 @@ export const LEXICAL_ENTRIES_SUBFIELDS: NestedFieldConfig[] = [
 // Map of column keys to their nested field configurations
 export const NESTED_FIELD_CONFIGS: Record<string, NestedFieldConfig[]> = {
   'frame_roles': FRAME_ROLES_SUBFIELDS,
-  'lexical_entries': LEXICAL_ENTRIES_SUBFIELDS,
+  'lexical_units': LEXICAL_ENTRIES_SUBFIELDS,
 };
 
 /**

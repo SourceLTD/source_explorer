@@ -85,7 +85,6 @@ export interface CreateLLMJobParams {
  */
 export interface FrameRoleData {
   type: string;
-  code: string;
   description: string;
   examples: string[];
   label: string;

@@ -13,18 +13,15 @@ model frame_roles {
   updated_at         DateTime             @default(now())
   id                 BigInt               @id @default(autoincrement())
   frame_id           BigInt
-  role_type_id       BigInt
   description        String?
   notes              String?
   main               Boolean?
   examples           String[]             @default([])
   label              String?
-  version            Int                  @default(1)
+  fillers            Json?
   frames             frames               @relation(fields: [frame_id], references: [id], onDelete: Cascade)
-  role_types         role_types           @relation(fields: [role_type_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   role_group_members role_group_members[]
 
-  @@unique([frame_id, role_type_id], map: "uq_frame_role")
   @@unique([id, frame_id], map: "uq_frame_roles_id_frame")
 }
 
@@ -46,15 +43,18 @@ model frames {
   deleted_reason                                    String?
   super_frame_id                                    BigInt?
   code                                              String?
+  frame_type                                        String?
+  vendler                                           String?
+  multi_perspective                                 Boolean?
+  wikidata_id                                       String?
+  recipe                                            Json?
+  frame_lexical_units                               frame_lexical_units[]
   frame_relations_frame_relations_source_idToframes frame_relations[]      @relation("frame_relations_source_idToframes")
   frame_relations_frame_relations_target_idToframes frame_relations[]      @relation("frame_relations_target_idToframes")
   frame_roles                                       frame_roles[]
   frames                                            frames?                @relation("framesToframes", fields: [super_frame_id], references: [id], map: "frames_super_frame_fk")
   other_frames                                      frames[]               @relation("framesToframes")
-  lexical_units                                     lexical_units[]
   llm_job_items                                     llm_job_items[]
-  recipe_predicates                                 recipe_predicates[]
-  recipes                                           recipes[]
   role_groups                                       role_groups[]
 
   @@index([label], map: "idx_frames_frame_name")
@@ -71,130 +71,6 @@ model instantiation_types {
   wikidata_id String? @unique
   id          BigInt  @id @default(autoincrement())
   code        String  @unique(map: "instantiation_types_code_unique") @db.VarChar
-}
-
-model role_types {
-  label               String        @unique
-  generic_description String
-  explanation         String?
-  id                  BigInt        @id @default(autoincrement())
-  code                String        @unique(map: "role_types_code_unique") @db.VarChar
-  frame_roles         frame_roles[]
-}
-
-model predicate_variable_types {
-  label                          String                           @unique
-  description                    String?
-  unit                           String?
-  created_at                     DateTime                         @default(now()) @db.Timestamp(6)
-  updated_at                     DateTime                         @default(now()) @db.Timestamp(6)
-  id                             BigInt                           @id @default(autoincrement())
-  recipe_predicate_role_bindings recipe_predicate_role_bindings[]
-  recipe_variables               recipe_variables[]
-}
-
-/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
-model recipe_predicate_relations {
-  properties                                                                                 Json?
-  created_at                                                                                 DateTime          @default(now()) @db.Timestamp(6)
-  updated_at                                                                                 DateTime          @default(now()) @db.Timestamp(6)
-  id                                                                                         BigInt            @id @default(autoincrement())
-  recipe_id                                                                                  BigInt
-  source_recipe_predicate_id                                                                 BigInt
-  target_recipe_predicate_id                                                                 BigInt
-  recipes                                                                                    recipes           @relation(fields: [recipe_id], references: [id], onDelete: Cascade)
-  recipe_predicates_recipe_predicate_relations_source_recipe_predicate_idTorecipe_predicates recipe_predicates @relation("recipe_predicate_relations_source_recipe_predicate_idTorecipe_predicates", fields: [source_recipe_predicate_id], references: [id], onDelete: Cascade)
-  recipe_predicates_recipe_predicate_relations_target_recipe_predicate_idTorecipe_predicates recipe_predicates @relation("recipe_predicate_relations_target_recipe_predicate_idTorecipe_predicates", fields: [target_recipe_predicate_id], references: [id], onDelete: Cascade)
-
-  @@index([recipe_id, source_recipe_predicate_id], map: "idx_recipe_pred_rel_recipe_source")
-  @@index([recipe_id, target_recipe_predicate_id], map: "idx_recipe_pred_rel_recipe_target")
-}
-
-/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
-model recipe_predicate_role_bindings {
-  bind_kind                  String
-  constant                   Json?
-  created_at                 DateTime                  @default(now()) @db.Timestamp(6)
-  updated_at                 DateTime                  @default(now()) @db.Timestamp(6)
-  id                         BigInt                    @id @default(autoincrement())
-  recipe_predicate_id        BigInt
-  predicate_role_id          BigInt
-  verb_role_id               BigInt?
-  predicate_variable_type_id BigInt?
-  discovered                 Boolean?                  @default(false)
-  variable_id                BigInt?
-  recipe_variables           recipe_variables?         @relation(fields: [variable_id], references: [id], map: "fk_recipe_predicate_role_bindings_variable")
-  predicate_variable_types   predicate_variable_types? @relation(fields: [predicate_variable_type_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  recipe_predicates          recipe_predicates         @relation(fields: [recipe_predicate_id], references: [id], onDelete: Cascade)
-
-  @@unique([recipe_predicate_id, predicate_role_id], map: "uq_recipe_predicate_role_binding")
-  @@index([variable_id], map: "idx_recipe_predicate_role_bindings_variable")
-}
-
-model recipe_predicates {
-  alias                                                                                               String?
-  position                                                                                            Int?
-  created_at                                                                                          DateTime                         @default(now()) @db.Timestamp(6)
-  updated_at                                                                                          DateTime                         @default(now()) @db.Timestamp(6)
-  id                                                                                                  BigInt                           @id @default(autoincrement())
-  recipe_id                                                                                           BigInt
-  example                                                                                             String?
-  commitment                                                                                          predicate_commitment             @default(asserted)
-  predicate_frame_id                                                                                  BigInt?
-  logic_targets                                                                                       logic_targets[]
-  recipe_preconditions                                                                                recipe_preconditions[]
-  recipe_predicate_relations_recipe_predicate_relations_source_recipe_predicate_idTorecipe_predicates recipe_predicate_relations[]     @relation("recipe_predicate_relations_source_recipe_predicate_idTorecipe_predicates")
-  recipe_predicate_relations_recipe_predicate_relations_target_recipe_predicate_idTorecipe_predicates recipe_predicate_relations[]     @relation("recipe_predicate_relations_target_recipe_predicate_idTorecipe_predicates")
-  recipe_predicate_role_bindings                                                                      recipe_predicate_role_bindings[]
-  frames                                                                                              frames?                          @relation(fields: [predicate_frame_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  recipes                                                                                             recipes                          @relation(fields: [recipe_id], references: [id], onDelete: Cascade)
-
-  @@index([commitment], map: "idx_recipe_predicates_commitment")
-  @@index([predicate_frame_id], map: "idx_recipe_predicates_frame_id")
-}
-
-model recipes {
-  label                                               String?
-  description                                         String?
-  is_default                                          Boolean                      @default(false)
-  created_at                                          DateTime                     @default(now()) @db.Timestamp(6)
-  updated_at                                          DateTime                     @default(now()) @db.Timestamp(6)
-  id                                                  BigInt                       @id @default(autoincrement())
-  example                                             String?
-  logic_root_node_id                                  BigInt?
-  version                                             Int                          @default(1)
-  frame_id                                            BigInt?
-  logic_nodes_logic_nodes_recipe_idTorecipes          logic_nodes[]                @relation("logic_nodes_recipe_idTorecipes")
-  recipe_preconditions                                recipe_preconditions[]
-  recipe_predicate_relations                          recipe_predicate_relations[]
-  recipe_predicates                                   recipe_predicates[]
-  recipe_variables                                    recipe_variables[]
-  frames                                              frames?                      @relation(fields: [frame_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  logic_nodes_recipes_logic_root_node_idTologic_nodes logic_nodes?                 @relation("recipes_logic_root_node_idTologic_nodes", fields: [logic_root_node_id], references: [id], onUpdate: NoAction)
-
-  @@index([frame_id], map: "idx_recipes_frame_id")
-}
-
-/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
-/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
-model recipe_preconditions {
-  id                         BigInt             @id @default(autoincrement())
-  recipe_id                  BigInt
-  condition_type             String             @db.VarChar(50)
-  target_role_id             BigInt?
-  target_recipe_predicate_id BigInt?
-  condition_params           Json?
-  description                String?
-  error_message              String?
-  created_at                 DateTime           @default(now()) @db.Timestamp(6)
-  updated_at                 DateTime           @default(now()) @db.Timestamp(6)
-  recipe_predicates          recipe_predicates? @relation(fields: [target_recipe_predicate_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_recipe_preconditions_predicate")
-  recipes                    recipes            @relation(fields: [recipe_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_recipe_preconditions_recipe")
-
-  @@index([target_recipe_predicate_id], map: "idx_recipe_preconditions_predicate")
-  @@index([recipe_id], map: "idx_recipe_preconditions_recipe")
-  @@index([target_role_id], map: "idx_recipe_preconditions_role")
-  @@index([condition_type], map: "idx_recipe_preconditions_type")
 }
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
@@ -223,73 +99,6 @@ model role_groups {
   frames               frames?              @relation(fields: [frame_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([frame_id], map: "idx_role_groups_frame_id")
-}
-
-/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
-model logic_edges {
-  id                                                  BigInt      @id @default(autoincrement())
-  parent_node_id                                      BigInt
-  child_node_id                                       BigInt
-  position                                            Int?
-  created_at                                          DateTime?   @default(now()) @db.Timestamp(6)
-  logic_nodes_logic_edges_child_node_idTologic_nodes  logic_nodes @relation("logic_edges_child_node_idTologic_nodes", fields: [child_node_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  logic_nodes_logic_edges_parent_node_idTologic_nodes logic_nodes @relation("logic_edges_parent_node_idTologic_nodes", fields: [parent_node_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-
-  @@unique([parent_node_id, child_node_id])
-  @@index([child_node_id], map: "idx_logic_edges_child")
-  @@index([parent_node_id, position], map: "idx_logic_edges_parent_position")
-}
-
-model logic_nodes {
-  id                                                  BigInt          @id @default(autoincrement())
-  recipe_id                                           BigInt
-  kind                                                logic_node_kind
-  description                                         String?
-  created_at                                          DateTime?       @default(now()) @db.Timestamp(6)
-  updated_at                                          DateTime?       @default(now()) @db.Timestamp(6)
-  natural_key                                         String?         @unique
-  logic_edges_logic_edges_child_node_idTologic_nodes  logic_edges[]   @relation("logic_edges_child_node_idTologic_nodes")
-  logic_edges_logic_edges_parent_node_idTologic_nodes logic_edges[]   @relation("logic_edges_parent_node_idTologic_nodes")
-  recipes_logic_nodes_recipe_idTorecipes              recipes         @relation("logic_nodes_recipe_idTorecipes", fields: [recipe_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  logic_targets                                       logic_targets?
-  recipes_recipes_logic_root_node_idTologic_nodes     recipes[]       @relation("recipes_logic_root_node_idTologic_nodes")
-
-  @@index([recipe_id, kind], map: "idx_logic_nodes_recipe_kind")
-}
-
-/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
-model logic_targets {
-  id                  BigInt             @id @default(autoincrement())
-  node_id             BigInt             @unique
-  recipe_predicate_id BigInt?
-  predicate_group_id  BigInt?
-  created_at          DateTime?          @default(now()) @db.Timestamp(6)
-  logic_nodes         logic_nodes        @relation(fields: [node_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  recipe_predicates   recipe_predicates? @relation(fields: [recipe_predicate_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-
-  @@index([predicate_group_id], map: "idx_logic_targets_group")
-  @@index([recipe_predicate_id], map: "idx_logic_targets_predicate")
-}
-
-/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
-model recipe_variables {
-  id                             BigInt                           @id @default(autoincrement())
-  recipe_id                      BigInt
-  key                            String
-  predicate_variable_type_id     BigInt?
-  default_value                  Json?
-  created_at                     DateTime                         @default(now()) @db.Timestamp(6)
-  updated_at                     DateTime                         @default(now()) @db.Timestamp(6)
-  lexical_unit_id                BigInt?
-  recipe_predicate_role_bindings recipe_predicate_role_bindings[]
-  recipes                        recipes                          @relation(fields: [recipe_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_recipe_variables_recipe")
-  predicate_variable_types       predicate_variable_types?        @relation(fields: [predicate_variable_type_id], references: [id], onUpdate: NoAction, map: "fk_recipe_variables_var_type")
-  lexical_units                  lexical_units?                   @relation(fields: [lexical_unit_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-
-  @@unique([recipe_id, key], map: "uq_recipe_variables_recipe_key")
-  @@index([key], map: "idx_recipe_variables_key")
-  @@index([recipe_id], map: "idx_recipe_variables_recipe")
-  @@index([lexical_unit_id], map: "idx_recipe_variables_lexical_unit")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -529,7 +338,6 @@ model lexical_units {
   deleted                                                                Boolean?                 @default(false)
   deleted_at                                                             DateTime?                @db.Timestamp(6)
   deleted_reason                                                         String?
-  frame_id                                                               BigInt?
   gloss_tsv                                                              Unsupported("tsvector")?
   examples_tsv                                                           Unsupported("tsvector")?
   embedding                                                              Unsupported("vector")?
@@ -549,23 +357,48 @@ model lexical_units {
   attributive                                                            Boolean?                 @default(true)
   subjective                                                             Boolean?                 @default(false)
   relational                                                             Boolean?                 @default(false)
+  embedding_1536                                                         Unsupported("vector")?
+  wikidata_id                                                            String?                  @db.VarChar
+  frame_lexical_units                                                    frame_lexical_units[]
   lexical_unit_relations_lexical_unit_relations_source_idTolexical_units lexical_unit_relations[] @relation("lexical_unit_relations_source_idTolexical_units")
   lexical_unit_relations_lexical_unit_relations_target_idTolexical_units lexical_unit_relations[] @relation("lexical_unit_relations_target_idTolexical_units")
-  frames                                                                 frames?                  @relation(fields: [frame_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  lexical_unit_types                                                     lexical_unit_types[]
   llm_job_items                                                          llm_job_items[]
-  recipe_variables                                                       recipe_variables[]
 
-  @@unique([id, frame_id], map: "uq_lexical_unit_id_frame")
   @@index([deleted], map: "idx_lexical_units_deleted")
   @@index([examples_tsv], map: "idx_lexical_units_examples_tsv", type: Gin)
   @@index([flagged], map: "idx_lexical_units_flagged")
-  @@index([frame_id], map: "idx_lexical_units_frame_id")
   @@index([gloss_tsv], map: "idx_lexical_units_gloss_tsv", type: Gin)
   @@index([lemmas], map: "idx_lexical_units_lemmas_gin", type: Gin)
   @@index([lexfile], map: "idx_lexical_units_lexfile")
   @@index([pos], map: "idx_lexical_units_pos")
   @@index([vendler_class], map: "idx_lexical_units_vendler_class")
   @@index([verifiable], map: "idx_lexical_units_verifiable")
+  @@index([embedding_1536], map: "idx_lexical_units_embedding_1536_hnsw_cosine")
+}
+
+model frame_lexical_units {
+  frame_id        BigInt
+  lexical_unit_id BigInt
+  created_at      DateTime      @default(now()) @db.Timestamptz(6)
+  created_by      String?       @db.Uuid
+  frames          frames        @relation(fields: [frame_id], references: [id], onDelete: Cascade, map: "frame_lexical_units_frame_fk")
+  lexical_units   lexical_units @relation(fields: [lexical_unit_id], references: [id], onDelete: Cascade, map: "frame_lexical_units_lexical_unit_fk")
+
+  @@id([frame_id, lexical_unit_id])
+  @@index([frame_id], map: "idx_frame_lexical_units_frame")
+  @@index([lexical_unit_id], map: "idx_frame_lexical_units_lexical")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model lexical_unit_types {
+  id              BigInt            @id @default(autoincrement())
+  lexical_unit_id BigInt
+  type            lexical_unit_type
+  created_at      DateTime          @default(now()) @db.Timestamptz(6)
+  lexical_units   lexical_units     @relation(fields: [lexical_unit_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "lexical_unit_types_lexical_unit_fk")
+
+  @@unique([lexical_unit_id, type])
 }
 
 enum vendler_class_type {
@@ -573,25 +406,6 @@ enum vendler_class_type {
   activity
   accomplishment
   achievement
-}
-
-enum logic_node_kind {
-  and
-  or
-  not
-  leaf
-  enables
-  causes
-  precedes
-  starts
-  ends
-  during
-  co_temporal
-}
-
-enum predicate_commitment {
-  asserted
-  afforded
 }
 
 enum llm_job_item_status {
@@ -656,7 +470,6 @@ enum entity_type {
   adverb_relation
   frame_relation
   lexical_unit
-  lexical_unit_relation
 }
 
 enum field_change_status {
@@ -725,4 +538,15 @@ enum part_of_speech {
   noun
   adjective
   adverb
+}
+
+enum lexical_unit_type {
+  entity
+  event
+  relation
+  attribute
+  state
+  none
+  category
+  numeric
 }

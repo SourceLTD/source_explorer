@@ -36,7 +36,7 @@ const AGENTIC_INSTRUCTIONS = `
 <tools>
 You have access to MCP tools for searching the database. Use these tools to:
 - Look up frame definitions and find semantically similar frames
-- Search for related verbs, nouns, or other lexical entries
+- Search for related verbs, nouns, or other lexical units
 - Verify frame assignments by examining other entries in the same frame
 - Research alternative frames before making recommendations
 
@@ -58,9 +58,9 @@ const SCOPE_CONTEXT: Record<ScopeMode, string> = {
 // BASE PROMPTS
 // ============================================================================
 
-// Prompts for lexical entries (verbs, nouns, adjectives, adverbs)
+// Prompts for lexical units (verbs, nouns, adjectives, adverbs)
 const LEXICAL_PROMPTS: Record<LexicalJobType, string> = {
-  flag: `You are reviewing lexical entries for quality assurance.
+  flag: `You are reviewing lexical units for quality assurance.
 
 Entry Code: {{code}}
 Part of Speech: {{pos}}
@@ -78,7 +78,7 @@ Decide whether the entry should be flagged for review. Consider:
 
 Respond using the provided JSON schema.`,
 
-  edit: `You are improving the quality of lexical entry data.
+  edit: `You are improving the quality of lexical unit data.
 
 Entry Code: {{code}}
 Part of Speech: {{pos}}
@@ -94,7 +94,7 @@ Review this entry and suggest improvements to make the data more accurate and us
 
 Respond using the provided JSON schema with your suggested edits.`,
 
-  allocate: `You are evaluating frame assignments for lexical entries.
+  allocate: `You are evaluating frame assignments for lexical units.
 
 Entry Code: {{code}}
 Part of Speech: {{pos}}
@@ -154,7 +154,7 @@ Short Definition: {{short_definition}}
 Number of Roles: {{roles_count}}
 Number of Lexical Units: {{lexical_units_count}}
 
-Evaluate whether verbs and other lexical entries in this frame are correctly assigned:
+Evaluate whether verbs and other lexical units in this frame are correctly assigned:
 - Does the frame's definition clearly delineate what entries should belong?
 - Are there entries that might fit better in a different frame?
 - Consider the semantic coherence of the frame's contents
@@ -300,7 +300,7 @@ Number of Child Frames: {{child_frames_count}}
 
 Current Roles:
 {% for role in roles %}
-- {{role.type}} ({{role.code}}): {{role.description}}{% if role.main %} [MAIN]{% endif %}
+- {{role.type}}: {{role.description}}{% if role.main %} [MAIN]{% endif %}
 {% endfor %}
 
 Child Frames in this Superframe:

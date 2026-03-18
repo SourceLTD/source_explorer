@@ -671,7 +671,7 @@ export default function DataTable({
     return String(value);
   }, []);
 
-  // Format an array item (like a frame_role or lexical_entry) using selected sub-fields
+  // Format an array item (like a frame_role or lexical_unit) using selected sub-fields
   const formatArrayItem = useCallback((item: Record<string, unknown>, selectedSubFields: string[]): string => {
     if (selectedSubFields.length === 0) {
       return '—';
@@ -706,8 +706,8 @@ export default function DataTable({
         return roles.map(role => formatArrayItem(role, selectedNestedFields)).join('\n  - ');
       }
       
-      if (columnKey === 'lexical_entries' && 'lexical_entries' in entry) {
-        const lexData = entry.lexical_entries as unknown as { entries: Array<Record<string, unknown>> };
+      if (columnKey === 'lexical_units' && 'lexical_units' in entry) {
+        const lexData = entry.lexical_units as unknown as { entries: Array<Record<string, unknown>> };
         if (!lexData?.entries || lexData.entries.length === 0) return '—';
         
         return lexData.entries.map(lex => formatArrayItem(lex, selectedNestedFields)).join('\n  - ');
@@ -716,13 +716,13 @@ export default function DataTable({
     
     // Fallback for nested columns without sub-field selection
     if (columnKey === 'frame_roles' && 'frame_roles' in entry) {
-      const roles = entry.frame_roles as unknown as Array<{ label?: string | null; role_type?: { label: string } }>;
+      const roles = entry.frame_roles as unknown as Array<{ label?: string | null }>;
       if (!roles || roles.length === 0) return '—';
-      return roles.map(r => r.label || r.role_type?.label || '—').filter(Boolean).join(', ');
+      return roles.map(r => r.label || '—').filter(Boolean).join(', ');
     }
     
-    if (columnKey === 'lexical_entries' && 'lexical_entries' in entry) {
-      const lexData = entry.lexical_entries as unknown as { entries: Array<{ gloss: string; lemmas?: string[] }> };
+    if (columnKey === 'lexical_units' && 'lexical_units' in entry) {
+      const lexData = entry.lexical_units as unknown as { entries: Array<{ gloss: string; lemmas?: string[] }> };
       if (!lexData?.entries || lexData.entries.length === 0) return '—';
       return lexData.entries.map(e => {
         const lemmas = e.lemmas?.join(', ') || '';

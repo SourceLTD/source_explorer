@@ -295,10 +295,8 @@ export function CellContent({
             <div className="space-y-1 max-w-full">
               {roles.map((role, idx) => {
                 const roleTypeLabel =
-                  role.role_type?.label ??
-                  // Defensive fallback for staged/pending payload shapes (should not happen, but avoid crashing the table)
+                  role.label ??
                   (role as any)?.roleType ??
-                  (role as any)?.role_type_label ??
                   'Unknown';
 
                 const op = getFrameRoleOperation(pending, roleTypeLabel);
@@ -356,12 +354,12 @@ export function CellContent({
             </div>
           );
         }
-      case 'lexical_entries':
-        if (!entry.lexical_entries || entry.lexical_entries.entries.length === 0) return <EmptyCell />;
+      case 'lexical_units':
+        if (!entry.lexical_units || entry.lexical_units.entries.length === 0) return <EmptyCell />;
         return (
           <div className="grid gap-y-1 gap-x-2 max-w-full" style={{ gridTemplateColumns: 'auto 1fr' }}>
-            {entry.lexical_entries.entries.map((lexicalEntry, idx) => {
-              const allLemmas = [...(lexicalEntry.src_lemmas || []), ...(lexicalEntry.lemmas || [])];
+            {entry.lexical_units.entries.map((lu, idx) => {
+              const allLemmas = [...(lu.src_lemmas || []), ...(lu.lemmas || [])];
               const firstLemma = allLemmas[0] || '—';
               const extraCount = allLemmas.length - 1;
               return (
@@ -371,15 +369,15 @@ export function CellContent({
                       {firstLemma}{extraCount > 0 && <span className="text-blue-400 ml-1">+{extraCount}</span>}
                     </span>
                   </div>
-                  <span className="text-xs text-gray-600 truncate self-center" title={lexicalEntry.gloss}>
-                    {lexicalEntry.gloss}
+                  <span className="text-xs text-gray-600 truncate self-center" title={lu.gloss}>
+                    {lu.gloss}
                   </span>
                 </React.Fragment>
               );
             })}
-            {entry.lexical_entries.hasMore && (
+            {entry.lexical_units.hasMore && (
               <span className="text-xs text-gray-400 font-medium col-span-2">
-                +{entry.lexical_entries.totalCount - 10} more
+                +{entry.lexical_units.totalCount - 10} more
               </span>
             )}
           </div>
@@ -435,7 +433,8 @@ export function CellContent({
           </div>
         );
       case 'frame': {
-      const frameCode = entry.frame || entry.frame_id;
+      const primaryFrameId = entry.frame_ids?.[0] ?? entry.frame_id;
+      const frameCode = entry.frame || primaryFrameId;
       const dotIndex = frameCode?.indexOf('.');
       
       return (
@@ -443,7 +442,7 @@ export function CellContent({
           {frameCode ? (
             <span 
               className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-600 hover:bg-blue-100 cursor-pointer transition-colors"
-              onClick={() => router.push(`/graph/frames/${entry.frame_id}`)}
+              onClick={() => router.push(`/graph/frames?entry=${primaryFrameId}`)}
             >
               {dotIndex !== undefined && dotIndex !== -1 ? (
                 <>

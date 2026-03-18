@@ -1,5 +1,5 @@
 import React from 'react';
-import { Frame, RoleType, sortRolesByPrecedence } from '@/lib/types';
+import { Frame, sortRolesByPrecedence } from '@/lib/types';
 import { EditableField, EditableFrameRole } from './types';
 import { OverlaySection } from './OverlaySection';
 import { FrameRoleEditor } from './FrameRoleEditor';
@@ -14,11 +14,10 @@ interface FrameRolesSectionProps {
   frame: Frame;
   editingField: EditableField | null;
   editFrameRoles: EditableFrameRole[];
-  roleTypes: RoleType[];
   isOpen: boolean;
   onToggle: () => void;
   onStartEdit: (field: EditableField) => void;
-  onFrameRoleChange: (clientId: string, field: 'label' | 'description' | 'notes' | 'roleType' | 'main' | 'examples', value: string | boolean | string[]) => void;
+  onFrameRoleChange: (clientId: string, field: 'label' | 'description' | 'notes' | 'main' | 'examples', value: string | boolean | string[]) => void;
   onFrameRoleAdd: (main: boolean) => void;
   onFrameRoleRemove: (clientId: string) => void;
   onSave: () => void;
@@ -31,7 +30,6 @@ export function FrameRolesSection({
   frame,
   editingField,
   editFrameRoles,
-  roleTypes,
   isOpen,
   onToggle,
   onStartEdit,
@@ -81,7 +79,6 @@ export function FrameRolesSection({
         {editingField === 'frame_roles' && isSuperFrame ? (
           <FrameRoleEditor
             roles={editFrameRoles}
-            roleTypes={roleTypes}
             onRoleChange={onFrameRoleChange}
             onRoleAdd={onFrameRoleAdd}
             onRoleRemove={onFrameRoleRemove}
@@ -94,8 +91,8 @@ export function FrameRolesSection({
             {frame.frame_roles && frame.frame_roles.length > 0 ? (
               <div className="space-y-2">
                 {sortRolesByPrecedence(frame.frame_roles).map((role, index) => {
-                  const roleTypeLabel = role.role_type.label;
-                  const op = getFrameRoleOperation(pending, roleTypeLabel);
+                  const roleLabel = role.label || 'Unnamed';
+                  const op = getFrameRoleOperation(pending, roleLabel);
                   const rowHighlight = op ? getFrameRolePendingCellClasses(op) : '';
 
                   return (
@@ -104,16 +101,7 @@ export function FrameRolesSection({
                       className={`text-sm ${op ? `rounded px-2 py-1 ${rowHighlight}` : ''}`}
                     >
                       <span className={`font-medium ${role.main ? 'text-blue-600' : 'text-gray-700'}`}>
-                        {role.label ? (
-                          <>
-                            {role.label}
-                            <span className="text-gray-500 ml-1">({roleTypeLabel})</span>:
-                          </>
-                        ) : (
-                          <>
-                            {roleTypeLabel}:
-                          </>
-                        )}
+                        {roleLabel}:
                       </span>{' '}
                       <span className="text-gray-900">{role.description || 'No description'}</span>
                       {role.notes && (

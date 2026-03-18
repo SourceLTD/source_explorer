@@ -1,32 +1,12 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState } from 'react';
 import { Group } from '@visx/group';
 import { 
   FrameGraphNode, 
-  FrameRelationType, 
   sortRolesByPrecedence, 
-  PendingChangeInfo 
 } from '@/lib/types';
 import { getPendingNodeStroke, getPendingNodeFill } from './PendingChangeIndicator';
-
-// Relation type display labels
-const RELATION_LABELS: Record<FrameRelationType, string> = {
-  'causes': 'Causes',
-  'inherits_from': 'Inherits From',
-  'inherited_by': 'Inherited By',
-  'uses': 'Uses',
-  'used_by': 'Used By',
-  'subframe_of': 'Subframe Of',
-  'has_subframe': 'Has Subframe',
-  'precedes': 'Precedes',
-  'preceded_by': 'Preceded By',
-  'perspective_on': 'Perspective On',
-  'perspectivized_in': 'Perspectivized In',
-  'see_also': 'See Also',
-  'reframing_mapping': 'Reframing',
-  'metaphor': 'Metaphor',
-};
 
 interface FrameMainNodeProps {
   node: FrameGraphNode;
@@ -36,13 +16,10 @@ interface FrameMainNodeProps {
   onFrameClick: (frameId: string) => void;
   onVerbClick: (verbId: string) => void;
   onEditClick?: () => void;
-  // Optional controlled expansion states
   controlledRolesExpanded?: boolean;
-  controlledVerbsExpanded?: boolean;
-  controlledRelationsExpanded?: boolean;
+  controlledLexicalUnitsExpanded?: boolean;
   onRolesExpandedChange?: (expanded: boolean) => void;
-  onVerbsExpandedChange?: (expanded: boolean) => void;
-  onRelationsExpandedChange?: (expanded: boolean) => void;
+  onLexicalUnitsExpandedChange?: (expanded: boolean) => void;
 }
 
 export default function FrameMainNode({ 
@@ -54,46 +31,28 @@ export default function FrameMainNode({
   onVerbClick,
   onEditClick,
   controlledRolesExpanded,
-  controlledVerbsExpanded,
-  controlledRelationsExpanded,
+  controlledLexicalUnitsExpanded,
   onRolesExpandedChange,
-  onVerbsExpandedChange,
-  onRelationsExpandedChange,
+  onLexicalUnitsExpandedChange,
 }: FrameMainNodeProps) {
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [internalRolesExpanded, setInternalRolesExpanded] = useState<boolean>(true);
-  const [internalVerbsExpanded, setInternalVerbsExpanded] = useState<boolean>(false);
-  const [internalRelationsExpanded, setInternalRelationsExpanded] = useState<boolean>(true);
+  const [internalLexicalUnitsExpanded, setInternalLexicalUnitsExpanded] = useState<boolean>(true);
 
-  // Use controlled values if provided, otherwise use internal state
   const rolesExpanded = controlledRolesExpanded !== undefined ? controlledRolesExpanded : internalRolesExpanded;
-  const verbsExpanded = controlledVerbsExpanded !== undefined ? controlledVerbsExpanded : internalVerbsExpanded;
-  const relationsExpanded = controlledRelationsExpanded !== undefined ? controlledRelationsExpanded : internalRelationsExpanded;
+  const lexicalUnitsExpanded = controlledLexicalUnitsExpanded !== undefined ? controlledLexicalUnitsExpanded : internalLexicalUnitsExpanded;
 
   const setRolesExpanded = (val: boolean) => {
     if (onRolesExpandedChange) onRolesExpandedChange(val);
     else setInternalRolesExpanded(val);
   };
-  const setVerbsExpanded = (val: boolean) => {
-    if (onVerbsExpandedChange) onVerbsExpandedChange(val);
-    else setInternalVerbsExpanded(val);
-  };
-  const setRelationsExpanded = (val: boolean) => {
-    if (onRelationsExpandedChange) onRelationsExpandedChange(val);
-    else setInternalRelationsExpanded(val);
-  };
-
-  // Helper function to estimate text height based on content and width
-  const estimateTextHeight = (text: string, width: number, fontSize: number = 13, lineHeight: number = 1.3): number => {
-    const avgCharWidth = fontSize * 0.6;
-    const availableWidth = width - 24;
-    const charsPerLine = Math.floor(availableWidth / avgCharWidth);
-    const lines = Math.ceil(text.length / charsPerLine);
-    return Math.max(1, lines) * fontSize * lineHeight;
+  const setLexicalUnitsExpanded = (val: boolean) => {
+    if (onLexicalUnitsExpandedChange) onLexicalUnitsExpandedChange(val);
+    else setInternalLexicalUnitsExpanded(val);
   };
 
   const nodeWidth = 600;
-  const nodeHeights = calculateFrameNodeHeights(node, rolesExpanded, verbsExpanded, relationsExpanded);
+  const nodeHeights = calculateFrameNodeHeights(node, rolesExpanded, lexicalUnitsExpanded);
   const nodeHeight = nodeHeights.totalHeight;
   const centerX = -nodeWidth / 2;
   const centerY = -nodeHeight / 2;
@@ -105,8 +64,7 @@ export default function FrameMainNode({
     shortDefHeight, 
     glossHeight, 
     rolesHeight, 
-    verbsHeight, 
-    relationsHeight 
+    lexicalUnitsHeight, 
   } = nodeHeights;
   
   let currentY = centerY + 50 + shortDefHeight + glossHeight + 8;
@@ -265,16 +223,11 @@ export default function FrameMainNode({
         {rolesExpanded && node.roles && node.roles.length > 0 && (
           <Group top={currentY + 20} left={centerX + 12}>
             {(() => {
-              // Map FrameGraphRole to a structure sortRolesByPrecedence understands
-              const sortableRoles = node.roles.map(r => ({
-                ...r,
-                role_type: { label: r.role_type_label }
-              }));
-              const sortedRoles = sortRolesByPrecedence(sortableRoles);
+              const sortedRoles = sortRolesByPrecedence(node.roles);
               let roleOffset = 0;
               
               return sortedRoles.slice(0, 10).map((role, idx) => {
-                const roleText = `${role.role_type_label}: ${role.description || 'No description'}`;
+                const roleText = `${role.label}: ${role.description || 'No description'}`;
                 const estimatedLines = Math.ceil(roleText.length / 60);
                 const roleHeight = estimatedLines <= 2 ? 40 : 55;
                 const currentRoleOffset = roleOffset;
@@ -300,7 +253,7 @@ export default function FrameMainNode({
                       height: '100%',
                       overflow: 'hidden',
                     }}>
-                      <span style={{ fontWeight: 'bold' }}>{role.role_type_label}:</span>{' '}
+                      <span style={{ fontWeight: 'bold' }}>{role.label}:</span>{' '}
                       {role.description || 'No description'}
                     </div>
                   </foreignObject>
@@ -323,85 +276,8 @@ export default function FrameMainNode({
         {(() => { currentY += rolesHeight + 4; return null; })()}
       </g>
 
-      {/* Verbs Section */}
-      {(() => {
-        const verbs = node.lexical_units?.filter(lu => lu.pos === 'verb') || [];
-        if (verbs.length === 0) return null;
-
-        return (
-          <g>
-            <foreignObject
-              x={centerX + 12}
-              y={currentY}
-              width={nodeWidth - 24}
-              height={20}
-            >
-              <div 
-                style={{
-                  fontSize: '13px',
-                  fontFamily: 'Arial',
-                  color: 'white',
-                  fontWeight: 'bold',
-                  padding: '2px 6px',
-                  backgroundColor: 'rgba(0, 0, 0, 0.2)',
-                  borderRadius: '3px 3px 0 0',
-                  cursor: 'pointer',
-                  userSelect: 'none',
-                }}
-                onClick={() => setVerbsExpanded(!verbsExpanded)}
-              >
-                {verbsExpanded ? '▼' : '▶'} Verbs ({verbs.length})
-              </div>
-            </foreignObject>
-            
-            {verbsExpanded && (
-              <foreignObject
-                x={centerX + 12}
-                y={currentY + 20}
-                width={nodeWidth - 24}
-                height={verbsHeight - 20}
-              >
-                <div style={{ 
-                  fontSize: '12px', 
-                  color: 'white',
-                  padding: '4px 0',
-                }}>
-                  {verbs.slice(0, 10).map((verb) => (
-                    <div 
-                      key={verb.id} 
-                      style={{ 
-                        padding: '4px 8px', 
-                        background: 'rgba(59, 130, 246, 0.3)',
-                        borderRadius: '4px',
-                        marginBottom: '4px',
-                        cursor: 'pointer',
-                      }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onVerbClick(verb.id);
-                      }}
-                    >
-                      <strong style={{ color: '#bfdbfe' }}>{verb.code || verb.id}</strong>
-                      <span style={{ opacity: 0.8, marginLeft: '8px' }}>
-                        {verb.lemmas?.slice(0, 3).join(', ')}
-                      </span>
-                    </div>
-                  ))}
-                  {verbs.length > 10 && (
-                    <div style={{ opacity: 0.7, padding: '4px 8px', fontSize: '11px' }}>
-                      + {verbs.length - 10} more verbs
-                    </div>
-                  )}
-                </div>
-              </foreignObject>
-            )}
-            {(() => { currentY += verbsHeight + 4; return null; })()}
-          </g>
-        );
-      })()}
-
-      {/* Relations Section */}
-      {node.relations && node.relations.length > 0 && (
+      {/* Lexical Units Section */}
+      {node.lexical_units && node.lexical_units.length > 0 && (
         <g>
           <foreignObject
             x={centerX + 12}
@@ -421,52 +297,67 @@ export default function FrameMainNode({
                 cursor: 'pointer',
                 userSelect: 'none',
               }}
-              onClick={() => setRelationsExpanded(!relationsExpanded)}
+              onClick={() => setLexicalUnitsExpanded(!lexicalUnitsExpanded)}
             >
-              {relationsExpanded ? '▼' : '▶'} Relations ({node.relations.length})
+              {lexicalUnitsExpanded ? '▼' : '▶'} Lexical Units ({node.lexical_units.length})
             </div>
           </foreignObject>
           
-          {relationsExpanded && (
+          {lexicalUnitsExpanded && (
             <foreignObject
               x={centerX + 12}
               y={currentY + 20}
               width={nodeWidth - 24}
-              height={relationsHeight - 20}
+              height={lexicalUnitsHeight - 20}
             >
               <div style={{ 
                 fontSize: '12px', 
                 color: 'white',
                 padding: '4px 0',
               }}>
-                {node.relations.slice(0, 10).map((rel, relIdx) => {
-                  const targetFrame = rel.direction === 'outgoing' ? rel.target : rel.source;
-                  if (!targetFrame) return null;
-                  return (
-                    <div 
-                      key={relIdx} 
-                      style={{ 
-                        padding: '4px 8px', 
-                        background: 'rgba(255, 255, 255, 0.1)',
-                        borderRadius: '4px',
-                        marginBottom: '4px',
-                        cursor: 'pointer',
-                      }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onFrameClick(targetFrame.id);
-                      }}
-                    >
-                      <span style={{ opacity: 0.7 }}>
-                        {rel.direction === 'outgoing' ? '→' : '←'} {RELATION_LABELS[rel.type] || rel.type}:
+                {node.lexical_units.slice(0, 15).map((lu) => (
+                  <div 
+                    key={lu.id} 
+                    style={{ 
+                      padding: '4px 8px', 
+                      background: 'rgba(255, 255, 255, 0.1)',
+                      borderRadius: '4px',
+                      marginBottom: '4px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'baseline',
+                      gap: '6px',
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onVerbClick(lu.id);
+                    }}
+                  >
+                    <span style={{
+                      fontSize: '10px',
+                      fontWeight: '600',
+                      color: '#bfdbfe',
+                      backgroundColor: 'rgba(59, 130, 246, 0.4)',
+                      padding: '1px 5px',
+                      borderRadius: '3px',
+                      textTransform: 'uppercase',
+                      flexShrink: 0,
+                    }}>
+                      {lu.pos}
+                    </span>
+                    <strong style={{ color: '#e0eaff' }}>
+                      {lu.lemmas?.slice(0, 4).join(', ')}
+                    </strong>
+                    {lu.gloss && (
+                      <span style={{ opacity: 0.65, fontSize: '11px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        — {lu.gloss.length > 60 ? lu.gloss.substring(0, 58) + '…' : lu.gloss}
                       </span>
-                      <strong style={{ marginLeft: '4px', color: '#fbbf24' }}>{targetFrame.label}</strong>
-                    </div>
-                  );
-                })}
-                {node.relations.length > 10 && (
+                    )}
+                  </div>
+                ))}
+                {node.lexical_units.length > 15 && (
                   <div style={{ opacity: 0.7, padding: '4px 8px', fontSize: '11px' }}>
-                    + {node.relations.length - 10} more relations
+                    + {node.lexical_units.length - 15} more lexical units
                   </div>
                 )}
               </div>
@@ -536,8 +427,7 @@ export default function FrameMainNode({
 export function calculateFrameNodeHeights(
   node: FrameGraphNode,
   rolesExpanded: boolean = true,
-  verbsExpanded: boolean = false,
-  relationsExpanded: boolean = true
+  lexicalUnitsExpanded: boolean = true
 ) {
   const nodeWidth = 600;
   const contentWidth = nodeWidth - 24;
@@ -559,64 +449,50 @@ export function calculateFrameNodeHeights(
 
   const glossText = node.gloss || '';
   const glossHeight = glossText ? Math.max(30, estimateTextHeight(glossText, contentWidth, 14, 1.3) + 10) : 0;
-  height += glossHeight + 8; // Margin for gloss
+  height += glossHeight + 8;
 
   // Roles section
-  let rolesHeight = 20; // Header
+  let rolesHeight = 20;
   if (rolesExpanded && node.roles && node.roles.length > 0) {
     const visibleRoles = node.roles.slice(0, 10);
     visibleRoles.forEach(role => {
-      const roleText = `${role.role_type_label}: ${role.description || 'No description'}`;
+      const roleText = `${role.label}: ${role.description || 'No description'}`;
       const estimatedLines = Math.ceil(roleText.length / 60);
       rolesHeight += (estimatedLines <= 2 ? 40 : 55) + 4;
     });
-    if (node.roles.length > 10) rolesHeight += 25; // "+ more" text
+    if (node.roles.length > 10) rolesHeight += 25;
   }
   height += rolesHeight + 4;
 
-  // Verbs section
-  let verbsHeight = 0;
-  const verbs = node.lexical_units?.filter(lu => lu.pos === 'verb') || [];
-  if (verbs.length > 0) {
-    verbsHeight = 20; // Header
-    if (verbsExpanded) {
-      const visibleVerbs = verbs.slice(0, 10);
-      verbsHeight += visibleVerbs.length * 32 + 8;
-      if (verbs.length > 10) verbsHeight += 25;
+  // Lexical units section
+  let lexicalUnitsHeight = 0;
+  const lexicalUnits = node.lexical_units || [];
+  if (lexicalUnits.length > 0) {
+    lexicalUnitsHeight = 20;
+    if (lexicalUnitsExpanded) {
+      const visibleLUs = lexicalUnits.slice(0, 15);
+      lexicalUnitsHeight += visibleLUs.length * 32 + 8;
+      if (lexicalUnits.length > 15) lexicalUnitsHeight += 25;
     }
-    height += verbsHeight + 4;
+    height += lexicalUnitsHeight + 4;
   }
 
-  // Relations section
-  let relationsHeight = 0;
-  if (node.relations && node.relations.length > 0) {
-    relationsHeight = 20; // Header
-    if (relationsExpanded) {
-      const visibleRels = node.relations.slice(0, 10);
-      relationsHeight += visibleRels.length * 32 + 8;
-      if (node.relations.length > 10) relationsHeight += 25;
-    }
-    height += relationsHeight + 4;
-  }
-
-  height += 20; // Bottom padding
+  height += 20;
   
   return {
     totalHeight: height,
     shortDefHeight,
     glossHeight,
     rolesHeight,
-    verbsHeight,
-    relationsHeight
+    lexicalUnitsHeight,
   };
 }
 
 export function calculateFrameMainNodeHeight(
   node: FrameGraphNode,
   rolesExpanded: boolean = true,
-  verbsExpanded: boolean = false,
-  relationsExpanded: boolean = true
+  lexicalUnitsExpanded: boolean = true
 ): number {
-  return calculateFrameNodeHeights(node, rolesExpanded, verbsExpanded, relationsExpanded).totalHeight;
+  return calculateFrameNodeHeights(node, rolesExpanded, lexicalUnitsExpanded).totalHeight;
 }
 

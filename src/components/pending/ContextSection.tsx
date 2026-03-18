@@ -69,7 +69,7 @@ export default function ContextSection(props: PendingChangesContextSectionProps)
       case 'frame':
         return 'Frame';
       case 'lexical_unit':
-        return 'Lexical Entry';
+        return 'Lexical Unit';
       default:
         return props.entityType.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
     }

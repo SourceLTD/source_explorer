@@ -18,14 +18,9 @@ export type EditableField =
 export interface EditableFrameRole {
   id: string;
   clientId: string;
-  /**
-   * Per-frame display label for the role (distinct from role type label).
-   * Example: "BELIEVER" while roleType might be "EXPERIENCER".
-   */
   label: string;
   description: string;
   notes: string;
-  roleType: string;
   main: boolean;
   examples: string[];
 }

@@ -28,14 +28,13 @@ export function useEntryEditor(node: GraphNode | Frame | null, mode: Mode) {
         setEditValue(frameNode.short_definition ?? '');
       } else if (field === 'frame_roles') {
         const preparedFrameRoles = sortRolesByPrecedence(frameNode.frame_roles || []).map((role, index) => {
-          const clientId = role.id && role.id.length > 0 ? role.id : `existing-role-${index}-${role.role_type.label}`;
+          const clientId = role.id && role.id.length > 0 ? role.id : `existing-role-${index}-${role.label || 'unnamed'}`;
           return {
             id: role.id,
             clientId,
             label: role.label || '',
             description: role.description || '',
             notes: role.notes || '',
-            roleType: role.role_type.label,
             main: role.main ?? false,
             examples: Array.isArray(role.examples) ? role.examples : [],
           };
@@ -112,7 +111,7 @@ export function useEntryEditor(node: GraphNode | Frame | null, mode: Mode) {
   }, []);
 
   // Frame role editing helpers
-  const updateFrameRole = useCallback((clientId: string, field: 'label' | 'description' | 'notes' | 'roleType' | 'main' | 'examples', value: string | boolean | string[]) => {
+  const updateFrameRole = useCallback((clientId: string, field: 'label' | 'description' | 'notes' | 'main' | 'examples', value: string | boolean | string[]) => {
     setEditFrameRoles(prev => prev.map((role) => 
       role.clientId === clientId ? { ...role, [field]: value } : role
     ));
@@ -120,7 +119,7 @@ export function useEntryEditor(node: GraphNode | Frame | null, mode: Mode) {
 
   const addFrameRole = useCallback((main: boolean) => {
     const clientId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
-    setEditFrameRoles(prev => [...prev, { id: '', clientId, label: '', description: '', notes: '', roleType: '', main, examples: [] }]);
+    setEditFrameRoles(prev => [...prev, { id: '', clientId, label: '', description: '', notes: '', main, examples: [] }]);
   }, []);
 
   const removeFrameRole = useCallback((clientId: string) => {

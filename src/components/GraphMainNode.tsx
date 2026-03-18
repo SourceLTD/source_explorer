@@ -158,7 +158,7 @@ export default function GraphMainNode({
     let rolesHeight = 20; // Always show Roles header
     if (rolesExpanded && node.roles && node.roles.length > 0) {
       node.roles.forEach(role => {
-        const roleText = `${role.role_type.label}: ${role.description || 'No description'}`;
+        const roleText = `${role.label}: ${role.description || 'No description'}`;
         const estimatedLines = Math.ceil(roleText.length / 60);
         const roleHeight = estimatedLines <= 2 ? 45 : 60;
         rolesHeight += roleHeight;
@@ -626,8 +626,8 @@ export default function GraphMainNode({
             const rolesInGroup = node.roles!.filter(role => group.role_ids.includes(role.id));
             // Sort roles within group by custom order if applicable
             rolesInGroup.sort((a, b) => {
-              const orderA = speechRoleOrder[a.role_type.label] || 999;
-              const orderB = speechRoleOrder[b.role_type.label] || 999;
+              const orderA = speechRoleOrder[a.label ?? ''] || 999;
+              const orderB = speechRoleOrder[b.label ?? ''] || 999;
               if (orderA !== orderB) return orderA - orderB;
               return 0;
             });
@@ -650,7 +650,7 @@ export default function GraphMainNode({
               
               // Calculate heights for all roles in group
               const roleHeights = rolesInGroup.map(r => {
-                const roleText = `${r.role_type.label}: ${r.description || 'No description'}`;
+                const roleText = `${r.label}: ${r.description || 'No description'}`;
                 const estimatedLines = Math.ceil(roleText.length / 60);
                 return estimatedLines <= 2 ? 45 : 60;
               });
@@ -719,7 +719,7 @@ export default function GraphMainNode({
                       overflow: 'hidden',
                       textDecoration: isGreyedOut ? 'line-through' : 'none',
                     }}>
-                      <span style={{ fontWeight: 'bold' }}>{groupRole.role_type.label}:</span>{' '}
+                      <span style={{ fontWeight: 'bold' }}>{groupRole.label}:</span>{' '}
                       {groupRole.description || 'No description'}
                     </div>
                   </foreignObject>
@@ -730,7 +730,7 @@ export default function GraphMainNode({
             } 
             // If this role is not in a group, render it normally
             else if (!roleGroupId) {
-              const roleText = `${role.role_type.label}: ${role.description || 'No description'}`;
+              const roleText = `${role.label}: ${role.description || 'No description'}`;
               const estimatedLines = Math.ceil(roleText.length / 60);
               const roleHeight = estimatedLines <= 2 ? 45 : 60;
               const isGreyedOut = greyedOutRoleIds.has(role.id);
@@ -756,7 +756,7 @@ export default function GraphMainNode({
                     overflow: 'hidden',
                     textDecoration: isGreyedOut ? 'line-through' : 'none',
                   }}>
-                    <span style={{ fontWeight: 'bold' }}>{role.role_type.label}:</span>{' '}
+                    <span style={{ fontWeight: 'bold' }}>{role.label}:</span>{' '}
                     {role.description || 'No description'}
                   </div>
                 </foreignObject>
@@ -1123,7 +1123,7 @@ export function calculateMainNodeHeight(
     let rolesHeight = 20;
     if (rolesExpanded && node.roles && node.roles.length > 0) {
       node.roles.forEach(role => {
-        const roleText = `${role.role_type.label}: ${role.description || 'No description'}`;
+        const roleText = `${role.label}: ${role.description || 'No description'}`;
         const estimatedLines = Math.ceil(roleText.length / 60);
         const roleHeight = estimatedLines <= 2 ? 45 : 60;
         rolesHeight += roleHeight;

@@ -20,7 +20,7 @@ interface FrameChildApi {
   code?: string | null;
   definition?: string | null;
   short_definition?: string | null;
-  lexical_entries?: {
+  lexical_units?: {
     entries: LexicalUnitSnippetApi[];
     totalCount: number;
     hasMore: boolean;
@@ -294,9 +294,9 @@ export default function FrameReallocationContext(props: FrameReallocationContext
                 {child.short_definition && (
                   <div className="text-[10px] text-gray-500 line-clamp-1">{child.short_definition}</div>
                 )}
-                {child.lexical_entries && child.lexical_entries.entries.length > 0 && (
+                {child.lexical_units && child.lexical_units.entries.length > 0 && (
                   <div className="mt-1 space-y-1">
-                    {child.lexical_entries.entries.slice(0, 3).map((e, idx) => (
+                    {child.lexical_units.entries.slice(0, 3).map((e, idx) => (
                       <div key={idx} className="text-[9px] leading-tight">
                         <a
                           href={`/table?search=${encodeURIComponent(e.code)}`}
@@ -310,7 +310,7 @@ export default function FrameReallocationContext(props: FrameReallocationContext
                         <span className="text-gray-500 line-clamp-1 italic inline">{e.gloss}</span>
                       </div>
                     ))}
-                    {child.lexical_entries.totalCount > 3 && <div className="text-[8px] text-gray-400 italic">+{child.lexical_entries.totalCount - 3} more entries</div>}
+                    {child.lexical_units.totalCount > 3 && <div className="text-[8px] text-gray-400 italic">+{child.lexical_units.totalCount - 3} more entries</div>}
                   </div>
                 )}
               </div>

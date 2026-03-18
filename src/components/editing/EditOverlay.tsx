@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { GraphNode, Frame, RoleType } from '@/lib/types';
+import { GraphNode, Frame } from '@/lib/types';
 import { Mode, OverlaySectionsState, FrameOption } from './types';
 import { EditOverlayModal } from './EditOverlayModal';
 import { FlagButtons } from './FlagButtons';
@@ -29,7 +29,6 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
-  const [roleTypes, setRoleTypes] = useState<RoleType[]>([]);
   const [availableFrames, setAvailableFrames] = useState<FrameOption[]>([]);
   const [availableSuperFrames, setAvailableSuperFrames] = useState<FrameOption[]>([]);
   
@@ -45,23 +44,6 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
   // Use the custom hooks
   const editor = useEntryEditor(node, mode);
   const mutations = useEntryMutations(mode);
-
-  // Fetch role types on mount
-  useEffect(() => {
-    const fetchRoleTypes = async () => {
-      try {
-        const response = await fetch('/api/role-types');
-        if (response.ok) {
-          const data = await response.json();
-          setRoleTypes(data);
-        }
-      } catch (error) {
-        console.error('Failed to fetch role types:', error);
-      }
-    };
-
-    fetchRoleTypes();
-  }, []);
 
   // Fetch frames when overlay opens (lexical units)
   useEffect(() => {
@@ -465,7 +447,6 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
               frame={node as Frame}
               editingField={editor.editingField}
               editFrameRoles={editor.editFrameRoles}
-              roleTypes={roleTypes}
               isOpen={overlaySections.frameRoles}
               onToggle={() => setOverlaySections(prev => ({ ...prev, frameRoles: !prev.frameRoles }))}
               onStartEdit={editor.startEditing}

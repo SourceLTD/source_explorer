@@ -16,21 +16,19 @@ export async function GET(
     const frame = await (prisma.frames as any).findUnique({
       where: { id },
       include: {
-        frame_roles: {
+        frame_roles: true,
+        frame_lexical_units: {
+          where: { lexical_units: { deleted: false } },
           include: {
-            role_types: true,
-          },
-        },
-        lexical_units: {
-          where: {
-            deleted: false,
-          },
-          select: {
-            id: true,
-            code: true,
-            gloss: true,
-            lemmas: true,
-            pos: true,
+            lexical_units: {
+              select: {
+                id: true,
+                code: true,
+                gloss: true,
+                lemmas: true,
+                pos: true,
+              },
+            },
           },
           take: 100,
         },
@@ -40,11 +38,7 @@ export async function GET(
             id: true,
             label: true,
             code: true,
-            frame_roles: {
-              include: {
-                role_types: true,
-              },
-            },
+            frame_roles: true,
           },
         },
       },
@@ -65,13 +59,7 @@ export async function GET(
       main: role.main,
       examples: role.examples,
       label: role.label,
-      role_type: {
-        id: role.role_types.id.toString(),
-        code: role.role_types.code,
-        label: role.role_types.label,
-        generic_description: role.role_types.generic_description,
-        explanation: role.role_types.explanation,
-      },
+      fillers: role.fillers,
     }));
 
     // For regular frames, use parent's roles; for super frames, use own roles
@@ -90,9 +78,9 @@ export async function GET(
         code: frame.frames.code,
       } : null,
       frame_roles: serializeRoles(rolesToUse || []),
-      lexical_units: (frame as any).lexical_units.map((lu: any) => ({
-        ...lu,
-        id: lu.id.toString(),
+      lexical_units: (frame as any).frame_lexical_units.map((flu: any) => ({
+        ...flu.lexical_units,
+        id: flu.lexical_units.id.toString(),
       })),
     };
     // Remove the raw frames relation from the response
@@ -120,56 +108,11 @@ export async function GET(
       if (pendingField.status !== 'pending' && pendingField.status !== 'approved') continue;
 
       if (fieldName === 'frame_roles') {
-        // Pending frame_roles are stored in the client payload shape (roleType, etc).
-        // Convert them back into the API response shape with nested role_type.
         const newValue = pendingField.new_value;
         if (!Array.isArray(newValue)) continue;
 
-        const roleTypeLabels = Array.from(new Set(
-          newValue
-            .map((r: unknown) => {
-              if (!r || typeof r !== 'object') return null;
-              const obj = r as any;
-              if (typeof obj.roleType === 'string') return obj.roleType;
-              if (typeof obj.role_type_label === 'string') return obj.role_type_label;
-              if (obj.role_type && typeof obj.role_type === 'object' && typeof obj.role_type.label === 'string') return obj.role_type.label;
-              return null;
-            })
-            .filter((v: unknown): v is string => typeof v === 'string' && v.length > 0)
-        ));
-
-        const roleTypes = roleTypeLabels.length > 0
-          ? await prisma.role_types.findMany({
-              where: { label: { in: roleTypeLabels } },
-            })
-          : [];
-
-        const roleTypeByLabel = new Map(roleTypes.map(rt => [rt.label, rt]));
-
         serializedWithPending.frame_roles = newValue.map((r: unknown, index: number) => {
           const obj = (r && typeof r === 'object') ? (r as any) : {};
-
-          const roleTypeLabel: string =
-            typeof obj.roleType === 'string' ? obj.roleType :
-            typeof obj.role_type_label === 'string' ? obj.role_type_label :
-            (obj.role_type && typeof obj.role_type === 'object' && typeof obj.role_type.label === 'string') ? obj.role_type.label :
-            '';
-
-          const rt = roleTypeByLabel.get(roleTypeLabel);
-          const role_type = rt ? {
-            id: rt.id.toString(),
-            code: rt.code,
-            label: rt.label,
-            generic_description: rt.generic_description,
-            explanation: rt.explanation,
-          } : {
-            id: '',
-            code: undefined,
-            label: roleTypeLabel || 'Unknown',
-            generic_description: '',
-            explanation: null,
-          };
-
           return {
             id: typeof obj.id === 'string' ? obj.id : `pending-role-${index}`,
             description: typeof obj.description === 'string' ? obj.description : null,
@@ -177,7 +120,7 @@ export async function GET(
             main: typeof obj.main === 'boolean' ? obj.main : null,
             examples: Array.isArray(obj.examples) ? obj.examples : [],
             label: typeof obj.label === 'string' ? obj.label : null,
-            role_type,
+            fillers: obj.fillers ?? null,
           };
         });
 
@@ -197,14 +140,10 @@ export async function GET(
       const baseRoles: NormalizedFrameRole[] = Array.isArray(serializedWithPending.frame_roles)
         ? serializedWithPending.frame_roles
             .map((r: any) => {
-              const roleType: string =
-                typeof r?.role_type?.label === 'string' ? r.role_type.label :
-                typeof r?.roleType === 'string' ? r.roleType :
-                typeof r?.role_type_label === 'string' ? r.role_type_label :
-                '';
-              if (!roleType) return null;
+              const label: string = typeof r?.label === 'string' ? r.label : '';
+              if (!label) return null;
               return {
-                roleType,
+                roleType: label,
                 description: typeof r.description === 'string' ? r.description : null,
                 notes: typeof r.notes === 'string' ? r.notes : null,
                 main: typeof r.main === 'boolean' ? r.main : Boolean(r.main),
@@ -217,45 +156,18 @@ export async function GET(
 
       const patched = applyFrameRolesSubChanges(baseRoles, pendingFrameRoleSubChanges);
 
-      const roleTypeLabels = Array.from(new Set(patched.map(r => r.roleType)));
-      const roleTypes = roleTypeLabels.length > 0
-        ? await prisma.role_types.findMany({ where: { label: { in: roleTypeLabels } } })
-        : [];
-      const roleTypeByLabel = new Map(roleTypes.map(rt => [rt.label, rt]));
-
-      const existingByRoleTypeLabel = new Map<string, any>();
-      if (Array.isArray(serializedWithPending.frame_roles)) {
-        for (const r of serializedWithPending.frame_roles) {
-          const lbl = typeof r?.role_type?.label === 'string' ? r.role_type.label : '';
-          if (lbl) existingByRoleTypeLabel.set(lbl, r);
-        }
-      }
-
       serializedWithPending.frame_roles = patched.map((r, index) => {
-        const existing = existingByRoleTypeLabel.get(r.roleType);
-        const rt = roleTypeByLabel.get(r.roleType);
-        const role_type = rt ? {
-          id: rt.id.toString(),
-          code: rt.code,
-          label: rt.label,
-          generic_description: rt.generic_description,
-          explanation: rt.explanation,
-        } : {
-          id: '',
-          code: undefined,
-          label: r.roleType || 'Unknown',
-          generic_description: '',
-          explanation: null,
-        };
-
+        const existing = Array.isArray(serializedWithPending.frame_roles)
+          ? serializedWithPending.frame_roles.find((er: any) => er?.label === r.roleType)
+          : null;
         return {
           id: existing && typeof existing.id === 'string' ? existing.id : `pending-role-${index}`,
           description: r.description,
           notes: r.notes,
           main: r.main,
           examples: r.examples,
-          label: r.label,
-          role_type,
+          label: r.label ?? r.roleType,
+          fillers: existing?.fillers ?? null,
         };
       });
     }
@@ -296,6 +208,11 @@ export async function PATCH(
     
     if (body.verifiable !== undefined) updateData.verifiable = body.verifiable;
     if (body.unverifiableReason !== undefined) updateData.unverifiable_reason = body.unverifiableReason;
+    if (body.frame_type !== undefined) updateData.frame_type = body.frame_type;
+    if (body.vendler !== undefined) updateData.vendler = body.vendler;
+    if (body.multi_perspective !== undefined) updateData.multi_perspective = body.multi_perspective;
+    if (body.wikidata_id !== undefined) updateData.wikidata_id = body.wikidata_id;
+    if (body.recipe !== undefined) updateData.recipe = body.recipe;
 
     if (Object.keys(updateData).length === 0 && Object.keys(flagUpdates).length === 0) {
       return NextResponse.json(

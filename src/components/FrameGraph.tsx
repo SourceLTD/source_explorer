@@ -7,10 +7,10 @@ import FrameMainNode, { calculateFrameMainNodeHeight } from './FrameMainNode';
 // Color scheme
 const currentNodeColor = '#3b82f6';
 const currentNodeStroke = '#1e40af';
-const parentFrameColor = '#10b981';
-const parentFrameStroke = '#059669';
-const childFrameColor = '#f59e0b';
-const childFrameStroke = '#d97706';
+const parentFrameColor = '#93c5fd';
+const parentFrameStroke = '#60a5fa';
+const childFrameColor = '#93c5fd';
+const childFrameStroke = '#60a5fa';
 const linkColor = '#e5e7eb';
 const backgroundColor = '#ffffff';
 
@@ -53,8 +53,7 @@ const RELATION_LABELS: Record<FrameRelationType, string> = {
 export default function FrameGraph({ currentFrame, onFrameClick, onVerbClick, onEditClick }: FrameGraphProps) {
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [rolesExpanded, setRolesExpanded] = useState<boolean>(true);
-  const [verbsExpanded, setVerbsExpanded] = useState<boolean>(false);
-  const [relationsExpanded, setRelationsExpanded] = useState<boolean>(true);
+  const [lexicalUnitsExpanded, setLexicalUnitsExpanded] = useState<boolean>(true);
 
   // Helper function to calculate node width based on text length
   const calculateNodeWidth = useCallback((text: string, minWidth: number = 80, maxWidth: number = 200): number => {
@@ -104,16 +103,18 @@ export default function FrameGraph({ currentFrame, onFrameClick, onVerbClick, on
     const relatedNodeHeight = 50;
 
     const mainNodeWidth = 600;
-    const mainNodeHeight = calculateFrameMainNodeHeight(currentFrame, rolesExpanded, verbsExpanded, relationsExpanded);
+    const mainNodeHeight = calculateFrameMainNodeHeight(currentFrame, rolesExpanded, lexicalUnitsExpanded);
     
     const nodes: PositionedFrameNode[] = [];
     
     // Filter hierarchical relations
+    // Incoming inherits_from = another frame is the source (parent) pointing at this frame
     const parentRels = currentFrame.relations.filter(r => 
-      r.direction === 'outgoing' && r.type === 'inherits_from' && r.target
-    );
-    const childRels = currentFrame.relations.filter(r => 
       r.direction === 'incoming' && r.type === 'inherits_from' && r.source
+    );
+    // Outgoing inherits_from = this frame is the source (parent) pointing at children
+    const childRels = currentFrame.relations.filter(r => 
+      r.direction === 'outgoing' && r.type === 'inherits_from' && r.target
     );
 
     // Arrange rows
@@ -152,13 +153,13 @@ export default function FrameGraph({ currentFrame, onFrameClick, onVerbClick, on
         let currentX = centerX - row.totalWidth / 2;
         
         row.nodes.forEach((rel) => {
-          const target = rel.target!;
-          const nodeWidth = calculateNodeWidth(target.label);
+          const source = rel.source!;
+          const nodeWidth = calculateNodeWidth(source.label);
           nodes.push({
-            id: target.id,
+            id: source.id,
             type: 'parent',
-            label: target.label,
-            sublabel: target.short_definition,
+            label: source.label,
+            sublabel: source.short_definition,
             x: currentX + nodeWidth / 2,
             y: rowY,
             width: nodeWidth,
@@ -177,13 +178,13 @@ export default function FrameGraph({ currentFrame, onFrameClick, onVerbClick, on
         let currentX = centerX - row.totalWidth / 2;
         
         row.nodes.forEach((rel) => {
-          const source = rel.source!;
-          const nodeWidth = calculateNodeWidth(source.label);
+          const target = rel.target!;
+          const nodeWidth = calculateNodeWidth(target.label);
           nodes.push({
-            id: source.id,
+            id: target.id,
             type: 'child',
-            label: source.label,
-            sublabel: source.short_definition,
+            label: target.label,
+            sublabel: target.short_definition,
             x: currentX + nodeWidth / 2,
             y: rowY,
             width: nodeWidth,
@@ -195,7 +196,7 @@ export default function FrameGraph({ currentFrame, onFrameClick, onVerbClick, on
     }
     
     return { nodes, width, height: totalHeight };
-  }, [currentFrame, rolesExpanded, verbsExpanded, relationsExpanded, arrangeNodesInRows, calculateNodeWidth]);
+  }, [currentFrame, rolesExpanded, lexicalUnitsExpanded, arrangeNodesInRows, calculateNodeWidth]);
 
   // Render related frame nodes
   const renderRelatedNode = (node: PositionedFrameNode) => {
@@ -310,11 +311,9 @@ export default function FrameGraph({ currentFrame, onFrameClick, onVerbClick, on
               onVerbClick={onVerbClick || (() => {})}
               onEditClick={onEditClick}
               controlledRolesExpanded={rolesExpanded}
-              controlledVerbsExpanded={verbsExpanded}
-              controlledRelationsExpanded={relationsExpanded}
+              controlledLexicalUnitsExpanded={lexicalUnitsExpanded}
               onRolesExpandedChange={setRolesExpanded}
-              onVerbsExpandedChange={setVerbsExpanded}
-              onRelationsExpandedChange={setRelationsExpanded}
+              onLexicalUnitsExpandedChange={setLexicalUnitsExpanded}
             />
           ))}
       </svg>

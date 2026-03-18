@@ -47,8 +47,6 @@ function PendingChangesContent() {
               onViewChange={(view: ViewMode) => {
                 if (view === 'graph') {
                   router.push('/graph/frames?view=graph');
-                } else if (view === 'recipes') {
-                  router.push('/graph/frames?view=recipes');
                 } else if (view === 'table') {
                   router.push('/table/frames');
                 }

@@ -60,12 +60,6 @@ export default function FrameRecipeView({
   const groupedRoles = useMemo(() => {
     const roles = recipeData?.roles || currentFrame.roles?.map(r => ({
       id: r.id,
-      role_type: {
-        id: r.role_type_id,
-        code: r.role_type_code,
-        label: r.role_type_label,
-        generic_description: '',
-      },
       description: r.description,
       notes: r.notes,
       main: r.main,
@@ -138,10 +132,7 @@ export default function FrameRecipeView({
                     {groupedRoles.main.map(role => (
                       <div key={role.id} className="p-3 bg-blue-500/30 rounded-lg border border-blue-400/30">
                         <div className="flex items-center gap-2">
-                          <span className="font-semibold text-white">{role.role_type.label}</span>
-                          {role.label && (
-                            <span className="text-xs text-purple-300">({role.label})</span>
-                          )}
+                          <span className="font-semibold text-white">{role.label || 'Unnamed'}</span>
                         </div>
                         {role.description && (
                           <p className="text-sm text-white/80 mt-1">{role.description}</p>
@@ -161,10 +152,7 @@ export default function FrameRecipeView({
                     {groupedRoles.alt.map(role => (
                       <div key={role.id} className="p-3 bg-white/10 rounded-lg">
                         <div className="flex items-center gap-2">
-                          <span className="font-semibold text-white">{role.role_type.label}</span>
-                          {role.label && (
-                            <span className="text-xs text-purple-300">({role.label})</span>
-                          )}
+                          <span className="font-semibold text-white">{role.label || 'Unnamed'}</span>
                         </div>
                         {role.description && (
                           <p className="text-sm text-white/80 mt-1">{role.description}</p>
@@ -222,7 +210,7 @@ export default function FrameRecipeView({
                                   key={role.id}
                                   className={`text-xs px-2 py-0.5 rounded ${role.main ? 'bg-green-200 text-green-800' : 'bg-gray-200 text-gray-700'}`}
                                 >
-                                  {role.role_type_label}
+                                  {role.label || 'Unnamed'}
                                 </span>
                               ))}
                               {parent.roles.length > 5 && (
@@ -311,7 +299,7 @@ export default function FrameRecipeView({
                                   key={role.id}
                                   className={`text-xs px-2 py-0.5 rounded ${role.main ? 'bg-blue-200 text-blue-600' : 'bg-gray-200 text-gray-700'}`}
                                 >
-                                  {role.role_type.label}
+                                  {role.label || 'Unnamed'}
                                 </span>
                               ))}
                               {verb.roles.length > 5 && (

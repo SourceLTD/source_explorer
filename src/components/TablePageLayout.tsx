@@ -25,6 +25,7 @@ interface TablePageLayoutProps {
   onCloseOverlay: () => void;
   tabs?: React.ReactNode;
   children?: React.ReactNode;
+  showViewToggle?: boolean;
 }
 
 /**
@@ -38,7 +39,7 @@ const modeConfig: Record<Mode, {
 }> = {
   lexical_units: {
     graphPath: '/graph',
-    searchPlaceholder: 'Search Lexical Entries...',
+    searchPlaceholder: 'Search Lexical Units...',
     showRecipes: false,
     showPendingChanges: true,
   },
@@ -91,6 +92,7 @@ export function TablePageLayout({
   onCloseOverlay,
   tabs,
   children,
+  showViewToggle = false,
 }: TablePageLayoutProps) {
   const router = useRouter();
   const config = modeConfig[mode];
@@ -102,27 +104,30 @@ export function TablePageLayout({
   const handleViewChange = (view: ViewMode) => {
     if (view === 'graph') {
       router.push(`${config.graphPath}?view=graph`);
-    } else if (view === 'recipes') {
-      router.push(`${config.graphPath}?view=recipes`);
     }
   };
 
   return (
     <div className="h-screen flex flex-col bg-white">
       {/* Header */}
-      <header className={`bg-white border-b border-gray-200 px-6 ${tabs ? 'pt-4 pb-0' : 'py-4'}`}>
-        <div className={`flex items-center justify-between ${tabs ? 'pb-4' : ''}`}>
-          <div className="flex items-center">
+      <header className="bg-white px-6 py-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
             <button
               onClick={() => router.push('/')}
-              className="text-xl font-bold text-gray-900 hover:text-gray-700 cursor-pointer"
+              className="text-xl font-bold text-gray-900 hover:text-gray-700 cursor-pointer shrink-0"
             >
               Source Console
             </button>
+            {tabs && (
+              <div className="flex items-center gap-1 ml-2">
+                {tabs}
+              </div>
+            )}
           </div>
           
-          <div className="flex items-center gap-4 flex-1 justify-end">
-            <div className="flex-1 max-w-2xl">
+          <div className="flex items-center gap-4 flex-1 justify-end ml-4">
+            <div className="flex-1 max-w-xl">
               <SearchBox 
                 onSelectResult={handleSearchResult}
                 onSearchChange={onSearchQueryChange}
@@ -130,26 +135,22 @@ export function TablePageLayout({
                 mode={mode === 'verbs' ? undefined : mode}
               />
             </div>
-            <ViewToggle 
-              currentView="table"
-              onViewChange={handleViewChange}
-            />
+            {showViewToggle && (
+              <ViewToggle 
+                currentView="table"
+                onViewChange={handleViewChange}
+              />
+            )}
             {config.showPendingChanges && <PendingChangesButton />}
             <SignOutButton />
           </div>
         </div>
-
-        {tabs && (
-          <div className="flex items-center gap-1">
-            {tabs}
-          </div>
-        )}
       </header>
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col bg-white">
         {children || (
-          <div className="m-6 bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="mt-2 mx-6 mb-6 bg-white rounded-xl border border-gray-200 overflow-hidden">
             <Suspense fallback={<div className="p-8 text-center text-gray-500">Loading...</div>}>
               <DataTable 
                 searchQuery={searchQuery}

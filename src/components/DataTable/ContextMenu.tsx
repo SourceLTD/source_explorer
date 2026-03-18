@@ -42,7 +42,7 @@ export function ContextMenu({
     router.push(`${graphBasePath}?entry=${targetId}`);
   };
 
-  const handleViewLexicalEntries = () => {
+  const handleViewLexicalUnits = () => {
     onClose();
     if (frameEntry) {
       router.push(`/table?frame_id=${frameEntry.id}`);
@@ -138,13 +138,13 @@ export function ContextMenu({
             ) : (
               <>
                 <button
-                  onClick={handleViewLexicalEntries}
+                  onClick={handleViewLexicalUnits}
                   className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 flex items-center gap-2"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                   </svg>
-                  View Lexical Entries
+                  View Lexical Units
                 </button>
                 {frameEntry.super_frame_id && (
                   <button

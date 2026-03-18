@@ -67,7 +67,6 @@ export const COMMON_FIELDS = [
   'deleted',
   'deleted_at',
   'deleted_reason',
-  'frame_id',
   'version',
   'created_at',
   'updated_at',

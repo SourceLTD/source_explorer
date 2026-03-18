@@ -17,16 +17,14 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       where: { id },
       include: {
         frame_roles: {
-          include: {
-            role_types: true,
-          },
           orderBy: {
             id: 'asc',
           },
         },
-        lexical_units: {
-          where: {
-            deleted: false,
+        frame_lexical_units: {
+          where: { lexical_units: { deleted: false } },
+          include: {
+            lexical_units: true,
           },
           take: 50,
         },
@@ -34,11 +32,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
           include: {
             frames_frame_relations_target_idToframes: {
               include: {
-                frame_roles: {
-                  include: {
-                    role_types: true,
-                  },
-                },
+                frame_roles: true,
               },
             },
           },
@@ -47,11 +41,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
           include: {
             frames_frame_relations_source_idToframes: {
               include: {
-                frame_roles: {
-                  include: {
-                    role_types: true,
-                  },
-                },
+                frame_roles: true,
               },
             },
           },
@@ -74,34 +64,34 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         short_definition: frame.short_definition,
         flagged: frame.flagged,
         flagged_reason: frame.flagged_reason,
+        frame_type: frame.frame_type,
+        vendler: frame.vendler,
+        multi_perspective: frame.multi_perspective,
+        wikidata_id: frame.wikidata_id,
+        recipe: frame.recipe,
       },
       roles: frame.frame_roles.map(role => ({
         id: role.id.toString(),
-        role_type: {
-          id: role.role_types.id.toString(),
-          code: role.role_types.code,
-          label: role.role_types.label,
-          generic_description: role.role_types.generic_description,
-        },
+        label: role.label,
         description: role.description,
         notes: role.notes,
         main: role.main,
         examples: role.examples,
-        label: role.label,
-        groups: [], // role_groups were deleted from DB
+        fillers: role.fillers,
+        groups: [],
       })),
-      lexical_units: frame.lexical_units.map(lu => ({
+      lexical_units: frame.frame_lexical_units.map((flu: any) => flu.lexical_units).map((lu: any) => ({
         id: lu.id.toString(),
         code: lu.code,
         lemmas: lu.lemmas,
         gloss: lu.gloss,
         pos: lu.pos,
         vendler_class: lu.vendler_class,
-        roles: [], // verb roles were deleted from DB
+        roles: [],
         role_groups: [],
       })),
       // Legacy verbs alias
-      verbs: frame.lexical_units.filter(lu => lu.pos === 'verb').map(verb => ({
+      verbs: frame.frame_lexical_units.map((flu: any) => flu.lexical_units).filter((lu: any) => lu.pos === 'verb').map((verb: any) => ({
         id: verb.id.toString(),
         code: verb.code,
         lemmas: verb.lemmas,
@@ -119,7 +109,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
             short_definition: rel.frames_frame_relations_target_idToframes.short_definition,
             roles: rel.frames_frame_relations_target_idToframes.frame_roles.map(r => ({
               id: r.id.toString(),
-              role_type_label: r.role_types.label,
+              label: r.label,
               description: r.description,
               main: r.main,
             })),

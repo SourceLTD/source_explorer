@@ -11,7 +11,7 @@ interface SearchBoxProps {
   mode?: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames' | 'lexical_units';
 }
 
-export default function SearchBox({ onSelectResult, onSearchChange, placeholder = "Search lexical entries...", mode = 'verbs' }: SearchBoxProps) {
+export default function SearchBox({ onSelectResult, onSearchChange, placeholder = "Search lexical units...", mode = 'verbs' }: SearchBoxProps) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isOpen, setIsOpen] = useState(false);

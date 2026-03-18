@@ -299,7 +299,7 @@ export async function stageFrameRolesUpdate(
       const roleType =
         (typeof r.roleType === 'string' ? r.roleType.trim() : '') ||
         (isRecord(r.role_type) && typeof r.role_type.label === 'string' ? r.role_type.label.trim() : '') ||
-        (isRecord(r.role_types) && typeof r.role_types.label === 'string' ? r.role_types.label.trim() : '');
+        (typeof r.label === 'string' ? r.label.trim() : '');
 
       if (!roleType) continue;
 
@@ -335,11 +335,10 @@ export async function stageFrameRolesUpdate(
     throw new Error(`Frame not found: ${frameId}`);
   }
 
-  // Fetch current frame roles (include role type label to match overlay payload)
+  // Fetch current frame roles
   const currentFrameRolesRaw = await prisma.frame_roles.findMany({
     where: { frame_id: numericId },
     orderBy: { id: 'asc' },
-    include: { role_types: { select: { label: true } } },
   });
 
   // Check if frame roles actually changed

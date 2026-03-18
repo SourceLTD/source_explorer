@@ -11,7 +11,7 @@ interface CategoryDropdownProps {
 
 const CATEGORIES: { id: Category; label: string; tablePath: string; graphPath?: string }[] = [
   { id: 'frames', label: 'Frames', tablePath: '/table/frames', graphPath: '/graph/frames' },
-  { id: 'lexical_units', label: 'Lexical Entries', tablePath: '/table' },
+  { id: 'lexical_units', label: 'Lexical Units', tablePath: '/table' },
 ];
 
 export default function CategoryDropdown({ currentCategory, currentView = 'table' }: CategoryDropdownProps) {

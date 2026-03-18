@@ -264,7 +264,7 @@ function renderValueWithHover(
 
   return (
     <ReferenceHoverPopup
-      mode={isSuperFrameRef ? 'super_frame_children' : 'frame_lexical_entries'}
+      mode={isSuperFrameRef ? 'super_frame_children' : 'frame_lexical_units'}
       entityId={normalizedId}
       virtualIndex={virtualIndex}
     >
@@ -1113,7 +1113,7 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
             <div className="flex-1">
               <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
                 <span>
-                  Pending {selectedDetail.entity_type === 'lexical_unit' ? 'Lexical Entry' : selectedDetail.entity_type.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')} Change
+                  Pending {selectedDetail.entity_type === 'lexical_unit' ? 'Lexical Unit' : selectedDetail.entity_type.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')} Change
                 </span>
                 <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${getOperationColor(selectedDetail.operation)}`}>
                   {selectedDetail.operation}

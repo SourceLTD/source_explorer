@@ -23,7 +23,7 @@ interface FrameFromPaginated {
   code?: string | null;
   definition?: string | null;
   short_definition?: string | null;
-  lexical_entries?: {
+  lexical_units?: {
     entries: LexicalUnitSnippetApi[];
     totalCount: number;
     hasMore: boolean;
@@ -76,7 +76,7 @@ function frameFromSnapshot(virtualId: string, snapshot: unknown): FrameFromPagin
     code,
     definition: typeof rec.definition === 'string' ? rec.definition : null,
     short_definition: typeof rec.short_definition === 'string' ? rec.short_definition : null,
-    lexical_entries: undefined,
+    lexical_units: undefined,
   };
 }
 
@@ -282,7 +282,7 @@ export default function LexicalUnitReallocationContext(props: LexicalUnitRealloc
 
           <div className="space-y-2 overflow-y-auto pr-1 custom-scrollbar">
             {pageItems.length === 0 ? (
-              <div className="text-[11px] text-gray-400 italic">No pending lexical entries found inside.</div>
+              <div className="text-[11px] text-gray-400 italic">No pending lexical units found inside.</div>
             ) : (
               pageItems.map((sibling, idx) => (
                 <NodeCard

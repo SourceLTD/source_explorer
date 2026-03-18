@@ -1,18 +1,15 @@
 import React from 'react';
-import { RoleType } from '@/lib/types';
 import { FieldEditorProps, EditableFrameRole } from './types';
 
 interface FrameRoleEditorProps extends FieldEditorProps {
   roles: EditableFrameRole[];
-  roleTypes: RoleType[];
-  onRoleChange: (clientId: string, field: 'label' | 'description' | 'notes' | 'roleType' | 'main' | 'examples', value: string | boolean | string[]) => void;
+  onRoleChange: (clientId: string, field: 'label' | 'description' | 'notes' | 'main' | 'examples', value: string | boolean | string[]) => void;
   onRoleAdd: (main: boolean) => void;
   onRoleRemove: (clientId: string) => void;
 }
 
 export function FrameRoleEditor({ 
   roles,
-  roleTypes,
   onRoleChange,
   onRoleAdd,
   onRoleRemove,
@@ -22,7 +19,6 @@ export function FrameRoleEditor({
 }: FrameRoleEditorProps) {
   const controlBase =
     "w-full rounded-lg border border-gray-300 bg-white px-2 py-1 text-[11px] leading-4 text-gray-900 placeholder-gray-500 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500";
-  const selectBase = `${controlBase} appearance-none pr-7 cursor-pointer`;
   const iconButtonBase =
     "inline-flex h-6 w-6 items-center justify-center rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500";
 
@@ -43,35 +39,12 @@ export function FrameRoleEditor({
             role.main ? 'border-blue-200 bg-blue-50/60' : 'border-gray-200 bg-white'
           }`}
         >
-          <div className="grid grid-cols-1 gap-2 lg:grid-cols-[10.5rem_9rem_1fr_0.9fr_auto]">
-            <div className="relative">
-              <select
-                value={role.roleType}
-                onChange={(e) => onRoleChange(role.clientId, 'roleType', e.target.value)}
-                className={selectBase}
-              >
-                <option value="">Role type…</option>
-                {roleTypes.map((rt) => (
-                  <option key={rt.id} value={rt.label}>
-                    {rt.label}
-                  </option>
-                ))}
-              </select>
-              <svg
-                className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </div>
-
+          <div className="grid grid-cols-1 gap-2 lg:grid-cols-[10.5rem_1fr_0.9fr_auto]">
             <input
               value={role.label}
               onChange={(e) => onRoleChange(role.clientId, 'label', e.target.value)}
               className={controlBase}
-              placeholder="Label…"
+              placeholder="Role label…"
             />
 
             <textarea

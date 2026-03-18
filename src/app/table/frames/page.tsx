@@ -21,25 +21,25 @@ function FramesTableModeContent() {
   }, [searchParams]);
 
   const tabs = (
-    <div className="flex items-center gap-1">
+    <>
       <button
         onClick={() => router.push('/table/super-frames')}
-        className="px-4 py-2 text-sm font-medium transition-colors relative cursor-pointer text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+        className="px-4 py-2 text-base font-medium transition-colors relative cursor-pointer text-gray-600 hover:text-gray-900 hover:bg-gray-50"
       >
         Super Frames
       </button>
       <button
-        className="px-4 py-2 text-sm font-medium transition-colors relative cursor-pointer text-blue-600 border-b-2 border-blue-600"
+        className="px-4 py-2 text-base font-medium transition-colors relative cursor-pointer text-blue-600 border-b-2 border-blue-600"
       >
         Frames
       </button>
       <button
         onClick={() => router.push('/table')}
-        className="px-4 py-2 text-sm font-medium transition-colors relative cursor-pointer text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+        className="px-4 py-2 text-base font-medium transition-colors relative cursor-pointer text-gray-600 hover:text-gray-900 hover:bg-gray-50"
       >
-        Lexical Entries
+        Lexical Units
       </button>
-    </div>
+    </>
   );
 
   return (
@@ -55,8 +55,9 @@ function FramesTableModeContent() {
       onUpdate={editOverlay.handleUpdate}
       onCloseOverlay={editOverlay.handleCloseOverlay}
       tabs={tabs}
+      showViewToggle
     >
-      <div className="m-6 bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="mt-2 mx-6 mb-6 bg-white rounded-xl border border-gray-200 overflow-hidden">
         <Suspense fallback={<div className="p-8 text-center text-gray-500">Loading...</div>}>
           <DataTable 
             searchQuery={searchQuery}

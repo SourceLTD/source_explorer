@@ -14,23 +14,23 @@ function TableModeContent() {
   const editOverlay = useTableEditOverlay('lexical_units' as any);
 
   const tabs = (
-    <div className="flex items-center gap-1">
+    <>
       <button
         onClick={() => router.push('/table/super-frames')}
-        className="px-4 py-2 text-sm font-medium transition-colors relative cursor-pointer text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+        className="px-4 py-2 text-base font-medium transition-colors relative cursor-pointer text-gray-600 hover:text-gray-900 hover:bg-gray-50"
       >
         Super Frames
       </button>
       <button
         onClick={() => router.push('/table/frames')}
-        className="px-4 py-2 text-sm font-medium transition-colors relative cursor-pointer text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+        className="px-4 py-2 text-base font-medium transition-colors relative cursor-pointer text-gray-600 hover:text-gray-900 hover:bg-gray-50"
       >
         Frames
       </button>
-      <button className="px-4 py-2 text-sm font-medium transition-colors relative cursor-pointer text-blue-600 border-b-2 border-blue-600">
-        Lexical Entries
+      <button className="px-4 py-2 text-base font-medium transition-colors relative cursor-pointer text-blue-600 border-b-2 border-blue-600">
+        Lexical Units
       </button>
-    </div>
+    </>
   );
 
   useEffect(() => {

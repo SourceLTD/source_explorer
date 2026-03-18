@@ -11,7 +11,7 @@ import type {
   LexicalUnitRelationType
 } from './types'
 
-// Custom hook for searching lexical entries
+// Custom hook for searching lexical units
 export function useSearchEntries() {
   const [results, setResults] = useState<PaginatedSearchResult>({
     entries: [],

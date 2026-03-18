@@ -2,9 +2,8 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Frame, FrameGraphNode, FrameRecipeData, SearchResult } from '@/lib/types';
+import { Frame, FrameGraphNode, SearchResult } from '@/lib/types';
 import FrameGraph from './FrameGraph';
-import FrameRecipeView from './FrameRecipeView';
 import SearchBox from './SearchBox';
 import ViewToggle, { ViewMode } from './ViewToggle';
 import PendingChangesButton from './PendingChangesButton';
@@ -20,7 +19,6 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [currentFrame, setCurrentFrame] = useState<FrameGraphNode | null>(null);
-  const [frameRecipeData, setFrameRecipeData] = useState<FrameRecipeData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentView, setCurrentView] = useState<ViewMode>('graph');
@@ -59,15 +57,8 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
       const graphUrl = invalidateCache 
         ? `/api/frames/${frameId}/graph?invalidate=true&t=${Date.now()}`
         : `/api/frames/${frameId}/graph`;
-      
-      const recipeUrl = invalidateCache
-        ? `/api/frames/${frameId}/recipes?t=${Date.now()}`
-        : `/api/frames/${frameId}/recipes`;
         
-      const [graphResponse, recipeResponse] = await Promise.all([
-        fetch(graphUrl, invalidateCache ? { cache: 'no-store' } : {}),
-        fetch(recipeUrl, invalidateCache ? { cache: 'no-store' } : {})
-      ]);
+      const graphResponse = await fetch(graphUrl, invalidateCache ? { cache: 'no-store' } : {});
 
       if (!graphResponse.ok) {
         throw new Error('Failed to load frame');
@@ -75,13 +66,6 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
 
       const graphData: FrameGraphNode = await graphResponse.json();
       setCurrentFrame(graphData);
-
-      if (recipeResponse.ok) {
-        const recipeData: FrameRecipeData = await recipeResponse.json();
-        setFrameRecipeData(recipeData);
-      } else {
-        setFrameRecipeData(null);
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
       console.error('Error loading frame:', err);
@@ -106,7 +90,6 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
     // Clear the current frame and return to home view
     lastLoadedFrameRef.current = null;
     setCurrentFrame(null);
-    setFrameRecipeData(null);
     // Remove entry from URL but preserve view
     const params = new URLSearchParams(searchParams);
     params.delete('entry');
@@ -185,7 +168,7 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
   // Load frame based on URL params or initial prop and sync view from URL
   useEffect(() => {
     const viewParam = searchParams.get('view');
-    if (viewParam === 'graph' || viewParam === 'recipes' || viewParam === 'table') {
+    if (viewParam === 'graph' || viewParam === 'table') {
       setCurrentView(viewParam as ViewMode);
     }
     const currentFrameId = searchParams.get('entry') || initialFrameId;
@@ -207,16 +190,30 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
       {/* Header */}
       <header className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
             <button
               onClick={() => router.push('/')}
-              className="text-xl font-bold text-gray-900 hover:text-gray-700 cursor-pointer"
+              className="text-xl font-bold text-gray-900 hover:text-gray-700 cursor-pointer shrink-0"
             >
               Source Console
             </button>
-            <p className="text-sm text-gray-600">
-              Explore frame relationships
-            </p>
+            <div className="flex items-center gap-1 ml-2">
+              <button
+                onClick={() => router.push('/table/super-frames')}
+                className="px-4 py-2 text-base font-medium transition-colors relative cursor-pointer text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+              >
+                Super Frames
+              </button>
+              <button className="px-4 py-2 text-base font-medium transition-colors relative cursor-pointer text-blue-600 border-b-2 border-blue-600">
+                Frames
+              </button>
+              <button
+                onClick={() => router.push('/graph?view=graph')}
+                className="px-4 py-2 text-base font-medium transition-colors relative cursor-pointer text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+              >
+                Lexical Units
+              </button>
+            </div>
           </div>
           
           <div className="flex items-center gap-4 flex-1 justify-end">
@@ -312,22 +309,12 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
               
               {/* Graph/Recipe Content */}
               <div className="flex-1">
-                {currentView === 'graph' ? (
-                  <FrameGraph 
-                    currentFrame={currentFrame}
-                    onFrameClick={handleFrameClick}
-                    onVerbClick={(verbId) => router.push(`/graph?entry=${verbId}`)}
-                    onEditClick={() => setIsEditOverlayOpen(true)}
-                  />
-                ) : (
-                  <FrameRecipeView
-                    currentFrame={currentFrame}
-                    recipeData={frameRecipeData}
-                    onFrameClick={handleFrameClick}
-                    onVerbClick={(verbId) => router.push(`/graph?entry=${verbId}`)}
-                    onEditClick={() => setIsEditOverlayOpen(true)}
-                  />
-                )}
+                <FrameGraph 
+                  currentFrame={currentFrame}
+                  onFrameClick={handleFrameClick}
+                  onVerbClick={(verbId) => router.push(`/graph?entry=${verbId}`)}
+                  onEditClick={() => setIsEditOverlayOpen(true)}
+                />
               </div>
             </div>
           ) : (

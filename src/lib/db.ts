@@ -20,12 +20,6 @@ import type {
   PaginationParams,
   PaginatedResult,
   TableEntry,
-  EntryRecipes,
-  Recipe,
-  RecipePredicateNode,
-  RecipePredicateRoleMapping,
-  LogicNode,
-  LogicNodeKind,
   Frame,
   FramePaginationParams,
   VendlerClass,
@@ -91,8 +85,12 @@ export async function getEntryById(id: string): Promise<LexicalUnitWithRelations
     () => prisma.lexical_units.findFirst({
       where: whereClause,
       include: {
-        frames: {
-          select: { id: true, label: true, code: true, definition: true, short_definition: true }
+        frame_lexical_units: {
+          include: {
+            frames: {
+              select: { id: true, label: true, code: true, definition: true, short_definition: true }
+            },
+          },
         },
         lexical_unit_relations_lexical_unit_relations_source_idTolexical_units: {
           include: {
@@ -169,13 +167,13 @@ function transformToLexicalUnit(entry: any): LexicalUnit {
     unverifiableReason: entry.unverifiable_reason ?? undefined,
     legal_gloss: entry.legal_gloss ?? undefined,
     deleted: entry.deleted ?? undefined,
-    frame_id: entry.frame_id?.toString() ?? null,
-    frame: entry.frames ? {
-      id: entry.frames.id.toString(),
-      label: entry.frames.label,
-      code: entry.frames.code,
-      definition: entry.frames.definition,
-      short_definition: entry.frames.short_definition,
+    frame_id: entry.frame_lexical_units?.[0]?.frame_id?.toString() ?? null,
+    frame: entry.frame_lexical_units?.[0]?.frames ? {
+      id: entry.frame_lexical_units[0].frames.id.toString(),
+      label: entry.frame_lexical_units[0].frames.label,
+      code: entry.frame_lexical_units[0].frames.code,
+      definition: entry.frame_lexical_units[0].frames.definition,
+      short_definition: entry.frame_lexical_units[0].frames.short_definition,
       createdAt: new Date(),
       updatedAt: new Date(),
     } : null,
@@ -298,16 +296,16 @@ export async function getGraphNodeUncached(idOrCode: string): Promise<GraphNode 
     () => prisma.lexical_units.findFirst({
       where: whereClause,
       include: {
-        frames: {
+        frame_lexical_units: {
           include: {
-            frame_roles: {
+            frames: {
               include: {
-                role_types: true,
-              },
-            },
-            role_groups: {
-              include: {
-                role_group_members: true,
+                frame_roles: true,
+                role_groups: {
+                  include: {
+                    role_group_members: true,
+                  },
+                },
               },
             },
           },
@@ -345,20 +343,60 @@ export const getGraphNode = unstable_cache(
 /**
  * Transform database entry to GraphNode with full context.
  */
+function transformToGraphNode(entry: any): GraphNode {
+  return {
+    id: entry.code || entry.id.toString(),
+    numericId: entry.id.toString(),
+    legacy_id: entry.legacy_id,
+    lemmas: entry.lemmas || [],
+    src_lemmas: entry.src_lemmas || [],
+    gloss: entry.gloss,
+    legal_gloss: entry.legal_gloss,
+    pos: entry.pos,
+    lexfile: entry.lexfile,
+    examples: entry.examples || [],
+    flagged: entry.flagged ?? undefined,
+    flaggedReason: entry.flagged_reason ?? undefined,
+    verifiable: entry.verifiable ?? undefined,
+    unverifiableReason: entry.unverifiable_reason ?? undefined,
+    vendler_class: entry.vendler_class,
+    frame_id: entry.frame_lexical_units?.[0]?.frame_id?.toString() ?? null,
+    countable: entry.countable ?? undefined,
+    proper: entry.proper ?? undefined,
+    collective: entry.collective ?? undefined,
+    concrete: entry.concrete ?? undefined,
+    predicate: entry.predicate ?? undefined,
+    isSatellite: entry.is_satellite ?? undefined,
+    gradable: entry.gradable ?? undefined,
+    predicative: entry.predicative ?? undefined,
+    attributive: entry.attributive ?? undefined,
+    subjective: entry.subjective ?? undefined,
+    relational: entry.relational ?? undefined,
+    isMwe: entry.is_mwe ?? undefined,
+    parents: [],
+    children: [],
+    entails: [],
+    causes: [],
+    alsoSee: [],
+  };
+}
+
 function transformToGraphNodeWithContext(entry: any): GraphNode {
   const node = transformToGraphNode(entry);
   
-  // Frame context
-  if (entry.frames) {
+  // Frame context (via join table; use the first linked frame)
+  const primaryFlu = entry.frame_lexical_units?.[0];
+  const frame = primaryFlu?.frames;
+  if (frame) {
     node.frame = {
-      id: entry.frames.id.toString(),
-      label: entry.frames.label,
-      code: entry.frames.code,
-      definition: entry.frames.definition,
-      short_definition: entry.frames.short_definition,
-      createdAt: entry.frames.created_at,
-      updatedAt: entry.frames.updated_at,
-      frame_roles: entry.frames.frame_roles.map((role: any) => ({
+      id: frame.id.toString(),
+      label: frame.label,
+      code: frame.code,
+      definition: frame.definition,
+      short_definition: frame.short_definition,
+      createdAt: frame.created_at,
+      updatedAt: frame.updated_at,
+      frame_roles: frame.frame_roles.map((role: any) => ({
         id: role.id.toString(),
         description: role.description,
         notes: role.notes,
@@ -366,18 +404,17 @@ function transformToGraphNodeWithContext(entry: any): GraphNode {
         examples: role.examples,
         example_sentence: role.examples?.[0] || '',
         label: role.label,
-        role_type: {
-          id: role.role_types.id.toString(),
-          code: role.role_types.code,
-          label: role.role_types.label,
-          generic_description: role.role_types.generic_description,
-          explanation: role.role_types.explanation,
-        },
+        fillers: role.fillers,
       })),
+      frame_type: frame.frame_type,
+      vendler: frame.vendler,
+      multi_perspective: frame.multi_perspective,
+      wikidata_id: frame.wikidata_id,
+      recipe: frame.recipe as Frame['recipe'],
     };
     
     node.roles = node.frame.frame_roles;
-    node.role_groups = entry.frames.role_groups.map((group: any) => ({
+    node.role_groups = frame.role_groups.map((group: any) => ({
       id: group.id.toString(),
       description: group.description,
       role_ids: group.role_group_members.map((m: any) => m.role_id.toString()),
@@ -559,15 +596,6 @@ export async function updateEntry(
   if (updates.subjective !== undefined) dbUpdates.subjective = updates.subjective;
   if (updates.relational !== undefined) dbUpdates.relational = updates.relational;
   
-  // Handle frame_id
-  if (updates.frame_id !== undefined) {
-    if (updates.frame_id === null) {
-      dbUpdates.frames = { disconnect: true };
-    } else {
-      dbUpdates.frames = { connect: { id: BigInt(updates.frame_id) } };
-    }
-  }
-
   dbUpdates.updated_at = new Date();
 
   try {
@@ -575,6 +603,19 @@ export async function updateEntry(
       where: whereClause,
       data: dbUpdates,
     });
+
+    // Handle frame assignment via join table
+    if (updates.frame_id !== undefined) {
+      const luId = numericId ?? (await prisma.lexical_units.findUnique({ where: whereClause, select: { id: true } }))?.id;
+      if (luId) {
+        await prisma.frame_lexical_units.deleteMany({ where: { lexical_unit_id: luId } });
+        if (updates.frame_id !== null) {
+          await prisma.frame_lexical_units.create({
+            data: { frame_id: BigInt(updates.frame_id), lexical_unit_id: luId },
+          });
+        }
+      }
+    }
 
     return getEntryById(id);
   } catch (error) {
@@ -661,7 +702,6 @@ export async function updateFramesForEntries(
   ids: string[],
   frameId: string | null
 ): Promise<{ success: boolean; updatedCount: number }> {
-  // Convert codes to IDs
   const entries = await prisma.lexical_units.findMany({
     where: {
       OR: ids.map(id => {
@@ -674,17 +714,30 @@ export async function updateFramesForEntries(
 
   const numericIds = entries.map(e => e.id);
 
-  const result = await prisma.lexical_units.updateMany({
+  // Remove existing frame links for these LUs
+  await prisma.frame_lexical_units.deleteMany({
+    where: { lexical_unit_id: { in: numericIds } },
+  });
+
+  // Create new links if a frame is specified
+  if (frameId) {
+    await prisma.frame_lexical_units.createMany({
+      data: numericIds.map(luId => ({
+        frame_id: BigInt(frameId),
+        lexical_unit_id: luId,
+      })),
+    });
+  }
+
+  // Update timestamps
+  await prisma.lexical_units.updateMany({
     where: { id: { in: numericIds } },
-    data: {
-      frame_id: frameId ? BigInt(frameId) : null,
-      updated_at: new Date(),
-    },
+    data: { updated_at: new Date() },
   });
 
   return {
     success: true,
-    updatedCount: result.count,
+    updatedCount: numericIds.length,
   };
 }
 
@@ -696,246 +749,6 @@ export async function updateFramesForLexicalUnits(
   frameId: string | null
 ): Promise<{ success: boolean; updatedCount: number }> {
   return updateFramesForEntries(ids, frameId);
-}
-
-// ============================================
-// Recipe Operations
-// ============================================
-
-/**
- * Get recipes for a lexical unit (via frame)
- */
-export async function getRecipesForEntryInternal(entryId: string): Promise<EntryRecipes> {
-  // Get the entry to find its frame
-  const entry = await getEntryById(entryId);
-  
-  if (!entry || !entry.frame_id) {
-    return { entryId, recipes: [] };
-  }
-
-  // Get recipes for the frame
-  const recipes = await prisma.recipes.findMany({
-    where: { frame_id: BigInt(entry.frame_id) },
-    include: {
-      recipe_predicates: {
-        include: {
-          frames: true,
-          recipe_predicate_role_bindings: {
-            include: {
-              predicate_variable_types: true,
-              recipe_variables: {
-                include: {
-                  lexical_units: true,
-                },
-              },
-            },
-          },
-        },
-        orderBy: { position: 'asc' },
-      },
-      recipe_predicate_relations: true,
-      recipe_preconditions: true,
-      recipe_variables: {
-        include: {
-          predicate_variable_types: true,
-          lexical_units: true,
-        },
-      },
-      logic_nodes_recipes_logic_root_node_idTologic_nodes: {
-        include: {
-          logic_targets: {
-            include: {
-              recipe_predicates: true,
-            },
-          },
-          logic_edges_logic_edges_parent_node_idTologic_nodes: {
-            include: {
-              logic_nodes_logic_edges_child_node_idTologic_nodes: true,
-            },
-            orderBy: { position: 'asc' },
-          },
-        },
-      },
-    },
-  });
-
-  const transformedRecipes: Recipe[] = await Promise.all(
-    recipes.map(async (recipe) => {
-      // Transform predicates
-      const predicates: RecipePredicateNode[] = await Promise.all(
-        recipe.recipe_predicates.map(async (pred) => {
-          // Get the lexical unit for this predicate's frame
-          let lexicalEntry: GraphNode | null = null;
-          if (pred.predicate_frame_id) {
-            const lu = await prisma.lexical_units.findFirst({
-              where: { frame_id: pred.predicate_frame_id },
-              include: { frames: true },
-            });
-            if (lu) {
-              lexicalEntry = transformToGraphNode(lu);
-            }
-          }
-
-          const roleMappings: RecipePredicateRoleMapping[] = pred.recipe_predicate_role_bindings.map(binding => ({
-            predicateRoleLabel: binding.predicate_role_id.toString(),
-            bindKind: binding.bind_kind as 'variable' | 'constant',
-            variableTypeLabel: binding.predicate_variable_types?.label,
-            variableKey: binding.recipe_variables?.key,
-            constant: binding.constant,
-            discovered: binding.discovered ?? undefined,
-            lexicalUnitCode: binding.recipe_variables?.lexical_units?.code ?? undefined,
-          }));
-
-          return {
-            id: pred.id.toString(),
-            alias: pred.alias,
-            position: pred.position,
-            example: pred.example,
-            lexical: lexicalEntry || createEmptyGraphNode(),
-            roleMappings,
-          };
-        })
-      );
-
-      // Transform relations
-      const relations = recipe.recipe_predicate_relations.map(rel => ({
-        sourcePredicateId: rel.source_recipe_predicate_id.toString(),
-        targetPredicateId: rel.target_recipe_predicate_id.toString(),
-        relation_type: 'causes' as const, // Default, could be enhanced
-      }));
-
-      // Transform preconditions
-      const preconditions = recipe.recipe_preconditions.map(pre => ({
-        id: pre.id.toString(),
-        condition_type: pre.condition_type,
-        target_recipe_predicate_id: pre.target_recipe_predicate_id?.toString() ?? null,
-        condition_params: pre.condition_params,
-        description: pre.description,
-        error_message: pre.error_message,
-      }));
-
-      // Transform variables
-      const variables = recipe.recipe_variables.map(v => ({
-        id: v.id.toString(),
-        key: v.key,
-        predicate_variable_type_label: v.predicate_variable_types?.label ?? null,
-        lexical_unit_id: v.lexical_unit_id?.toString() ?? null,
-        lexical_unit_code: v.lexical_units?.code ?? null,
-        lexical_unit_gloss: v.lexical_units?.gloss ?? null,
-        default_value: v.default_value,
-      }));
-
-      // Transform logic tree
-      let logicRoot: LogicNode | null = null;
-      if (recipe.logic_nodes_recipes_logic_root_node_idTologic_nodes) {
-        logicRoot = transformLogicNode(recipe.logic_nodes_recipes_logic_root_node_idTologic_nodes, predicates);
-      }
-
-      return {
-        id: recipe.id.toString(),
-        label: recipe.label,
-        description: recipe.description,
-        example: recipe.example,
-        is_default: recipe.is_default,
-        predicates,
-        predicate_groups: [],
-        relations,
-        preconditions,
-        variables,
-        logic_root: logicRoot,
-      };
-    })
-  );
-
-  return {
-    entryId,
-    recipes: transformedRecipes,
-  };
-}
-
-function transformLogicNode(node: any, predicates: RecipePredicateNode[]): LogicNode {
-  const children: LogicNode[] = (node.logic_edges_logic_edges_parent_node_idTologic_nodes || [])
-    .map((edge: any) => transformLogicNode(edge.logic_nodes_logic_edges_child_node_idTologic_nodes, predicates));
-
-  const targetPredicate = node.logic_targets?.recipe_predicate_id
-    ? predicates.find(p => p.id === node.logic_targets.recipe_predicate_id.toString())
-    : null;
-
-  return {
-    id: node.id.toString(),
-    recipe_id: node.recipe_id.toString(),
-    kind: node.kind as LogicNodeKind,
-    description: node.description,
-    target_predicate_id: node.logic_targets?.recipe_predicate_id?.toString() ?? null,
-    target_predicate: targetPredicate ?? null,
-    children,
-  };
-}
-
-function transformToGraphNode(entry: any): GraphNode {
-  return {
-    id: entry.code || entry.id.toString(),
-    numericId: entry.id.toString(),
-    legacy_id: entry.legacy_id,
-    lemmas: entry.lemmas || [],
-    src_lemmas: entry.src_lemmas || [],
-    gloss: entry.gloss,
-    legal_gloss: entry.legal_gloss,
-    pos: entry.pos,
-    lexfile: entry.lexfile,
-    examples: entry.examples || [],
-    flagged: entry.flagged ?? undefined,
-    flaggedReason: entry.flagged_reason ?? undefined,
-    verifiable: entry.verifiable ?? undefined,
-    unverifiableReason: entry.unverifiable_reason ?? undefined,
-    vendler_class: entry.vendler_class,
-    frame_id: entry.frame_id?.toString() ?? null,
-    frame: entry.frames ? {
-      id: entry.frames.id.toString(),
-      label: entry.frames.label,
-      code: entry.frames.code,
-      definition: entry.frames.definition,
-      short_definition: entry.frames.short_definition,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    } : null,
-    countable: entry.countable ?? undefined,
-    proper: entry.proper ?? undefined,
-    collective: entry.collective ?? undefined,
-    concrete: entry.concrete ?? undefined,
-    predicate: entry.predicate ?? undefined,
-    isSatellite: entry.is_satellite ?? undefined,
-    gradable: entry.gradable ?? undefined,
-    predicative: entry.predicative ?? undefined,
-    attributive: entry.attributive ?? undefined,
-    subjective: entry.subjective ?? undefined,
-    relational: entry.relational ?? undefined,
-    isMwe: entry.is_mwe ?? undefined,
-    parents: [],
-    children: [],
-    entails: [],
-    causes: [],
-    alsoSee: [],
-  };
-}
-
-function createEmptyGraphNode(): GraphNode {
-  return {
-    id: '',
-    numericId: '',
-    legacy_id: '',
-    lemmas: [],
-    src_lemmas: [],
-    gloss: '',
-    pos: '',
-    lexfile: '',
-    examples: [],
-    parents: [],
-    children: [],
-    entails: [],
-    causes: [],
-    alsoSee: [],
-  };
 }
 
 // ============================================
@@ -1022,15 +835,11 @@ export async function getPaginatedFrames(
     take: limit,
     orderBy,
     include: {
-      frame_roles: {
-        include: {
-          role_types: true,
-        },
-      },
+      frame_roles: true,
       _count: {
         select: {
           frame_roles: true,
-          lexical_units: true,
+          frame_lexical_units: true,
           other_frames: true,
         },
       },
@@ -1051,7 +860,7 @@ export async function getPaginatedFrames(
     createdAt: frame.created_at,
     updatedAt: frame.updated_at,
     roles_count: frame._count.frame_roles,
-    lexical_units_count: frame._count.lexical_units,
+    lexical_units_count: frame._count.frame_lexical_units,
     subframes_count: frame._count.other_frames,
     frame_roles: frame.frame_roles.map(role => ({
       id: role.id.toString(),
@@ -1060,14 +869,13 @@ export async function getPaginatedFrames(
       main: role.main,
       examples: role.examples,
       label: role.label,
-      role_type: {
-        id: role.role_types.id.toString(),
-        code: role.role_types.code,
-        label: role.role_types.label,
-        generic_description: role.role_types.generic_description,
-        explanation: role.role_types.explanation,
-      },
+      fillers: role.fillers,
     })),
+    frame_type: frame.frame_type,
+    vendler: frame.vendler,
+    multi_perspective: frame.multi_perspective,
+    wikidata_id: frame.wikidata_id,
+    recipe: frame.recipe as Frame['recipe'],
   }));
 
   const totalPages = Math.ceil(total / limit);

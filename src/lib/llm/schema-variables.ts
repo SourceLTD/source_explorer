@@ -32,7 +32,6 @@ export function isIterableVariable(v: VariableDefinition): v is IterableVariable
 // Subfield definitions for iterable collections
 const ROLE_ITEM_FIELDS = [
   { key: 'type', label: 'Role Type (e.g., AGENT, PATIENT)' },
-  { key: 'code', label: 'Role Type Code' },
   { key: 'description', label: 'Role Description' },
   { key: 'examples', label: 'Role Examples (array)' },
   { key: 'label', label: 'Role Label' },
@@ -76,7 +75,6 @@ const COMMON_VARIABLES: VariableDefinition[] = [
 // Verb-specific variables
 const VERB_VARIABLES: VariableDefinition[] = [
   ...COMMON_VARIABLES,
-  { key: 'frame_id', label: 'Frame Id', category: 'basic' },
   { key: 'label', label: 'Label', category: 'relation' },
   { key: 'frame_definition', label: 'Frame Definition', category: 'relation' },
   { key: 'vendler_class', label: 'Vendler Class', category: 'basic' },
@@ -110,7 +108,6 @@ const VERB_VARIABLES: VariableDefinition[] = [
 // Noun-specific variables
 const NOUN_VARIABLES: VariableDefinition[] = [
   ...COMMON_VARIABLES,
-  { key: 'frame_id', label: 'Frame Id', category: 'basic' },
   { key: 'countable', label: 'Countable', category: 'basic' },
   { key: 'proper', label: 'Proper', category: 'basic' },
   { key: 'collective', label: 'Collective', category: 'basic' },
@@ -124,7 +121,6 @@ const NOUN_VARIABLES: VariableDefinition[] = [
 // Adjective-specific variables
 const ADJECTIVE_VARIABLES: VariableDefinition[] = [
   ...COMMON_VARIABLES,
-  { key: 'frame_id', label: 'Frame Id', category: 'basic' },
   { key: 'gradable', label: 'Gradable', category: 'basic' },
   { key: 'predicative', label: 'Predicative', category: 'basic' },
   { key: 'attributive', label: 'Attributive', category: 'basic' },
@@ -140,7 +136,6 @@ const ADJECTIVE_VARIABLES: VariableDefinition[] = [
 // Adverb-specific variables
 const ADVERB_VARIABLES: VariableDefinition[] = [
   ...COMMON_VARIABLES,
-  { key: 'frame_id', label: 'Frame Id', category: 'basic' },
   { key: 'gradable', label: 'Gradable', category: 'basic' },
   { key: 'is_mwe', label: 'Is Mwe', category: 'basic' },
   { key: 'legal_gloss', label: 'Legal Gloss', category: 'basic' },

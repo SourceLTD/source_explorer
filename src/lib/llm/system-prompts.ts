@@ -69,8 +69,8 @@ You may use these tools to gather additional database context when helpful:
 - select_frames: look up FRAMES (non-top-level; super_frame_id != null) by id/label/definition/flags
 - search_superframes: semantic search for SUPERFRAMES (top-level; super_frame_id == null) by meaning
 - select_superframes: look up SUPERFRAMES (top-level; super_frame_id == null) by id/label/definition/flags (includes roles + child frames)
-- select_verbs: look up verbs by id/code/lemma/gloss/frame_id/flags
-- select_lexical_units: look up any lexical units by id/code/pos/lemma/gloss/frame_id/flags
+- select_verbs: look up verbs by id/code/lemma/gloss/flags
+- select_lexical_units: look up any lexical units by id/code/pos/lemma/gloss/flags
 
 Use tools only when you need more context for an uncertain case.`,
 

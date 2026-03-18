@@ -14,7 +14,6 @@
  */
 export type EntityType = 
   | 'lexical_unit'           // Unified type
-  | 'lexical_unit_relation'  // Unified relation type
   | 'frame'
   | 'frame_role'
   | 'recipe'
@@ -258,7 +257,6 @@ export interface UnreadChangesetInfo {
  */
 export const ENTITY_TYPE_TO_TABLE: Record<EntityType, string> = {
   lexical_unit: 'lexical_units',
-  lexical_unit_relation: 'lexical_unit_relations',
   frame: 'frames',
   frame_role: 'frame_roles',
   recipe: 'recipes',
@@ -270,7 +268,6 @@ export const ENTITY_TYPE_TO_TABLE: Record<EntityType, string> = {
  */
 export const TABLE_TO_ENTITY_TYPE: Record<string, EntityType> = {
   lexical_units: 'lexical_unit',
-  lexical_unit_relations: 'lexical_unit_relation',
   frames: 'frame',
   frame_roles: 'frame_role',
   recipes: 'recipe',
@@ -292,9 +289,6 @@ export const MAIN_ENTITY_TYPES: EntityType[] = [
 export function normalizeEntityType(type: string): EntityType {
   if (['verb', 'noun', 'adjective', 'adverb', 'lexical_unit'].includes(type)) {
     return 'lexical_unit';
-  }
-  if (['verb_relation', 'noun_relation', 'adjective_relation', 'adverb_relation', 'lexical_unit_relation'].includes(type)) {
-    return 'lexical_unit_relation';
   }
   return type as EntityType;
 }

@@ -167,9 +167,9 @@ export function useEntryMutations(mode: Mode) {
     frameId: string,
     frameRoles: EditableFrameRole[]
   ): Promise<void> => {
-    // Filter out roles without a role type and clean up examples array
+    // Filter out roles without a label and clean up examples array
     const filteredRoles = frameRoles
-      .filter(role => role.roleType.trim())
+      .filter(role => role.label.trim())
       .map(role => ({
         ...role,
         // Normalize label (per-frame display name)

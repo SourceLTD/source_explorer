@@ -3,9 +3,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { FlagIcon } from '@heroicons/react/24/outline';
-import { GraphNode, SearchResult, BreadcrumbItem, EntryRecipes } from '@/lib/types';
+import { GraphNode, SearchResult, BreadcrumbItem } from '@/lib/types';
 import LexicalGraph from './LexicalGraph';
-import RecipesGraph from './RecipesGraph';
 import SearchBox from './SearchBox';
 import Breadcrumbs from './Breadcrumbs';
 import ViewToggle, { ViewMode } from './ViewToggle';
@@ -29,8 +28,6 @@ export default function WordNetExplorer({ initialEntryId, mode = 'lexical_units'
   const [error, setError] = useState<string | null>(null);
   const [, setSearchQuery] = useState<string>('');
   const [currentView, setCurrentView] = useState<ViewMode>('graph');
-  const [entryRecipes, setEntryRecipes] = useState<EntryRecipes | null>(null);
-  const [selectedRecipeId, setSelectedRecipeId] = useState<string | undefined>(undefined);
   const [isEditOverlayOpen, setIsEditOverlayOpen] = useState(false);
   const editingField = null; // Inline editing disabled - using EditOverlay instead
   const editListItems: never[] = []; // Inline editing disabled
@@ -114,20 +111,11 @@ export default function WordNetExplorer({ initialEntryId, mode = 'lexical_units'
       const breadcrumbUrl = invalidateCache
         ? `/api/breadcrumbs/${entryId}?t=${Date.now()}`
         : `/api/breadcrumbs/${entryId}`;
-      
-      const recipesUrl = invalidateCache
-        ? `${apiPrefix}/${entryId}/recipes?t=${Date.now()}`
-        : `${apiPrefix}/${entryId}/recipes`;
         
-      // Fetch graph, breadcrumbs and recipes (recipes currently only for verbs)
-      const fetchPromises = [
+      const [graphResponse, breadcrumbResponse] = await Promise.all([
         fetch(graphUrl, invalidateCache ? { cache: 'no-store' } : {}),
-        fetch(breadcrumbUrl, invalidateCache ? { cache: 'no-store' } : {}),
-        fetch(recipesUrl, invalidateCache ? { cache: 'no-store' } : {})
-      ];
-      
-      const responses = await Promise.all(fetchPromises);
-      const [graphResponse, breadcrumbResponse, recipesResponse] = responses;
+        fetch(breadcrumbUrl, invalidateCache ? { cache: 'no-store' } : {})
+      ]);
 
       if (!graphResponse.ok) {
         throw new Error('Failed to load entry');
@@ -135,17 +123,6 @@ export default function WordNetExplorer({ initialEntryId, mode = 'lexical_units'
 
       const graphNode: GraphNode = await graphResponse.json();
       setCurrentNode(graphNode);
-
-      // Handle recipes (primarily for verbs)
-      if (recipesResponse && recipesResponse.ok) {
-        const recipesData: EntryRecipes = await recipesResponse.json();
-        setEntryRecipes(recipesData);
-        // default selection
-        setSelectedRecipeId(recipesData.recipes.find(r => r.is_default)?.id || recipesData.recipes[0]?.id);
-      } else {
-        setEntryRecipes({ entryId, recipes: [] });
-        setSelectedRecipeId(undefined);
-      }
 
       if (breadcrumbResponse.ok) {
         const breadcrumbData: BreadcrumbItem[] = await breadcrumbResponse.json();
@@ -161,12 +138,10 @@ export default function WordNetExplorer({ initialEntryId, mode = 'lexical_units'
     }
   }, [mode]);
 
-  const handleNodeClick = (nodeId: string, recipeId?: string) => {
+  const handleNodeClick = (nodeId: string) => {
     // Reset the ref to allow loading the new node
     lastLoadedEntryRef.current = null;
     updateUrlParam(nodeId);
-    // If a specific recipe ID is provided (e.g., for discovered variables), select it
-    setSelectedRecipeId(recipeId);
   };
 
   const handleSearchResult = (result: SearchResult) => {
@@ -257,7 +232,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'lexical_units'
   // Load entry based on URL params or initial prop and sync view from URL
   useEffect(() => {
     const viewParam = searchParams.get('view');
-    if (viewParam === 'graph' || viewParam === 'recipes' || viewParam === 'table') {
+    if (viewParam === 'graph' || viewParam === 'table') {
       setCurrentView(viewParam as ViewMode);
     }
     const currentEntryId = searchParams.get('entry') || initialEntryId;
@@ -271,16 +246,30 @@ export default function WordNetExplorer({ initialEntryId, mode = 'lexical_units'
       {/* Header */}
       <header className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
             <button
               onClick={() => router.push('/')}
-              className="text-xl font-bold text-gray-900 hover:text-gray-700 cursor-pointer"
+              className="text-xl font-bold text-gray-900 hover:text-gray-700 cursor-pointer shrink-0"
             >
               Source Console
             </button>
-            <p className="text-sm text-gray-600">
-              Explore lexical relationships
-            </p>
+            <div className="flex items-center gap-1 ml-2">
+              <button
+                onClick={() => router.push('/table/super-frames')}
+                className="px-4 py-2 text-base font-medium transition-colors relative cursor-pointer text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+              >
+                Super Frames
+              </button>
+              <button
+                onClick={() => router.push('/graph/frames?view=graph')}
+                className="px-4 py-2 text-base font-medium transition-colors relative cursor-pointer text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+              >
+                Frames
+              </button>
+              <button className="px-4 py-2 text-base font-medium transition-colors relative cursor-pointer text-blue-600 border-b-2 border-blue-600">
+                Lexical Units
+              </button>
+            </div>
           </div>
           
           <div className="flex items-center gap-4 flex-1 justify-end">
@@ -866,7 +855,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'lexical_units'
                                 {ungroupedRoles.map((role, index) => (
                                   <div key={`role-${index}`} className="text-sm">
                                     <span className={`font-medium ${role.main ? 'text-blue-600' : 'text-purple-800'}`}>
-                                      {role.role_type.label}:
+                                      {role.label}:
                                     </span>{' '}
                                     <span className="text-gray-900">{role.description || 'No description'}</span>
                                     {role.example_sentence && (
@@ -895,7 +884,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'lexical_units'
                                           )}
                                           <div className="inline-block text-sm">
                                             <span className={`font-medium ${role.main ? 'text-blue-600' : 'text-purple-800'}`}>
-                                              {role.role_type.label}:
+                                              {role.label}:
                                             </span>{' '}
                                             <span className="text-gray-900">{role.description || 'No description'}</span>
                                           </div>
@@ -1138,7 +1127,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'lexical_units'
               <svg className="h-12 w-12 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
-              <p className="text-sm">Search for a lexical entry to begin exploring</p>
+              <p className="text-sm">Search for a lexical unit to begin exploring</p>
             </div>
           )}
         </aside>
@@ -1160,23 +1149,12 @@ export default function WordNetExplorer({ initialEntryId, mode = 'lexical_units'
               
               {/* Graph */}
               <div className="flex-1">
-                {currentView === 'graph' ? (
-                  <LexicalGraph 
-                    currentNode={currentNode} 
-                    onNodeClick={handleNodeClick}
-                    onEditClick={() => setIsEditOverlayOpen(true)}
-                    mode={mode}
-                  />
-                ) : (
-                  <RecipesGraph
-                    currentNode={currentNode}
-                    recipes={entryRecipes?.recipes || []}
-                    selectedRecipeId={selectedRecipeId}
-                    onSelectRecipe={(rid) => setSelectedRecipeId(rid)}
-                    onNodeClick={handleNodeClick}
-                    onEditClick={() => setIsEditOverlayOpen(true)}
-                  />
-                )}
+                <LexicalGraph 
+                  currentNode={currentNode} 
+                  onNodeClick={handleNodeClick}
+                  onEditClick={() => setIsEditOverlayOpen(true)}
+                  mode={mode}
+                />
               </div>
             </div>
           ) : (

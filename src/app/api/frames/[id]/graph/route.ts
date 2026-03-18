@@ -14,26 +14,25 @@ export async function GET(
       where: { id },
       include: {
         frame_roles: {
-          include: {
-            role_types: true,
-          },
           orderBy: {
             id: 'asc',
           },
         },
-        lexical_units: {
-          where: {
-            deleted: false,
-          },
-          select: {
-            id: true,
-            code: true,
-            gloss: true,
-            lemmas: true,
-            examples: true,
-            flagged: true,
-            flagged_reason: true,
-            pos: true,
+        frame_lexical_units: {
+          where: { lexical_units: { deleted: false } },
+          include: {
+            lexical_units: {
+              select: {
+                id: true,
+                code: true,
+                gloss: true,
+                lemmas: true,
+                examples: true,
+                flagged: true,
+                flagged_reason: true,
+                pos: true,
+              },
+            },
           },
           take: 100,
         },
@@ -76,19 +75,22 @@ export async function GET(
       label: frame.label,
       gloss: frame.definition,
       short_definition: frame.short_definition,
+      frame_type: frame.frame_type,
+      vendler: frame.vendler,
+      multi_perspective: frame.multi_perspective,
+      wikidata_id: frame.wikidata_id,
+      recipe: frame.recipe,
       roles: frame.frame_roles.map(role => ({
         id: role.id.toString(),
         frame_id: role.frame_id.toString(),
-        role_type_id: role.role_type_id.toString(),
-        role_type_code: role.role_types.code,
-        role_type_label: role.role_types.label,
         description: role.description,
         notes: role.notes,
         main: role.main,
         examples: role.examples,
         label: role.label,
+        fillers: role.fillers,
       })),
-      lexical_units: frame.lexical_units.map(lu => ({
+      lexical_units: frame.frame_lexical_units.map((flu: any) => flu.lexical_units).map((lu: any) => ({
         id: lu.id.toString(),
         code: lu.code,
         gloss: lu.gloss,
@@ -99,7 +101,7 @@ export async function GET(
         pos: lu.pos,
       })),
       // Legacy verbs alias
-      verbs: frame.lexical_units.filter(lu => lu.pos === 'verb').map(verb => ({
+      verbs: frame.frame_lexical_units.map((flu: any) => flu.lexical_units).filter((lu: any) => lu.pos === 'verb').map((verb: any) => ({
         id: verb.id.toString(),
         code: verb.code,
         gloss: verb.gloss,

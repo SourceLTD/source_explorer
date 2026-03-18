@@ -200,7 +200,7 @@ export default function FocusEntityCard({
     const lemmas = formatLemmas(summarySnapshot.lemmas || richData?.lemmas);
     return (
       <NodeCard
-        title={code || 'Lexical Entry'}
+        title={code || 'Lexical Unit'}
         loading={loading}
         error={error}
         noDivider

@@ -35,7 +35,9 @@ export interface LexicalUnit {
   legal_gloss?: string | null;
   deleted?: boolean;
   frame_id?: string | null;
+  frame_ids?: string[];
   frame?: Frame | null;
+  wikidata_id?: string | null;
   createdAt: Date;
   updatedAt: Date;
   version?: number;
@@ -142,18 +144,9 @@ export interface FrameRole {
   notes?: string | null;
   main?: boolean | null;
   examples?: string[];
-  example_sentence?: string | null; // For backward compatibility
+  example_sentence?: string | null;
   label?: string | null;
-  role_type: RoleType;
-  instantiation_type_ids?: string[];
-}
-
-export interface RoleType {
-  id: string;
-  code?: string;
-  label: string;
-  generic_description: string;
-  explanation?: string | null;
+  fillers?: unknown;
 }
 
 export interface RoleGroup {
@@ -195,11 +188,18 @@ export interface Frame {
   roles_count?: number;
   lexical_units_count?: number;
   subframes_count?: number;
-  lexical_entries?: LexicalUnitsSample;
+  lexical_units?: LexicalUnitsSample;
   pending?: PendingChangeInfo | null;
   super_frame_id?: string | null;
   super_frame?: { id: string; label: string; code?: string | null } | null;
+  frame_type?: string | null;
+  vendler?: string | null;
+  multi_perspective?: boolean | null;
+  wikidata_id?: string | null;
+  recipe?: FrameRecipe | null;
 }
+
+export type FrameRecipe = Record<string, unknown>;
 
 // ============================================
 // Graph Types
@@ -224,6 +224,7 @@ export interface GraphNode {
   // Verb-specific fields
   vendler_class?: VendlerClass | null;
   frame_id?: string | null;
+  frame_ids?: string[];
   frame?: Frame | null;
   
   // Noun-specific fields
@@ -302,7 +303,9 @@ export interface TableEntry {
   pos: string;
   lexfile: string;
   frame_id?: string | null;
-  frame?: string | null; // Stores frame code (falling back to label)
+  frame_ids?: string[];
+  frame?: string | null;
+  frames?: Array<{ id: string; label: string; code: string | null }>;
   
   // Verb-specific
   vendler_class?: VendlerClass | null;
@@ -493,109 +496,6 @@ export const RELATION_LABELS: Record<string, string> = {
 };
 
 // ============================================
-// Recipe Types
-// ============================================
-
-export type RecipeRelationType =
-  | 'also_see'
-  | 'causes'
-  | 'entails'
-  | 'hypernym'
-  | 'hyponym'
-  | 'starts'
-  | 'ends'
-  | 'precedes'
-  | 'during'
-  | 'enables';
-
-export interface RecipePredicateRoleMapping {
-  predicateRoleLabel: string;
-  entryRoleLabel?: string;
-  bindKind: 'role' | 'variable' | 'constant';
-  variableTypeLabel?: string;
-  variableKey?: string;
-  constant?: unknown;
-  discovered?: boolean;
-  lexicalUnitCode?: string;
-}
-
-export interface RecipePredicateNode {
-  id: string;
-  alias?: string | null;
-  position?: number | null;
-  optional?: boolean;
-  negated?: boolean;
-  example?: string | null;
-  lexical: GraphNode;
-  roleMappings: RecipePredicateRoleMapping[];
-}
-
-export interface RecipePredicateEdge {
-  sourcePredicateId: string;
-  targetPredicateId: string;
-  relation_type: RecipeRelationType;
-}
-
-export interface PredicateGroup {
-  id: string;
-  description?: string | null;
-  require_at_least_one: boolean;
-  predicate_ids: string[];
-}
-
-export type LogicNodeKind = 'and' | 'or' | 'not' | 'leaf' | 'enables' | 'causes' | 'precedes' | 'starts' | 'ends' | 'during' | 'co_temporal';
-
-export interface LogicNode {
-  id: string;
-  recipe_id: string;
-  kind: LogicNodeKind;
-  description?: string | null;
-  target_predicate_id?: string | null;
-  target_predicate?: RecipePredicateNode | null;
-  children: LogicNode[];
-}
-
-export interface RecipePrecondition {
-  id: string;
-  condition_type: string;
-  target_role_id?: string | null;
-  target_role_label?: string | null;
-  target_recipe_predicate_id?: string | null;
-  condition_params?: unknown;
-  description?: string | null;
-  error_message?: string | null;
-}
-
-export interface RecipeVariable {
-  id: string;
-  key: string;
-  predicate_variable_type_label?: string | null;
-  lexical_unit_id?: string | null;
-  lexical_unit_code?: string | null;
-  lexical_unit_gloss?: string | null;
-  default_value?: unknown;
-}
-
-export interface Recipe {
-  id: string;
-  label?: string | null;
-  description?: string | null;
-  example?: string | null;
-  is_default: boolean;
-  predicates: RecipePredicateNode[];
-  predicate_groups: PredicateGroup[];
-  relations: RecipePredicateEdge[];
-  preconditions: RecipePrecondition[];
-  variables: RecipeVariable[];
-  logic_root?: LogicNode | null;
-}
-
-export interface EntryRecipes {
-  entryId: string;
-  recipes: Recipe[];
-}
-
-// ============================================
 // Pending Change Types
 // ============================================
 
@@ -642,14 +542,12 @@ export type FrameRelationType =
 export interface FrameGraphRole {
   id: string;
   frame_id: string;
-  role_type_id: string;
-  role_type_code: string;
-  role_type_label: string;
   description: string | null;
   notes: string | null;
   main: boolean | null;
   examples: string[];
   label: string | null;
+  fillers?: unknown;
 }
 
 export interface FrameGraphLexicalUnit {
@@ -693,21 +591,21 @@ export interface FrameGraphNode {
   verifiable?: boolean;
   unverifiableReason?: string;
   pending?: PendingChangeInfo | null;
+  frame_type?: string | null;
+  vendler?: string | null;
+  multi_perspective?: boolean | null;
+  wikidata_id?: string | null;
+  recipe?: FrameRecipe | null;
 }
 
 export interface FrameRecipeRole {
   id: string;
-  role_type: {
-    id: string;
-    code: string;
-    label: string;
-    generic_description: string;
-  };
+  label: string | null;
   description: string | null;
   notes: string | null;
   main: boolean | null;
   examples: string[];
-  label: string | null;
+  fillers?: unknown;
   groups: Array<{
     id: string;
     description: string | null;
@@ -730,7 +628,7 @@ export interface FrameRecipeRelatedFrame {
   short_definition?: string | null;
   roles?: Array<{
     id: string;
-    role_type_label: string;
+    label: string | null;
     description: string | null;
     main: boolean | null;
   }>;
@@ -744,6 +642,11 @@ export interface FrameRecipeData {
     short_definition?: string | null;
     flagged: boolean | null;
     flagged_reason: string | null;
+    frame_type?: string | null;
+    vendler?: string | null;
+    multi_perspective?: boolean | null;
+    wikidata_id?: string | null;
+    recipe?: FrameRecipe | null;
   };
   roles: FrameRecipeRole[];
   lexical_units: FrameRecipeLexicalUnit[];
@@ -837,7 +740,7 @@ export const ROLE_PRECEDENCE: Record<string, number> = {
   'IDIOM': -1
 };
 
-export function sortRolesByPrecedence<T extends { role_type: { label: string }; main?: boolean | null }>(roles: T[]): T[] {
+export function sortRolesByPrecedence<T extends { label?: string | null; main?: boolean | null }>(roles: T[]): T[] {
   return [...roles].sort((a, b) => {
     const mainA = a.main ?? false;
     const mainB = b.main ?? false;
@@ -846,8 +749,8 @@ export function sortRolesByPrecedence<T extends { role_type: { label: string }; 
       return mainB ? 1 : -1;
     }
     
-    const roleA = a.role_type?.label || '';
-    const roleB = b.role_type?.label || '';
+    const roleA = a.label || '';
+    const roleB = b.label || '';
     
     const precedenceA = ROLE_PRECEDENCE[roleA] ?? -999;
     const precedenceB = ROLE_PRECEDENCE[roleB] ?? -999;

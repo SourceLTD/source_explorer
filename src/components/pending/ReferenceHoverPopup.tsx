@@ -15,24 +15,24 @@ interface FrameChild {
   id: string;
   label: string;
   short_definition?: string | null;
-  lexical_entries?: {
+  lexical_units?: {
     entries: LexicalUnitSnippet[];
     totalCount: number;
   };
 }
 
-interface LexicalEntryRow {
+interface LexicalUnitRow {
   id?: string;
   code: string;
   gloss: string;
   pos?: string;
 }
 
-type ReferenceHoverMode = 'super_frame_children' | 'frame_lexical_entries';
+type ReferenceHoverMode = 'super_frame_children' | 'frame_lexical_units';
 
 type HoverData =
   | { kind: 'frames'; data: FrameChild[]; total: number }
-  | { kind: 'lexical_entries'; data: LexicalEntryRow[]; total: number }
+  | { kind: 'lexical_units'; data: LexicalUnitRow[]; total: number }
   | null;
 
 interface ReferenceHoverPopupProps {
@@ -125,7 +125,7 @@ export default function ReferenceHoverPopup({
         });
       } else {
         setData({
-          kind: 'lexical_entries',
+          kind: 'lexical_units',
           data: json.data || [],
           total: json.total || 0,
         });
@@ -179,7 +179,7 @@ export default function ReferenceHoverPopup({
   }, [entityId, isVirtualRef, mode, virtualIndex]);
 
   const virtualLexicalUnits = useMemo(() => {
-    if (!isVirtualRef || !entityId || mode !== 'frame_lexical_entries') return [] as VirtualLexicalUnitSummary[];
+    if (!isVirtualRef || !entityId || mode !== 'frame_lexical_units') return [] as VirtualLexicalUnitSummary[];
     return virtualIndex?.lexicalUnitsByFrameRef.get(entityId) ?? [];
   }, [entityId, isVirtualRef, mode, virtualIndex]);
 
@@ -320,7 +320,7 @@ export default function ReferenceHoverPopup({
                   })
                 )
               ) : pagedVirtualLexicalUnits.length === 0 ? (
-                <div className="text-[11px] text-gray-400 italic">No pending lexical entries found inside.</div>
+                <div className="text-[11px] text-gray-400 italic">No pending lexical units found inside.</div>
               ) : (
                 pagedVirtualLexicalUnits.map((lu, idx) => (
                   <NodeCard
@@ -340,8 +340,8 @@ export default function ReferenceHoverPopup({
               <div className="text-[11px] text-red-500">{error}</div>
             ) : mode === 'super_frame_children' && data?.kind === 'frames' && data.data.length === 0 ? (
               <div className="text-[11px] text-gray-400 italic">No frames found inside.</div>
-            ) : mode === 'frame_lexical_entries' && data?.kind === 'lexical_entries' && data.data.length === 0 ? (
-              <div className="text-[11px] text-gray-400 italic">No lexical entries found inside.</div>
+            ) : mode === 'frame_lexical_units' && data?.kind === 'lexical_units' && data.data.length === 0 ? (
+              <div className="text-[11px] text-gray-400 italic">No lexical units found inside.</div>
             ) : (
               <>
                 {mode === 'super_frame_children' && data?.kind === 'frames' && (
@@ -359,9 +359,9 @@ export default function ReferenceHoverPopup({
                             {frame.short_definition}
                           </div>
                         )}
-                        {frame.lexical_entries && frame.lexical_entries.entries.length > 0 && (
+                        {frame.lexical_units && frame.lexical_units.entries.length > 0 && (
                           <div className="space-y-1 mt-1">
-                            {frame.lexical_entries.entries.slice(0, 3).map((lu, idx) => (
+                            {frame.lexical_units.entries.slice(0, 3).map((lu, idx) => (
                               <div key={idx} className="text-[9px] leading-tight flex items-start gap-1">
                                 <span className="font-mono text-blue-600 font-bold flex-shrink-0">{lu.code}</span>
                                 <span className="text-gray-400">•</span>
@@ -375,7 +375,7 @@ export default function ReferenceHoverPopup({
                   </>
                 )}
 
-                {mode === 'frame_lexical_entries' && data?.kind === 'lexical_entries' && (
+                {mode === 'frame_lexical_units' && data?.kind === 'lexical_units' && (
                   <>
                     {data.data.map((lu, idx) => (
                       <NodeCard

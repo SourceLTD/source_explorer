@@ -107,7 +107,7 @@ function buildChildrenCountSql(
     (SELECT COUNT(*) FROM frames sf WHERE sf.super_frame_id = ${FRAME_ID_REF} AND sf.deleted = false)
   `;
   const lexicalUnitCount = Prisma.sql`
-    (SELECT COUNT(*) FROM lexical_units lu WHERE lu.frame_id = ${FRAME_ID_REF} AND COALESCE(lu.deleted, false) = false)
+    (SELECT COUNT(*) FROM frame_lexical_units flu JOIN lexical_units lu ON lu.id = flu.lexical_unit_id WHERE flu.frame_id = ${FRAME_ID_REF} AND COALESCE(lu.deleted, false) = false)
   `;
 
   const childCountExpr =
@@ -259,9 +259,9 @@ export async function GET(request: NextRequest) {
     let totalCount = 0;
     let frames: Array<Prisma.framesGetPayload<{
       include: {
-        _count: { select: { frame_roles: true; other_frames: true; lexical_units: true } };
-        frame_roles: { include: { role_types: true } };
-        lexical_units: { select: { code: true; lemmas: true; src_lemmas: true; pos: true; gloss: true } };
+        _count: { select: { frame_roles: true; other_frames: true; frame_lexical_units: true } };
+        frame_roles: true;
+        frame_lexical_units: { include: { lexical_units: { select: { code: true; lemmas: true; src_lemmas: true; pos: true; gloss: true } } } };
         frames: { select: { id: true; label: true; code: true } };
       }
     }>> = [];
@@ -291,25 +291,23 @@ export async function GET(request: NextRequest) {
               select: {
                 frame_roles: true,
                 other_frames: true,
-                lexical_units: {
+                frame_lexical_units: {
                   where: {
-                    deleted: false,
+                    lexical_units: { deleted: false },
                   },
                 },
               },
             },
-            frame_roles: {
+            frame_roles: true,
+            frame_lexical_units: {
+              where: { lexical_units: { deleted: false } },
               include: {
-                role_types: true,
+                lexical_units: {
+                  select: { code: true, lemmas: true, src_lemmas: true, pos: true, gloss: true },
+                },
               },
+              take: 11,
             },
-            // Include sample lexical units from unified lexical_units table
-            lexical_units: {
-              where: { deleted: false },
-              select: { code: true, lemmas: true, src_lemmas: true, pos: true, gloss: true },
-              take: 11, // Take up to 11 to indicate if there are more than 10
-            },
-            // Parent super-frame (for regular frames); used to render derived code prefix + pending super-frame label previews.
             frames: {
               select: {
                 id: true,
@@ -336,25 +334,23 @@ export async function GET(request: NextRequest) {
             select: {
               frame_roles: true,
               other_frames: true,
-              lexical_units: {
+              frame_lexical_units: {
                 where: {
-                  deleted: false,
+                  lexical_units: { deleted: false },
                 },
               },
             },
           },
-          frame_roles: {
+          frame_roles: true,
+          frame_lexical_units: {
+            where: { lexical_units: { deleted: false } },
             include: {
-              role_types: true,
+              lexical_units: {
+                select: { code: true, lemmas: true, src_lemmas: true, pos: true, gloss: true },
+              },
             },
+            take: 11,
           },
-          // Include sample lexical units from unified lexical_units table
-          lexical_units: {
-            where: { deleted: false },
-            select: { code: true, lemmas: true, src_lemmas: true, pos: true, gloss: true },
-            take: 11, // Take up to 11 to indicate if there are more than 10
-          },
-          // Parent super-frame (for regular frames); used to render derived code prefix + pending super-frame label previews.
           frames: {
             select: {
               id: true,
@@ -389,13 +385,13 @@ export async function GET(request: NextRequest) {
     const superFrameByIdWithPending = new Map(superFramesWithPending.map(sf => [sf.id, sf]));
 
     const serializedFrames = frames.map(frame => {
-      const lexicalUnitsCount = frame._count.lexical_units;
-      const lexicalUnitSnippets = frame.lexical_units.slice(0, 10).map(lu => ({
-        code: lu.code,
-        lemmas: lu.lemmas,
-        src_lemmas: lu.src_lemmas,
-        pos: lu.pos,
-        gloss: lu.gloss
+      const lexicalUnitsCount = frame._count.frame_lexical_units;
+      const lexicalUnitSnippets = frame.frame_lexical_units.slice(0, 10).map((flu: any) => ({
+        code: flu.lexical_units.code,
+        lemmas: flu.lexical_units.lemmas,
+        src_lemmas: flu.lexical_units.src_lemmas,
+        pos: flu.lexical_units.pos,
+        gloss: flu.lexical_units.gloss,
       }));
 
       return {
@@ -429,6 +425,11 @@ export async function GET(request: NextRequest) {
         unverifiableReason: frame.unverifiable_reason ?? undefined,
         createdAt: frame.created_at.toISOString(),
         updatedAt: frame.updated_at.toISOString(),
+        frame_type: frame.frame_type,
+        vendler: frame.vendler,
+        multi_perspective: frame.multi_perspective,
+        wikidata_id: frame.wikidata_id,
+        recipe: frame.recipe,
         roles_count: frame._count.frame_roles,
         lexical_units_count: lexicalUnitsCount,
         subframes_count: frame._count.other_frames,
@@ -439,15 +440,9 @@ export async function GET(request: NextRequest) {
           main: fr.main,
           examples: fr.examples,
           label: fr.label,
-          role_type: {
-            id: fr.role_types.id.toString(),
-            code: fr.role_types.code,
-            label: fr.role_types.label,
-            generic_description: fr.role_types.generic_description,
-            explanation: fr.role_types.explanation,
-          },
+          fillers: fr.fillers,
         })),
-        lexical_entries: {
+        lexical_units: {
           entries: lexicalUnitSnippets,
           totalCount: lexicalUnitsCount,
           hasMore: lexicalUnitsCount > 10,

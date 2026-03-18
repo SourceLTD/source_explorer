@@ -176,57 +176,35 @@ async function commitCreate(
       newEntityId = frame.id;
 
       if (Array.isArray(frameRolesRaw) && frameRolesRaw.length > 0) {
-        // Expect items like:
-        // - { role_type_code: "AGENT", description: "...", main: true, examples: [...] }
-        // Optionally supports { role_type_id: 123 } if already resolved.
         const roles = frameRolesRaw as Array<Record<string, unknown>>;
 
-        // Resolve role_type_id by role_type_code (preferred) or role_type_id (fallback)
-        const codes = Array.from(
-          new Set(
-            roles
-              .map(r => (typeof r.role_type_code === 'string' ? r.role_type_code : null))
-              .filter((c): c is string => Boolean(c))
-          )
-        );
-        const roleTypeRecords = codes.length > 0
-          ? await tx.role_types.findMany({
-              where: { code: { in: codes } },
-              select: { id: true, code: true },
-            })
-          : [];
-        const codeToId = new Map(roleTypeRecords.map(rt => [rt.code, rt.id]));
-
         const createManyData: Prisma.frame_rolesCreateManyInput[] = [];
-        const seenRoleTypeIds = new Set<string>();
+        const seenLabels = new Set<string>();
 
         for (const role of roles) {
-          const roleTypeId =
-            role.role_type_id != null
-              ? BigInt(role.role_type_id as any)
-              : (typeof role.role_type_code === 'string' ? codeToId.get(role.role_type_code) : undefined);
+          const label = typeof role.label === 'string' ? role.label
+            : typeof role.role_type_code === 'string' ? role.role_type_code
+            : typeof role.roleType === 'string' ? role.roleType
+            : null;
 
-          if (!roleTypeId) {
+          if (!label) {
             throw new Error(
-              `CREATE frame_roles failed: unknown role_type_code "${String(role.role_type_code ?? '')}"`
+              `CREATE frame_roles failed: no label provided for role`
             );
           }
 
-          const roleTypeIdKey = roleTypeId.toString();
-          if (seenRoleTypeIds.has(roleTypeIdKey)) {
-            throw new Error(`CREATE frame_roles failed: duplicate role_type for new frame (${roleTypeIdKey})`);
+          if (seenLabels.has(label)) {
+            throw new Error(`CREATE frame_roles failed: duplicate label for new frame ("${label}")`);
           }
-          seenRoleTypeIds.add(roleTypeIdKey);
+          seenLabels.add(label);
 
           createManyData.push({
             frame_id: frame.id,
-            role_type_id: roleTypeId,
             description: (role.description as string) ?? null,
             notes: (role.notes as string) ?? null,
             main: (role.main as boolean) ?? false,
             examples: (Array.isArray(role.examples) ? (role.examples as string[]) : []),
-            label: (role.label as string) ?? null,
-            version: 1,
+            label,
           });
         }
 
@@ -237,11 +215,6 @@ async function commitCreate(
           });
         }
       }
-    } else if (changeset.entity_type === 'lexical_unit_relation') {
-      const rel = await tx.lexical_unit_relations.create({
-        data: entityData as Prisma.lexical_unit_relationsCreateInput,
-      });
-      newEntityId = rel.id;
     } else {
       throw new Error(`CREATE not implemented for entity type: ${changeset.entity_type}`);
     }
@@ -300,16 +273,15 @@ async function commitFrameRolesSubChanges(
   // Fetch current roles and normalize to the same shape as staging
   const currentRolesRaw = await tx.frame_roles.findMany({
     where: { frame_id: entityId },
-    include: { role_types: { select: { label: true } } },
     orderBy: { id: 'asc' },
   });
 
   const baseRoles: NormalizedFrameRole[] = [];
   for (const r of currentRolesRaw as any[]) {
-    const roleType = typeof r?.role_types?.label === 'string' ? r.role_types.label : '';
-    if (!roleType) continue;
+    const roleLabel = typeof r?.label === 'string' ? r.label : '';
+    if (!roleLabel) continue;
     baseRoles.push({
-      roleType,
+      roleType: roleLabel,
       description: typeof r.description === 'string' ? r.description : null,
       notes: typeof r.notes === 'string' ? r.notes : null,
       main: typeof r.main === 'boolean' ? r.main : Boolean(r.main),
@@ -329,27 +301,15 @@ async function commitFrameRolesSubChanges(
     return;
   }
 
-  const labels = Array.from(new Set(finalRoles.map(r => r.roleType)));
-  const roleTypes = await tx.role_types.findMany({
-    where: { label: { in: labels } },
-    select: { id: true, label: true },
-  });
-  const idByLabel = new Map(roleTypes.map(rt => [rt.label, rt.id]));
-
   const createManyData: Prisma.frame_rolesCreateManyInput[] = [];
   for (const r of finalRoles) {
-    const roleTypeId = idByLabel.get(r.roleType);
-    if (!roleTypeId) {
-      throw new Error(`Role type not found: ${r.roleType}`);
-    }
     createManyData.push({
       frame_id: entityId,
-      role_type_id: roleTypeId,
       description: r.description ?? null,
       notes: r.notes ?? null,
       main: r.main ?? false,
       examples: r.examples ?? [],
-      label: r.label ?? null,
+      label: r.label ?? r.roleType,
     });
   }
 
@@ -548,28 +508,24 @@ async function commitComplexFieldChange(
       // Insert new frame roles
       if (newValue && Array.isArray(newValue)) {
         for (const frameRole of newValue) {
-          let roleTypeId: bigint;
-          if (typeof frameRole.roleType === 'string') {
-            const roleType = await tx.role_types.findUnique({
-              where: { label: frameRole.roleType },
-            });
-            if (!roleType) {
-              throw new Error(`Role type not found: ${frameRole.roleType}`);
-            }
-            roleTypeId = roleType.id;
-          } else {
-            roleTypeId = BigInt(frameRole.role_type_id as string | number);
+          const label = typeof frameRole.roleType === 'string'
+            ? frameRole.roleType
+            : typeof frameRole.label === 'string'
+              ? frameRole.label
+              : null;
+
+          if (!label) {
+            throw new Error(`Frame role missing label/roleType`);
           }
 
           await tx.frame_roles.create({
             data: {
               frame_id: entityId,
-              role_type_id: roleTypeId,
               description: (frameRole.description as string | undefined) ?? null,
               notes: (frameRole.notes as string | undefined) ?? null,
               main: (frameRole.main as boolean | undefined) ?? false,
               examples: (frameRole.examples as string[] | undefined) ?? [],
-              label: (frameRole.label as string | undefined) ?? null,
+              label,
             },
           });
         }
@@ -686,11 +642,6 @@ async function commitDelete(
           deleted_reason: 'Deleted via version control',
           deleted_at: new Date(),
         },
-      });
-    } else if (changeset.entity_type === 'lexical_unit_relation') {
-      // Hard delete for relations
-      await tx.lexical_unit_relations.delete({
-        where: { id: changeset.entity_id! },
       });
     } else {
       throw new Error(`DELETE not implemented for entity type: ${changeset.entity_type}`);
