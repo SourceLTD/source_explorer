@@ -8,6 +8,7 @@ import SearchBox from './SearchBox';
 import ViewToggle, { ViewMode } from './ViewToggle';
 import PendingChangesButton from './PendingChangesButton';
 import SignOutButton from './SignOutButton';
+import ChatButton from './ChatButton';
 import { EditOverlay } from './editing/EditOverlay';
 import LoadingSpinner from './LoadingSpinner';
 
@@ -237,6 +238,7 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
               }}
             />
             <PendingChangesButton />
+            <ChatButton />
             <SignOutButton />
           </div>
         </div>

@@ -120,6 +120,7 @@ const defaultFilter: PendingChangesFilter = {
 
 interface PendingChangesListProps {
   onRefresh?: () => void;
+  embedded?: boolean;
 }
 
 // --- Helpers ---
@@ -308,7 +309,7 @@ function getDefaultVisibility(): ColumnVisibilityState {
 
 // --- Component ---
 
-export default function PendingChangesList({ onRefresh }: PendingChangesListProps) {
+export default function PendingChangesList({ onRefresh, embedded }: PendingChangesListProps) {
   const [data, setData] = useState<PendingChangesData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [committingAction, setCommittingAction] = useState<'commit' | 'reject' | null>(null);
@@ -1419,13 +1420,15 @@ export default function PendingChangesList({ onRefresh }: PendingChangesListProp
       )}
 
       {/* Table Container - matching DataTable styling */}
-      <div className="bg-white rounded-xl border border-gray-200">
+      <div className={embedded ? '' : 'bg-white rounded-xl border border-gray-200'}>
         {/* Toolbar - matching DataTable layout */}
-        <div className="p-4 border-b border-gray-200 bg-gray-50">
+        <div className={`p-4 border-b border-gray-200 ${embedded ? '' : 'bg-gray-50'}`}>
           {/* Header Row */}
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-gray-900">Pending Changes</h2>
-          </div>
+          {!embedded && (
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-gray-900">Pending Changes</h2>
+            </div>
+          )}
 
           {/* Main Controls Row */}
           <div className="flex flex-wrap gap-4 items-center justify-between">

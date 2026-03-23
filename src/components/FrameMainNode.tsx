@@ -314,6 +314,8 @@ export default function FrameMainNode({
                 fontSize: '12px', 
                 color: 'white',
                 padding: '4px 0',
+                overflow: 'hidden',
+                height: '100%',
               }}>
                 {node.lexical_units.slice(0, 15).map((lu) => (
                   <div 
@@ -327,6 +329,7 @@ export default function FrameMainNode({
                       display: 'flex',
                       alignItems: 'baseline',
                       gap: '6px',
+                      overflow: 'hidden',
                     }}
                     onClick={(e) => {
                       e.stopPropagation();
@@ -345,11 +348,11 @@ export default function FrameMainNode({
                     }}>
                       {lu.pos}
                     </span>
-                    <strong style={{ color: '#e0eaff' }}>
+                    <strong style={{ color: '#e0eaff', flexShrink: 0 }}>
                       {lu.lemmas?.slice(0, 4).join(', ')}
                     </strong>
                     {lu.gloss && (
-                      <span style={{ opacity: 0.65, fontSize: '11px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <span style={{ opacity: 0.65, fontSize: '11px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flex: '1 1 0' }}>
                         — {lu.gloss.length > 60 ? lu.gloss.substring(0, 58) + '…' : lu.gloss}
                       </span>
                     )}

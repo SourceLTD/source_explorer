@@ -3,6 +3,10 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import AuthHeader from "@/components/AuthHeader";
 import GlobalAlert from "@/components/GlobalAlert";
+import { ChatProvider } from "@/components/chat/ChatProvider";
+import ChatModal from "@/components/chat/ChatModal";
+import { PendingChangesProvider } from "@/components/pending/PendingChangesProvider";
+import PendingChangesModal from "@/components/pending/PendingChangesModal";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -29,9 +33,15 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-white text-gray-900 overflow-x-hidden`}
       >
-        <AuthHeader />
-        <GlobalAlert />
-        {children}
+        <ChatProvider>
+          <PendingChangesProvider>
+            <AuthHeader />
+            <GlobalAlert />
+            {children}
+            <ChatModal />
+            <PendingChangesModal />
+          </PendingChangesProvider>
+        </ChatProvider>
       </body>
     </html>
   );

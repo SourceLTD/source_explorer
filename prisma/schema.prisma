@@ -550,3 +550,34 @@ enum lexical_unit_type {
   category
   numeric
 }
+
+model chat_conversations {
+  id         String          @id @default(uuid())
+  user_id    String
+  title      String          @default("New chat")
+  created_at DateTime        @default(now()) @db.Timestamptz(6)
+  messages   chat_messages[]
+  streams    chat_streams[]
+
+  @@index([user_id], map: "idx_chat_conversations_user")
+  @@index([created_at], map: "idx_chat_conversations_created")
+}
+
+model chat_messages {
+  id          String             @id @default(uuid())
+  chat_id     String
+  role        String
+  parts       Json
+  attachments Json               @default("[]")
+  created_at  DateTime           @default(now()) @db.Timestamptz(6)
+  chat        chat_conversations @relation(fields: [chat_id], references: [id], onDelete: Cascade)
+
+  @@index([chat_id], map: "idx_chat_messages_chat")
+}
+
+model chat_streams {
+  id         String             @id @default(uuid())
+  chat_id    String
+  created_at DateTime           @default(now()) @db.Timestamptz(6)
+  chat       chat_conversations @relation(fields: [chat_id], references: [id], onDelete: Cascade)
+}

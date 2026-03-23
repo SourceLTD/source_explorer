@@ -7,6 +7,7 @@ import SearchBox from '@/components/SearchBox';
 import ViewToggle, { ViewMode } from '@/components/ViewToggle';
 import PendingChangesButton from '@/components/PendingChangesButton';
 import SignOutButton from '@/components/SignOutButton';
+import ChatButton from '@/components/ChatButton';
 import { EditOverlay } from '@/components/editing/EditOverlay';
 import { Mode } from '@/components/editing/types';
 import { SearchResult, TableEntry, Frame, GraphNode } from '@/lib/types';
@@ -142,6 +143,7 @@ export function TablePageLayout({
               />
             )}
             {config.showPendingChanges && <PendingChangesButton />}
+            <ChatButton />
             <SignOutButton />
           </div>
         </div>

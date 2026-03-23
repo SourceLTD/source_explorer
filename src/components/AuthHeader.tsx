@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
 import type { User } from '@supabase/supabase-js'
+import ChatButton from '@/components/ChatButton'
 
 export default function AuthHeader() {
   const [user, setUser] = useState<User | null>(null)
@@ -13,13 +14,11 @@ export default function AuthHeader() {
   useEffect(() => {
     const supabase = createClient()
     
-    // Get initial user
     supabase.auth.getUser().then(({ data: { user } }) => {
       setUser(user)
       setLoading(false)
     })
 
-    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
         setUser(session?.user ?? null)
@@ -36,7 +35,6 @@ export default function AuthHeader() {
     window.location.href = '/login'
   }
 
-  // Don't show on login/auth pages
   if (pathname?.startsWith('/login') || pathname?.startsWith('/auth') || pathname?.startsWith('/error')) {
     return null
   }
@@ -53,7 +51,6 @@ export default function AuthHeader() {
     return null
   }
 
-  // For graph, table, and frames modes, don't render here - they handle it in their own headers
   const isCustomHeader = pathname?.startsWith('/graph') || pathname?.startsWith('/table') || pathname?.startsWith('/frames')
   
   if (isCustomHeader) {
@@ -61,7 +58,8 @@ export default function AuthHeader() {
   }
 
   return (
-    <div className="fixed top-6 right-6 z-50">
+    <div className="fixed top-6 right-6 z-50 flex items-center gap-2">
+      <ChatButton />
       <button
         onClick={handleSignOut}
         className="inline-flex items-center rounded-xl bg-gray-100 text-gray-700 px-4 py-2 text-sm font-medium border border-gray-300 hover:bg-red-50 hover:text-red-700 hover:border-red-300 hover:cursor-pointer focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors whitespace-nowrap"

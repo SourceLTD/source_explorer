@@ -6,6 +6,7 @@ import SearchBox from '@/components/SearchBox';
 import ViewToggle, { ViewMode } from '@/components/ViewToggle';
 import PendingChangesButton from '@/components/PendingChangesButton';
 import SignOutButton from '@/components/SignOutButton';
+import ChatButton from '@/components/ChatButton';
 import { SearchResult } from '@/lib/types';
 import PendingChangesList from '@/components/PendingChangesList';
 import LoadingSpinner from '@/components/LoadingSpinner';
@@ -52,7 +53,8 @@ function PendingChangesContent() {
                 }
               }}
             />
-            <PendingChangesButton isActive={true} />
+            <PendingChangesButton />
+            <ChatButton />
             <SignOutButton />
           </div>
 

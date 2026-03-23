@@ -10,6 +10,7 @@ import Breadcrumbs from './Breadcrumbs';
 import ViewToggle, { ViewMode } from './ViewToggle';
 import PendingChangesButton from './PendingChangesButton';
 import SignOutButton from './SignOutButton';
+import ChatButton from './ChatButton';
 import RootNodesView from './RootNodesView';
 import { EditOverlay } from './editing/EditOverlay';
 import LoadingSpinner from './LoadingSpinner';
@@ -293,6 +294,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'lexical_units'
               }}
             />
             <PendingChangesButton />
+            <ChatButton />
             <SignOutButton />
           </div>
         </div>
