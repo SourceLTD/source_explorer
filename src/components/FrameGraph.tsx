@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState, useCallback } from 'react';
 import { FrameGraphNode, FrameRelationType } from '@/lib/types';
-import FrameMainNode, { calculateFrameMainNodeHeight } from './FrameMainNode';
+import FrameMainNode, { FRAME_MAIN_NODE_FIXED_HEIGHT } from './FrameMainNode';
 
 // Color scheme
 const currentNodeColor = '#3b82f6';
@@ -16,7 +16,7 @@ const backgroundColor = '#ffffff';
 
 interface FrameGraphProps {
   currentFrame: FrameGraphNode;
-  onFrameClick: (frameId: string, direction?: 'up' | 'down', clickPosition?: { clientX: number; clientY: number }) => void;
+  onFrameClick: (frameId: string, clickedNode?: { rect: { top: number; left: number; width: number; height: number }; label: string; color: string; direction: 'up' | 'down' }) => void;
   onVerbClick?: (verbId: string) => void;
   onEditClick?: () => void;
 }
@@ -56,11 +56,11 @@ export default function FrameGraph({ currentFrame, onFrameClick, onVerbClick, on
   const [lexicalUnitsExpanded, setLexicalUnitsExpanded] = useState<boolean>(true);
 
   // Helper function to calculate node width based on text length
-  const calculateNodeWidth = useCallback((text: string, minWidth: number = 80, maxWidth: number = 200): number => {
+  const calculateNodeWidth = useCallback((text: string, minWidth: number = 80): number => {
     const charWidth = 7.5;
     const padding = 24;
     const calculatedWidth = text.length * charWidth + padding;
-    return Math.max(minWidth, Math.min(maxWidth, calculatedWidth));
+    return Math.max(minWidth, calculatedWidth);
   }, []);
 
   // Helper function to arrange nodes in rows
@@ -100,10 +100,10 @@ export default function FrameGraph({ currentFrame, onFrameClick, onVerbClick, on
     const rowSpacing = 60;
     const spacingFromCenter = 100;
     const margin = 10;
-    const relatedNodeHeight = 50;
+    const relatedNodeHeight = 36;
 
     const mainNodeWidth = 1000;
-    const mainNodeHeight = calculateFrameMainNodeHeight(currentFrame, rolesExpanded, lexicalUnitsExpanded);
+    const mainNodeHeight = FRAME_MAIN_NODE_FIXED_HEIGHT;
     
     const nodes: PositionedFrameNode[] = [];
     
@@ -121,17 +121,23 @@ export default function FrameGraph({ currentFrame, onFrameClick, onVerbClick, on
     const parentRows = arrangeNodesInRows(parentRels, maxRowWidth, nodeSpacing);
     const childRows = arrangeNodesInRows(childRels, maxRowWidth, nodeSpacing);
 
-    // Calculate vertical space
-    const spaceAbove = parentRows.length > 0 ? 
-      parentRows.length * relatedNodeHeight + (parentRows.length - 1) * rowSpacing + spacingFromCenter : 
-      spacingFromCenter;
+    // Fixed vertical position for main node (consistent across frames)
+    const fixedMainY = margin + 50 + mainNodeHeight / 2;
     
+    // Position parents above the main node, bottom-up from the gap
+    const parentAreaBottom = fixedMainY - mainNodeHeight / 2 - spacingFromCenter;
+    let parentTopY = parentAreaBottom;
+    if (parentRows.length > 0) {
+      parentTopY = parentAreaBottom - (parentRows.length - 1) * (relatedNodeHeight + rowSpacing) - relatedNodeHeight / 2;
+    }
+    const topShift = parentTopY < margin ? margin - parentTopY : 0;
+    const centerY = fixedMainY + topShift;
+
     const spaceBelow = childRows.length > 0 ? 
       childRows.length * relatedNodeHeight + (childRows.length - 1) * rowSpacing + spacingFromCenter : 
       spacingFromCenter;
 
-    const totalHeight = margin + spaceAbove + mainNodeHeight + spaceBelow + margin;
-    const centerY = margin + spaceAbove + mainNodeHeight / 2;
+    const totalHeight = centerY + mainNodeHeight / 2 + spaceBelow + margin;
     
     // Add current frame at center
     nodes.push({
@@ -145,11 +151,12 @@ export default function FrameGraph({ currentFrame, onFrameClick, onVerbClick, on
       height: mainNodeHeight,
     });
     
-    // Position parents ABOVE
+    // Position parents ABOVE (positioned relative to main node, going upward)
     if (parentRows.length > 0) {
-      const parentStartY = margin + relatedNodeHeight / 2;
-      parentRows.forEach((row, rowIndex) => {
-        const rowY = parentStartY + (rowIndex * (relatedNodeHeight + rowSpacing));
+      const firstParentRowY = centerY - mainNodeHeight / 2 - spacingFromCenter - relatedNodeHeight / 2;
+      for (let rowIndex = parentRows.length - 1; rowIndex >= 0; rowIndex--) {
+        const row = parentRows[rowIndex];
+        const rowY = firstParentRowY - (parentRows.length - 1 - rowIndex) * (relatedNodeHeight + rowSpacing);
         let currentX = centerX - row.totalWidth / 2;
         
         row.nodes.forEach((rel) => {
@@ -167,7 +174,7 @@ export default function FrameGraph({ currentFrame, onFrameClick, onVerbClick, on
           });
           currentX += nodeWidth + nodeSpacing;
         });
-      });
+      }
     }
 
     // Position children BELOW
@@ -196,7 +203,7 @@ export default function FrameGraph({ currentFrame, onFrameClick, onVerbClick, on
     }
     
     return { nodes, width, height: totalHeight };
-  }, [currentFrame, rolesExpanded, lexicalUnitsExpanded, arrangeNodesInRows, calculateNodeWidth]);
+  }, [currentFrame, arrangeNodesInRows, calculateNodeWidth]);
 
   // Render related frame nodes
   const renderRelatedNode = (node: PositionedFrameNode) => {
@@ -207,10 +214,13 @@ export default function FrameGraph({ currentFrame, onFrameClick, onVerbClick, on
     return (
       <g 
         key={node.id}
-        className="cursor-pointer"
+        style={{ cursor: 'pointer' }}
         onMouseEnter={() => setHoveredNodeId(node.id)}
         onMouseLeave={() => setHoveredNodeId(null)}
-        onClick={(e) => onFrameClick(node.id, node.type === 'parent' ? 'up' : 'down', { clientX: e.clientX, clientY: e.clientY })}
+        onClick={(e) => {
+          const rect = (e.currentTarget as SVGGElement).getBoundingClientRect();
+          onFrameClick(node.id, { rect: { top: rect.top, left: rect.left, width: rect.width, height: rect.height }, label: node.label, color: fillColor, direction: node.type === 'parent' ? 'up' : 'down' });
+        }}
       >
         <rect
           x={node.x - node.width / 2}
@@ -222,49 +232,55 @@ export default function FrameGraph({ currentFrame, onFrameClick, onVerbClick, on
           stroke={strokeColor}
           strokeWidth={isHovered ? 3 : 2}
           style={{ 
+            cursor: 'pointer',
             filter: isHovered ? 'brightness(1.1)' : 'none',
             transition: 'all 0.2s ease',
           }}
         />
         <text
           x={node.x}
-          y={node.y - 4}
+          y={node.sublabel ? node.y - 5 : node.y}
           fontSize={11}
           fontWeight="bold"
           fill="white"
           textAnchor="middle"
+          dominantBaseline="central"
         >
-          {node.label.length > 25 ? node.label.substring(0, 23) + '...' : node.label}
+          {node.label}
         </text>
         {node.sublabel && (
           <text
             x={node.x}
-            y={node.y + 12}
+            y={node.y + 10}
             fontSize={9}
             fill="rgba(255,255,255,0.8)"
             textAnchor="middle"
+            dominantBaseline="central"
           >
-            {node.sublabel.length > 30 ? node.sublabel.substring(0, 28) + '...' : node.sublabel}
+            {node.sublabel}
           </text>
         )}
       </g>
     );
   };
 
-  // Render connection lines
+  // Render connection lines from related nodes to the edge of the main node
   const renderConnections = () => {
     const mainNode = layout.nodes.find(n => n.type === 'current');
     if (!mainNode) return null;
-    
+
+    const mainTop = mainNode.y - mainNode.height / 2;
+    const mainBottom = mainNode.y + mainNode.height / 2;
+
     return layout.nodes
       .filter(n => n.type !== 'current')
       .map(node => {
         const isParent = node.type === 'parent';
         const startX = node.x;
-        const startY = node.y;
+        const startY = isParent ? node.y + node.height / 2 : node.y - node.height / 2;
+        const endY = isParent ? mainTop : mainBottom;
         const endX = mainNode.x;
-        const endY = mainNode.y;
-        
+
         return (
           <line
             key={`line-${node.id}`}
@@ -301,8 +317,8 @@ export default function FrameGraph({ currentFrame, onFrameClick, onVerbClick, on
         {layout.nodes
           .filter(n => n.type === 'current')
           .map(node => (
-            <FrameMainNode
-              key={node.id}
+            <g key={node.id} data-main-node="">
+              <FrameMainNode
               node={currentFrame}
               x={node.x}
               y={node.y}
@@ -315,6 +331,7 @@ export default function FrameGraph({ currentFrame, onFrameClick, onVerbClick, on
               onRolesExpandedChange={setRolesExpanded}
               onLexicalUnitsExpandedChange={setLexicalUnitsExpanded}
             />
+            </g>
           ))}
       </svg>
     </div>

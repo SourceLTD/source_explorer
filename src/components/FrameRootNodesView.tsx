@@ -5,7 +5,6 @@ import React from 'react';
 interface RootFrame {
   id: string;
   label: string;
-  count: number;
 }
 
 interface FrameRootNodesViewProps {
@@ -13,12 +12,12 @@ interface FrameRootNodesViewProps {
 }
 
 const rootFrames: RootFrame[] = [
-  { id: '257982', label: 'Event', count: 5203 },
-  { id: '257983', label: 'Relation', count: 718 },
-  { id: '257984', label: 'Attribute', count: 5542 },
-  { id: '257985', label: 'State', count: 1732 },
-  { id: '257773', label: 'Measure', count: 52 },
-  { id: '85483', label: 'Entity', count: 14 },
+  { id: '257982', label: 'Event' },
+  { id: '257983', label: 'Relation' },
+  { id: '257984', label: 'Attribute' },
+  { id: '257985', label: 'State' },
+  { id: '257773', label: 'Measure' },
+  { id: '85483', label: 'Entity' },
 ];
 
 export default function FrameRootNodesView({ onNodeClick }: FrameRootNodesViewProps) {
@@ -44,9 +43,6 @@ export default function FrameRootNodesView({ onNodeClick }: FrameRootNodesViewPr
                     <h3 className="text-2xl font-bold text-gray-900 mb-2 group-hover:text-blue-600 transition-colors">
                       {frame.label}
                     </h3>
-                    <p className="text-sm text-gray-500">
-                      {frame.count.toLocaleString()} frames
-                    </p>
                   </div>
                 </div>
                 

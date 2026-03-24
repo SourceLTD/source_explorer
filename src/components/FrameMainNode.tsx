@@ -8,6 +8,9 @@ import {
 } from '@/lib/types';
 import { getPendingNodeStroke, getPendingNodeFill } from './PendingChangeIndicator';
 
+export const FRAME_MAIN_NODE_FIXED_HEIGHT = 600;
+export const FRAME_MAIN_NODE_WIDTH = 1000;
+
 interface FrameMainNodeProps {
   node: FrameGraphNode;
   x: number;
@@ -51,9 +54,9 @@ export default function FrameMainNode({
     else setInternalLexicalUnitsExpanded(val);
   };
 
-  const nodeWidth = 1000;
+  const nodeWidth = FRAME_MAIN_NODE_WIDTH;
   const nodeHeights = calculateFrameNodeHeights(node, rolesExpanded, lexicalUnitsExpanded);
-  const nodeHeight = nodeHeights.totalHeight;
+  const nodeHeight = FRAME_MAIN_NODE_FIXED_HEIGHT;
   const centerX = -nodeWidth / 2;
   const centerY = -nodeHeight / 2;
   
@@ -77,12 +80,6 @@ export default function FrameMainNode({
       onMouseLeave={() => setHoveredNodeId(null)}
       style={{ cursor: 'pointer' }}
     >
-      <defs>
-        <filter id="frameNodeHoverShadow" x="-50%" y="-50%" width="200%" height="200%">
-          <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#000000" floodOpacity="0.45" />
-        </filter>
-      </defs>
-      
       <rect
         width={nodeWidth}
         height={nodeHeight}
@@ -96,16 +93,16 @@ export default function FrameMainNode({
         stroke={
           hasPendingChanges && pendingOperation
             ? getPendingNodeStroke(pendingOperation)
-            : '#1e40af'
+            : hoveredNodeId === node.id ? '#93c5fd' : '#1e40af'
         }
-        strokeWidth={hasPendingChanges ? 4 : 3}
+        strokeWidth={hoveredNodeId === node.id ? 4 : (hasPendingChanges ? 4 : 3)}
         rx={8}
         ry={8}
-        style={{ cursor: 'pointer' }}
-        filter={hoveredNodeId === node.id ? 'url(#frameNodeHoverShadow)' : undefined}
+        style={{ cursor: 'pointer', transition: 'stroke 0.15s ease, stroke-width 0.15s ease' }}
         onClick={() => onNodeClick(node.id)}
       />
       
+      <g>
       {/* Pending changes indicator badge */}
       {hasPendingChanges && pendingOperation && (
         <g>
@@ -154,6 +151,7 @@ export default function FrameMainNode({
           y={centerY + 50}
           width={nodeWidth - 24}
           height={shortDefHeight}
+          style={{ overflow: 'hidden' }}
         >
           <div
             style={{
@@ -164,7 +162,9 @@ export default function FrameMainNode({
               lineHeight: '1.3',
               wordWrap: 'break-word',
               overflow: 'hidden',
+              cursor: 'pointer',
             }}
+            onClick={() => onNodeClick(node.id)}
           >
             {node.short_definition}
           </div>
@@ -177,6 +177,7 @@ export default function FrameMainNode({
         y={centerY + 50 + shortDefHeight}
         width={nodeWidth - 24}
         height={glossHeight}
+        style={{ overflow: 'hidden' }}
       >
         <div
           style={{
@@ -188,7 +189,9 @@ export default function FrameMainNode({
             wordWrap: 'break-word',
             overflow: 'hidden',
             marginTop: '8px',
+            cursor: 'pointer',
           }}
+          onClick={() => onNodeClick(node.id)}
         >
           {node.gloss || 'No definition available'}
         </div>
@@ -201,6 +204,7 @@ export default function FrameMainNode({
           y={currentY}
           width={nodeWidth - 24}
           height={28}
+          style={{ overflow: 'hidden' }}
         >
           <div 
             style={{
@@ -252,6 +256,7 @@ export default function FrameMainNode({
                       y={currentRowY}
                       width={colWidth}
                       height={rowHeight}
+                      style={{ overflow: 'hidden' }}
                     >
                       <div style={{
                         fontSize: '14px',
@@ -265,7 +270,10 @@ export default function FrameMainNode({
                         height: '100%',
                         overflow: 'hidden',
                         boxSizing: 'border-box',
-                      }}>
+                        cursor: 'pointer',
+                      }}
+                      onClick={() => onNodeClick(node.id)}
+                      >
                         <span style={{ fontWeight: 'bold' }}>{row.left.label}:</span>{' '}
                         {row.left.description || 'No description'}
                       </div>
@@ -276,6 +284,7 @@ export default function FrameMainNode({
                         y={currentRowY}
                         width={colWidth}
                         height={rowHeight}
+                        style={{ overflow: 'hidden' }}
                       >
                         <div style={{
                           fontSize: '14px',
@@ -289,7 +298,10 @@ export default function FrameMainNode({
                           height: '100%',
                           overflow: 'hidden',
                           boxSizing: 'border-box',
-                        }}>
+                          cursor: 'pointer',
+                        }}
+                        onClick={() => onNodeClick(node.id)}
+                        >
                           <span style={{ fontWeight: 'bold' }}>{row.right.label}:</span>{' '}
                           {row.right.description || 'No description'}
                         </div>
@@ -312,6 +324,7 @@ export default function FrameMainNode({
             y={currentY}
             width={nodeWidth - 24}
             height={28}
+            style={{ overflow: 'hidden' }}
           >
             <div 
               style={{
@@ -334,23 +347,32 @@ export default function FrameMainNode({
           {lexicalUnitsExpanded && (
             <Group top={currentY + 28} left={centerX + 12}>
               {(() => {
+                const colGap = 8;
+                const colWidth = (nodeWidth - 24 - colGap) / 2;
                 const luRowGap = 4;
-                let luOffset = 0;
-                return node.lexical_units.slice(0, 15).map((lu) => {
-                  const hasGloss = !!lu.gloss;
-                  const luRowHeight = estimateLuRowHeight(lu, nodeWidth - 24);
-                  const currentLuOffset = luOffset;
-                  luOffset += luRowHeight + luRowGap;
-                  return (
+                const visibleLUs = node.lexical_units.slice(0, 15);
+                const rows: { left: typeof visibleLUs[0]; right?: typeof visibleLUs[0] }[] = [];
+                for (let i = 0; i < visibleLUs.length; i += 2) {
+                  rows.push({ left: visibleLUs[i], right: visibleLUs[i + 1] });
+                }
+                let rowY = 0;
+                return rows.map((row, rowIdx) => {
+                  const leftHeight = estimateLuRowHeight(row.left, colWidth);
+                  const rightHeight = row.right ? estimateLuRowHeight(row.right, colWidth) : 0;
+                  const rowHeight = Math.max(leftHeight, rightHeight);
+                  const currentRowY = rowY;
+                  rowY += rowHeight + luRowGap;
+
+                  const renderLuCell = (lu: typeof visibleLUs[0], xPos: number) => (
                     <foreignObject
                       key={lu.id}
-                      x={0}
-                      y={currentLuOffset}
-                      width={nodeWidth - 24}
-                      height={luRowHeight}
+                      x={xPos}
+                      y={currentRowY}
+                      width={colWidth}
+                      height={rowHeight}
+                      style={{ overflow: 'hidden' }}
                     >
                       <div
-                        xmlns="http://www.w3.org/1999/xhtml"
                         style={{
                           fontSize: '14px',
                           fontFamily: 'Arial, sans-serif',
@@ -360,8 +382,8 @@ export default function FrameMainNode({
                           borderRadius: '4px',
                           cursor: 'pointer',
                           overflow: 'hidden',
-                          width: nodeWidth - 24 - 16,
-                          boxSizing: 'content-box',
+                          height: '100%',
+                          boxSizing: 'border-box',
                         }}
                         onClick={(e: React.MouseEvent) => {
                           e.stopPropagation();
@@ -383,7 +405,7 @@ export default function FrameMainNode({
                         <span style={{ color: '#e0eaff', fontWeight: 700 }}>
                           {lu.lemmas?.slice(0, 4).join(', ')}
                         </span>
-                        {hasGloss && (
+                        {lu.gloss && (
                           <>
                             <br />
                             <span style={{ color: '#e0eaff', fontSize: '14px', lineHeight: '1.4' }}>
@@ -393,6 +415,13 @@ export default function FrameMainNode({
                         )}
                       </div>
                     </foreignObject>
+                  );
+
+                  return (
+                    <g key={`lu-row-${rowIdx}`}>
+                      {renderLuCell(row.left, 0)}
+                      {row.right && renderLuCell(row.right, colWidth + colGap)}
+                    </g>
                   );
                 });
               })()}
@@ -463,6 +492,7 @@ export default function FrameMainNode({
           </g>
         </g>
       )}
+      </g>
     </Group>
   );
 }

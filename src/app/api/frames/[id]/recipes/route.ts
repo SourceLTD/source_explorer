@@ -29,6 +29,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
           take: 50,
         },
         frame_relations_frame_relations_source_idToframes: {
+          where: { frames_frame_relations_target_idToframes: { deleted: false } },
           include: {
             frames_frame_relations_target_idToframes: {
               include: {
@@ -38,6 +39,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
           },
         },
         frame_relations_frame_relations_target_idToframes: {
+          where: { frames_frame_relations_source_idToframes: { deleted: false } },
           include: {
             frames_frame_relations_source_idToframes: {
               include: {
@@ -49,7 +51,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       },
     });
 
-    if (!frame) {
+    if (!frame || frame.deleted) {
       return NextResponse.json(
         { error: 'Frame not found' },
         { status: 404 }

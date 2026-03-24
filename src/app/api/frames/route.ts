@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
     const ids = searchParams.get('ids')?.split(',').filter(Boolean);
 
     // Build where clause
-    const where: Prisma.framesWhereInput = {};
+    const where: Prisma.framesWhereInput = { deleted: false };
     
     if (search) {
       where.OR = [

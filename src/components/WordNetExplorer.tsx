@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FlagIcon } from '@heroicons/react/24/outline';
+import { FlagIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import { GraphNode, SearchResult, BreadcrumbItem } from '@/lib/types';
 import LexicalGraph from './LexicalGraph';
 import SearchBox from './SearchBox';
@@ -71,8 +71,57 @@ export default function WordNetExplorer({ initialEntryId, mode = 'lexical_units'
   
   // Track last loaded entry to prevent duplicate calls
   const lastLoadedEntryRef = useRef<string | null>(null);
-  const clickOriginRef = useRef<string>('center center');
   const graphContainerRef = useRef<HTMLDivElement>(null);
+
+  // Prefetch cache for related nodes
+  const prefetchCacheRef = useRef<Map<string, { graph: GraphNode; breadcrumbs: BreadcrumbItem[] }>>(new Map());
+
+  // Transition overlay state
+  const [transitionNode, setTransitionNode] = useState<{
+    rect: { top: number; left: number; width: number; height: number };
+    label: string;
+    color: string;
+    direction: 'up' | 'down';
+  } | null>(null);
+  // Exiting node overlay: the old main node shrinks and moves away
+  const [exitingNode, setExitingNode] = useState<{
+    rect: { top: number; left: number; width: number; height: number };
+    direction: 'up' | 'down';
+  } | null>(null);
+  const transitionMinTimeRef = useRef<number>(0);
+
+  const clearTransition = useCallback(() => {
+    setTransitionNode(null);
+    setExitingNode(null);
+  }, []);
+
+  const prefetchRelatedNodes = useCallback((graphNode: GraphNode) => {
+    const MAX_PREFETCH_GROUP = 30;
+    const groups: string[][] = [
+      graphNode.parents.map(p => p.id),
+      graphNode.children.map(c => c.id),
+      (graphNode.causes || []).map(c => c.id),
+      (graphNode.entails || []).map(e => e.id),
+      (graphNode.alsoSee || []).map(a => a.id),
+    ];
+    const idsToFetch: string[] = [];
+    for (const group of groups) {
+      if (group.length <= MAX_PREFETCH_GROUP) idsToFetch.push(...group);
+    }
+    for (const id of idsToFetch) {
+      if (prefetchCacheRef.current.has(id)) continue;
+      Promise.all([
+        fetch(`/api/lexical-units/${id}/graph`),
+        fetch(`/api/breadcrumbs/${id}`),
+      ]).then(async ([graphRes, bcRes]) => {
+        if (graphRes.ok) {
+          const graph = await graphRes.json();
+          const breadcrumbs = bcRes.ok ? await bcRes.json() : [];
+          prefetchCacheRef.current.set(id, { graph, breadcrumbs });
+        }
+      }).catch(() => {});
+    }
+  }, []);
 
   // Helper function to update URL parameters without page reload
   const updateUrlParam = (entryId: string) => {
@@ -106,6 +155,22 @@ export default function WordNetExplorer({ initialEntryId, mode = 'lexical_units'
     setError(null);
     
     try {
+      // Check prefetch cache first
+      const cached = !invalidateCache ? prefetchCacheRef.current.get(entryId) : undefined;
+      if (cached) {
+        prefetchCacheRef.current.delete(entryId);
+        setCurrentNode(cached.graph);
+        setBreadcrumbs(cached.breadcrumbs);
+        const remaining = Math.max(0, transitionMinTimeRef.current - Date.now());
+        if (remaining > 0) {
+          setTimeout(() => clearTransition(), remaining);
+        } else {
+          clearTransition();
+        }
+        prefetchRelatedNodes(cached.graph);
+        return;
+      }
+
       const apiPrefix = '/api/lexical-units';
       
       const graphUrl = invalidateCache 
@@ -127,6 +192,12 @@ export default function WordNetExplorer({ initialEntryId, mode = 'lexical_units'
 
       const graphNode: GraphNode = await graphResponse.json();
       setCurrentNode(graphNode);
+      const remaining2 = Math.max(0, transitionMinTimeRef.current - Date.now());
+      if (remaining2 > 0) {
+        setTimeout(() => clearTransition(), remaining2);
+      } else {
+        clearTransition();
+      }
 
       if (breadcrumbResponse.ok) {
         const breadcrumbData: BreadcrumbItem[] = await breadcrumbResponse.json();
@@ -134,29 +205,34 @@ export default function WordNetExplorer({ initialEntryId, mode = 'lexical_units'
       } else {
         setBreadcrumbs([]);
       }
+      prefetchRelatedNodes(graphNode);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
       console.error('Error loading graph node:', err);
     } finally {
       setIsLoading(false);
     }
-  }, [mode]);
+  }, [mode, prefetchRelatedNodes]);
 
-  const handleNodeClick = (nodeId: string, direction?: 'up' | 'down', clickPosition?: { clientX: number; clientY: number }) => {
-    if (clickPosition && graphContainerRef.current) {
-      const rect = graphContainerRef.current.getBoundingClientRect();
-      const xPct = ((clickPosition.clientX - rect.left) / rect.width) * 100;
-      const yPct = ((clickPosition.clientY - rect.top) / rect.height) * 100;
-      clickOriginRef.current = `${xPct}% ${yPct}%`;
-    } else {
-      clickOriginRef.current = 'center center';
+  const handleNodeClick = (nodeId: string, clickedNode?: { rect: { top: number; left: number; width: number; height: number }; label: string; color: string; direction: 'up' | 'down' }) => {
+    if (clickedNode) {
+      const mainNodeEl = graphContainerRef.current?.querySelector('[data-main-node]');
+      if (mainNodeEl) {
+        const r = mainNodeEl.getBoundingClientRect();
+        setExitingNode({
+          rect: { top: r.top, left: r.left, width: r.width, height: r.height },
+          direction: clickedNode.direction,
+        });
+      }
+      setTransitionNode(clickedNode);
+      transitionMinTimeRef.current = Date.now() + 400;
     }
     lastLoadedEntryRef.current = null;
     updateUrlParam(nodeId);
   };
 
   const handleSearchResult = (result: SearchResult) => {
-    clickOriginRef.current = 'center center';
+    clearTransition();
     lastLoadedEntryRef.current = null;
     updateUrlParam(result.id);
     setSearchQuery('');
@@ -169,13 +245,13 @@ export default function WordNetExplorer({ initialEntryId, mode = 'lexical_units'
   };
 
   const handleBreadcrumbNavigate = (id: string) => {
-    clickOriginRef.current = 'center center';
+    clearTransition();
     lastLoadedEntryRef.current = null;
     updateUrlParam(id);
   };
 
   const handleHomeClick = () => {
-    clickOriginRef.current = 'center center';
+    clearTransition();
     lastLoadedEntryRef.current = null;
     setCurrentNode(null);
     setBreadcrumbs([]);
@@ -927,7 +1003,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'lexical_units'
                     {currentNode.parents.map(parent => (
                       <button
                         key={parent.id}
-                        onClick={() => handleNodeClick(parent.id, 'up')}
+                        onClick={() => handleNodeClick(parent.id)}
                         className="block w-full text-left p-3 bg-green-50 hover:bg-green-100 border border-green-200 rounded-xl transition-colors"
                       >
                         <div className="font-medium text-green-800 text-sm">
@@ -970,7 +1046,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'lexical_units'
                     {currentNode.children.map(child => (
                       <button
                         key={child.id}
-                        onClick={() => handleNodeClick(child.id, 'down')}
+                        onClick={() => handleNodeClick(child.id)}
                         className="block w-full text-left p-3 bg-yellow-50 hover:bg-yellow-100 border border-yellow-200 rounded-xl transition-colors"
                       >
                         <div className="font-medium text-yellow-800 text-sm">
@@ -1176,29 +1252,22 @@ export default function WordNetExplorer({ initialEntryId, mode = 'lexical_units'
                 />
               </div>
               
-              {/* Graph with expand-from-click animation */}
-              <div className="flex-1 overflow-hidden" ref={graphContainerRef}>
-                <AnimatePresence mode="popLayout">
-                  <motion.div
-                    key={currentNode.id}
-                    style={{ transformOrigin: clickOriginRef.current }}
-                    initial={{ scale: 0.88, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{
-                      scale: { duration: 0.35, ease: [0.4, 0, 0.2, 1] },
-                      opacity: { duration: 0.2, ease: 'easeOut' },
-                    }}
-                    className="h-full"
-                  >
-                    <LexicalGraph 
-                      currentNode={currentNode} 
-                      onNodeClick={handleNodeClick}
-                      onEditClick={() => setIsEditOverlayOpen(true)}
-                      mode={mode}
-                    />
-                  </motion.div>
-                </AnimatePresence>
+              {/* Graph Content */}
+              <div className="flex-1 overflow-hidden relative" ref={graphContainerRef}>
+                <div
+                  className="h-full"
+                  style={{
+                    opacity: transitionNode ? 0 : 1,
+                    transition: transitionNode ? 'none' : 'opacity 0.2s ease',
+                  }}
+                >
+                  <LexicalGraph 
+                    currentNode={currentNode} 
+                    onNodeClick={handleNodeClick}
+                    onEditClick={() => setIsEditOverlayOpen(true)}
+                    mode={mode}
+                  />
+                </div>
               </div>
             </div>
           ) : (
@@ -1235,6 +1304,89 @@ export default function WordNetExplorer({ initialEntryId, mode = 'lexical_units'
             onUpdate={handleUpdate}
           />
         )}
+
+        {/* Transition overlays */}
+        <AnimatePresence>
+          {transitionNode && graphContainerRef.current && (() => {
+            const mainNodeEl = graphContainerRef.current!.querySelector('[data-main-node]');
+            const target = mainNodeEl
+              ? mainNodeEl.getBoundingClientRect()
+              : (() => {
+                  const c = graphContainerRef.current!.getBoundingClientRect();
+                  return { top: c.top + 40, left: c.left + (c.width - 600) / 2, width: 600, height: 80 };
+                })();
+            return (
+              <motion.div
+                key="transition-overlay"
+                className="fixed z-50 flex items-center justify-center overflow-hidden pointer-events-none"
+                initial={{
+                  top: transitionNode.rect.top,
+                  left: transitionNode.rect.left,
+                  width: transitionNode.rect.width,
+                  height: transitionNode.rect.height,
+                  backgroundColor: transitionNode.color,
+                  borderRadius: 8,
+                  opacity: 1,
+                }}
+                animate={{
+                  top: target.top,
+                  left: target.left,
+                  width: target.width,
+                  height: target.height,
+                  backgroundColor: '#bfdbfe',
+                  borderRadius: 12,
+                  opacity: 1,
+                }}
+                exit={{
+                  opacity: 0,
+                  transition: { duration: 0.2, ease: 'easeOut' },
+                }}
+                transition={{
+                  duration: 0.4,
+                  ease: [0.32, 0.72, 0, 1],
+                }}
+              >
+                <ArrowPathIcon className="w-6 h-6 text-white animate-spin" />
+              </motion.div>
+            );
+          })()}
+          {exitingNode && (() => {
+            const exitTarget = {
+              top: exitingNode.rect.top + (exitingNode.direction === 'down' ? -120 : exitingNode.rect.height + 40),
+              left: exitingNode.rect.left + exitingNode.rect.width / 2 - 60,
+              width: 120,
+              height: 36,
+            };
+            return (
+              <motion.div
+                key="exiting-overlay"
+                className="fixed z-40 rounded-lg pointer-events-none"
+                initial={{
+                  top: exitingNode.rect.top,
+                  left: exitingNode.rect.left,
+                  width: exitingNode.rect.width,
+                  height: exitingNode.rect.height,
+                  backgroundColor: '#3b82f6',
+                  borderRadius: 8,
+                  opacity: 1,
+                }}
+                animate={{
+                  top: exitTarget.top,
+                  left: exitTarget.left,
+                  width: exitTarget.width,
+                  height: exitTarget.height,
+                  backgroundColor: exitingNode.direction === 'down' ? '#93c5fd' : '#fbbf24',
+                  borderRadius: 8,
+                  opacity: 0,
+                }}
+                transition={{
+                  duration: 0.4,
+                  ease: [0.32, 0.72, 0, 1],
+                }}
+              />
+            );
+          })()}
+        </AnimatePresence>
       </main>
     </div>
   );

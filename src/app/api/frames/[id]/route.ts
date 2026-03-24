@@ -44,7 +44,7 @@ export async function GET(
       },
     });
 
-    if (!frame) {
+    if (!frame || frame.deleted) {
       return NextResponse.json(
         { error: 'Frame not found' },
         { status: 404 }

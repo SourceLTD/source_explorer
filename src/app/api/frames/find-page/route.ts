@@ -43,6 +43,7 @@ export async function GET(request: NextRequest) {
       where: {
         id: targetId,
         super_frame_id: null, // Must be a superframe (no parent)
+        deleted: false,
       },
       select: { id: true, code: true },
     });
@@ -62,6 +63,7 @@ export async function GET(request: NextRequest) {
       SELECT COUNT(*) as count 
       FROM frames 
       WHERE super_frame_id IS NULL 
+        AND deleted = false
         AND (
           LOWER(COALESCE(code, '')) < LOWER(${targetCode})
           OR (LOWER(COALESCE(code, '')) = LOWER(${targetCode}) AND id < ${targetId})

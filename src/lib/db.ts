@@ -93,11 +93,13 @@ export async function getEntryById(id: string): Promise<LexicalUnitWithRelations
           },
         },
         lexical_unit_relations_lexical_unit_relations_source_idTolexical_units: {
+          where: { lexical_units_lexical_unit_relations_target_idTolexical_units: { deleted: false } },
           include: {
             lexical_units_lexical_unit_relations_target_idTolexical_units: true
           },
         },
         lexical_unit_relations_lexical_unit_relations_target_idTolexical_units: {
+          where: { lexical_units_lexical_unit_relations_source_idTolexical_units: { deleted: false } },
           include: {
             lexical_units_lexical_unit_relations_source_idTolexical_units: true
           },
@@ -311,11 +313,13 @@ export async function getGraphNodeUncached(idOrCode: string): Promise<GraphNode 
           },
         },
         lexical_unit_relations_lexical_unit_relations_source_idTolexical_units: {
+          where: { lexical_units_lexical_unit_relations_target_idTolexical_units: { deleted: false } },
           include: {
             lexical_units_lexical_unit_relations_target_idTolexical_units: true,
           },
         },
         lexical_unit_relations_lexical_unit_relations_target_idTolexical_units: {
+          where: { lexical_units_lexical_unit_relations_source_idTolexical_units: { deleted: false } },
           include: {
             lexical_units_lexical_unit_relations_source_idTolexical_units: true,
           },

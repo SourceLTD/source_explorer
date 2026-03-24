@@ -3,8 +3,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Frame, FrameGraphNode, SearchResult } from '@/lib/types';
+import { ArrowPathIcon } from '@heroicons/react/24/outline';
+import { Frame, FrameGraphNode, SearchResult, BreadcrumbItem } from '@/lib/types';
 import FrameGraph from './FrameGraph';
+import Breadcrumbs from './Breadcrumbs';
 import SearchBox from './SearchBox';
 import ViewToggle, { ViewMode } from './ViewToggle';
 import PendingChangesButton from './PendingChangesButton';
@@ -22,6 +24,7 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [currentFrame, setCurrentFrame] = useState<FrameGraphNode | null>(null);
+  const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentView, setCurrentView] = useState<ViewMode>('graph');
@@ -30,8 +33,55 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
   
   // Track last loaded frame to prevent duplicate calls
   const lastLoadedFrameRef = useRef<string | null>(null);
-  const clickOriginRef = useRef<string>('center center');
   const graphContainerRef = useRef<HTMLDivElement>(null);
+
+  // Prefetch cache for related nodes
+  const prefetchCacheRef = useRef<Map<string, { graph: FrameGraphNode; breadcrumbs: BreadcrumbItem[] }>>(new Map());
+
+  // Transition overlay state: a phantom of the clicked node that expands to become the main node
+  const [transitionNode, setTransitionNode] = useState<{
+    rect: { top: number; left: number; width: number; height: number };
+    label: string;
+    color: string;
+    direction: 'up' | 'down';
+  } | null>(null);
+  // Exiting node overlay: the old main node shrinks and moves away
+  const [exitingNode, setExitingNode] = useState<{
+    rect: { top: number; left: number; width: number; height: number };
+    direction: 'up' | 'down';
+  } | null>(null);
+  const transitionMinTimeRef = useRef<number>(0);
+
+  const clearTransition = useCallback(() => {
+    setTransitionNode(null);
+    setExitingNode(null);
+  }, []);
+
+  const prefetchRelatedNodes = useCallback((graphData: FrameGraphNode) => {
+    const MAX_PREFETCH_GROUP = 30;
+    const parentIds: string[] = [];
+    const childIds: string[] = [];
+    for (const rel of graphData.relations) {
+      if (rel.direction === 'incoming' && rel.source) parentIds.push(rel.source.id);
+      if (rel.direction === 'outgoing' && rel.target) childIds.push(rel.target.id);
+    }
+    const idsToFetch: string[] = [];
+    if (parentIds.length <= MAX_PREFETCH_GROUP) idsToFetch.push(...parentIds);
+    if (childIds.length <= MAX_PREFETCH_GROUP) idsToFetch.push(...childIds);
+    for (const id of idsToFetch) {
+      if (prefetchCacheRef.current.has(id)) continue;
+      Promise.all([
+        fetch(`/api/frames/${id}/graph`),
+        fetch(`/api/frames/${id}/breadcrumbs`),
+      ]).then(async ([graphRes, bcRes]) => {
+        if (graphRes.ok) {
+          const graph = await graphRes.json();
+          const breadcrumbs = bcRes.ok ? await bcRes.json() : [];
+          prefetchCacheRef.current.set(id, { graph, breadcrumbs });
+        }
+      }).catch(() => {});
+    }
+  }, []);
 
   // Helper function to update URL parameters without page reload
   const updateUrlParam = (frameId: string) => {
@@ -59,11 +109,34 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
     setError(null);
     
     try {
+      // Check prefetch cache first
+      const cached = !invalidateCache ? prefetchCacheRef.current.get(frameId) : undefined;
+      if (cached) {
+        prefetchCacheRef.current.delete(frameId);
+        setCurrentFrame(cached.graph);
+        setBreadcrumbs(cached.breadcrumbs);
+        const remaining = Math.max(0, transitionMinTimeRef.current - Date.now());
+        if (remaining > 0) {
+          setTimeout(() => clearTransition(), remaining);
+        } else {
+          clearTransition();
+        }
+        prefetchRelatedNodes(cached.graph);
+        return;
+      }
+
       const graphUrl = invalidateCache 
         ? `/api/frames/${frameId}/graph?invalidate=true&t=${Date.now()}`
         : `/api/frames/${frameId}/graph`;
+
+      const breadcrumbUrl = invalidateCache
+        ? `/api/frames/${frameId}/breadcrumbs?t=${Date.now()}`
+        : `/api/frames/${frameId}/breadcrumbs`;
         
-      const graphResponse = await fetch(graphUrl, invalidateCache ? { cache: 'no-store' } : {});
+      const [graphResponse, breadcrumbResponse] = await Promise.all([
+        fetch(graphUrl, invalidateCache ? { cache: 'no-store' } : {}),
+        fetch(breadcrumbUrl, invalidateCache ? { cache: 'no-store' } : {}),
+      ]);
 
       if (!graphResponse.ok) {
         throw new Error('Failed to load frame');
@@ -71,42 +144,68 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
 
       const graphData: FrameGraphNode = await graphResponse.json();
       setCurrentFrame(graphData);
+
+      if (breadcrumbResponse.ok) {
+        const breadcrumbData: BreadcrumbItem[] = await breadcrumbResponse.json();
+        setBreadcrumbs(breadcrumbData);
+      } else {
+        setBreadcrumbs([]);
+      }
+      const remaining = Math.max(0, transitionMinTimeRef.current - Date.now());
+      if (remaining > 0) {
+        setTimeout(() => clearTransition(), remaining);
+      } else {
+        clearTransition();
+      }
+      prefetchRelatedNodes(graphData);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
       console.error('Error loading frame:', err);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [prefetchRelatedNodes]);
 
-  const handleFrameClick = (frameId: string, direction?: 'up' | 'down', clickPosition?: { clientX: number; clientY: number }) => {
-    if (clickPosition && graphContainerRef.current) {
-      const rect = graphContainerRef.current.getBoundingClientRect();
-      const xPct = ((clickPosition.clientX - rect.left) / rect.width) * 100;
-      const yPct = ((clickPosition.clientY - rect.top) / rect.height) * 100;
-      clickOriginRef.current = `${xPct}% ${yPct}%`;
-    } else {
-      clickOriginRef.current = 'center center';
+  const handleFrameClick = (frameId: string, clickedNode?: { rect: { top: number; left: number; width: number; height: number }; label: string; color: string; direction: 'up' | 'down' }) => {
+    if (clickedNode) {
+      // Capture the current main node rect for the exiting animation
+      const mainNodeEl = graphContainerRef.current?.querySelector('[data-main-node]');
+      if (mainNodeEl) {
+        const r = mainNodeEl.getBoundingClientRect();
+        setExitingNode({
+          rect: { top: r.top, left: r.left, width: r.width, height: r.height },
+          direction: clickedNode.direction,
+        });
+      }
+      setTransitionNode(clickedNode);
+      transitionMinTimeRef.current = Date.now() + 400;
     }
     lastLoadedFrameRef.current = null;
     updateUrlParam(frameId);
   };
 
   const handleSearchResult = (result: SearchResult) => {
-    clickOriginRef.current = 'center center';
+    clearTransition();
     lastLoadedFrameRef.current = null;
     updateUrlParam(result.id);
   };
 
   const handleHomeClick = () => {
-    clickOriginRef.current = 'center center';
+    clearTransition();
     lastLoadedFrameRef.current = null;
     setCurrentFrame(null);
+    setBreadcrumbs([]);
     // Remove entry from URL but preserve view
     const params = new URLSearchParams(searchParams);
     params.delete('entry');
     const qs = params.toString();
     router.push(qs ? `/graph/frames?${qs}` : '/graph/frames', { scroll: false });
+  };
+
+  const handleBreadcrumbNavigate = (id: string) => {
+    clearTransition();
+    lastLoadedFrameRef.current = null;
+    updateUrlParam(id);
   };
 
   const handleRefreshClick = () => {
@@ -278,30 +377,15 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
                 )}
               </AnimatePresence>
 
-              {/* Navigation Bar */}
+              {/* Breadcrumbs + Badges */}
               <div className="mb-4 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <button
-                    onClick={handleHomeClick}
-                    className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                    title="Home"
-                  >
-                    <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-                    </svg>
-                  </button>
-                  <button
-                    onClick={handleRefreshClick}
-                    className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                    title="Refresh"
-                  >
-                    <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                  </button>
-                  <span className="text-lg font-semibold text-gray-900">
-                    {currentFrame.label}
-                  </span>
+                  <Breadcrumbs
+                    items={breadcrumbs}
+                    onNavigate={handleBreadcrumbNavigate}
+                    onHomeClick={handleHomeClick}
+                    onRefreshClick={handleRefreshClick}
+                  />
                   {currentFrame.flagged && (
                     <span className="px-2 py-0.5 text-xs font-medium bg-orange-100 text-orange-800 rounded-full">
                       Flagged
@@ -337,29 +421,22 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
                 </div>
               </div>
               
-              {/* Graph Content with expand-from-click animation */}
-              <div className="flex-1 overflow-hidden" ref={graphContainerRef}>
-                <AnimatePresence mode="popLayout">
-                  <motion.div
-                    key={currentFrame.id}
-                    style={{ transformOrigin: clickOriginRef.current }}
-                    initial={{ scale: 0.88, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{
-                      scale: { duration: 0.35, ease: [0.4, 0, 0.2, 1] },
-                      opacity: { duration: 0.2, ease: 'easeOut' },
-                    }}
-                    className="h-full"
-                  >
-                    <FrameGraph 
-                      currentFrame={currentFrame}
-                      onFrameClick={handleFrameClick}
-                      onVerbClick={(verbId) => router.push(`/graph?entry=${verbId}`)}
-                      onEditClick={() => setIsEditOverlayOpen(true)}
-                    />
-                  </motion.div>
-                </AnimatePresence>
+              {/* Graph Content */}
+              <div className="flex-1 overflow-hidden relative" ref={graphContainerRef}>
+                <div
+                  className="h-full"
+                  style={{
+                    opacity: transitionNode ? 0 : 1,
+                    transition: transitionNode ? 'none' : 'opacity 0.2s ease',
+                  }}
+                >
+                  <FrameGraph 
+                    currentFrame={currentFrame}
+                    onFrameClick={handleFrameClick}
+                    onVerbClick={(verbId) => router.push(`/graph?entry=${verbId}`)}
+                    onEditClick={() => setIsEditOverlayOpen(true)}
+                  />
+                </div>
               </div>
             </div>
           ) : (
@@ -392,6 +469,89 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
             onUpdate={handleUpdate}
           />
         )}
+
+        {/* Transition overlays */}
+        <AnimatePresence>
+          {transitionNode && graphContainerRef.current && (() => {
+            const mainNodeEl = graphContainerRef.current!.querySelector('[data-main-node]');
+            const target = mainNodeEl
+              ? mainNodeEl.getBoundingClientRect()
+              : (() => {
+                  const c = graphContainerRef.current!.getBoundingClientRect();
+                  return { top: c.top + 40, left: c.left + (c.width - 600) / 2, width: 600, height: 80 };
+                })();
+            return (
+              <motion.div
+                key="transition-overlay"
+                className="fixed z-50 flex items-center justify-center overflow-hidden pointer-events-none"
+                initial={{
+                  top: transitionNode.rect.top,
+                  left: transitionNode.rect.left,
+                  width: transitionNode.rect.width,
+                  height: transitionNode.rect.height,
+                  backgroundColor: transitionNode.color,
+                  borderRadius: 8,
+                  opacity: 1,
+                }}
+                animate={{
+                  top: target.top,
+                  left: target.left,
+                  width: target.width,
+                  height: target.height,
+                  backgroundColor: '#bfdbfe',
+                  borderRadius: 12,
+                  opacity: 1,
+                }}
+                exit={{
+                  opacity: 0,
+                  transition: { duration: 0.2, ease: 'easeOut' },
+                }}
+                transition={{
+                  duration: 0.4,
+                  ease: [0.32, 0.72, 0, 1],
+                }}
+              >
+                <ArrowPathIcon className="w-6 h-6 text-white animate-spin" />
+              </motion.div>
+            );
+          })()}
+          {exitingNode && (() => {
+            const exitTarget = {
+              top: exitingNode.rect.top + (exitingNode.direction === 'down' ? -120 : exitingNode.rect.height + 40),
+              left: exitingNode.rect.left + exitingNode.rect.width / 2 - 60,
+              width: 120,
+              height: 36,
+            };
+            return (
+              <motion.div
+                key="exiting-overlay"
+                className="fixed z-40 rounded-lg pointer-events-none"
+                initial={{
+                  top: exitingNode.rect.top,
+                  left: exitingNode.rect.left,
+                  width: exitingNode.rect.width,
+                  height: exitingNode.rect.height,
+                  backgroundColor: '#3b82f6',
+                  borderRadius: 8,
+                  opacity: 1,
+                }}
+                animate={{
+                  top: exitTarget.top,
+                  left: exitTarget.left,
+                  width: exitTarget.width,
+                  height: exitTarget.height,
+                  backgroundColor: exitingNode.direction === 'down' ? '#93c5fd' : '#fbbf24',
+                  borderRadius: 8,
+                  opacity: 0,
+                }}
+                transition={{
+                  duration: 0.4,
+                  ease: [0.32, 0.72, 0, 1],
+                }}
+              />
+            );
+          })()}
+        </AnimatePresence>
       </main>
     </div>
   );

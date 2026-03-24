@@ -9,6 +9,9 @@ import { getPendingNodeStroke, getPendingNodeFill } from './PendingChangeIndicat
 // Color scheme
 const currentNodeColor = '#3b82f6';
 const currentNodeStroke = '#1e40af';
+
+export const LEXICAL_MAIN_NODE_FIXED_HEIGHT = 400;
+const LEXICAL_MAIN_NODE_WIDTH = 600;
 const parentNodeColor = '#10b981';
 const parentNodeStroke = '#059669';
 const childNodeColor = '#f59e0b';
@@ -18,7 +21,7 @@ const backgroundColor = '#ffffff';
 
 interface LexicalGraphProps {
   currentNode: GraphNode;
-  onNodeClick: (nodeId: string, direction?: 'up' | 'down', clickPosition?: { clientX: number; clientY: number }) => void;
+  onNodeClick: (nodeId: string, clickedNode?: { rect: { top: number; left: number; width: number; height: number }; label: string; color: string; direction: 'up' | 'down' }) => void;
   onEditClick?: () => void;
   mode?: 'lexical_units' | 'verbs' | 'nouns' | 'adjectives' | 'adverbs';
 }
@@ -177,8 +180,7 @@ export default function LexicalGraph({ currentNode, onNodeClick, onEditClick, mo
     const nodeSpacing = 15;
     
     const closedNodeHeight = 45;
-    const nodeHeights = calculateNodeHeights(currentNode);
-    const currentNodeHeight = nodeHeights.totalHeight;
+    const currentNodeHeight = LEXICAL_MAIN_NODE_FIXED_HEIGHT;
     const rowSpacing = 50;
     const margin = 50;
     const spacingFromCenter = 80;
@@ -189,17 +191,23 @@ export default function LexicalGraph({ currentNode, onNodeClick, onEditClick, mo
     const parentRows = arrangeNodesInRows(hypernymsToShow, maxRowWidth, nodeSpacing);
     const childRows = arrangeNodesInRows(hyponymsToShow, maxRowWidth, nodeSpacing);
     
-    const spaceNeededAbove = parentRows.length > 0 ? 
-      parentRows.length * closedNodeHeight + (parentRows.length - 1) * rowSpacing + spacingFromCenter : 
-      spacingFromCenter;
+    // Fixed vertical position for main node (consistent across all lexical units)
+    const fixedMainY = margin + 40 + currentNodeHeight / 2;
     
+    // If many parent rows need more space, shift everything down
+    const parentAreaBottom = fixedMainY - currentNodeHeight / 2 - spacingFromCenter;
+    const topMostParentY = parentRows.length > 0
+      ? parentAreaBottom - (parentRows.length - 1) * (closedNodeHeight + rowSpacing) - closedNodeHeight / 2
+      : fixedMainY;
+    const topShift = topMostParentY < margin ? margin - topMostParentY : 0;
+    const centerY = fixedMainY + topShift;
+
     const spaceNeededBelow = childRows.length > 0 ? 
       childRows.length * closedNodeHeight + (childRows.length - 1) * rowSpacing + spacingFromCenter : 
       spacingFromCenter;
     
-    const totalHeight = margin + spaceNeededAbove + currentNodeHeight + spaceNeededBelow + margin;
+    const totalHeight = centerY + currentNodeHeight / 2 + spaceNeededBelow + margin;
     const height = Math.max(600, totalHeight);
-    const centerY = margin + spaceNeededAbove + currentNodeHeight / 2;
     
     nodes.push({
       node: currentNode,
@@ -208,10 +216,12 @@ export default function LexicalGraph({ currentNode, onNodeClick, onEditClick, mo
       y: centerY
     });
     
+    // Position parents above (relative to main node, going upward)
     if (parentRows.length > 0) {
-      const hypernymStartY = margin + closedNodeHeight / 2;
-      parentRows.forEach((row, rowIndex) => {
-        const rowY = hypernymStartY + (rowIndex * (closedNodeHeight + rowSpacing));
+      const bottomParentRowY = centerY - currentNodeHeight / 2 - spacingFromCenter - closedNodeHeight / 2;
+      for (let rowIndex = parentRows.length - 1; rowIndex >= 0; rowIndex--) {
+        const row = parentRows[rowIndex];
+        const rowY = bottomParentRowY - (parentRows.length - 1 - rowIndex) * (closedNodeHeight + rowSpacing);
         const startX = centerX - row.totalWidth / 2;
         let currentX = startX;
         row.nodes.forEach((hypernym) => {
@@ -224,7 +234,7 @@ export default function LexicalGraph({ currentNode, onNodeClick, onEditClick, mo
           });
           currentX += nodeWidth + nodeSpacing;
         });
-      });
+      }
     }
     
     if (childRows.length > 0) {
@@ -247,7 +257,7 @@ export default function LexicalGraph({ currentNode, onNodeClick, onEditClick, mo
     }
     
     return { nodes, width, height };
-  }, [currentNode, arrangeNodesInRows, calculateNodeHeights]);
+  }, [currentNode, arrangeNodesInRows]);
 
   const links = useMemo(() => {
     const linkList: { from: PositionedNode; to: PositionedNode }[] = [];
@@ -289,9 +299,9 @@ export default function LexicalGraph({ currentNode, onNodeClick, onEditClick, mo
           
           {positionedNodes.nodes.map((posNode, i) => {
             if (posNode.nodeType === 'current') {
-              const nodeWidth = 600;
+              const nodeWidth = LEXICAL_MAIN_NODE_WIDTH;
               const nodeHeights = calculateNodeHeights(posNode.node);
-              const nodeHeight = nodeHeights.totalHeight;
+              const nodeHeight = LEXICAL_MAIN_NODE_FIXED_HEIGHT;
               const centerX = -nodeWidth / 2;
               const centerY = -nodeHeight / 2;
               const contentWidth = nodeWidth - 24;
@@ -330,14 +340,19 @@ export default function LexicalGraph({ currentNode, onNodeClick, onEditClick, mo
               }
               
               return (
+                <g key={`node-${i}`} data-main-node="">
                 <Group
-                  key={`node-${i}`}
                   top={posNode.y}
                   left={posNode.x}
                   onMouseEnter={() => setHoveredNodeId(posNode.node.id)}
                   onMouseLeave={() => setHoveredNodeId(null)}
                   style={{ cursor: 'pointer' }}
                 >
+                  <defs>
+                    <clipPath id={`lexical-main-clip-${posNode.node.id}`}>
+                      <rect x={centerX} y={centerY} width={nodeWidth} height={nodeHeight} rx={8} ry={8} />
+                    </clipPath>
+                  </defs>
                   <rect
                     width={nodeWidth}
                     height={nodeHeight}
@@ -351,6 +366,7 @@ export default function LexicalGraph({ currentNode, onNodeClick, onEditClick, mo
                     filter={hoveredNodeId === posNode.node.id ? 'url(#nodeHoverShadow)' : undefined}
                     onClick={() => onNodeClick(posNode.node.id)}
                   />
+                  <g clipPath={`url(#lexical-main-clip-${posNode.node.id})`}>
                   <text
                     x={centerX + 12}
                     y={centerY + 35}
@@ -483,6 +499,7 @@ export default function LexicalGraph({ currentNode, onNodeClick, onEditClick, mo
                       )}
                     </>
                   )}
+                  </g>
                   {onEditClick && (
                     <g onClick={(e) => { e.stopPropagation(); onEditClick(); }}>
                       <rect x={centerX + nodeWidth - 44} y={centerY + 8} width={36} height={36} rx={6} fill="rgba(59, 130, 246, 0.95)" stroke="rgba(255, 255, 255, 0.9)" strokeWidth={2} style={{ cursor: 'pointer' }} />
@@ -493,6 +510,7 @@ export default function LexicalGraph({ currentNode, onNodeClick, onEditClick, mo
                     </g>
                   )}
                 </Group>
+                </g>
               );
             } else {
               const nodeWidth = calculateNodeWidth(posNode.node.id);
@@ -504,8 +522,8 @@ export default function LexicalGraph({ currentNode, onNodeClick, onEditClick, mo
               const strokeColor = posNode.node.pending ? getPendingNodeStroke(posNode.node.pending.operation) : (isParent ? parentNodeStroke : childNodeStroke);
               
               return (
-                <Group key={`node-${i}`} top={posNode.y} left={posNode.x} onMouseEnter={() => setHoveredNodeId(posNode.node.id)} onMouseLeave={() => setHoveredNodeId(null)} style={{ cursor: 'pointer' }}>
-                  <rect width={nodeWidth} height={nodeHeight} y={centerY} x={centerX} fill={fillColor} stroke={strokeColor} strokeWidth={posNode.node.pending ? 3 : 1} rx={4} ry={4} filter={hoveredNodeId === posNode.node.id ? 'url(#nodeHoverShadow)' : undefined} onClick={(e) => onNodeClick(posNode.node.id, isParent ? 'up' : 'down', { clientX: e.clientX, clientY: e.clientY })} />
+                <Group key={`node-${i}`} top={posNode.y} left={posNode.x} onMouseEnter={() => setHoveredNodeId(posNode.node.id)} onMouseLeave={() => setHoveredNodeId(null)} style={{ cursor: 'pointer' }} onClick={(e: React.MouseEvent<SVGGElement>) => { const r = (e.currentTarget as SVGGElement).getBoundingClientRect(); onNodeClick(posNode.node.id, { rect: { top: r.top, left: r.left, width: r.width, height: r.height }, label: posNode.node.id, color: fillColor, direction: isParent ? 'up' : 'down' }); }}>
+                  <rect width={nodeWidth} height={nodeHeight} y={centerY} x={centerX} fill={fillColor} stroke={strokeColor} strokeWidth={posNode.node.pending ? 3 : 1} rx={4} ry={4} filter={hoveredNodeId === posNode.node.id ? 'url(#nodeHoverShadow)' : undefined} />
                   <text dy=".33em" fontSize={11} fontFamily="Arial" fontWeight="500" textAnchor="middle" style={{ pointerEvents: 'none' }} fill="white">{posNode.node.id}</text>
                 </Group>
               );

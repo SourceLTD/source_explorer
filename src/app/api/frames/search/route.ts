@@ -14,6 +14,7 @@ export async function GET(request: NextRequest) {
     const frames = await prisma.frames.findMany({
       where: {
         label: { contains: query, mode: 'insensitive' },
+        deleted: false,
       },
       select: {
         id: true,
