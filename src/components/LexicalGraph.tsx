@@ -18,7 +18,7 @@ const backgroundColor = '#ffffff';
 
 interface LexicalGraphProps {
   currentNode: GraphNode;
-  onNodeClick: (nodeId: string) => void;
+  onNodeClick: (nodeId: string, direction?: 'up' | 'down', clickPosition?: { clientX: number; clientY: number }) => void;
   onEditClick?: () => void;
   mode?: 'lexical_units' | 'verbs' | 'nouns' | 'adjectives' | 'adverbs';
 }
@@ -505,7 +505,7 @@ export default function LexicalGraph({ currentNode, onNodeClick, onEditClick, mo
               
               return (
                 <Group key={`node-${i}`} top={posNode.y} left={posNode.x} onMouseEnter={() => setHoveredNodeId(posNode.node.id)} onMouseLeave={() => setHoveredNodeId(null)} style={{ cursor: 'pointer' }}>
-                  <rect width={nodeWidth} height={nodeHeight} y={centerY} x={centerX} fill={fillColor} stroke={strokeColor} strokeWidth={posNode.node.pending ? 3 : 1} rx={4} ry={4} filter={hoveredNodeId === posNode.node.id ? 'url(#nodeHoverShadow)' : undefined} onClick={() => onNodeClick(posNode.node.id)} />
+                  <rect width={nodeWidth} height={nodeHeight} y={centerY} x={centerX} fill={fillColor} stroke={strokeColor} strokeWidth={posNode.node.pending ? 3 : 1} rx={4} ry={4} filter={hoveredNodeId === posNode.node.id ? 'url(#nodeHoverShadow)' : undefined} onClick={(e) => onNodeClick(posNode.node.id, isParent ? 'up' : 'down', { clientX: e.clientX, clientY: e.clientY })} />
                   <text dy=".33em" fontSize={11} fontFamily="Arial" fontWeight="500" textAnchor="middle" style={{ pointerEvents: 'none' }} fill="white">{posNode.node.id}</text>
                 </Group>
               );

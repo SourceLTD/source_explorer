@@ -16,7 +16,7 @@ const backgroundColor = '#ffffff';
 
 interface FrameGraphProps {
   currentFrame: FrameGraphNode;
-  onFrameClick: (frameId: string) => void;
+  onFrameClick: (frameId: string, direction?: 'up' | 'down', clickPosition?: { clientX: number; clientY: number }) => void;
   onVerbClick?: (verbId: string) => void;
   onEditClick?: () => void;
 }
@@ -93,16 +93,16 @@ export default function FrameGraph({ currentFrame, onFrameClick, onVerbClick, on
 
   // Layout calculation
   const layout = useMemo(() => {
-    const width = 1000;
+    const width = 1400;
     const centerX = width / 2;
     const maxRowWidth = width - 100;
     const nodeSpacing = 20;
     const rowSpacing = 60;
     const spacingFromCenter = 100;
-    const margin = 60;
+    const margin = 10;
     const relatedNodeHeight = 50;
 
-    const mainNodeWidth = 600;
+    const mainNodeWidth = 1000;
     const mainNodeHeight = calculateFrameMainNodeHeight(currentFrame, rolesExpanded, lexicalUnitsExpanded);
     
     const nodes: PositionedFrameNode[] = [];
@@ -210,7 +210,7 @@ export default function FrameGraph({ currentFrame, onFrameClick, onVerbClick, on
         className="cursor-pointer"
         onMouseEnter={() => setHoveredNodeId(node.id)}
         onMouseLeave={() => setHoveredNodeId(null)}
-        onClick={() => onFrameClick(node.id)}
+        onClick={(e) => onFrameClick(node.id, node.type === 'parent' ? 'up' : 'down', { clientX: e.clientX, clientY: e.clientY })}
       >
         <rect
           x={node.x - node.width / 2}

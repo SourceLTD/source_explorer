@@ -23,7 +23,7 @@ import { generateUUID, getTextFromMessage } from '@/lib/chat/utils';
 import { chatTools } from '@/lib/chat/tools';
 import { type PostRequestBody, postRequestBodySchema } from './schema';
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 function getStreamContext() {
   try {
@@ -99,7 +99,7 @@ export async function POST(request: Request) {
           system: systemPrompt(),
           messages: modelMessages,
           tools: chatTools,
-          stopWhen: stepCountIs(5),
+          stopWhen: stepCountIs(10),
         });
 
         dataStream.merge(result.toUIMessageStream());

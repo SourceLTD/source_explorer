@@ -243,3 +243,13 @@ input:focus-visible {
 .chat-markdown h1 { font-size: 1.125rem; }
 .chat-markdown h2 { font-size: 1rem; }
 .chat-markdown h3 { font-size: 0.875rem; }
+
+/* Graph navigation loading bar */
+@keyframes loading-bar {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(0%); }
+  100% { transform: translateX(100%); }
+}
+.animate-loading-bar {
+  animation: loading-bar 1.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { motion, AnimatePresence } from 'framer-motion';
 import { FlagIcon } from '@heroicons/react/24/outline';
 import { GraphNode, SearchResult, BreadcrumbItem } from '@/lib/types';
 import LexicalGraph from './LexicalGraph';
@@ -70,6 +71,8 @@ export default function WordNetExplorer({ initialEntryId, mode = 'lexical_units'
   
   // Track last loaded entry to prevent duplicate calls
   const lastLoadedEntryRef = useRef<string | null>(null);
+  const clickOriginRef = useRef<string>('center center');
+  const graphContainerRef = useRef<HTMLDivElement>(null);
 
   // Helper function to update URL parameters without page reload
   const updateUrlParam = (entryId: string) => {
@@ -139,17 +142,24 @@ export default function WordNetExplorer({ initialEntryId, mode = 'lexical_units'
     }
   }, [mode]);
 
-  const handleNodeClick = (nodeId: string) => {
-    // Reset the ref to allow loading the new node
+  const handleNodeClick = (nodeId: string, direction?: 'up' | 'down', clickPosition?: { clientX: number; clientY: number }) => {
+    if (clickPosition && graphContainerRef.current) {
+      const rect = graphContainerRef.current.getBoundingClientRect();
+      const xPct = ((clickPosition.clientX - rect.left) / rect.width) * 100;
+      const yPct = ((clickPosition.clientY - rect.top) / rect.height) * 100;
+      clickOriginRef.current = `${xPct}% ${yPct}%`;
+    } else {
+      clickOriginRef.current = 'center center';
+    }
     lastLoadedEntryRef.current = null;
     updateUrlParam(nodeId);
   };
 
   const handleSearchResult = (result: SearchResult) => {
-    // Reset the ref to allow loading the new node
+    clickOriginRef.current = 'center center';
     lastLoadedEntryRef.current = null;
     updateUrlParam(result.id);
-    setSearchQuery(''); // Clear search after selection
+    setSearchQuery('');
   };
 
 
@@ -159,13 +169,13 @@ export default function WordNetExplorer({ initialEntryId, mode = 'lexical_units'
   };
 
   const handleBreadcrumbNavigate = (id: string) => {
-    // Reset the ref to allow loading the new node
+    clickOriginRef.current = 'center center';
     lastLoadedEntryRef.current = null;
     updateUrlParam(id);
   };
 
   const handleHomeClick = () => {
-    // Clear the current node and return to home view
+    clickOriginRef.current = 'center center';
     lastLoadedEntryRef.current = null;
     setCurrentNode(null);
     setBreadcrumbs([]);
@@ -917,7 +927,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'lexical_units'
                     {currentNode.parents.map(parent => (
                       <button
                         key={parent.id}
-                        onClick={() => handleNodeClick(parent.id)}
+                        onClick={() => handleNodeClick(parent.id, 'up')}
                         className="block w-full text-left p-3 bg-green-50 hover:bg-green-100 border border-green-200 rounded-xl transition-colors"
                       >
                         <div className="font-medium text-green-800 text-sm">
@@ -960,7 +970,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'lexical_units'
                     {currentNode.children.map(child => (
                       <button
                         key={child.id}
-                        onClick={() => handleNodeClick(child.id)}
+                        onClick={() => handleNodeClick(child.id, 'down')}
                         className="block w-full text-left p-3 bg-yellow-50 hover:bg-yellow-100 border border-yellow-200 rounded-xl transition-colors"
                       >
                         <div className="font-medium text-yellow-800 text-sm">
@@ -1137,9 +1147,26 @@ export default function WordNetExplorer({ initialEntryId, mode = 'lexical_units'
 
         {/* Main Graph Area */}
         <div className="flex-1 p-6 bg-white">
-          {currentNode && !isLoading ? (
-            <div className="h-full flex flex-col">
-              {/* Breadcrumbs - only show in graph mode (troponymy) */}
+          {currentNode ? (
+            <div className="h-full flex flex-col relative">
+              {/* Loading progress bar */}
+              <AnimatePresence>
+                {isLoading && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.15 }}
+                    className="absolute top-0 left-0 right-0 z-10"
+                  >
+                    <div className="h-0.5 bg-blue-100 rounded overflow-hidden">
+                      <div className="h-full w-full bg-blue-500 rounded animate-loading-bar" />
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Breadcrumbs */}
               <div className="mb-4">
                 <Breadcrumbs 
                   items={currentView === 'graph' ? breadcrumbs : []} 
@@ -1149,14 +1176,29 @@ export default function WordNetExplorer({ initialEntryId, mode = 'lexical_units'
                 />
               </div>
               
-              {/* Graph */}
-              <div className="flex-1">
-                <LexicalGraph 
-                  currentNode={currentNode} 
-                  onNodeClick={handleNodeClick}
-                  onEditClick={() => setIsEditOverlayOpen(true)}
-                  mode={mode}
-                />
+              {/* Graph with expand-from-click animation */}
+              <div className="flex-1 overflow-hidden" ref={graphContainerRef}>
+                <AnimatePresence mode="popLayout">
+                  <motion.div
+                    key={currentNode.id}
+                    style={{ transformOrigin: clickOriginRef.current }}
+                    initial={{ scale: 0.88, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{
+                      scale: { duration: 0.35, ease: [0.4, 0, 0.2, 1] },
+                      opacity: { duration: 0.2, ease: 'easeOut' },
+                    }}
+                    className="h-full"
+                  >
+                    <LexicalGraph 
+                      currentNode={currentNode} 
+                      onNodeClick={handleNodeClick}
+                      onEditClick={() => setIsEditOverlayOpen(true)}
+                      mode={mode}
+                    />
+                  </motion.div>
+                </AnimatePresence>
               </div>
             </div>
           ) : (

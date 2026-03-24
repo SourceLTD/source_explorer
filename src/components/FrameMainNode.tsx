@@ -51,7 +51,7 @@ export default function FrameMainNode({
     else setInternalLexicalUnitsExpanded(val);
   };
 
-  const nodeWidth = 600;
+  const nodeWidth = 1000;
   const nodeHeights = calculateFrameNodeHeights(node, rolesExpanded, lexicalUnitsExpanded);
   const nodeHeight = nodeHeights.totalHeight;
   const centerX = -nodeWidth / 2;
@@ -135,14 +135,14 @@ export default function FrameMainNode({
       <text
         x={centerX + 12}
         y={centerY + 35}
-        fontSize={20}
+        fontSize={24}
         fontFamily="Arial"
         textAnchor="start"
         style={{ pointerEvents: 'none' }}
         fill="white"
       >
         <tspan fontWeight="bold">{node.label}</tspan>
-        <tspan fontWeight="normal" fontSize={14}> ({node.id})</tspan>
+        <tspan fontWeight="normal" fontSize={16}> ({node.id})</tspan>
       </text>
       
       {/* Category Badge - Not in screenshot, removing */}
@@ -157,7 +157,7 @@ export default function FrameMainNode({
         >
           <div
             style={{
-              fontSize: '15px',
+              fontSize: '14px',
               fontFamily: 'Arial',
               fontWeight: 'normal',
               color: 'rgba(255, 255, 255, 0.9)',
@@ -180,7 +180,7 @@ export default function FrameMainNode({
       >
         <div
           style={{
-            fontSize: '14px',
+            fontSize: '16px',
             fontFamily: 'Arial',
             fontWeight: 'normal',
             color: 'white',
@@ -200,15 +200,15 @@ export default function FrameMainNode({
           x={centerX + 12}
           y={currentY}
           width={nodeWidth - 24}
-          height={20}
+          height={28}
         >
           <div 
             style={{
-              fontSize: '13px',
+              fontSize: '14px',
               fontFamily: 'Arial',
               color: 'white',
               fontWeight: 'bold',
-              padding: '2px 6px',
+              padding: '4px 6px 8px 6px',
               backgroundColor: 'rgba(0, 0, 0, 0.2)',
               borderRadius: '3px 3px 0 0',
               cursor: 'pointer',
@@ -221,57 +221,85 @@ export default function FrameMainNode({
         </foreignObject>
         
         {rolesExpanded && node.roles && node.roles.length > 0 && (
-          <Group top={currentY + 20} left={centerX + 12}>
+          <Group top={currentY + 28} left={centerX + 12}>
             {(() => {
               const sortedRoles = sortRolesByPrecedence(node.roles);
-              let roleOffset = 0;
-              
-              return sortedRoles.slice(0, 10).map((role, idx) => {
-                const roleText = `${role.label}: ${role.description || 'No description'}`;
-                const estimatedLines = Math.ceil(roleText.length / 60);
-                const roleHeight = estimatedLines <= 2 ? 40 : 55;
-                const currentRoleOffset = roleOffset;
-                roleOffset += roleHeight + 4;
+              const colGap = 8;
+              const colWidth = (nodeWidth - 24 - colGap) / 2;
+              let rowY = 0;
+
+              const rows: { left: typeof sortedRoles[0]; right?: typeof sortedRoles[0] }[] = [];
+              for (let i = 0; i < sortedRoles.length; i += 2) {
+                rows.push({ left: sortedRoles[i], right: sortedRoles[i + 1] });
+              }
+
+              return rows.map((row, rowIdx) => {
+                const leftText = `${row.left.label}: ${row.left.description || 'No description'}`;
+                const rightText = row.right ? `${row.right.label}: ${row.right.description || 'No description'}` : '';
+                const leftLines = Math.ceil(leftText.length / 50);
+                const rightLines = row.right ? Math.ceil(rightText.length / 50) : 0;
+                const rowHeight = Math.max(
+                  leftLines <= 2 ? 44 : 60,
+                  row.right ? (rightLines <= 2 ? 44 : 60) : 0
+                );
+                const currentRowY = rowY;
+                rowY += rowHeight + 4;
 
                 return (
-                  <foreignObject
-                    key={`role-${role.id}`}
-                    x={0}
-                    y={currentRoleOffset}
-                    width={nodeWidth - 24}
-                    height={roleHeight}
-                  >
-                    <div style={{
-                      fontSize: '12px',
-                      fontFamily: 'Arial',
-                      color: 'white',
-                      lineHeight: '1.3',
-                      wordWrap: 'break-word',
-                      padding: '4px 8px',
-                      backgroundColor: role.main ? 'rgba(59, 130, 246, 0.4)' : 'rgba(255, 255, 255, 0.1)',
-                      borderRadius: '4px',
-                      height: '100%',
-                      overflow: 'hidden',
-                    }}>
-                      <span style={{ fontWeight: 'bold' }}>{role.label}:</span>{' '}
-                      {role.description || 'No description'}
-                    </div>
-                  </foreignObject>
+                  <g key={`role-row-${rowIdx}`}>
+                    <foreignObject
+                      x={0}
+                      y={currentRowY}
+                      width={colWidth}
+                      height={rowHeight}
+                    >
+                      <div style={{
+                        fontSize: '14px',
+                        fontFamily: 'Arial',
+                        color: 'white',
+                        lineHeight: '1.3',
+                        wordWrap: 'break-word',
+                        padding: '4px 8px',
+                        backgroundColor: row.left.main ? 'rgba(59, 130, 246, 0.4)' : 'rgba(255, 255, 255, 0.1)',
+                        borderRadius: '4px',
+                        height: '100%',
+                        overflow: 'hidden',
+                        boxSizing: 'border-box',
+                      }}>
+                        <span style={{ fontWeight: 'bold' }}>{row.left.label}:</span>{' '}
+                        {row.left.description || 'No description'}
+                      </div>
+                    </foreignObject>
+                    {row.right && (
+                      <foreignObject
+                        x={colWidth + colGap}
+                        y={currentRowY}
+                        width={colWidth}
+                        height={rowHeight}
+                      >
+                        <div style={{
+                          fontSize: '14px',
+                          fontFamily: 'Arial',
+                          color: 'white',
+                          lineHeight: '1.3',
+                          wordWrap: 'break-word',
+                          padding: '4px 8px',
+                          backgroundColor: row.right.main ? 'rgba(59, 130, 246, 0.4)' : 'rgba(255, 255, 255, 0.1)',
+                          borderRadius: '4px',
+                          height: '100%',
+                          overflow: 'hidden',
+                          boxSizing: 'border-box',
+                        }}>
+                          <span style={{ fontWeight: 'bold' }}>{row.right.label}:</span>{' '}
+                          {row.right.description || 'No description'}
+                        </div>
+                      </foreignObject>
+                    )}
+                  </g>
                 );
               });
             })()}
-            {node.roles.length > 10 && (
-              <text
-                x={8}
-                y={rolesHeight - 25}
-                fontSize={11}
-                fill="white"
-                style={{ opacity: 0.7 }}
-              >
-                + {node.roles.length - 10} more roles
-              </text>
-            )}
-          </Group>
+            </Group>
         )}
         {(() => { currentY += rolesHeight + 4; return null; })()}
       </g>
@@ -283,88 +311,103 @@ export default function FrameMainNode({
             x={centerX + 12}
             y={currentY}
             width={nodeWidth - 24}
-            height={20}
+            height={28}
           >
             <div 
               style={{
-                fontSize: '13px',
-                fontFamily: 'Arial',
-                color: 'white',
-                fontWeight: 'bold',
-                padding: '2px 6px',
-                backgroundColor: 'rgba(0, 0, 0, 0.2)',
-                borderRadius: '3px 3px 0 0',
-                cursor: 'pointer',
-                userSelect: 'none',
-              }}
-              onClick={() => setLexicalUnitsExpanded(!lexicalUnitsExpanded)}
+              fontSize: '14px',
+              fontFamily: 'Arial',
+              color: 'white',
+              fontWeight: 'bold',
+              padding: '4px 6px 8px 6px',
+              backgroundColor: 'rgba(0, 0, 0, 0.2)',
+              borderRadius: '3px 3px 0 0',
+              cursor: 'pointer',
+              userSelect: 'none',
+            }}
+            onClick={() => setLexicalUnitsExpanded(!lexicalUnitsExpanded)}
             >
               {lexicalUnitsExpanded ? '▼' : '▶'} Lexical Units ({node.lexical_units.length})
             </div>
           </foreignObject>
           
           {lexicalUnitsExpanded && (
-            <foreignObject
-              x={centerX + 12}
-              y={currentY + 20}
-              width={nodeWidth - 24}
-              height={lexicalUnitsHeight - 20}
-            >
-              <div style={{ 
-                fontSize: '12px', 
-                color: 'white',
-                padding: '4px 0',
-                overflow: 'hidden',
-                height: '100%',
-              }}>
-                {node.lexical_units.slice(0, 15).map((lu) => (
-                  <div 
-                    key={lu.id} 
-                    style={{ 
-                      padding: '4px 8px', 
-                      background: 'rgba(255, 255, 255, 0.1)',
-                      borderRadius: '4px',
-                      marginBottom: '4px',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'baseline',
-                      gap: '6px',
-                      overflow: 'hidden',
-                    }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onVerbClick(lu.id);
-                    }}
-                  >
-                    <span style={{
-                      fontSize: '10px',
-                      fontWeight: '600',
-                      color: '#bfdbfe',
-                      backgroundColor: 'rgba(59, 130, 246, 0.4)',
-                      padding: '1px 5px',
-                      borderRadius: '3px',
-                      textTransform: 'uppercase',
-                      flexShrink: 0,
-                    }}>
-                      {lu.pos}
-                    </span>
-                    <strong style={{ color: '#e0eaff', flexShrink: 0 }}>
-                      {lu.lemmas?.slice(0, 4).join(', ')}
-                    </strong>
-                    {lu.gloss && (
-                      <span style={{ opacity: 0.65, fontSize: '11px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flex: '1 1 0' }}>
-                        — {lu.gloss.length > 60 ? lu.gloss.substring(0, 58) + '…' : lu.gloss}
-                      </span>
-                    )}
-                  </div>
-                ))}
-                {node.lexical_units.length > 15 && (
-                  <div style={{ opacity: 0.7, padding: '4px 8px', fontSize: '11px' }}>
-                    + {node.lexical_units.length - 15} more lexical units
-                  </div>
-                )}
-              </div>
-            </foreignObject>
+            <Group top={currentY + 28} left={centerX + 12}>
+              {(() => {
+                const luRowGap = 4;
+                let luOffset = 0;
+                return node.lexical_units.slice(0, 15).map((lu) => {
+                  const hasGloss = !!lu.gloss;
+                  const luRowHeight = estimateLuRowHeight(lu, nodeWidth - 24);
+                  const currentLuOffset = luOffset;
+                  luOffset += luRowHeight + luRowGap;
+                  return (
+                    <foreignObject
+                      key={lu.id}
+                      x={0}
+                      y={currentLuOffset}
+                      width={nodeWidth - 24}
+                      height={luRowHeight}
+                    >
+                      <div
+                        xmlns="http://www.w3.org/1999/xhtml"
+                        style={{
+                          fontSize: '14px',
+                          fontFamily: 'Arial, sans-serif',
+                          color: 'white',
+                          padding: '5px 8px',
+                          background: 'rgba(255, 255, 255, 0.1)',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                          overflow: 'hidden',
+                          width: nodeWidth - 24 - 16,
+                          boxSizing: 'content-box',
+                        }}
+                        onClick={(e: React.MouseEvent) => {
+                          e.stopPropagation();
+                          onVerbClick(lu.id);
+                        }}
+                      >
+                        <span style={{
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          color: '#bfdbfe',
+                          backgroundColor: 'rgba(59, 130, 246, 0.4)',
+                          padding: '1px 5px',
+                          borderRadius: '3px',
+                          textTransform: 'uppercase' as const,
+                          marginRight: '6px',
+                        }}>
+                          {lu.pos}
+                        </span>
+                        <span style={{ color: '#e0eaff', fontWeight: 700 }}>
+                          {lu.lemmas?.slice(0, 4).join(', ')}
+                        </span>
+                        {hasGloss && (
+                          <>
+                            <br />
+                            <span style={{ color: '#e0eaff', fontSize: '14px', lineHeight: '1.4' }}>
+                              {lu.gloss}
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    </foreignObject>
+                  );
+                });
+              })()}
+              {node.lexical_units.length > 15 && (
+                <text
+                  x={8}
+                  y={lexicalUnitsHeight - 40}
+                  fontSize={11}
+                  fill="white"
+                  style={{ opacity: 0.7 }}
+                >
+                  + {node.lexical_units.length - 15} more lexical units
+                </text>
+              )}
+            </Group>
           )}
         </g>
       )}
@@ -425,6 +468,22 @@ export default function FrameMainNode({
 }
 
 /**
+ * Estimate the height of a single lexical unit row based on gloss length.
+ */
+function estimateLuRowHeight(lu: { gloss?: string | null }, containerWidth: number): number {
+  const headerLine = 24;
+  const padding = 10;
+  if (!lu.gloss) return headerLine + padding;
+  const glossFontSize = 14;
+  const glossLineHeight = glossFontSize * 1.4;
+  const avgCharWidth = glossFontSize * 0.55;
+  const usableWidth = containerWidth - 16;
+  const charsPerLine = Math.max(1, Math.floor(usableWidth / avgCharWidth));
+  const glossLines = Math.max(1, Math.ceil(lu.gloss.length / charsPerLine));
+  return headerLine + glossLines * glossLineHeight + padding;
+}
+
+/**
  * Calculate dynamic heights for frame node sections
  */
 export function calculateFrameNodeHeights(
@@ -432,10 +491,10 @@ export function calculateFrameNodeHeights(
   rolesExpanded: boolean = true,
   lexicalUnitsExpanded: boolean = true
 ) {
-  const nodeWidth = 600;
+  const nodeWidth = 1000;
   const contentWidth = nodeWidth - 24;
   
-  const estimateTextHeight = (text: string, width: number, fontSize: number = 13, lineHeight: number = 1.3): number => {
+  const estimateTextHeight = (text: string, width: number, fontSize: number = 14, lineHeight: number = 1.3): number => {
     const avgCharWidth = fontSize * 0.6;
     const availableWidth = width - 24;
     const charsPerLine = Math.floor(availableWidth / avgCharWidth);
@@ -447,23 +506,29 @@ export function calculateFrameNodeHeights(
   height += 35; // Title height
   
   const shortDefText = node.short_definition || '';
-  const shortDefHeight = shortDefText ? Math.max(15, estimateTextHeight(shortDefText, contentWidth, 15, 1.3) + 4) : 0;
+  const shortDefHeight = shortDefText ? Math.max(15, estimateTextHeight(shortDefText, contentWidth, 14, 1.3) + 4) : 0;
   height += shortDefHeight;
 
-  const glossText = node.gloss || '';
-  const glossHeight = glossText ? Math.max(30, estimateTextHeight(glossText, contentWidth, 14, 1.3) + 10) : 0;
+  const glossText = node.gloss || 'No definition available';
+  const glossHeight = Math.max(30, estimateTextHeight(glossText, contentWidth, 16, 1.3) + 10);
   height += glossHeight + 8;
 
-  // Roles section
-  let rolesHeight = 20;
+  // Roles section (two columns)
+  let rolesHeight = 28;
   if (rolesExpanded && node.roles && node.roles.length > 0) {
-    const visibleRoles = node.roles.slice(0, 10);
-    visibleRoles.forEach(role => {
-      const roleText = `${role.label}: ${role.description || 'No description'}`;
-      const estimatedLines = Math.ceil(roleText.length / 60);
-      rolesHeight += (estimatedLines <= 2 ? 40 : 55) + 4;
-    });
-    if (node.roles.length > 10) rolesHeight += 25;
+    const visibleRoles = node.roles;
+    for (let i = 0; i < visibleRoles.length; i += 2) {
+      const leftText = `${visibleRoles[i].label}: ${visibleRoles[i].description || 'No description'}`;
+      const leftLines = Math.ceil(leftText.length / 50);
+      const leftHeight = leftLines <= 2 ? 44 : 60;
+      let rightHeight = 0;
+      if (visibleRoles[i + 1]) {
+        const rightText = `${visibleRoles[i + 1].label}: ${visibleRoles[i + 1].description || 'No description'}`;
+        const rightLines = Math.ceil(rightText.length / 50);
+        rightHeight = rightLines <= 2 ? 44 : 60;
+      }
+      rolesHeight += Math.max(leftHeight, rightHeight) + 4;
+    }
   }
   height += rolesHeight + 4;
 
@@ -471,10 +536,14 @@ export function calculateFrameNodeHeights(
   let lexicalUnitsHeight = 0;
   const lexicalUnits = node.lexical_units || [];
   if (lexicalUnits.length > 0) {
-    lexicalUnitsHeight = 20;
+    lexicalUnitsHeight = 28;
     if (lexicalUnitsExpanded) {
       const visibleLUs = lexicalUnits.slice(0, 15);
-      lexicalUnitsHeight += visibleLUs.length * 32 + 8;
+      const luRowGap = 4;
+      visibleLUs.forEach(lu => {
+        lexicalUnitsHeight += estimateLuRowHeight(lu, contentWidth) + luRowGap;
+      });
+      lexicalUnitsHeight += 8;
       if (lexicalUnits.length > 15) lexicalUnitsHeight += 25;
     }
     height += lexicalUnitsHeight + 4;

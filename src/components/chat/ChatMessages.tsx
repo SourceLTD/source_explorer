@@ -3,7 +3,7 @@
 import type { UseChatHelpers } from '@ai-sdk/react';
 import type { UIMessage } from 'ai';
 import { motion } from 'framer-motion';
-import { ArrowDownIcon, WrenchScrewdriverIcon, CheckCircleIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline';
+import { ArrowDownIcon, CheckCircleIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useChatMessages } from '@/hooks/useChatMessages';
@@ -70,41 +70,28 @@ function ToolCallIndicator({ part }: { part: any }) {
 
   return (
     <motion.div
-      initial={{ opacity: 0, height: 0 }}
-      animate={{ opacity: 1, height: 'auto' }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
       transition={{ duration: 0.2 }}
-      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium my-1 ${
-        isError
-          ? 'bg-red-50 text-red-600 border border-red-200'
-          : isDone
-            ? 'bg-green-50 text-green-700 border border-green-200'
-            : 'bg-amber-50 text-amber-700 border border-amber-200'
-      }`}
+      className="relative py-1.5 my-1"
     >
-      {isLoading && (
-        <div className="w-3.5 h-3.5 border-2 border-amber-300 border-t-amber-600 rounded-full animate-spin flex-shrink-0" />
-      )}
-      {isDone && <CheckCircleIcon className="w-3.5 h-3.5 flex-shrink-0" />}
-      {isError && <ExclamationCircleIcon className="w-3.5 h-3.5 flex-shrink-0" />}
-      <WrenchScrewdriverIcon className="w-3.5 h-3.5 flex-shrink-0" />
-      <span>{label}{isLoading ? '...' : ''}</span>
+      <div className="absolute inset-0 flex items-center" aria-hidden="true">
+        <div className="w-full border-t border-gray-200" />
+      </div>
+      <div className="relative inline-flex items-center gap-1.5 bg-gray-50 pr-2 text-xs text-gray-400 italic">
+        {isLoading && (
+          <span className="inline-block w-2.5 h-2.5 border-[1.5px] border-gray-300 border-t-gray-500 rounded-full animate-spin flex-shrink-0" />
+        )}
+        {isDone && <CheckCircleIcon className="w-3 h-3 text-green-500 flex-shrink-0" />}
+        {isError && <ExclamationCircleIcon className="w-3 h-3 text-red-400 flex-shrink-0" />}
+        <span>{label}{isLoading ? '…' : ''}</span>
+      </div>
     </motion.div>
   );
 }
 
 function MessageBubble({ message }: { message: UIMessage }) {
   const isUser = message.role === 'user';
-
-  const textParts = message.parts.filter(
-    (p): p is { type: 'text'; text: string } => p.type === 'text',
-  );
-  const fileParts = message.parts.filter(
-    (p): p is { type: 'file'; url: string; name: string; mediaType: string } =>
-      p.type === 'file',
-  );
-  const toolParts = message.parts.filter(
-    (p) => p.type.startsWith('tool-') || p.type === 'dynamic-tool',
-  );
 
   return (
     <motion.div
@@ -126,29 +113,35 @@ function MessageBubble({ message }: { message: UIMessage }) {
             : 'bg-gray-50 border border-gray-200 text-gray-900'
         }`}
       >
-        {fileParts.length > 0 && (
-          <div className="flex gap-2 mb-2 flex-wrap">
-            {fileParts.map((fp, i) => (
-              <PreviewAttachment key={i} url={fp.url} name={fp.name} />
-            ))}
-          </div>
-        )}
+        {message.parts.map((part, i) => {
+          if (part.type === 'file') {
+            const fp = part as { type: 'file'; url: string; name: string; mediaType: string };
+            return (
+              <div key={`file-${i}`} className="flex gap-2 mb-2 flex-wrap">
+                <PreviewAttachment url={fp.url} name={fp.name} />
+              </div>
+            );
+          }
 
-        {textParts.map((part, i) =>
-          isUser ? (
-            <p key={i} className="whitespace-pre-wrap">{sanitizeText(part.text)}</p>
-          ) : (
-            <div key={i} className="chat-markdown prose prose-sm max-w-none">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {sanitizeText(part.text)}
-              </ReactMarkdown>
-            </div>
-          ),
-        )}
+          if (part.type === 'text') {
+            const tp = part as { type: 'text'; text: string };
+            return isUser ? (
+              <p key={`text-${i}`} className="whitespace-pre-wrap">{sanitizeText(tp.text)}</p>
+            ) : (
+              <div key={`text-${i}`} className="chat-markdown prose prose-sm max-w-none">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {sanitizeText(tp.text)}
+                </ReactMarkdown>
+              </div>
+            );
+          }
 
-        {!isUser && toolParts.map((part, i) => (
-          <ToolCallIndicator key={`tool-${i}`} part={part} />
-        ))}
+          if (!isUser && (part.type.startsWith('tool-') || part.type === 'dynamic-tool')) {
+            return <ToolCallIndicator key={`tool-${i}`} part={part} />;
+          }
+
+          return null;
+        })}
       </div>
     </motion.div>
   );

@@ -3,27 +3,67 @@ import { z } from 'zod';
 
 const MCP_SERVER_URL = process.env.MCP_SERVER_URL;
 const MCP_API_KEY = process.env.MCP_API_KEY;
+const MCP_TOOL_TIMEOUT_MS = Number(process.env.MCP_TOOL_TIMEOUT_MS) || 120_000;
+
+let _mcpRequestId = 0;
 
 async function callMcpTool(toolName: string, input: Record<string, unknown>) {
   if (!MCP_SERVER_URL) {
     return { error: 'MCP_SERVER_URL is not configured' };
   }
 
-  const response = await fetch(`${MCP_SERVER_URL}/tools/${toolName}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(MCP_API_KEY ? { 'x-api-key': MCP_API_KEY } : {}),
-    },
-    body: JSON.stringify(input),
-  });
+  const endpoint = MCP_SERVER_URL.replace(/\/+$/, '') + '/mcp';
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), MCP_TOOL_TIMEOUT_MS);
 
-  if (!response.ok) {
-    const text = await response.text();
-    return { error: `MCP tool ${toolName} failed (${response.status}): ${text}` };
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        ...(MCP_API_KEY ? { 'x-api-key': MCP_API_KEY } : {}),
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: ++_mcpRequestId,
+        method: 'tools/call',
+        params: { name: toolName, arguments: input },
+      }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      return { error: `MCP tool ${toolName} failed (${response.status}): ${text}` };
+    }
+
+    const rpcResponse = await response.json();
+
+    if (rpcResponse.error) {
+      return { error: `MCP error ${rpcResponse.error.code}: ${rpcResponse.error.message}` };
+    }
+
+    const content = rpcResponse.result?.content;
+    if (Array.isArray(content) && content.length > 0 && content[0].text) {
+      try {
+        return JSON.parse(content[0].text);
+      } catch {
+        return { text: content[0].text };
+      }
+    }
+
+    return rpcResponse.result ?? rpcResponse;
+  } catch (err: unknown) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      return {
+        error: `MCP tool ${toolName} timed out after ${MCP_TOOL_TIMEOUT_MS / 1000}s. Consider increasing MCP_TOOL_TIMEOUT_MS.`,
+      };
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
   }
-
-  return response.json();
 }
 
 const searchFramesParams = z.object({

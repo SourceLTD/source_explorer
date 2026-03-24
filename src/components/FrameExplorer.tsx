@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Frame, FrameGraphNode, SearchResult } from '@/lib/types';
 import FrameGraph from './FrameGraph';
 import SearchBox from './SearchBox';
@@ -11,6 +12,7 @@ import SignOutButton from './SignOutButton';
 import ChatButton from './ChatButton';
 import { EditOverlay } from './editing/EditOverlay';
 import LoadingSpinner from './LoadingSpinner';
+import FrameRootNodesView from './FrameRootNodesView';
 
 interface FrameExplorerProps {
   initialFrameId?: string;
@@ -28,6 +30,8 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
   
   // Track last loaded frame to prevent duplicate calls
   const lastLoadedFrameRef = useRef<string | null>(null);
+  const clickOriginRef = useRef<string>('center center');
+  const graphContainerRef = useRef<HTMLDivElement>(null);
 
   // Helper function to update URL parameters without page reload
   const updateUrlParam = (frameId: string) => {
@@ -75,20 +79,27 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
     }
   }, []);
 
-  const handleFrameClick = (frameId: string) => {
-    // Reset the ref to allow loading the new frame
+  const handleFrameClick = (frameId: string, direction?: 'up' | 'down', clickPosition?: { clientX: number; clientY: number }) => {
+    if (clickPosition && graphContainerRef.current) {
+      const rect = graphContainerRef.current.getBoundingClientRect();
+      const xPct = ((clickPosition.clientX - rect.left) / rect.width) * 100;
+      const yPct = ((clickPosition.clientY - rect.top) / rect.height) * 100;
+      clickOriginRef.current = `${xPct}% ${yPct}%`;
+    } else {
+      clickOriginRef.current = 'center center';
+    }
     lastLoadedFrameRef.current = null;
     updateUrlParam(frameId);
   };
 
   const handleSearchResult = (result: SearchResult) => {
-    // Reset the ref to allow loading the new frame
+    clickOriginRef.current = 'center center';
     lastLoadedFrameRef.current = null;
     updateUrlParam(result.id);
   };
 
   const handleHomeClick = () => {
-    // Clear the current frame and return to home view
+    clickOriginRef.current = 'center center';
     lastLoadedFrameRef.current = null;
     setCurrentFrame(null);
     // Remove entry from URL but preserve view
@@ -248,8 +259,25 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
       <main className="flex-1 flex">
         {/* Main Graph/Recipe Area */}
         <div className="flex-1 p-6 bg-white">
-          {currentFrame && !isLoading ? (
-            <div className="h-full flex flex-col">
+          {currentFrame ? (
+            <div className="h-full flex flex-col relative">
+              {/* Loading progress bar */}
+              <AnimatePresence>
+                {isLoading && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.15 }}
+                    className="absolute top-0 left-0 right-0 z-10"
+                  >
+                    <div className="h-0.5 bg-blue-100 rounded overflow-hidden">
+                      <div className="h-full w-full bg-blue-500 rounded animate-loading-bar" />
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
               {/* Navigation Bar */}
               <div className="mb-4 flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -309,14 +337,29 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
                 </div>
               </div>
               
-              {/* Graph/Recipe Content */}
-              <div className="flex-1">
-                <FrameGraph 
-                  currentFrame={currentFrame}
-                  onFrameClick={handleFrameClick}
-                  onVerbClick={(verbId) => router.push(`/graph?entry=${verbId}`)}
-                  onEditClick={() => setIsEditOverlayOpen(true)}
-                />
+              {/* Graph Content with expand-from-click animation */}
+              <div className="flex-1 overflow-hidden" ref={graphContainerRef}>
+                <AnimatePresence mode="popLayout">
+                  <motion.div
+                    key={currentFrame.id}
+                    style={{ transformOrigin: clickOriginRef.current }}
+                    initial={{ scale: 0.88, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{
+                      scale: { duration: 0.35, ease: [0.4, 0, 0.2, 1] },
+                      opacity: { duration: 0.2, ease: 'easeOut' },
+                    }}
+                    className="h-full"
+                  >
+                    <FrameGraph 
+                      currentFrame={currentFrame}
+                      onFrameClick={handleFrameClick}
+                      onVerbClick={(verbId) => router.push(`/graph?entry=${verbId}`)}
+                      onEditClick={() => setIsEditOverlayOpen(true)}
+                    />
+                  </motion.div>
+                </AnimatePresence>
               </div>
             </div>
           ) : (
@@ -329,13 +372,7 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
                   <p className="text-sm">{error}</p>
                 </div>
               ) : (
-                <div className="text-center text-gray-400">
-                  <svg className="h-24 w-24 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                  <p className="text-lg">No frame selected</p>
-                  <p className="text-sm mt-2">Search for a frame to view its details</p>
-                </div>
+              <FrameRootNodesView onNodeClick={handleFrameClick} />
               )}
             </div>
           )}
