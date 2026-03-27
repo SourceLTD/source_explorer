@@ -13,7 +13,7 @@ export type EditableField =
   | 'definition'
   | 'short_definition'
   | 'frame_roles'
-  | 'super_frame_id';
+  | 'parent_of';
 
 export interface EditableFrameRole {
   id: string;
@@ -46,6 +46,7 @@ export interface OverlaySectionsState {
   relations: boolean;
   frameProperties: boolean;
   frameRoles: boolean;
+  frameRelations: boolean;
 }
 
 export interface FrameOption {

@@ -1,6 +1,6 @@
 import { TableLexicalUnit, Frame } from '@/lib/types';
 
-export type DataTableMode = 'lexical_units' | 'frames' | 'super_frames' | 'frames_only';
+export type DataTableMode = 'lexical_units' | 'frames';
 
 export interface DataTableProps {
   onRowClick?: (entry: TableLexicalUnit | Frame) => void;

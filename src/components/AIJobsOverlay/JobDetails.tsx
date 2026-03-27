@@ -82,10 +82,6 @@ export const JobDetails = memo(function JobDetails({
   // Only show processing bar when NOT submitting and all items are submitted
   const isProcessing = !isSubmitting && isActive && (job.submitted_items ?? 0) >= job.total_items && (job.processed_items ?? 0) < job.total_items;
 
-  const jobIsSuperFrame = useMemo(() => {
-    return scope && 'isSuperFrame' in scope ? scope.isSuperFrame === true : false;
-  }, [scope]);
-
   const [isItemsExpanded, setIsItemsExpanded] = useState(true);
 
   return (
@@ -367,7 +363,6 @@ export const JobDetails = memo(function JobDetails({
           emptyMessage="No items pending." 
           totalCount={job.total_items - job.succeeded_items - job.failed_items}
           onLoadMore={() => onLoadMore('pending')}
-          jobIsSuperFrame={jobIsSuperFrame}
           showFlaggedStatus={showFlaggedStatus}
         />
         <ItemList 
@@ -376,7 +371,6 @@ export const JobDetails = memo(function JobDetails({
           emptyMessage="No successes yet." 
           totalCount={job.succeeded_items}
           onLoadMore={() => onLoadMore('succeeded')}
-          jobIsSuperFrame={jobIsSuperFrame}
           showFlaggedStatus={showFlaggedStatus}
         />
         <ItemList 
@@ -385,7 +379,6 @@ export const JobDetails = memo(function JobDetails({
           emptyMessage="No failures." 
           totalCount={job.failed_items}
           onLoadMore={() => onLoadMore('failed')}
-          jobIsSuperFrame={jobIsSuperFrame}
           showFlaggedStatus={showFlaggedStatus}
         />
           </div>

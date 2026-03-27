@@ -99,7 +99,7 @@ export function serviceTierToPriority(tier?: string | null): 'flex' | 'normal' |
 
 export function buildScope(
   mode: ScopeMode,
-  pos: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames' | 'lexical_units' | 'super_frames' | 'frames_only',
+  pos: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames' | 'lexical_units',
   selectedIds: string[],
   manualIdsText: string,
   frameIdsText: string,
@@ -113,13 +113,8 @@ export function buildScope(
                                    pos === 'nouns' ? 'noun' : 
                                    pos === 'adjectives' ? 'adjective' : 
                                    pos === 'adverbs' ? 'adverb' :
-                                   pos === 'frames' || pos === 'super_frames' || pos === 'frames_only' ? 'frames' :
+                                   pos === 'frames' ? 'frames' :
                                    pos === 'lexical_units' ? 'lexical_units' : 'frames';
-
-  // Track if this is a super frame job (true) or a regular-frame-only job (false)
-  // - super_frames: super_frame_id IS NULL
-  // - frames_only:  super_frame_id IS NOT NULL
-  const isSuperFrame = pos === 'super_frames' ? true : pos === 'frames_only' ? false : undefined;
 
   switch (mode) {
     case 'selection':
@@ -127,14 +122,12 @@ export function buildScope(
         kind: 'ids',
         targetType,
         ids: selectedIds,
-        isSuperFrame,
       };
     case 'all':
       return {
         kind: 'filters',
         targetType,
         filters: { limit: 0 },
-        isSuperFrame,
       };
     case 'filters':
       return {
@@ -144,14 +137,12 @@ export function buildScope(
           limit: typeof filterLimit === 'number' ? filterLimit : 50,
           where: filterGroup && filterGroup.children.length > 0 ? filterGroup : undefined,
         },
-        isSuperFrame,
       };
     case 'manual':
       return {
         kind: 'ids',
         targetType,
         ids: parseIds(manualIdsText).map(normalizeLexicalCode),
-        isSuperFrame,
       };
     case 'frames':
       return {
@@ -159,14 +150,12 @@ export function buildScope(
         frameIds: parseIds(frameIdsText),
         includeLexicalUnits: frameIncludeLexicalUnits,
         flagTarget: frameFlagTarget,
-        isSuperFrame,
       };
     default:
       return {
         kind: 'ids',
         targetType,
         ids: selectedIds,
-        isSuperFrame,
       };
   }
 }
@@ -180,7 +169,7 @@ export function normalizeLexicalCode(input: string): string {
   return `${lemma}.${pos}.${padded}`;
 }
 
-export function getManualIdPlaceholder(pos: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames' | 'lexical_units' | 'super_frames' | 'frames_only'): string {
+export function getManualIdPlaceholder(pos: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames' | 'lexical_units'): string {
   switch (pos) {
     case 'verbs':
       return 'e.g., say.v.01, run.v.02';
@@ -194,10 +183,6 @@ export function getManualIdPlaceholder(pos: 'verbs' | 'nouns' | 'adjectives' | '
       return 'e.g., say.v.01, dog.n.01';
     case 'frames':
       return 'e.g., COMMUNICATION, MOTION';
-    case 'super_frames':
-      return 'e.g., COMMUNICATION, COGNITION';
-    case 'frames_only':
-      return 'e.g., STATEMENT, BECOMING_AWARE';
     default:
       return 'e.g., word.pos.01';
   }

@@ -103,8 +103,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         role_groups: [],
       })),
       relations: {
-        inherits_from: frame.frame_relations_frame_relations_source_idToframes
-          .filter(rel => rel.type === 'inherits_from')
+        parent_of: frame.frame_relations_frame_relations_source_idToframes
+          .filter(rel => rel.type === 'parent_of')
           .map(rel => ({
             id: rel.frames_frame_relations_target_idToframes.id.toString(),
             label: rel.frames_frame_relations_target_idToframes.label,
@@ -116,51 +116,13 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
               main: r.main,
             })),
           })),
-        inherited_by: frame.frame_relations_frame_relations_target_idToframes
-          .filter(rel => rel.type === 'inherits_from')
+        child_of: frame.frame_relations_frame_relations_target_idToframes
+          .filter(rel => rel.type === 'parent_of')
           .map(rel => ({
             id: rel.frames_frame_relations_source_idToframes.id.toString(),
             label: rel.frames_frame_relations_source_idToframes.label,
             short_definition: rel.frames_frame_relations_source_idToframes.short_definition,
           })),
-        uses: frame.frame_relations_frame_relations_source_idToframes
-          .filter(rel => rel.type === 'uses')
-          .map(rel => ({
-            id: rel.frames_frame_relations_target_idToframes.id.toString(),
-            label: rel.frames_frame_relations_target_idToframes.label,
-            short_definition: rel.frames_frame_relations_target_idToframes.short_definition,
-          })),
-        used_by: frame.frame_relations_frame_relations_target_idToframes
-          .filter(rel => rel.type === 'uses')
-          .map(rel => ({
-            id: rel.frames_frame_relations_source_idToframes.id.toString(),
-            label: rel.frames_frame_relations_source_idToframes.label,
-            short_definition: rel.frames_frame_relations_source_idToframes.short_definition,
-          })),
-        other: [
-          ...frame.frame_relations_frame_relations_source_idToframes
-            .filter(rel => !['inherits_from', 'uses'].includes(rel.type))
-            .map(rel => ({
-              type: rel.type,
-              direction: 'outgoing' as const,
-              frame: {
-                id: rel.frames_frame_relations_target_idToframes.id.toString(),
-                label: rel.frames_frame_relations_target_idToframes.label,
-                short_definition: rel.frames_frame_relations_target_idToframes.short_definition,
-              },
-            })),
-          ...frame.frame_relations_frame_relations_target_idToframes
-            .filter(rel => !['inherits_from', 'uses'].includes(rel.type))
-            .map(rel => ({
-              type: rel.type,
-              direction: 'incoming' as const,
-              frame: {
-                id: rel.frames_frame_relations_source_idToframes.id.toString(),
-                label: rel.frames_frame_relations_source_idToframes.label,
-                short_definition: rel.frames_frame_relations_source_idToframes.short_definition,
-              },
-            })),
-        ],
       },
     };
 

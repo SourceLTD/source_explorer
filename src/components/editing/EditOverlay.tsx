@@ -11,6 +11,7 @@ import { LexicalPropertiesSection } from './LexicalPropertiesSection';
 import { RelationsSection } from './RelationsSection';
 import { FramePropertiesSection } from './FramePropertiesSection';
 import { FrameRolesSection } from './FrameRolesSection';
+import { FrameRelationsSection } from './FrameRelationsSection';
 import { useEntryEditor } from '@/hooks/useEntryEditor';
 import { useEntryMutations } from '@/hooks/useEntryMutations';
 import { PendingEntityBadge } from '@/components/PendingChangeIndicator';
@@ -30,7 +31,6 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
   const [isDeleting, setIsDeleting] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [availableFrames, setAvailableFrames] = useState<FrameOption[]>([]);
-  const [availableSuperFrames, setAvailableSuperFrames] = useState<FrameOption[]>([]);
   
   // Overlay section expansion state
   const [overlaySections, setOverlaySections] = useState<OverlaySectionsState>({
@@ -39,6 +39,7 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
     relations: false,
     frameProperties: mode === 'frames',
     frameRoles: false,
+    frameRelations: false,
   });
 
   // Use the custom hooks
@@ -60,30 +61,6 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
         }
       };
       fetchFrames();
-    }
-  }, [isOpen, mode]);
-
-  // Fetch super frames when editing a frame (for changing parent super frame)
-  useEffect(() => {
-    if (isOpen && mode === 'frames') {
-      const fetchSuperFrames = async () => {
-        try {
-          const response = await fetch('/api/frames/paginated?isSuperFrame=true&limit=500');
-          if (response.ok) {
-            const data = await response.json();
-            // Map the paginated response to FrameOption format
-            const superFrames: FrameOption[] = data.data?.map((f: { id: string; label: string; code?: string }) => ({
-              id: f.id,
-              label: f.label,
-              code: f.code,
-            })) || [];
-            setAvailableSuperFrames(superFrames);
-          }
-        } catch (error) {
-          console.error('Failed to fetch super frames:', error);
-        }
-      };
-      fetchSuperFrames();
     }
   }, [isOpen, mode]);
 
@@ -239,9 +216,6 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
             const trimmed = editor.editValue.trim();
             value = trimmed.length > 0 ? trimmed : null;
           }
-          break;
-        case 'super_frame_id':
-          value = editor.editValue || null;
           break;
         default:
           return;
@@ -418,7 +392,6 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
               onCancel={editor.cancelEditing}
               isSaving={editor.isSaving}
               pending={node.pending}
-              availableSuperFrames={availableSuperFrames}
             />
           )}
 
@@ -456,7 +429,16 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
               onSave={handleSave}
               onCancel={editor.cancelEditing}
               isSaving={editor.isSaving}
-              isSuperFrame={!(node as Frame).super_frame_id}
+            />
+          )}
+
+          {/* Frame Relations Section (Frames only) */}
+          {mode === 'frames' && 'label' in node && (
+            <FrameRelationsSection
+              frame={node as Frame}
+              isOpen={overlaySections.frameRelations}
+              onToggle={() => setOverlaySections(prev => ({ ...prev, frameRelations: !prev.frameRelations }))}
+              onUpdate={onUpdate}
             />
           )}
 

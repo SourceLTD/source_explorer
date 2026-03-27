@@ -10,10 +10,12 @@ import { prisma } from '@/lib/prisma';
 import {
   createChangesetFromUpdate,
   createChangesetFromDelete,
+  createChangesetFromCreate,
   findPendingChangeset,
   upsertFieldChange,
   getChangeset,
 } from './create';
+import { randomUUID } from 'crypto';
 import { parseFrameRolesFieldName } from './frameRolesSubfields';
 import {
   EntityType,
@@ -526,4 +528,157 @@ export async function stageFrameRolesUpdate(
     message: 'Frame role changes staged for review',
     field_changes_count: fieldChangesCount,
   };
+}
+
+// ============================================
+// Frame Relation Reparent Staging
+// ============================================
+
+export interface ReparentResult {
+  staged: true;
+  deleteChangesetId: string | null;
+  createChangesetId: string;
+  message: string;
+}
+
+/**
+ * Stage a reparent operation for a frame in the parent_of DAG.
+ * Creates up to two changesets:
+ * 1. DELETE changeset for the old parent_of relation (if one exists)
+ * 2. CREATE changeset for the new parent_of relation
+ *
+ * Also validates that the reparent does not create a cycle.
+ */
+export async function stageFrameRelationReparent(
+  frameId: bigint,
+  newParentFrameId: bigint,
+  userId: string,
+  llmJobId?: bigint,
+): Promise<ReparentResult> {
+  // Validate frames exist and are not deleted
+  const [frame, newParent] = await Promise.all([
+    prisma.frames.findUnique({ where: { id: frameId }, select: { id: true, label: true, deleted: true } }),
+    prisma.frames.findUnique({ where: { id: newParentFrameId }, select: { id: true, label: true, deleted: true } }),
+  ]);
+
+  if (!frame || frame.deleted) {
+    throw new Error(`Frame ${frameId} not found or deleted`);
+  }
+  if (!newParent || newParent.deleted) {
+    throw new Error(`Target parent frame ${newParentFrameId} not found or deleted`);
+  }
+  if (frameId === newParentFrameId) {
+    throw new Error('A frame cannot inherit from itself');
+  }
+
+  // Cycle detection: walk up from newParentFrameId following parent_of edges
+  await assertNoCycle(frameId, newParentFrameId);
+
+  // Find the current parent_of relation for this frame (if any)
+  const existingRelation = await prisma.frame_relations.findFirst({
+    where: {
+      source_id: frameId,
+      type: 'parent_of',
+    },
+  });
+
+  // If already pointing at the requested parent, no-op
+  if (existingRelation && existingRelation.target_id === newParentFrameId) {
+    return {
+      staged: true,
+      deleteChangesetId: null,
+      createChangesetId: '',
+      message: 'Frame already inherits from the specified parent',
+    };
+  }
+
+  let deleteChangesetId: string | null = null;
+
+  // Generate a shared ID so the UI can group the DELETE + CREATE as a single logical move
+  const moveGroupId = randomUUID();
+
+  // Stage DELETE for the old relation
+  if (existingRelation) {
+    // Resolve old parent label for richer snapshots
+    const oldParent = await prisma.frames.findUnique({
+      where: { id: existingRelation.target_id },
+      select: { label: true },
+    });
+
+    const relSnapshot = {
+      id: existingRelation.id,
+      source_id: existingRelation.source_id,
+      target_id: existingRelation.target_id,
+      type: existingRelation.type,
+      version: existingRelation.version,
+      move_group_id: moveGroupId,
+      source_label: frame.label,
+      target_label: oldParent?.label ?? null,
+    } as unknown as Record<string, unknown>;
+
+    const deleteChangeset = await createChangesetFromDelete(
+      'frame_relation',
+      existingRelation.id,
+      relSnapshot,
+      userId,
+      llmJobId,
+    );
+    deleteChangesetId = deleteChangeset.id.toString();
+  }
+
+  // Stage CREATE for the new relation
+  const createChangeset = await createChangesetFromCreate(
+    'frame_relation',
+    {
+      source_id: frameId,
+      target_id: newParentFrameId,
+      type: 'parent_of',
+      move_group_id: moveGroupId,
+      source_label: frame.label,
+      target_label: newParent.label,
+    } as unknown as Record<string, unknown>,
+    userId,
+    llmJobId,
+  );
+
+  return {
+    staged: true,
+    deleteChangesetId,
+    createChangesetId: createChangeset.id.toString(),
+    message: existingRelation
+      ? `Reparent staged: will move from old parent to "${newParent.label}"`
+      : `Reparent staged: will set parent to "${newParent.label}"`,
+  };
+}
+
+/**
+ * Walk up the parent_of chain from `startFrameId` and throw if `targetFrameId` is encountered,
+ * which would indicate a cycle.
+ */
+async function assertNoCycle(targetFrameId: bigint, startFrameId: bigint): Promise<void> {
+  const visited = new Set<string>();
+  let current = startFrameId;
+
+  while (true) {
+    const key = current.toString();
+    if (visited.has(key)) break;
+    visited.add(key);
+
+    if (current === targetFrameId) {
+      throw new Error(
+        'Reparenting would create a cycle in the parent_of hierarchy'
+      );
+    }
+
+    const parentRel = await prisma.frame_relations.findFirst({
+      where: {
+        source_id: current,
+        type: 'parent_of',
+      },
+      select: { target_id: true },
+    });
+
+    if (!parentRel) break;
+    current = parentRel.target_id;
+  }
 }

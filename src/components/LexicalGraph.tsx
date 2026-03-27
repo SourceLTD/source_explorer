@@ -182,8 +182,8 @@ export default function LexicalGraph({ currentNode, onNodeClick, onEditClick, mo
     const closedNodeHeight = 45;
     const currentNodeHeight = LEXICAL_MAIN_NODE_FIXED_HEIGHT;
     const rowSpacing = 50;
-    const margin = 50;
-    const spacingFromCenter = 80;
+    const margin = 20;
+    const spacingFromCenter = 60;
     
     const hypernymsToShow = currentNode.parents;
     const hyponymsToShow = currentNode.children;
@@ -191,15 +191,16 @@ export default function LexicalGraph({ currentNode, onNodeClick, onEditClick, mo
     const parentRows = arrangeNodesInRows(hypernymsToShow, maxRowWidth, nodeSpacing);
     const childRows = arrangeNodesInRows(hyponymsToShow, maxRowWidth, nodeSpacing);
     
-    // Fixed vertical position for main node (consistent across all lexical units)
-    const fixedMainY = margin + 40 + currentNodeHeight / 2;
+    // Fixed vertical position for main node: enough room for 1 parent row above
+    const fixedMainY = margin + closedNodeHeight + spacingFromCenter + currentNodeHeight / 2;
     
-    // If many parent rows need more space, shift everything down
-    const parentAreaBottom = fixedMainY - currentNodeHeight / 2 - spacingFromCenter;
-    const topMostParentY = parentRows.length > 0
-      ? parentAreaBottom - (parentRows.length - 1) * (closedNodeHeight + rowSpacing) - closedNodeHeight / 2
-      : fixedMainY;
-    const topShift = topMostParentY < margin ? margin - topMostParentY : 0;
+    // Only shift down if parents need more space than reserved
+    let topShift = 0;
+    if (parentRows.length > 1) {
+      const bottomParentY = fixedMainY - currentNodeHeight / 2 - spacingFromCenter - closedNodeHeight / 2;
+      const topMostParentY = bottomParentY - (parentRows.length - 1) * (closedNodeHeight + rowSpacing);
+      topShift = Math.max(0, margin - topMostParentY);
+    }
     const centerY = fixedMainY + topShift;
 
     const spaceNeededBelow = childRows.length > 0 ? 

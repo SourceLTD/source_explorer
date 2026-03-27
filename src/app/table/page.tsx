@@ -16,12 +16,6 @@ function TableModeContent() {
   const tabs = (
     <>
       <button
-        onClick={() => router.push('/table/super-frames')}
-        className="px-4 py-2 text-base font-medium transition-colors relative cursor-pointer text-gray-600 hover:text-gray-900 hover:bg-gray-50"
-      >
-        Super Frames
-      </button>
-      <button
         onClick={() => router.push('/table/frames')}
         className="px-4 py-2 text-base font-medium transition-colors relative cursor-pointer text-gray-600 hover:text-gray-900 hover:bg-gray-50"
       >

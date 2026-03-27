@@ -13,7 +13,7 @@ export interface FilterState {
   pos?: string;
   lexfile?: string;
   frame_id?: string; // Comma-separated frame IDs
-  super_frame_id?: string; // Parent super-frame ID (frames table)
+  parent_frame_id?: string; // Parent frame ID (via parent_of relation)
   // AI jobs filters
   flaggedByJobId?: string;
 

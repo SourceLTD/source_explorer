@@ -220,10 +220,8 @@ async function fetchJobRecord(jobId: bigint, options: FetchOptions = {}): Promis
       gloss?: string | null; 
       lemmas?: string[] | null;
       label?: string | null;
-      isSuperFrame?: boolean | null;
       lexical_units?: any[] | null;
       roles?: any[] | null;
-      child_frames?: any[] | null;
     } 
   }> = Array.isArray(job.llm_job_items)
     ? job.llm_job_items.map((item: llm_job_items) => ({
@@ -285,16 +283,13 @@ function extractEntrySummary(item: llm_job_items): {
   gloss?: string | null;
   lemmas?: string[] | null;
   label?: string | null;
-  isSuperFrame?: boolean | null;
   lexical_units?: any[] | null;
   roles?: any[] | null;
-  child_frames?: any[] | null;
 } {
   const payload = (item.request_payload as Prisma.JsonObject | null) ?? {};
   const entry = (payload.entry as Prisma.JsonObject | undefined) ?? {};
   const frameInfo = (payload.frameInfo as Prisma.JsonObject | undefined) ?? {};
   
-  // Be extremely robust with type extraction from JSON
   const rawCode = entry.code;
   const rawLabel = entry.label || frameInfo.name;
   
@@ -302,20 +297,14 @@ function extractEntrySummary(item: llm_job_items): {
   const label = rawLabel !== null && rawLabel !== undefined ? String(rawLabel) : null;
   const pos = (entry.pos as JobTargetType) ?? (item.frame_id ? 'frames' : null);
 
-  // Determine if it is a super frame
-  const isSuperFrame = (entry.isSuperFrame as boolean) ?? (item.frame_id ? (entry.child_frames && (entry.child_frames as any[]).length > 0) : false);
-
   return {
-    // Always prefer code if available and not just a numeric ID fallback
     code: (code && code.trim() !== '' && !/^\d+$/.test(code)) ? code : (label && label.trim() !== '' && !/^\d+$/.test(label)) ? label : code || label || (item.frame_id ?? item.lexical_unit_id ?? item.id).toString(),
     pos,
     gloss: (entry.gloss as string) ?? null,
     lemmas: (entry.lemmas as string[]) ?? null,
     label,
-    isSuperFrame,
     lexical_units: (entry.lexical_units as any[]) ?? null,
     roles: (entry.roles as any[]) ?? null,
-    child_frames: (entry.child_frames as any[]) ?? null,
   };
 }
 
@@ -356,25 +345,12 @@ function buildVariableMap(entry: LexicalUnitSummary): Record<string, string> {
   if (entry.pos === 'frames') {
     base.definition = entry.definition ?? '';
     base.short_definition = entry.short_definition ?? '';
-    base.super_frame_id = entry.super_frame_id ?? '';
-    base['super_frame.id'] = entry.super_frame?.id ?? '';
-    base['super_frame.code'] = entry.super_frame?.code ?? '';
-    base['super_frame.label'] = entry.super_frame?.label ?? '';
-    base['super_frame.definition'] = entry.super_frame?.definition ?? '';
-    base['super_frame.short_definition'] = entry.super_frame?.short_definition ?? '';
     base.flagged = entry.flagged ? 'true' : 'false';
     base.flagged_reason = entry.flagged_reason ?? '';
     base.verifiable = entry.verifiable ? 'true' : 'false';
     base.unverifiable_reason = entry.unverifiable_reason ?? '';
     base.roles_count = String(entry.roles?.length ?? 0);
-    
-    // Handle superframes vs regular frames
-    if (entry.isSuperFrame) {
-      base.child_frames_count = String(entry.child_frames?.length ?? 0);
-      // Don't include lexical_units_count for superframes
-    } else {
-      base.lexical_units_count = String(entry.lexical_units?.length ?? 0);
-    }
+    base.lexical_units_count = String(entry.lexical_units?.length ?? 0);
   }
 
   if (entry.additional) {
@@ -414,16 +390,8 @@ function buildTemplateContext(entry: LexicalUnitSummary): Record<string, unknown
   if (entry.pos === 'frames') {
     context.definition = entry.definition ?? '';
     context.short_definition = entry.short_definition ?? '';
-    context.super_frame_id = entry.super_frame_id ?? null;
-    context.super_frame = entry.super_frame ?? null;
     context.roles = entry.roles ?? [];
     context.roles_count = entry.roles?.length ?? 0;
-    
-    // Include both child frames and lexical units if present
-    context.isSuperFrame = entry.isSuperFrame ?? false;
-    
-    context.child_frames = entry.child_frames ?? [];
-    context.child_frames_count = entry.child_frames?.length ?? 0;
     
     context.lexical_units = entry.lexical_units ?? [];
     context.lexical_units_count = entry.lexical_units?.length ?? 0;
@@ -577,12 +545,11 @@ function autoK(n: number): number {
   return clampInt(Math.sqrt(n), 2, 12);
 }
 
-function extractTargetLoopCollections(template: string): Set<'lexical_units' | 'child_frames'> {
+function extractTargetLoopCollections(template: string): Set<'lexical_units'> {
   const collections = extractLoopCollections(template);
-  const out = new Set<'lexical_units' | 'child_frames'>();
+  const out = new Set<'lexical_units'>();
   for (const c of collections) {
     if (c === 'lexical_units') out.add('lexical_units');
-    if (c === 'child_frames') out.add('child_frames');
   }
   return out;
 }
@@ -604,7 +571,7 @@ function stableClusterOrder<T extends { _cluster_num: number }>(items: T[]): T[]
 
 function injectClusterHeaderIntoForLoop(
   template: string,
-  options: { collection: 'lexical_units' | 'child_frames' }
+  options: { collection: 'lexical_units' }
 ): string {
   const { collection } = options;
   // Inject header printing into loops like:
@@ -630,7 +597,7 @@ function injectClusterHeaderIntoForLoop(
 }
 
 async function clusterLoopList(
-  collection: 'lexical_units' | 'child_frames',
+  collection: 'lexical_units',
   items: Array<any>,
   cfg: PromptClusteringConfig
 ): Promise<Array<any>> {
@@ -647,22 +614,10 @@ async function clusterLoopList(
 
   let k = cfg.kOverride ? clampInt(cfg.kOverride, 2, ids.length) : clampInt(autoK(ids.length), 2, ids.length);
 
-  // Call source-clustering; retry if k is too large after DB-side filtering (missing embeddings).
   const call = async (kk: number) => {
-    if (collection === 'lexical_units') {
-      return callSourceClustering({
-        mode: 'lexical_unit',
-        ids_kind: 'lexical_unit_ids',
-        ids,
-        k: kk,
-        seed: 42,
-        max_iters: 20,
-        dtype: 'float32',
-      });
-    }
     return callSourceClustering({
-      mode: 'frame',
-      ids_kind: 'frame_ids',
+      mode: 'lexical_unit',
+      ids_kind: 'lexical_unit_ids',
       ids,
       k: kk,
       seed: 42,
@@ -768,25 +723,6 @@ export async function renderPromptAsync(
           } catch (error) {
             const msg = error instanceof Error ? error.message : String(error);
             options?.onClusteringError?.(`Clustering failed for lexical_units: ${msg}`);
-          }
-        }
-
-        if (loopCollections.has('child_frames') && Array.isArray((clusteredContext as any).child_frames)) {
-          try {
-            const clustered = await clusterLoopList(
-              'child_frames',
-              (clusteredContext as any).child_frames,
-              clusteringCfg
-            );
-            const hasClusterNums = clustered.some((x) => typeof x?._cluster_num === 'number');
-            if (hasClusterNums) {
-              (clusteredContext as any).child_frames = clustered;
-              effectiveTemplate = injectClusterHeaderIntoForLoop(effectiveTemplate, { collection: 'child_frames' });
-              didClusterAny = true;
-            }
-          } catch (error) {
-            const msg = error instanceof Error ? error.message : String(error);
-            options?.onClusteringError?.(`Clustering failed for child_frames: ${msg}`);
           }
         }
 
@@ -962,12 +898,8 @@ export async function createLLMJob(
         lexfile: entry.lexfile ?? null,
         definition: entry.definition ?? null,
         short_definition: entry.short_definition ?? null,
-        super_frame_id: entry.super_frame_id ?? null,
-        super_frame: entry.super_frame ?? null,
-        isSuperFrame: entry.isSuperFrame ?? false,
         lexical_units: (entry.lexical_units ?? []) as any[],
         roles: (entry.roles ?? []) as any[],
-        child_frames: (entry.child_frames ?? []) as any[],
       },
       frameInfo,
     } satisfies Record<string, unknown>;
@@ -1058,20 +990,10 @@ export async function listLLMJobs(options: JobListOptions = {}): Promise<Seriali
     jobs = jobs.filter(job => {
       const scope = job.scope as JobScope | null;
       const jobTargetType = inferTargetTypeFromJobScope(scope);
-      const jobIsSuperFrame = scope && 'isSuperFrame' in scope ? scope.isSuperFrame === true : false;
       
-      // Handle special entity type filters
       if (options.entityType === 'lexical_units') {
-        // Show all jobs targeting any part of speech
         return isLexicalUnitPOS(jobTargetType);
-      } else if (options.entityType === 'super_frames') {
-        // Show only jobs explicitly created for super frames
-        return jobTargetType === 'frames' && jobIsSuperFrame;
-      } else if (options.entityType === 'frames_only') {
-        // Show only jobs for regular frames (not super frames)
-        return jobTargetType === 'frames' && !jobIsSuperFrame;
       } else if (options.entityType === 'frames') {
-        // 'frames' mode shows both super frames and regular frames (legacy behavior)
         return jobTargetType === 'frames';
       }
       
@@ -1224,15 +1146,9 @@ export async function getUnseenJobsCount(targetType?: JobEntityTypeFilter): Prom
     return jobs.filter(job => {
       const scope = job.scope as JobScope | null;
       const jobTargetType = inferTargetTypeFromJobScope(scope);
-      const jobIsSuperFrame = scope && 'isSuperFrame' in scope ? scope.isSuperFrame === true : false;
       
-      // Handle special target type filters
       if (targetType === 'lexical_units') {
         return isLexicalUnitPOS(jobTargetType);
-      } else if (targetType === 'super_frames') {
-        return jobTargetType === 'frames' && jobIsSuperFrame;
-      } else if (targetType === 'frames_only') {
-        return jobTargetType === 'frames' && !jobIsSuperFrame;
       } else if (targetType === 'frames') {
         return jobTargetType === 'frames';
       }

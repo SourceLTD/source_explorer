@@ -12,8 +12,7 @@ export type JobTargetType = POSType | 'lexical_units' | 'frames';
 export interface JobScopeIds {
   kind: 'ids';
   targetType: JobTargetType;
-  ids: string[]; // lexical codes (e.g., say.v.01) or frame IDs
-  isSuperFrame?: boolean; // true if targeting super frames specifically
+  ids: string[];
 }
 
 export interface JobScopeFrameIds {
@@ -24,7 +23,6 @@ export interface JobScopeFrameIds {
   flagTarget?: 'frame' | 'lexical_unit' | 'both';
   offset?: number;
   limit?: number;
-  isSuperFrame?: boolean; // true if targeting super frames specifically
 }
 
 export interface JobScopeFilters {
@@ -35,7 +33,6 @@ export interface JobScopeFilters {
     offset?: number;
     where?: BooleanFilterGroup;
   };
-  isSuperFrame?: boolean; // true if targeting super frames specifically
 }
 
 export type JobScope = JobScopeIds | JobScopeFrameIds | JobScopeFilters;
@@ -105,30 +102,6 @@ export interface FrameLexicalUnitData {
 }
 
 /**
- * Structured child frame data for superframe template loops
- */
-export interface ChildFrameData {
-  id: string;
-  code: string | null;
-  label: string;
-  definition: string | null;
-  short_definition: string | null;
-  roles_count: number;
-  lexical_units_count: number;
-}
-
-/**
- * Parent superframe data (for frame allocation / display).
- */
-export interface ParentSuperFrameData {
-  id: string;
-  code: string | null;
-  label: string;
-  definition: string | null;
-  short_definition: string | null;
-}
-
-/**
  * Structured frame data with nested relations for template rendering
  */
 export interface FrameRelationData {
@@ -159,13 +132,8 @@ export interface LexicalUnitSummary {
   // Frame-specific fields
   definition?: string | null;
   short_definition?: string | null;
-  super_frame_id?: string | null;
-  super_frame?: ParentSuperFrameData | null;
   roles?: FrameRoleData[];
   lexical_units?: FrameLexicalUnitData[];
-  // Superframe-specific fields
-  isSuperFrame?: boolean;
-  child_frames?: ChildFrameData[];
 }
 
 export interface RenderedPrompt {
@@ -198,19 +166,16 @@ export interface SerializedJob extends Omit<llm_jobs, 'id' | 'created_at' | 'upd
       gloss?: string | null;
       lemmas?: string[] | null;
       label?: string | null;
-      isSuperFrame?: boolean | null;
       lexical_units?: any[] | null;
       roles?: any[] | null;
-      child_frames?: any[] | null;
     };
   }>;
 }
 
 /**
  * Extended entity type for job filtering.
- * Includes UI modes like 'lexical_units', 'super_frames' and 'frames_only' in addition to JobTargetType.
  */
-export type JobEntityTypeFilter = JobTargetType | 'lexical_units' | 'super_frames' | 'frames_only';
+export type JobEntityTypeFilter = JobTargetType | 'lexical_units';
 
 export interface JobListOptions {
   includeCompleted?: boolean;

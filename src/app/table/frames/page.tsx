@@ -23,12 +23,6 @@ function FramesTableModeContent() {
   const tabs = (
     <>
       <button
-        onClick={() => router.push('/table/super-frames')}
-        className="px-4 py-2 text-base font-medium transition-colors relative cursor-pointer text-gray-600 hover:text-gray-900 hover:bg-gray-50"
-      >
-        Super Frames
-      </button>
-      <button
         className="px-4 py-2 text-base font-medium transition-colors relative cursor-pointer text-blue-600 border-b-2 border-blue-600"
       >
         Frames
@@ -61,7 +55,7 @@ function FramesTableModeContent() {
         <Suspense fallback={<div className="p-8 text-center text-gray-500">Loading...</div>}>
           <DataTable 
             searchQuery={searchQuery}
-            mode="frames_only"
+            mode="frames"
             onEditClick={editOverlay.handleEditClick}
             refreshTrigger={editOverlay.refreshTrigger}
           />

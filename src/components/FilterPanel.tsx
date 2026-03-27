@@ -90,8 +90,8 @@ export default function FilterPanel({
   const buttonRef = useRef<HTMLButtonElement>(null);
   const frameDropdownContainerRef = useRef<HTMLDivElement>(null);
   const jobDropdownContainerRef = useRef<HTMLDivElement>(null);
-  const isFramesMode = mode === 'frames' || mode === 'super_frames' || mode === 'frames_only';
-  const canFilterBySuperFrameId = mode === 'frames' || mode === 'frames_only';
+  const isFramesMode = mode === 'frames';
+  const canFilterByParentFrameId = mode === 'frames';
   
   const toggleSection = (section: string) => {
     setOpenSections(prev => {
@@ -105,17 +105,17 @@ export default function FilterPanel({
     });
   };
 
-  // If a deep link sets a super_frame_id, make sure the relevant section is visible when opening the panel.
+  // If a deep link sets a parent_frame_id, make sure the relevant section is visible when opening the panel.
   useEffect(() => {
-    if (!canFilterBySuperFrameId) return;
-    if (!filters.super_frame_id) return;
+    if (!canFilterByParentFrameId) return;
+    if (!filters.parent_frame_id) return;
     setOpenSections(prev => {
       if (prev.has('hierarchy')) return prev;
       const next = new Set(prev);
       next.add('hierarchy');
       return next;
     });
-  }, [canFilterBySuperFrameId, filters.super_frame_id]);
+  }, [canFilterByParentFrameId, filters.parent_frame_id]);
 
   useEffect(() => {
     if (!isFramesMode) return;
@@ -225,8 +225,7 @@ export default function FilterPanel({
       normalizedValue = undefined;
     }
 
-    // Guard: super frame IDs must be numeric; strip non-digits to avoid server BigInt() errors.
-    if (key === 'super_frame_id' && typeof normalizedValue === 'string') {
+    if (key === 'parent_frame_id' && typeof normalizedValue === 'string') {
       normalizedValue = normalizedValue.replace(/[^\d]/g, '');
       if (normalizedValue === '') {
         normalizedValue = undefined;
@@ -601,7 +600,7 @@ export default function FilterPanel({
             )}
 
             {/* Frame hierarchy filters */}
-            {canFilterBySuperFrameId && (
+            {canFilterByParentFrameId && (
               <FilterSection
                 title="Hierarchy"
                 icon={<HashtagIcon className="w-4 h-4 text-gray-600" />}
@@ -609,18 +608,18 @@ export default function FilterPanel({
                 onToggle={() => toggleSection('hierarchy')}
               >
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Super Frame ID</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Parent Frame ID</label>
                   <input
                     type="text"
                     inputMode="numeric"
                     pattern="[0-9]*"
-                    value={filters.super_frame_id || ''}
-                    onChange={(e) => updateFilter('super_frame_id', e.target.value)}
+                    value={filters.parent_frame_id || ''}
+                    onChange={(e) => updateFilter('parent_frame_id', e.target.value)}
                     placeholder="e.g., 12345"
                     className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
                   />
                   <p className="mt-1 text-xs text-gray-500">
-                    Show only child frames whose parent super frame matches this ID.
+                    Show only frames that inherit from this frame.
                   </p>
                 </div>
               </FilterSection>
@@ -989,7 +988,7 @@ export default function FilterPanel({
 
             {isFramesMode && (
               <FilterSection
-                title={mode === 'super_frames' ? 'Frames' : 'Lexical Units'}
+                title="Lexical Units"
                 icon={<HashtagIcon className="w-4 h-4 text-gray-600" />}
                 isOpen={openSections.has('relationships')}
                 onToggle={() => toggleSection('relationships')}

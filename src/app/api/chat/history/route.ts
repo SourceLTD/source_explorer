@@ -12,6 +12,7 @@ export async function GET(request: Request) {
   const limit = Math.min(parseInt(searchParams.get('limit') || '20', 10), 50);
   const startingAfter = searchParams.get('starting_after');
   const endingBefore = searchParams.get('ending_before');
+  const archived = searchParams.get('archived') === 'true';
 
   try {
     const result = await getChatsByUserId({
@@ -19,6 +20,7 @@ export async function GET(request: Request) {
       limit,
       startingAfter,
       endingBefore,
+      archived,
     });
     return Response.json(result);
   } catch (error) {

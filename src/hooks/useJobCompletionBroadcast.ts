@@ -19,7 +19,7 @@ interface BroadcastMessage {
  * Hook that broadcasts AI job completions across browser tabs and within the same tab.
  * Uses BroadcastChannel API for cross-tab communication and custom events for same-tab.
  * 
- * @param entityType - The entity type to monitor (e.g., 'frames_only', 'super_frames', 'lexical_units')
+ * @param entityType - The entity type to monitor (e.g., 'frames', 'lexical_units')
  * @param onJobCompleted - Callback to invoke when a job completes
  * @param isOverlayOpen - Whether the AI overlay is currently open (to avoid duplicate polling)
  */
@@ -161,21 +161,16 @@ export function useJobCompletionBroadcast(
 
 /**
  * Get entity types that should trigger a refresh for the given type.
- * For example, 'frames_only' should refresh when 'frames' jobs complete.
  */
 function getRelevantEntityTypes(entityType: string): string[] {
   switch (entityType) {
-    case 'frames_only':
-    case 'super_frames':
     case 'frames':
-      // All frame-related views should refresh for any frame job
-      return ['frames_only', 'super_frames', 'frames'];
+      return ['frames'];
     case 'lexical_units':
     case 'verbs':
     case 'nouns':
     case 'adjectives':
     case 'adverbs':
-      // All lexical unit views refresh together
       return ['lexical_units', 'verbs', 'nouns', 'adjectives', 'adverbs'];
     default:
       return [entityType];

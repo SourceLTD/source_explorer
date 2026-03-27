@@ -83,17 +83,6 @@ const selectFramesParams = z.object({
   limit: z.number().int().min(1).max(100).default(100).describe('Max results'),
 });
 
-const selectSuperframesParams = z.object({
-  ids: z.array(z.number().int()).optional().describe('Filter by specific superframe IDs'),
-  label: z.string().optional().describe('Substring match on label (case-insensitive)'),
-  definition: z.string().optional().describe('Substring match on definition (case-insensitive)'),
-  flagged: z.boolean().optional().describe('Filter by flagged status'),
-  verifiable: z.boolean().optional().describe('Filter by verifiable status'),
-  include_roles: z.boolean().default(true).describe('Include frame roles in the response'),
-  child_frames_limit: z.number().int().min(1).max(80).default(80).describe('Max child frames per superframe'),
-  limit: z.number().int().min(1).max(50).default(50).describe('Max results'),
-});
-
 const selectLexicalUnitsParams = z.object({
   ids: z.array(z.number().int()).optional().describe('Filter by specific lexical unit IDs'),
   codes: z.array(z.string()).optional().describe('Filter by codes like "run.v.01", "dog.n.01"'),
@@ -106,38 +95,45 @@ const selectLexicalUnitsParams = z.object({
   limit: z.number().int().min(1).max(100).default(100).describe('Max results'),
 });
 
+const reparentFrameParams = z.object({
+  frame_id: z.number().int().describe('ID of the frame to reparent'),
+  new_parent_frame_id: z.number().int().describe('ID of the new parent frame in the parent_of hierarchy'),
+  author: z.string().default('chat').describe('Author of the change'),
+});
+
+const askQuestionsParams = z.object({
+  title: z.string().optional().describe('Optional title for the questions section, e.g. "Questions"'),
+  questions: z.array(z.object({
+    id: z.string().describe('Unique identifier for this question, e.g. "q1"'),
+    prompt: z.string().describe('The question text to present to the user'),
+    options: z.array(z.object({
+      id: z.string().describe('Short option identifier, e.g. "A", "B", "C"'),
+      label: z.string().describe('Display text for this option'),
+    })).min(2).describe('Available choices (minimum 2)'),
+    allow_multiple: z.boolean().default(false).describe('Whether multiple options can be selected simultaneously'),
+  })).min(1).describe('One or more questions to present to the user'),
+});
+
+export type AskQuestionsInput = z.infer<typeof askQuestionsParams>;
+
 type SearchFramesInput = z.infer<typeof searchFramesParams>;
 type SelectFramesInput = z.infer<typeof selectFramesParams>;
-type SelectSuperframesInput = z.infer<typeof selectSuperframesParams>;
 type SelectLexicalUnitsInput = z.infer<typeof selectLexicalUnitsParams>;
+type ReparentFrameInput = z.infer<typeof reparentFrameParams>;
 
 export const chatTools = {
   search_frames: tool<SearchFramesInput, any>({
     description:
-      'Search for semantic frames using natural language. Uses vector embeddings to find frames semantically similar to the query. Returns non-top-level frames (frames that belong to a superframe).',
+      'Search for semantic frames using natural language. Uses vector embeddings to find frames semantically similar to the query.',
     inputSchema: searchFramesParams,
     execute: async (params) => callMcpTool('search_frames', params),
   }),
 
-  search_superframes: tool<SearchFramesInput, any>({
-    description:
-      'Search for superframes (top-level frames) using natural language. Uses vector embeddings to find superframes semantically similar to the query.',
-    inputSchema: searchFramesParams,
-    execute: async (params) => callMcpTool('search_superframes', params),
-  }),
-
   select_frames: tool<SelectFramesInput, any>({
     description:
-      'Look up frames by specific criteria: IDs, label substring, definition substring, or flag states. Use this when you know the exact frame you want or need to filter by properties. Returns non-top-level frames.',
+      'Look up frames by specific criteria: IDs, label substring, definition substring, or flag states. Use this when you know the exact frame you want or need to filter by properties.',
     inputSchema: selectFramesParams,
     execute: async (params) => callMcpTool('select_frames', params),
-  }),
-
-  select_superframes: tool<SelectSuperframesInput, any>({
-    description:
-      'Look up superframes (top-level frames) by specific criteria. Returns superframe details plus their child frames.',
-    inputSchema: selectSuperframesParams,
-    execute: async (params) => callMcpTool('select_superframes', params),
   }),
 
   select_lexical_units: tool<SelectLexicalUnitsInput, any>({
@@ -145,5 +141,18 @@ export const chatTools = {
       'Look up lexical units (word senses) by specific criteria: IDs, codes (e.g. "run.v.01"), part of speech, lemma, gloss, frame assignment, or flags. Returns detailed linguistic properties.',
     inputSchema: selectLexicalUnitsParams,
     execute: async (params) => callMcpTool('select_lexical_units', params),
+  }),
+
+  reparent_frame: tool<ReparentFrameInput, any>({
+    description:
+      'Move a frame to a new parent in the parent_of DAG hierarchy. Stages a pending changeset that removes the old parent_of relation and creates a new one. Validates that both frames exist and that the reparent does not create a cycle. The change requires human approval before taking effect.',
+    inputSchema: reparentFrameParams,
+    execute: async (params) => callMcpTool('reparent_frame', params),
+  }),
+
+  ask_questions: tool({
+    description:
+      'Present one or more structured multiple-choice questions to the user and wait for their answers. Use this when you need clarification, the user\'s request is ambiguous, there are multiple valid approaches, or a decision point requires human input. Each question must have 2-6 options. Always include a final option like "Let me explain" or "Other" so the user can provide a custom answer. The tool pauses execution until the user responds. IMPORTANT: You must call this tool at most ONCE per response. Put ALL questions into the single call\'s questions array — never split questions across multiple ask_questions calls.',
+    inputSchema: askQuestionsParams,
   }),
 };

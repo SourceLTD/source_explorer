@@ -32,15 +32,6 @@ export async function GET(
           },
           take: 100,
         },
-        // Include parent super frame info with its roles (for regular frames to show inherited roles)
-        frames: {
-          select: {
-            id: true,
-            label: true,
-            code: true,
-            frame_roles: true,
-          },
-        },
       },
     });
 
@@ -62,29 +53,15 @@ export async function GET(
       fillers: role.fillers,
     }));
 
-    // For regular frames, use parent's roles; for super frames, use own roles
-    const isRegularFrame = frame.super_frame_id !== null;
-    const rolesToUse = isRegularFrame && frame.frames?.frame_roles 
-      ? frame.frames.frame_roles 
-      : frame.frame_roles;
-
     const serialized = {
       ...frame,
       id: frame.id.toString(),
-      super_frame_id: frame.super_frame_id?.toString() ?? null,
-      super_frame: frame.frames ? {
-        id: frame.frames.id.toString(),
-        label: frame.frames.label,
-        code: frame.frames.code,
-      } : null,
-      frame_roles: serializeRoles(rolesToUse || []),
+      frame_roles: serializeRoles(frame.frame_roles || []),
       lexical_units: (frame as any).frame_lexical_units.map((flu: any) => ({
         ...flu.lexical_units,
         id: flu.lexical_units.id.toString(),
       })),
     };
-    // Remove the raw frames relation from the response
-    delete (serialized as any).frames;
 
     // Attach & apply pending changes so the edit overlay can immediately reflect staged updates
     const pendingInfo = await getPendingInfoForEntity('frame', id);
@@ -132,7 +109,7 @@ export async function GET(
         continue;
       }
 
-      // Scalar fields: apply directly (e.g., label, definition, short_definition, super_frame_id, verifiable, etc.)
+      // Scalar fields: apply directly (e.g., label, definition, short_definition, verifiable, etc.)
       (serializedWithPending as any)[fieldName] = pendingField.new_value;
     }
 
@@ -200,7 +177,6 @@ export async function PATCH(
     if (body.label !== undefined) updateData.label = body.label;
     if (body.definition !== undefined) updateData.definition = body.definition;
     if (body.short_definition !== undefined) updateData.short_definition = body.short_definition;
-    if (body.super_frame_id !== undefined) updateData.super_frame_id = body.super_frame_id;
     
     const flagUpdates: Record<string, any> = {};
     if (body.flagged !== undefined) flagUpdates.flagged = body.flagged;

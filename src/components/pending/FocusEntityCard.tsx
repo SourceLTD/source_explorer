@@ -49,7 +49,7 @@ const META_KEYS = new Set(['id', 'created_at', 'updated_at', 'version', 'deleted
 function getPreferredKeys(entityType: string): string[] {
   switch (entityType) {
     case 'frame':
-      return ['label', 'code', 'short_definition', 'definition', 'super_frame_id'];
+      return ['label', 'code', 'short_definition', 'definition'];
     case 'lexical_unit':
       return ['code', 'pos', 'lemmas', 'gloss', 'frame_id', 'lexfile', 'is_mwe'];
     default:

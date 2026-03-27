@@ -8,7 +8,6 @@ import type { DataTableMode } from '../DataTable/types';
 // Normalize DataTableMode to the simpler Pos type used by BooleanFilterBuilder
 type FilterBuilderPos = 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames' | 'lexical_units';
 function normalizeToFilterPos(mode: DataTableMode): FilterBuilderPos {
-  if (mode === 'super_frames' || mode === 'frames_only') return 'frames';
   return mode as FilterBuilderPos;
 }
 
@@ -222,7 +221,7 @@ export const ScopeSelector = memo(function ScopeSelector({
                   >
                     <ul>
                       {manualIdSuggestions.map((suggestion, idx) => {
-                        const isFrameMode = pos === 'frames' || pos === 'super_frames' || pos === 'frames_only';
+                        const isFrameMode = pos === 'frames';
                         return (
                           <li key={suggestion.code}>
                             <button

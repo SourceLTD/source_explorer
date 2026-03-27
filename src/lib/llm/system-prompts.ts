@@ -18,7 +18,7 @@ CRITICAL RULES:
 2. Do NOT invent new fields. In your structured response, field names must match real database fields for the current entity type.
 3. If the user asks to "improve the definition", edit the correct definition field for the entity:
    - lexical units: use \`gloss\`
-   - frames / superframes: use \`definition\` (or \`short_definition\` if the user asked for the short definition)
+   - frames: use \`definition\` (or \`short_definition\` if the user asked for the short definition)
 4. If the user asks to "add examples", ONLY modify the \`examples\` field (lexical units only).
 5. Stay strictly within the scope of what was requested. Do not "improve" other fields even if you think they need work.
 6. Quality over quantity - make exactly the changes requested, nothing more.`,
@@ -59,16 +59,17 @@ When proposing a split, ensure each new frame has a clear, distinct meaning and 
 
   allocate: `You are an assistant helping to allocate entities to the best-fitting parent category in a lexical database.
 
+For lexical units: recommend the best frame (recommended_frame_id).
+For frames: recommend either the best superframe (recommended_super_frame_id) or the best parent in the parent_of DAG hierarchy (recommended_parent_frame_id). Use recommended_parent_frame_id when the task involves inheritance relationships between frames, and recommended_super_frame_id when the task involves superframe grouping.
+
 Use the provided entry data and return your result strictly in the required JSON schema.`,
 };
 
 const MCP_TOOL_BLOCKS: Record<string, string> = {
   flag: `${MCP_TOOLS_INTRO}
 You may use these tools to gather additional database context when helpful:
-- search_frames: semantic search for FRAMES (non-top-level; super_frame_id != null) by meaning
-- select_frames: look up FRAMES (non-top-level; super_frame_id != null) by id/label/definition/flags
-- search_superframes: semantic search for SUPERFRAMES (top-level; super_frame_id == null) by meaning
-- select_superframes: look up SUPERFRAMES (top-level; super_frame_id == null) by id/label/definition/flags (includes roles + child frames)
+- search_frames: semantic search for frames by meaning
+- select_frames: look up frames by id/label/definition/flags
 - select_verbs: look up verbs by id/code/lemma/gloss/flags
 - select_lexical_units: look up any lexical units by id/code/pos/lemma/gloss/flags
 
@@ -76,10 +77,8 @@ Use tools only when you need more context for an uncertain case.`,
 
   edit: `${MCP_TOOLS_INTRO}
 You may use these tools to gather context:
-- search_frames (frames only; non-top-level)
-- select_frames (frames only; non-top-level)
-- search_superframes (top-level superframes)
-- select_superframes (top-level superframes)
+- search_frames
+- select_frames
 - select_verbs
 - select_lexical_units
 
@@ -87,28 +86,22 @@ IMPORTANT: Do NOT call edit_frames/edit_verbs/edit_lexical_units directly. Retur
 
   allocate_contents: `${MCP_TOOLS_INTRO}
 You may use these tools to gather additional database context:
-- search_frames (frames only; non-top-level)
-- select_frames (frames only; non-top-level)
-- search_superframes (top-level superframes)
-- select_superframes (top-level superframes)
+- search_frames
+- select_frames
 - select_verbs
 - select_lexical_units`,
 
   review: `${MCP_TOOLS_INTRO}
 You may use these tools to gather additional database context:
-- search_frames (frames only; non-top-level)
-- select_frames (frames only; non-top-level)
-- search_superframes (top-level superframes)
-- select_superframes (top-level superframes)
+- search_frames
+- select_frames
 - select_verbs
 - select_lexical_units`,
 
   split: `${MCP_TOOLS_INTRO}
 You may use these tools to gather additional database context:
-- search_frames (frames only; non-top-level)
-- select_frames (frames only; non-top-level)
-- search_superframes (top-level superframes)
-- select_superframes (top-level superframes)
+- search_frames
+- select_frames
 - select_verbs
 - select_lexical_units
 
@@ -116,10 +109,8 @@ IMPORTANT: Do NOT call create_frame/edit_frames/edit_verbs/edit_lexical_units di
 
   allocate: `${MCP_TOOLS_INTRO}
 You may use these tools to gather additional database context:
-- search_frames (frames only; non-top-level)
-- select_frames (frames only; non-top-level)
-- search_superframes (top-level superframes)
-- select_superframes (top-level superframes)
+- search_frames
+- select_frames
 - select_verbs
 - select_lexical_units`,
 };

@@ -1,9 +1,8 @@
 import React from 'react';
 import { Frame, PendingChangeInfo } from '@/lib/types';
-import { EditableField, FrameOption } from './types';
+import { EditableField } from './types';
 import { OverlaySection } from './OverlaySection';
 import { PendingFieldIndicator } from '@/components/PendingChangeIndicator';
-import { FrameSelector } from './FrameSelector';
 
 interface FramePropertiesSectionProps {
   frame: Frame;
@@ -17,7 +16,6 @@ interface FramePropertiesSectionProps {
   onCancel: () => void;
   isSaving: boolean;
   pending?: PendingChangeInfo | null;
-  availableSuperFrames?: FrameOption[];
 }
 
 export function FramePropertiesSection({
@@ -32,42 +30,7 @@ export function FramePropertiesSection({
   onCancel,
   isSaving,
   pending,
-  availableSuperFrames = []
 }: FramePropertiesSectionProps) {
-  const normalizeId = (v: unknown): string | null => {
-    if (v === null || v === undefined) return null;
-    if (typeof v === 'string') {
-      const trimmed = v.trim();
-      return trimmed ? trimmed : null;
-    }
-    if (typeof v === 'bigint') return v.toString();
-    if (typeof v === 'number' && Number.isInteger(v)) return String(v);
-    return null;
-  };
-
-  const formatFrameRef = (id: string | null, lookup?: (id: string) => { code?: string | null; label?: string | null } | null): string | null => {
-    if (!id) return null;
-    const idTrimmed = id.trim();
-    if (!idTrimmed) return null;
-
-    // Virtual negative IDs (rare here, but supported for consistency)
-    if (/^-\d+$/.test(idTrimmed)) {
-      return `${idTrimmed} (pending)`;
-    }
-
-    if (/^\d+$/.test(idTrimmed)) {
-      const info = lookup ? lookup(idTrimmed) : null;
-      const name =
-        (info?.code && info.code.trim() !== '' ? info.code.trim() : null) ||
-        (info?.label && info.label.trim() !== '' ? info.label.trim() : null) ||
-        'Unknown';
-      return `${name} (#${idTrimmed})`;
-    }
-
-    return idTrimmed;
-  };
-
-  // Helper to check if a field has pending changes
   const hasPendingField = (fieldName: string) => {
     return !!pending?.pending_fields?.[fieldName];
   };
@@ -80,26 +43,6 @@ export function FramePropertiesSection({
     }
     return currentValue;
   };
-
-  const lookupSuperFrameById = (id: string): { code?: string | null; label?: string | null } | null => {
-    // Prefer the currently loaded super_frame relation if it matches
-    if (frame.super_frame && frame.super_frame.id === id) {
-      return { code: frame.super_frame.code ?? null, label: frame.super_frame.label ?? null };
-    }
-    const opt = availableSuperFrames.find(f => f.id === id);
-    if (!opt) return null;
-    return { code: opt.code ?? null, label: opt.label ?? null };
-  };
-
-  // Display for super_frame_id (handles pending changes)
-  const getSuperFrameDisplay = (): string | null => {
-    const superFrameIdRaw = getDisplayValue('super_frame_id', frame.super_frame_id);
-    const superFrameId = normalizeId(superFrameIdRaw);
-    return formatFrameRef(superFrameId, lookupSuperFrameById);
-  };
-
-  // Check if this is a regular frame (not a super frame)
-  const isRegularFrame = frame.super_frame_id !== null;
 
   return (
     <OverlaySection
@@ -264,51 +207,6 @@ export function FramePropertiesSection({
           </PendingFieldIndicator>
         )}
       </div>
-
-      {/* Parent Super Frame - Only shown for regular frames (not super frames) */}
-      {isRegularFrame && (
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-sm font-medium text-gray-700">
-              Parent Super Frame
-              {hasPendingField('super_frame_id') && (
-                <span className="ml-2 text-xs text-orange-600 font-normal">(pending)</span>
-              )}
-            </h3>
-            {editingField !== 'super_frame_id' && (
-              <button
-                onClick={() => onStartEdit('super_frame_id')}
-                className="text-xs text-blue-600 hover:text-blue-600 font-medium cursor-pointer"
-              >
-                Edit
-              </button>
-            )}
-          </div>
-          {editingField === 'super_frame_id' ? (
-            <FrameSelector
-              value={editValue}
-              onChange={onValueChange}
-              availableFrames={availableSuperFrames}
-              onSave={onSave}
-              onCancel={onCancel}
-              isSaving={isSaving}
-            />
-          ) : (
-            <PendingFieldIndicator
-              fieldName="super_frame_id"
-              pending={pending}
-              formatTooltipValue={(value) => {
-                const id = normalizeId(value);
-                return formatFrameRef(id, lookupSuperFrameById);
-              }}
-            >
-              <span className="text-gray-900 text-sm">
-                {getSuperFrameDisplay() || <span className="text-gray-500 italic">None</span>}
-              </span>
-            </PendingFieldIndicator>
-          )}
-        </div>
-      )}
 
     </OverlaySection>
   );

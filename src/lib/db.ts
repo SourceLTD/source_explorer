@@ -779,8 +779,6 @@ export async function getPaginatedFrames(
     createdBefore,
     updatedAfter,
     updatedBefore,
-    isSuperFrame,
-    super_frame_id,
   } = params;
 
   const skip = (page - 1) * limit;
@@ -813,16 +811,6 @@ export async function getPaginatedFrames(
   if (updatedAfter) conditions.push({ updated_at: { gte: new Date(updatedAfter) } });
   if (updatedBefore) conditions.push({ updated_at: { lte: new Date(updatedBefore + 'T23:59:59.999Z') } });
 
-  if (isSuperFrame === 'true') {
-    conditions.push({ super_frame_id: null });
-  } else if (isSuperFrame === 'false') {
-    conditions.push({ super_frame_id: { not: null } });
-  }
-
-  if (super_frame_id) {
-    conditions.push({ super_frame_id: BigInt(super_frame_id) });
-  }
-
   const whereClause: Prisma.framesWhereInput = conditions.length > 0 ? { AND: conditions } : {};
 
   // Build order clause
@@ -844,7 +832,6 @@ export async function getPaginatedFrames(
         select: {
           frame_roles: true,
           frame_lexical_units: true,
-          other_frames: true,
         },
       },
     },
@@ -865,7 +852,6 @@ export async function getPaginatedFrames(
     updatedAt: frame.updated_at,
     roles_count: frame._count.frame_roles,
     lexical_units_count: frame._count.frame_lexical_units,
-    subframes_count: frame._count.other_frames,
     frame_roles: frame.frame_roles.map(role => ({
       id: role.id.toString(),
       description: role.description,

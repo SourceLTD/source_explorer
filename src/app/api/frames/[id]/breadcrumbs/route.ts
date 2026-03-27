@@ -41,8 +41,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
       if (ROOT_FRAME_IDS.has(frame.id)) break;
 
-      const parentRel = await prisma.frame_relations.findFirst({
-        where: { target_id: currentId, type: 'inherits_from' },
+      const parentRel: { source_id: bigint } | null = await prisma.frame_relations.findFirst({
+        where: { target_id: currentId, type: 'parent_of' },
         select: { source_id: true },
       });
 
@@ -58,7 +58,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       gloss: f.short_definition || '',
     }));
 
-    const cacheHeaders = invalidateCache
+    const cacheHeaders: Record<string, string> = invalidateCache
       ? { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate', 'Pragma': 'no-cache', 'Expires': '0' }
       : { 'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=86400' };
 

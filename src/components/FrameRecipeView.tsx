@@ -11,22 +11,9 @@ interface FrameRecipeViewProps {
   onEditClick?: () => void;
 }
 
-// Relation type display labels
+// Relation type display labels - only parent_of is supported
 const RELATION_LABELS: Record<FrameRelationType, string> = {
-  'causes': 'Causes',
-  'inherits_from': 'Inherits From',
-  'inherited_by': 'Inherited By',
-  'uses': 'Uses',
-  'used_by': 'Used By',
-  'subframe_of': 'Subframe Of',
-  'has_subframe': 'Has Subframe',
-  'precedes': 'Precedes',
-  'preceded_by': 'Preceded By',
-  'perspective_on': 'Perspective On',
-  'perspectivized_in': 'Perspectivized In',
-  'see_also': 'See Also',
-  'reframing_mapping': 'Reframing',
-  'metaphor': 'Metaphor',
+  'parent_of': 'Parent Of',
 };
 
 // Vendler class colors
@@ -48,8 +35,6 @@ export default function FrameRecipeView({
     roles: true,
     verbs: true,
     inheritance: true,
-    uses: false,
-    other: false,
   });
 
   const toggleSection = (section: keyof typeof expandedSections) => {
@@ -78,8 +63,8 @@ export default function FrameRecipeView({
   const inheritanceChain = useMemo(() => {
     if (!recipeData) return { parents: [], children: [] };
     return {
-      parents: recipeData.relations.inherits_from,
-      children: recipeData.relations.inherited_by,
+      parents: recipeData.relations.parent_of,
+      children: recipeData.relations.child_of,
     };
   }, [recipeData]);
 
@@ -319,101 +304,6 @@ export default function FrameRecipeView({
               );
             })()}
           </div>
-
-          {/* Uses/Used By Section */}
-          {recipeData && (recipeData.relations.uses.length > 0 || recipeData.relations.used_by.length > 0) && (
-            <div className="mb-6">
-              <button
-                onClick={() => toggleSection('uses')}
-                className="flex items-center gap-2 text-gray-800 font-semibold mb-3"
-              >
-                <span>{expandedSections.uses ? '▼' : '▶'}</span>
-                Uses Relations ({recipeData.relations.uses.length + recipeData.relations.used_by.length})
-              </button>
-              
-              {expandedSections.uses && (
-                <div className="space-y-4">
-                  {recipeData.relations.uses.length > 0 && (
-                    <div>
-                      <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Uses</div>
-                      <div className="space-y-2">
-                        {recipeData.relations.uses.map(frame => (
-                          <div 
-                            key={frame.id}
-                            onClick={() => onFrameClick(frame.id)}
-                            className="p-3 bg-indigo-50 border border-indigo-200 rounded-lg cursor-pointer hover:bg-indigo-100 transition-colors"
-                          >
-                            <div className="font-semibold text-indigo-800">{frame.label}</div>
-                            {frame.short_definition && (
-                              <p className="text-sm text-indigo-700 mt-1">{frame.short_definition}</p>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  
-                  {recipeData.relations.used_by.length > 0 && (
-                    <div>
-                      <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Used By</div>
-                      <div className="space-y-2">
-                        {recipeData.relations.used_by.map(frame => (
-                          <div 
-                            key={frame.id}
-                            onClick={() => onFrameClick(frame.id)}
-                            className="p-3 bg-teal-50 border border-teal-200 rounded-lg cursor-pointer hover:bg-teal-100 transition-colors"
-                          >
-                            <div className="font-semibold text-teal-800">{frame.label}</div>
-                            {frame.short_definition && (
-                              <p className="text-sm text-teal-700 mt-1">{frame.short_definition}</p>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Other Relations Section */}
-          {recipeData && recipeData.relations.other.length > 0 && (
-            <div>
-              <button
-                onClick={() => toggleSection('other')}
-                className="flex items-center gap-2 text-gray-800 font-semibold mb-3"
-              >
-                <span>{expandedSections.other ? '▼' : '▶'}</span>
-                Other Relations ({recipeData.relations.other.length})
-              </button>
-              
-              {expandedSections.other && (
-                <div className="space-y-2">
-                  {recipeData.relations.other.map((rel, idx) => (
-                    <div 
-                      key={idx}
-                      onClick={() => onFrameClick(rel.frame.id)}
-                      className="p-3 bg-gray-50 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-gray-500">
-                          {rel.direction === 'outgoing' ? '→' : '←'}
-                        </span>
-                        <span className="text-xs font-medium text-gray-600">
-                          {RELATION_LABELS[rel.type] || rel.type}
-                        </span>
-                      </div>
-                      <div className="font-semibold text-gray-800">{rel.frame.label}</div>
-                      {rel.frame.short_definition && (
-                        <p className="text-sm text-gray-600 mt-1">{rel.frame.short_definition}</p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
         </div>
       </div>
     </div>

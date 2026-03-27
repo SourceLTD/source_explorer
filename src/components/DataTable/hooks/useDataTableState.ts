@@ -99,10 +99,10 @@ function parseURLParams(
   });
   
   // Parse categorical filters
-  ['pos', 'lexfile', 'frame_id', 'super_frame_id', 'flaggedByJobId'].forEach(key => {
+  ['pos', 'lexfile', 'frame_id', 'parent_frame_id', 'flaggedByJobId'].forEach(key => {
     const value = searchParams.get(key);
     if (value !== null) {
-      filters[key as 'pos' | 'lexfile' | 'frame_id' | 'super_frame_id' | 'flaggedByJobId'] = value;
+      filters[key as 'pos' | 'lexfile' | 'frame_id' | 'parent_frame_id' | 'flaggedByJobId'] = value;
     }
   });
   
@@ -166,7 +166,6 @@ function parseURLParams(
   } else if (mode !== 'frames' && rawSortBy === 'short_definition') {
     sortBy = 'gloss';
   } else if (!validColumnKeys.includes(sortBy)) {
-    // If column doesn't exist in current mode, use a safe default
     sortBy = mode === 'frames' ? 'label' : 'id';
   }
 
@@ -376,7 +375,7 @@ export function useDataTableState({
     // Remove DataTable-managed params to rebuild them
     const managedParams = [
       'gloss', 'lemmas', 'examples', 'frames', 'flaggedReason', 'unverifiableReason', 'label', 'definition', 'short_definition',
-      'pos', 'lexfile', 'frame_id', 'super_frame_id', 'flaggedByJobId',
+      'pos', 'lexfile', 'frame_id', 'parent_frame_id', 'flaggedByJobId',
       'isMwe', 'flagged', 'verifiable', 'excludeNullFrame',
       'pendingCreate', 'pendingUpdate', 'pendingDelete',
       'parentsCountMin', 'parentsCountMax', 'childrenCountMin', 'childrenCountMax',
@@ -447,7 +446,6 @@ export function useDataTableState({
         sortBy: safeSortBy,
         sortOrder: sortState.order,
         search: searchQuery || undefined,
-        isSuperFrame: mode === 'super_frames' ? 'true' : (mode === 'frames_only' ? 'false' : undefined),
         ...effectiveFilters,
       };
 

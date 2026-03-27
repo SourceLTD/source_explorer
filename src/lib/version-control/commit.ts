@@ -26,6 +26,21 @@ function camelToSnake(str: string): string {
   return str.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
 }
 
+// No bidirectional relation pairs - parent_of is unidirectional
+// (child_of relations are created as inverse but not auto-managed)
+export const INVERSE_RELATION_TYPE: Record<string, string> = {};
+
+function toBigIntSafe(v: unknown): bigint | null {
+  if (v === null || v === undefined) return null;
+  if (typeof v === 'bigint') return v;
+  if (typeof v === 'number' && Number.isInteger(v)) return BigInt(v);
+  if (typeof v === 'string') {
+    const trimmed = v.trim();
+    if (/^\d+$/.test(trimmed)) return BigInt(trimmed);
+  }
+  return null;
+}
+
 // ============================================
 // Commit Single Changeset
 // ============================================
@@ -165,7 +180,7 @@ async function commitCreate(
       newEntityId = lu.id;
     } else if (changeset.entity_type === 'frame') {
       // Support optional `frame_roles` in after_snapshot for CREATE operations.
-      // This is used by AI split jobs (and some MCP tooling) to propose roles for new superframes.
+      // This is used by AI split jobs (and some MCP tooling) to propose roles for new frames.
       const frameData: Record<string, unknown> = { ...(entityData as Record<string, unknown>) };
       const frameRolesRaw = (frameData as { frame_roles?: unknown }).frame_roles;
       delete (frameData as { frame_roles?: unknown }).frame_roles;
@@ -214,6 +229,44 @@ async function commitCreate(
             skipDuplicates: false,
           });
         }
+      }
+    } else if (changeset.entity_type === 'frame_relation') {
+      const relData = entityData as Record<string, unknown>;
+      const sourceId = toBigIntSafe(relData.source_id);
+      const targetId = toBigIntSafe(relData.target_id);
+      const relType = relData.type as string;
+
+      if (!sourceId || !targetId || !relType) {
+        throw new Error('CREATE frame_relation requires source_id, target_id, and type');
+      }
+
+      const rel = await tx.frame_relations.create({
+        data: {
+          source_id: sourceId,
+          target_id: targetId,
+          type: relType as any,
+        },
+      });
+      newEntityId = rel.id;
+
+      // Auto-create the inverse relation for bidirectional pairs
+      const inverse = INVERSE_RELATION_TYPE[relType];
+      if (inverse) {
+        await tx.frame_relations.upsert({
+          where: {
+            source_id_type_target_id: {
+              source_id: targetId,
+              type: inverse as any,
+              target_id: sourceId,
+            },
+          },
+          create: {
+            source_id: targetId,
+            target_id: sourceId,
+            type: inverse as any,
+          },
+          update: {},
+        });
       }
     } else {
       throw new Error(`CREATE not implemented for entity type: ${changeset.entity_type}`);
@@ -362,7 +415,7 @@ async function commitUpdate(
       let nextValue: unknown = fc.new_value;
 
       // Virtual-ID resolution (used by AI SPLIT jobs to reference pending CREATEs)
-      if (fc.field_name === 'frame_id' || fc.field_name === 'super_frame_id') {
+      if (fc.field_name === 'frame_id') {
         const asString = typeof nextValue === 'string' ? nextValue.trim() : null;
         if (asString && /^-\d+$/.test(asString)) {
           const virtualId = BigInt(asString); // negative
@@ -395,17 +448,21 @@ async function commitUpdate(
       updateData[camelToSnake(fc.field_name)] = nextValue;
     }
 
-    // Update simple fields on the entity using optimistic locking
-    if (Object.keys(updateData).length > 0) {
+    // Update simple fields on the entity using optimistic locking, and bump version
+    const hasSimpleChanges = Object.keys(updateData).length > 0;
+    const hasComplexChanges = !!frameRolesLegacy || frameRolesSub.length > 0 || hypernymChanges.length > 0;
+
+    if (hasSimpleChanges || hasComplexChanges) {
+      const versionedData = { ...updateData, version: { increment: 1 } };
       let updateCount: number;
-      
+
       if (isLexicalUnitType(changeset.entity_type)) {
         const result = await tx.lexical_units.updateMany({
           where: {
             id: changeset.entity_id!,
             version: changeset.entity_version!,
           },
-          data: updateData,
+          data: versionedData,
         });
         updateCount = result.count;
       } else if (changeset.entity_type === 'frame') {
@@ -414,7 +471,7 @@ async function commitUpdate(
             id: changeset.entity_id!,
             version: changeset.entity_version!,
           },
-          data: updateData,
+          data: versionedData,
         });
         updateCount = result.count;
       } else {
@@ -625,13 +682,13 @@ async function commitDelete(
 
   await prisma.$transaction(async (tx) => {
     if (isLexicalUnitType(changeset.entity_type)) {
-      // Soft delete for lexical units
       await tx.lexical_units.update({
         where: { id: changeset.entity_id! },
         data: {
           deleted: true,
           deleted_reason: 'Deleted via version control',
           deleted_at: new Date(),
+          version: { increment: 1 },
         },
       });
     } else if (changeset.entity_type === 'frame') {
@@ -641,8 +698,32 @@ async function commitDelete(
           deleted: true,
           deleted_reason: 'Deleted via version control',
           deleted_at: new Date(),
+          version: { increment: 1 },
         },
       });
+    } else if (changeset.entity_type === 'frame_relation') {
+      // Hard-delete (frame_relations has no soft-delete column)
+      const rel = await tx.frame_relations.findUnique({
+        where: { id: changeset.entity_id! },
+      });
+
+      if (rel) {
+        await tx.frame_relations.delete({
+          where: { id: changeset.entity_id! },
+        });
+
+        // Auto-delete the inverse relation for bidirectional pairs
+        const inverse = INVERSE_RELATION_TYPE[rel.type];
+        if (inverse) {
+          await tx.frame_relations.deleteMany({
+            where: {
+              source_id: rel.target_id,
+              target_id: rel.source_id,
+              type: inverse as any,
+            },
+          });
+        }
+      }
     } else {
       throw new Error(`DELETE not implemented for entity type: ${changeset.entity_type}`);
     }
@@ -803,6 +884,12 @@ async function checkVersionConflict(
       select: { version: true },
     });
     currentVersion = frame?.version ?? null;
+  } else if (changeset.entity_type === 'frame_relation') {
+    const rel = await prisma.frame_relations.findUnique({
+      where: { id: changeset.entity_id },
+      select: { version: true },
+    });
+    currentVersion = rel?.version ?? null;
   }
 
   if (currentVersion === null) {

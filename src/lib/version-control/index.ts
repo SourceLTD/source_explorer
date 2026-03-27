@@ -136,12 +136,17 @@ export {
   attachPendingInfoToEntities,
   getPendingInfoForEntity,
   applyPendingToEntity,
+  // Frame relation overlay for graph
+  getPendingRelationChanges,
 } from './merge';
+
+export type { PendingRelationChange } from './merge';
 
 // Commit operations
 export {
   commitChangeset,
   discardChangeset,
+  INVERSE_RELATION_TYPE,
   // Batch operations by LLM job
   commitByLlmJob,
   discardByLlmJob,
@@ -162,9 +167,10 @@ export {
   stageDelete,
   stageFlagUpdates,
   stageFrameRolesUpdate,
+  stageFrameRelationReparent,
 } from './stage';
 
-export type { StagedResponse } from './stage';
+export type { StagedResponse, ReparentResult } from './stage';
 
 // Comment operations
 export {

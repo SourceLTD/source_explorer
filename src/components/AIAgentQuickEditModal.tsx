@@ -28,14 +28,8 @@ function getEditableFields(entry: TableLexicalUnit | Frame, mode: DataTableMode)
       .filter(v => v.category === 'basic' && !excludeKeys.has(v.key))
       .map(v => v.key);
 
-  if (mode === 'frames' || mode === 'super_frames' || mode === 'frames_only') {
-    const isSuperFrame =
-      mode === 'super_frames'
-        ? true
-        : mode === 'frames_only'
-          ? false
-          : (entry as Frame).super_frame_id == null;
-    return toTargetFields(getVariablesForEntityType('frames', isSuperFrame));
+  if (mode === 'frames') {
+    return toTargetFields(getVariablesForEntityType('frames'));
   }
 
   const pos = (entry as TableLexicalUnit).pos as 'verb' | 'noun' | 'adjective' | 'adverb' | 'lexical_units';
@@ -44,7 +38,7 @@ function getEditableFields(entry: TableLexicalUnit | Frame, mode: DataTableMode)
 
 // Helper to get entry identifier for display
 function getEntryDisplayId(entry: TableLexicalUnit | Frame, mode: DataTableMode): string {
-  if ((mode === 'frames' || mode === 'super_frames' || mode === 'frames_only') && 'label' in entry) {
+  if (mode === 'frames' && 'label' in entry) {
     return entry.label;
   }
   return entry.id;
@@ -113,8 +107,7 @@ export function AIAgentQuickEditModal({
       // Simple system prompt for quick edits - just do what the user asks
       const quickEditSystemPrompt = `You are editing a lexical database unit. Follow the user's instructions exactly. Only make the changes they request - do not add extra improvements or modifications beyond what was asked. Be concise and precise.`;
 
-      const isFrameMode = mode === 'frames' || mode === 'super_frames' || mode === 'frames_only';
-      const isSuperFrame = mode === 'super_frames' ? true : mode === 'frames_only' ? false : undefined;
+      const isFrameMode = mode === 'frames';
 
       // Map mode/entry to targetType (must match how the backend resolves scopes)
       const rawPos = (entry as TableLexicalUnit).pos;
@@ -140,12 +133,11 @@ export function AIAgentQuickEditModal({
           kind: 'ids' as const,
           targetType,
           ids: [unitId],
-          ...(isSuperFrame !== undefined ? { isSuperFrame } : {}),
         },
         jobType: 'edit' as const,
         targetFields,
         serviceTier: 'default' as const,
-        mcpEnabled: false, // Disable MCP tools for quick edits
+        mcpEnabled: false,
       };
 
       const job = await api.post<SerializedJob>('/api/llm-jobs', jobPayload);

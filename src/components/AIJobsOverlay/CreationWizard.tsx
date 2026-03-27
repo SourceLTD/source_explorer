@@ -169,17 +169,14 @@ export const CreationWizard = memo(function CreationWizard({
     switch (currentStep) {
       case 'scope': {
         // Job type availability matrix (DataTableMode -> allowed job types)
-        const allowAllocate = mode === 'lexical_units' || mode === 'frames_only' || mode === 'frames';
-        const allowReallocateContents = mode === 'frames_only' || mode === 'frames' || mode === 'super_frames';
-        const allowSplit = mode === 'frames_only' || mode === 'frames' || mode === 'super_frames';
+        const allowAllocate = mode === 'lexical_units' || mode === 'frames';
+        const allowReallocateContents = mode === 'frames';
+        const allowSplit = mode === 'frames';
         const allocateSubtitle =
           mode === 'lexical_units'
             ? 'Find best frame'
-            : 'Find best super frame';
-        const reallocateSubtitle =
-          mode === 'super_frames'
-            ? 'Reallocate child frames'
-            : 'Reallocate lexical units';
+            : 'Reparent in hierarchy';
+        const reallocateSubtitle = 'Reallocate lexical units';
         return (
           <div className="space-y-5">
             {/* Job Type Selection */}
@@ -341,8 +338,6 @@ export const CreationWizard = memo(function CreationWizard({
                     ? (frameIncludeLexicalUnits && mode === 'lexical_units' 
                         ? 'Some frame IDs are invalid or have no associated lexical units. Please ensure all frame IDs exist and have lexical units.'
                         : 'Some frame IDs are invalid. Please ensure all frame IDs exist in the database.')
-                    : scopeMode === 'frames' && (mode !== 'lexical_units' && mode !== 'frames')
-                    ? 'Frame scope is only available for lexical units and frames.'
                     : 'Choose at least one target before continuing.'}
                 </p>
               )}
@@ -389,9 +384,8 @@ export const CreationWizard = memo(function CreationWizard({
               </>
             )}
 
-            {/* Entity Types for Allocate Contents
-                Note: For superframes, this always targets child frames (no choice), so we omit this section. */}
-            {jobType === 'allocate_contents' && isScopeValid && mode !== 'super_frames' && (
+            {/* Entity Types for Allocate Contents */}
+            {jobType === 'allocate_contents' && isScopeValid && (
               <>
                 <div className="border-t border-gray-200" />
                 <div className="space-y-3">
@@ -438,13 +432,9 @@ export const CreationWizard = memo(function CreationWizard({
                 <div className="space-y-3">
                   <label className="block text-xs font-semibold text-gray-700">Split Configuration</label>
                   <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-700">
-                    <div className="font-semibold mb-1">
-                      {mode === 'super_frames' ? 'Splitting Superframe' : 'Splitting Frame'}
-                    </div>
+                    <div className="font-semibold mb-1">Splitting Frame</div>
                     <p className="text-xs mb-3">
-                      {mode === 'super_frames' 
-                        ? 'The AI will split this superframe into multiple new superframes, distributing child frames among them.'
-                        : 'The AI will split this frame into multiple new frames, distributing lexical units among them.'}
+                      The AI will split this frame into multiple new frames, distributing lexical units among them.
                     </p>
                     <div className="flex gap-4 items-center">
                       <div className="flex-1">
@@ -583,10 +573,9 @@ export const CreationWizard = memo(function CreationWizard({
           jobType,
           agenticMode,
           scopeMode,
-          isSuperFrame: mode === 'super_frames',
         });
         const effectivePrompt = promptMode === 'simple' ? defaultPrompt : promptTemplate;
-        const modeSuggestsClustering = mode === 'frames' || mode === 'super_frames';
+        const modeSuggestsClustering = mode === 'frames';
         const showClustering =
           modeSuggestsClustering ||
           /\{%\s*for\s+\w+\s+in\s+(lexical_units|child_frames)\s*%\}/.test(effectivePrompt);
@@ -795,21 +784,19 @@ export const CreationWizard = memo(function CreationWizard({
               <div className="shrink-0 space-y-1 text-xs text-gray-500">
                 <p>
                   Type <code className="rounded bg-gray-100 px-1">{'{{'}</code> to insert variables.
-                  {(mode === 'lexical_units' || mode === 'frames' || mode === 'super_frames' || mode === 'frames_only') && (
+                  {(mode === 'lexical_units' || mode === 'frames') && (
                     <>
                       {' '}Use{' '}
                       <code className="rounded bg-indigo-50 px-1 text-indigo-600">
                         {mode === 'lexical_units' 
                           ? '{% for role in frame.roles %}' 
-                          : mode === 'super_frames' 
-                          ? '{% for frame in child_frames %}' 
                           : '{% for lu in lexical_units %}'}
                       </code>
                       {' '}for loops.
                     </>
                   )}
                 </p>
-                {(mode === 'lexical_units' || mode === 'frames' || mode === 'super_frames' || mode === 'frames_only') && (
+                {(mode === 'lexical_units' || mode === 'frames') && (
                   <details className="cursor-pointer">
                     <summary className="text-gray-400 hover:text-gray-600">Loop syntax help</summary>
                     <div className="mt-1.5 rounded-lg bg-gray-50 p-2 font-mono text-[11px] leading-relaxed">
@@ -820,15 +807,6 @@ export const CreationWizard = memo(function CreationWizard({
                           <div className="text-gray-600">{'{%'} endfor {'%}'}</div>
                           <div className="mt-1.5 border-t border-gray-200 pt-1.5 text-gray-400">
                             Available: frame.roles, frame.lexical_units
-                          </div>
-                        </>
-                      ) : mode === 'super_frames' ? (
-                        <>
-                          <div className="text-gray-600">{'{%'} for frame in child_frames {'%}'}</div>
-                          <div className="pl-2 text-gray-500">- {'{{ frame.label }}'}: {'{{ frame.definition }}'}</div>
-                          <div className="text-gray-600">{'{%'} endfor {'%}'}</div>
-                          <div className="mt-1.5 border-t border-gray-200 pt-1.5 text-gray-400">
-                            Available: roles, child_frames
                           </div>
                         </>
                       ) : (

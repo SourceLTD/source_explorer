@@ -4,22 +4,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import NodeCard from './context/NodeCard';
-import type { VirtualIndex, VirtualFrameSummary, VirtualLexicalUnitSummary } from './virtualIndex';
-
-interface LexicalUnitSnippet {
-  code: string;
-  gloss: string;
-}
-
-interface FrameChild {
-  id: string;
-  label: string;
-  short_definition?: string | null;
-  lexical_units?: {
-    entries: LexicalUnitSnippet[];
-    totalCount: number;
-  };
-}
+import type { VirtualIndex, VirtualLexicalUnitSummary } from './virtualIndex';
 
 interface LexicalUnitRow {
   id?: string;
@@ -28,15 +13,12 @@ interface LexicalUnitRow {
   pos?: string;
 }
 
-type ReferenceHoverMode = 'super_frame_children' | 'frame_lexical_units';
-
 type HoverData =
-  | { kind: 'frames'; data: FrameChild[]; total: number }
   | { kind: 'lexical_units'; data: LexicalUnitRow[]; total: number }
   | null;
 
 interface ReferenceHoverPopupProps {
-  mode: ReferenceHoverMode;
+  mode: 'frame_lexical_units';
   entityId: string | null;
   virtualIndex?: VirtualIndex;
   children: React.ReactNode;
@@ -108,28 +90,17 @@ export default function ReferenceHoverPopup({
     setLoading(true);
     setError(null);
     try {
-      const url =
-        mode === 'super_frame_children'
-          ? `/api/frames/paginated?super_frame_id=${encodeURIComponent(entityId)}&page=${p}&limit=${pageSize}&sortBy=label&sortOrder=asc`
-          : `/api/lexical-units/paginated?frame_id=${encodeURIComponent(entityId)}&page=${p}&limit=${pageSize}&sortBy=code&sortOrder=asc`;
+      const url = `/api/lexical-units/paginated?frame_id=${encodeURIComponent(entityId)}&page=${p}&limit=${pageSize}&sortBy=code&sortOrder=asc`;
 
       const res = await fetch(url, { signal: acRef.current.signal });
       if (!res.ok) throw new Error('Failed to load reference details');
       const json = await res.json();
 
-      if (mode === 'super_frame_children') {
-        setData({
-          kind: 'frames',
-          data: json.data || [],
-          total: json.total || 0,
-        });
-      } else {
-        setData({
-          kind: 'lexical_units',
-          data: json.data || [],
-          total: json.total || 0,
-        });
-      }
+      setData({
+        kind: 'lexical_units',
+        data: json.data || [],
+        total: json.total || 0,
+      });
     } catch (err: any) {
       if (err.name === 'AbortError') return;
       setError(err.message);
@@ -173,15 +144,10 @@ export default function ReferenceHoverPopup({
     }, 150);
   };
 
-  const virtualFrames = useMemo(() => {
-    if (!isVirtualRef || !entityId || mode !== 'super_frame_children') return [] as VirtualFrameSummary[];
-    return virtualIndex?.framesBySuperRef.get(entityId) ?? [];
-  }, [entityId, isVirtualRef, mode, virtualIndex]);
-
   const virtualLexicalUnits = useMemo(() => {
-    if (!isVirtualRef || !entityId || mode !== 'frame_lexical_units') return [] as VirtualLexicalUnitSummary[];
+    if (!isVirtualRef || !entityId) return [] as VirtualLexicalUnitSummary[];
     return virtualIndex?.lexicalUnitsByFrameRef.get(entityId) ?? [];
-  }, [entityId, isVirtualRef, mode, virtualIndex]);
+  }, [entityId, isVirtualRef, virtualIndex]);
 
   const virtualParent = useMemo(() => {
     if (!isVirtualRef || !entityId) return null;
@@ -189,15 +155,14 @@ export default function ReferenceHoverPopup({
   }, [entityId, isVirtualRef, virtualIndex]);
 
   const totalCount = isVirtualRef
-    ? (mode === 'super_frame_children' ? virtualFrames.length : virtualLexicalUnits.length)
+    ? virtualLexicalUnits.length
     : (data?.total ?? 0);
   const totalPages = totalCount > 0 ? Math.ceil(totalCount / pageSize) : 0;
 
   const pageStart = (page - 1) * pageSize;
   const pageEnd = pageStart + pageSize;
-  const pagedVirtualFrames = isVirtualRef ? virtualFrames.slice(pageStart, pageEnd) : [];
   const pagedVirtualLexicalUnits = isVirtualRef ? virtualLexicalUnits.slice(pageStart, pageEnd) : [];
-  const collectionLabel = mode === 'super_frame_children' ? 'Frames' : 'Lexical Units';
+  const collectionLabel = 'Lexical Units';
   const containerName = isVirtualRef
     ? (virtualParent?.label || (entityId ? `#${entityId}` : ''))
     : (containerLabel ? containerLabel : (entityId ? `#${entityId}` : ''));
@@ -285,41 +250,7 @@ export default function ReferenceHoverPopup({
               </div>
             )}
             {isVirtualRef ? (
-              mode === 'super_frame_children' ? (
-                pagedVirtualFrames.length === 0 ? (
-                  <div className="text-[11px] text-gray-400 italic">No pending frames found inside.</div>
-                ) : (
-                  pagedVirtualFrames.map(frame => {
-                    const pendingLexicalUnits = virtualIndex?.lexicalUnitsByFrameRef.get(frame.id) ?? [];
-                    return (
-                      <NodeCard
-                        key={frame.id}
-                        title={frame.label}
-                        className="!p-2 shadow-sm"
-                        noDivider
-                        subtle
-                      >
-                        {(frame.short_definition || frame.definition) && (
-                          <div className="text-[10px] text-gray-500 line-clamp-2 mb-1 italic">
-                            {frame.short_definition || frame.definition}
-                          </div>
-                        )}
-                        {pendingLexicalUnits.length > 0 && (
-                          <div className="space-y-1 mt-1">
-                            {pendingLexicalUnits.slice(0, 3).map((lu, idx) => (
-                              <div key={`${lu.id}-${idx}`} className="text-[9px] leading-tight flex items-start gap-1">
-                                <span className="font-mono text-blue-600 font-bold flex-shrink-0">{lu.code}</span>
-                                <span className="text-gray-400">•</span>
-                                <span className="text-gray-500 line-clamp-1 italic">{lu.gloss}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </NodeCard>
-                    );
-                  })
-                )
-              ) : pagedVirtualLexicalUnits.length === 0 ? (
+              pagedVirtualLexicalUnits.length === 0 ? (
                 <div className="text-[11px] text-gray-400 italic">No pending lexical units found inside.</div>
               ) : (
                 pagedVirtualLexicalUnits.map((lu, idx) => (
@@ -338,60 +269,23 @@ export default function ReferenceHoverPopup({
               <div className="py-8 flex justify-center"><LoadingSpinner size="sm" noPadding /></div>
             ) : error ? (
               <div className="text-[11px] text-red-500">{error}</div>
-            ) : mode === 'super_frame_children' && data?.kind === 'frames' && data.data.length === 0 ? (
-              <div className="text-[11px] text-gray-400 italic">No frames found inside.</div>
-            ) : mode === 'frame_lexical_units' && data?.kind === 'lexical_units' && data.data.length === 0 ? (
+            ) : data?.kind === 'lexical_units' && data.data.length === 0 ? (
               <div className="text-[11px] text-gray-400 italic">No lexical units found inside.</div>
-            ) : (
+            ) : data?.kind === 'lexical_units' ? (
               <>
-                {mode === 'super_frame_children' && data?.kind === 'frames' && (
-                  <>
-                    {data.data.map(frame => (
-                      <NodeCard
-                        key={frame.id}
-                        title={frame.label}
-                        className="!p-2 shadow-sm"
-                        noDivider
-                        subtle
-                      >
-                        {frame.short_definition && (
-                          <div className="text-[10px] text-gray-500 line-clamp-2 mb-1 italic">
-                            {frame.short_definition}
-                          </div>
-                        )}
-                        {frame.lexical_units && frame.lexical_units.entries.length > 0 && (
-                          <div className="space-y-1 mt-1">
-                            {frame.lexical_units.entries.slice(0, 3).map((lu, idx) => (
-                              <div key={idx} className="text-[9px] leading-tight flex items-start gap-1">
-                                <span className="font-mono text-blue-600 font-bold flex-shrink-0">{lu.code}</span>
-                                <span className="text-gray-400">•</span>
-                                <span className="text-gray-500 line-clamp-1 italic">{lu.gloss}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </NodeCard>
-                    ))}
-                  </>
-                )}
-
-                {mode === 'frame_lexical_units' && data?.kind === 'lexical_units' && (
-                  <>
-                    {data.data.map((lu, idx) => (
-                      <NodeCard
-                        key={`${lu.code}-${idx}`}
-                        title={lu.code}
-                        className="!p-2 shadow-sm"
-                        noDivider
-                        subtle
-                      >
-                        <div className="text-[10px] text-gray-500 line-clamp-2 italic">{lu.gloss}</div>
-                      </NodeCard>
-                    ))}
-                  </>
-                )}
+                {data.data.map((lu, idx) => (
+                  <NodeCard
+                    key={`${lu.code}-${idx}`}
+                    title={lu.code}
+                    className="!p-2 shadow-sm"
+                    noDivider
+                    subtle
+                  >
+                    <div className="text-[10px] text-gray-500 line-clamp-2 italic">{lu.gloss}</div>
+                  </NodeCard>
+                ))}
               </>
-            )}
+            ) : null}
           </div>
         </div>
       )}

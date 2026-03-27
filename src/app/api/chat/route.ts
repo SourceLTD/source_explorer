@@ -92,14 +92,35 @@ export async function POST(request: Request) {
     const uiMessages = clientMessages as UIMessage[];
     const modelMessages = await convertToModelMessages(uiMessages);
 
+    const lastAssistantMsg = uiMessages.findLast((m) => m.role === 'assistant');
+    const isQuestionFollowUp = lastAssistantMsg?.parts.some(
+      (p: any) =>
+        p.type === 'tool-ask_questions' &&
+        (p.state === 'output-available' || p.state === 'output-error'),
+    ) ?? false;
+
+    if (isQuestionFollowUp && lastAssistantMsg) {
+      const { updateMessageParts } = await import('@/lib/chat/db');
+      await updateMessageParts({
+        id: lastAssistantMsg.id,
+        parts: lastAssistantMsg.parts,
+      });
+    }
+
+    const activeTools = isQuestionFollowUp
+      ? (Object.fromEntries(
+          Object.entries(chatTools).filter(([k]) => k !== 'ask_questions'),
+        ) as typeof chatTools)
+      : chatTools;
+
     const stream = createUIMessageStream({
       execute: async ({ writer: dataStream }) => {
         const result = streamText({
           model: getChatModel(chatModel),
-          system: systemPrompt(),
+          system: systemPrompt(isQuestionFollowUp),
           messages: modelMessages,
-          tools: chatTools,
-          stopWhen: stepCountIs(10),
+          tools: activeTools,
+          stopWhen: stepCountIs(isQuestionFollowUp ? 3 : 10),
         });
 
         dataStream.merge(result.toUIMessageStream());
@@ -173,4 +194,35 @@ export async function DELETE(request: Request) {
   const { deleteChatById } = await import('@/lib/chat/db');
   const deletedChat = await deleteChatById({ id });
   return Response.json(deletedChat, { status: 200 });
+}
+
+export async function PATCH(request: Request) {
+  const user = await getCurrentUser();
+  if (!user?.id) {
+    return new ChatError('unauthorized:chat').toResponse();
+  }
+
+  let body: { id: string; pinned?: boolean; archived?: boolean };
+  try {
+    body = await request.json();
+  } catch {
+    return new ChatError('bad_request:api').toResponse();
+  }
+
+  if (!body.id) {
+    return new ChatError('bad_request:api').toResponse();
+  }
+
+  const chat = await getChatById({ id: body.id });
+  if (chat?.user_id !== user.id) {
+    return new ChatError('forbidden:chat').toResponse();
+  }
+
+  const { updateChatFlags } = await import('@/lib/chat/db');
+  const updated = await updateChatFlags({
+    chatId: body.id,
+    pinned: body.pinned,
+    archived: body.archived,
+  });
+  return Response.json(updated);
 }

@@ -53,42 +53,6 @@ export const FRAMES_COLUMNS: ColumnConfig[] = [
   { key: 'actions', label: 'Actions', visible: true, sortable: false },
 ];
 
-// Super Frames columns
-export const SUPER_FRAMES_COLUMNS: ColumnConfig[] = [
-  { key: 'id', label: 'ID', visible: false, sortable: true },
-  { key: 'code', label: 'Code', visible: true, sortable: true },
-  { key: 'label', label: 'Frame Name', visible: false, sortable: true },
-  { key: 'definition', label: 'Definition', visible: true, sortable: false },
-  { key: 'short_definition', label: 'Short Definition', visible: false, sortable: false },
-  { key: 'frame_roles', label: 'Frame Roles', visible: true, sortable: false },
-  { key: 'roles_count', label: 'Roles', visible: false, sortable: false },
-  { key: 'subframes_count', label: 'Sub-frames', visible: false, sortable: false },
-  { key: 'flagged', label: 'Flagged', visible: false, sortable: true },
-  { key: 'flaggedReason', label: 'Flagged Reason', visible: false, sortable: false },
-  { key: 'verifiable', label: 'Verifiable', visible: true, sortable: true },
-  { key: 'unverifiableReason', label: 'Unverifiable Reason', visible: false, sortable: false },
-  { key: 'createdAt', label: 'Created', visible: false, sortable: true },
-  { key: 'updatedAt', label: 'Updated', visible: false, sortable: true },
-  { key: 'actions', label: 'Actions', visible: true, sortable: false },
-];
-
-// Frames-only columns (standard frames)
-export const FRAMES_ONLY_COLUMNS: ColumnConfig[] = [
-  { key: 'id', label: 'ID', visible: false, sortable: true },
-  { key: 'code', label: 'Code', visible: true, sortable: true },
-  { key: 'label', label: 'Frame Name', visible: false, sortable: true },
-  { key: 'definition', label: 'Definition', visible: true, sortable: false },
-  { key: 'short_definition', label: 'Short Definition', visible: false, sortable: false },
-  { key: 'lexical_units_count', label: 'Words', visible: false, sortable: false },
-  { key: 'lexical_units', label: 'Lexical Units', visible: true, sortable: false },
-  { key: 'flagged', label: 'Flagged', visible: false, sortable: true },
-  { key: 'flaggedReason', label: 'Flagged Reason', visible: false, sortable: false },
-  { key: 'verifiable', label: 'Verifiable', visible: true, sortable: true },
-  { key: 'unverifiableReason', label: 'Unverifiable Reason', visible: false, sortable: false },
-  { key: 'createdAt', label: 'Created', visible: false, sortable: true },
-  { key: 'updatedAt', label: 'Updated', visible: false, sortable: true },
-  { key: 'actions', label: 'Actions', visible: true, sortable: false },
-];
 
 export interface ColumnWidthState {
   [columnKey: string]: number;
@@ -123,7 +87,6 @@ export const DEFAULT_COLUMN_WIDTHS: ColumnWidthState = {
   roles_count: 80,
   lexical_units_count: 80,
   lexical_units: 400,
-  subframes_count: 100,
   frame_type: 120,
   vendler: 120,
   multi_perspective: 120,
@@ -136,10 +99,6 @@ export const DEFAULT_COLUMN_WIDTHS: ColumnWidthState = {
  */
 export function getColumnsForMode(mode: DataTableMode): ColumnConfig[] {
   switch (mode) {
-    case 'super_frames':
-      return SUPER_FRAMES_COLUMNS;
-    case 'frames_only':
-      return FRAMES_ONLY_COLUMNS;
     case 'frames':
       return FRAMES_COLUMNS;
     case 'lexical_units':
@@ -194,7 +153,7 @@ export function sanitizeColumnVisibility(
  * Get the API prefix
  */
 export function getApiPrefix(mode: DataTableMode): string {
-  if (mode === 'frames' || mode === 'super_frames' || mode === 'frames_only') return '/api/frames';
+  if (mode === 'frames') return '/api/frames';
   return '/api/lexical-units';
 }
 
@@ -202,8 +161,8 @@ export function getApiPrefix(mode: DataTableMode): string {
  * Get the graph base path
  */
 export function getGraphBasePath(mode: DataTableMode): string {
-  if (mode === 'frames' || mode === 'super_frames' || mode === 'frames_only') return '/graph/frames';
-  return '/table'; // Default to table if graph mode is not supported
+  if (mode === 'frames') return '/graph/frames';
+  return '/table';
 }
 
 /**

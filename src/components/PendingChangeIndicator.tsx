@@ -237,7 +237,7 @@ interface PendingFieldIndicatorProps {
   getCellClasses?: (operation: PendingChangeOperation) => string;
   /**
    * Optional formatter override for values shown in the click-to-open tooltip.
-   * Useful for foreign keys like `frame_id` / `super_frame_id` to show codes instead of raw ids.
+   * Useful for foreign keys like `frame_id` to show codes instead of raw ids.
    */
   formatTooltipValue?: (value: unknown, which: 'old' | 'new') => string | null | undefined;
 }

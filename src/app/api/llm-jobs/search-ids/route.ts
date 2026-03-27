@@ -23,22 +23,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ results: [] });
     }
 
-    // Handle frame-related target types (frames, super_frames, frames_only)
-    if (targetType === 'frames' || targetType === 'super_frames' || targetType === 'frames_only') {
-      // Build super_frame_id filter based on target type:
-      // - super_frames: only frames with no parent (super_frame_id is null)
-      // - frames_only: only frames with a parent (super_frame_id is not null)
-      // - frames: all frames (no super_frame_id filter)
-      const superFrameFilter = targetType === 'super_frames' 
-        ? { super_frame_id: null } 
-        : targetType === 'frames_only' 
-          ? { super_frame_id: { not: null } } 
-          : {};
-
+    // Handle frame target type
+    if (targetType === 'frames') {
       const frames = await prisma.frames.findMany({
         where: {
           deleted: false,
-          ...superFrameFilter,
           ...(exact
             ? { label: { equals: searchTerm, mode: 'insensitive' } }
             : {

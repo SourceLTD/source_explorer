@@ -32,11 +32,13 @@ export async function getChatsByUserId({
   limit,
   startingAfter,
   endingBefore,
+  archived = false,
 }: {
   id: string;
   limit: number;
   startingAfter: string | null;
   endingBefore: string | null;
+  archived?: boolean;
 }) {
   try {
     const extendedLimit = limit + 1;
@@ -62,13 +64,14 @@ export async function getChatsByUserId({
     const chats = await prisma.chat_conversations.findMany({
       where: {
         user_id: id,
+        archived,
         ...(cursor && startingAfter
           ? { created_at: { gt: cursor.created_at } }
           : cursor && endingBefore
             ? { created_at: { lt: cursor.created_at } }
             : {}),
       },
-      orderBy: { created_at: 'desc' },
+      orderBy: [{ pinned: 'desc' }, { created_at: 'desc' }],
       take: extendedLimit,
     });
 
@@ -119,6 +122,28 @@ export async function updateChatTitleById({
   }
 }
 
+export async function updateChatFlags({
+  chatId,
+  pinned,
+  archived,
+}: {
+  chatId: string;
+  pinned?: boolean;
+  archived?: boolean;
+}) {
+  try {
+    const data: Record<string, boolean> = {};
+    if (pinned !== undefined) data.pinned = pinned;
+    if (archived !== undefined) data.archived = archived;
+    return await prisma.chat_conversations.update({
+      where: { id: chatId },
+      data,
+    });
+  } catch (_error) {
+    throw new ChatError('bad_request:database', 'Failed to update chat flags');
+  }
+}
+
 export async function saveMessages({
   messages,
 }: {
@@ -144,6 +169,23 @@ export async function saveMessages({
     });
   } catch (_error) {
     throw new ChatError('bad_request:database', 'Failed to save messages');
+  }
+}
+
+export async function updateMessageParts({
+  id,
+  parts,
+}: {
+  id: string;
+  parts: unknown;
+}) {
+  try {
+    return await prisma.chat_messages.update({
+      where: { id },
+      data: { parts: parts as any },
+    });
+  } catch (_error) {
+    // Non-critical: tool result persistence failure shouldn't break the chat
   }
 }
 

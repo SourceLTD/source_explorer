@@ -225,7 +225,7 @@ export function CellContent({
   const graphBasePath = getGraphBasePath(mode);
 
   const isFrame = (e: TableEntry | Frame): e is Frame => {
-    return (mode === 'frames' || mode === 'super_frames' || mode === 'frames_only') && 'label' in e;
+    return mode === 'frames' && 'label' in e;
   };
 
   // Common styles
@@ -237,38 +237,9 @@ export function CellContent({
         return <span className="text-xs font-mono text-blue-600 break-words">{entry.id}</span>;
       case 'code': {
         const code = entry.code || '—';
-        const dotIndex = code.indexOf('.');
-        const pending = entry.pending;
-        const labelChange = pending?.pending_fields?.label ?? null;
-        const codeChange = pending?.pending_fields?.code ?? null;
-        const hasActiveLabelChange = !!labelChange && labelChange.status !== 'rejected';
-        const hasActiveCodeChange = !!codeChange && codeChange.status !== 'rejected';
-        const shouldUsePendingLabelSuffix = hasActiveLabelChange && !hasActiveCodeChange && dotIndex !== -1;
-        const superFrameLabelRaw = entry.super_frame?.label;
-        const superFrameLabel = typeof superFrameLabelRaw === 'string' ? superFrameLabelRaw.trim() : '';
-        const originalPrefix = dotIndex !== -1 ? code.substring(0, dotIndex) : '';
-        const hasPendingSuperFrameLabel = dotIndex !== -1 && superFrameLabel !== '' && superFrameLabel !== originalPrefix;
         return (
           <span className="inline-block max-w-full text-sm font-mono text-gray-900 break-words">
-            {dotIndex !== -1 ? (
-              <>
-                {hasPendingSuperFrameLabel ? (
-                  <span className="font-bold bg-orange-200 text-orange-900 rounded px-0.5">
-                    {superFrameLabel}
-                  </span>
-                ) : (
-                  originalPrefix
-                )}
-                {'.'}
-                {shouldUsePendingLabelSuffix ? (
-                  <span className="font-bold bg-orange-200 text-orange-900 rounded px-0.5">
-                    {entry.label}
-                  </span>
-                ) : (
-                  <span className="font-bold">{code.substring(dotIndex + 1)}</span>
-                )}
-              </>
-            ) : code}
+            {code}
           </span>
         );
       }
@@ -280,8 +251,6 @@ export function CellContent({
         return <div className={textContainerClasses}>{entry.short_definition || '—'}</div>;
       case 'lexical_units_count':
         return <div className="text-sm text-gray-600">{entry.lexical_units_count ?? 0}</div>;
-      case 'subframes_count':
-        return <div className="text-sm text-gray-600">{entry.subframes_count ?? 0}</div>;
       case 'frame_roles':
         {
           const pending = entry.pending;
@@ -818,23 +787,7 @@ export function DataTableBody({
                       pendingFieldKeys.some((k) => k.startsWith(`${name}.`))
                     ));
 
-                  // Special-case: frames `code` is derived from `{superFrameLabel}.{label}`.
-                  // If `label` is pending-changed (but `code` is not), preview the `code` cell as pending too.
-                  const labelChange = pending?.pending_fields?.label ?? null;
-                  const codeChange = pending?.pending_fields?.code ?? null;
-                  const hasActiveLabelChange = !!labelChange && labelChange.status !== 'rejected';
-                  const hasActiveCodeChange = !!codeChange && codeChange.status !== 'rejected';
-                  const isFramesMode = mode === 'frames' || mode === 'frames_only';
-                  const hasDerivedCodeChangeFromLabel =
-                    isFramesMode &&
-                    col.key === 'code' &&
-                    hasActiveLabelChange &&
-                    !hasActiveCodeChange &&
-                    typeof (entry as any).code === 'string' &&
-                    (entry as any).code.includes('.');
-
-                  const hasPendingFieldChangeForField =
-                    baseHasPendingFieldChangeForField || hasDerivedCodeChangeFromLabel;
+                  const hasPendingFieldChangeForField = baseHasPendingFieldChangeForField;
                   const isFrameRolesColumn = col.key === 'frame_roles';
                   const cellOp = pending?.operation ?? 'update';
 

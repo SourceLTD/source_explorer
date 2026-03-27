@@ -2,6 +2,7 @@
 
 import type { UseChatHelpers } from '@ai-sdk/react';
 import type { UIMessage } from 'ai';
+import { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowDownIcon, CheckCircleIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline';
 import ReactMarkdown from 'react-markdown';
@@ -9,6 +10,8 @@ import remarkGfm from 'remark-gfm';
 import { useChatMessages } from '@/hooks/useChatMessages';
 import { sanitizeText } from '@/lib/chat/utils';
 import PreviewAttachment from './PreviewAttachment';
+import { QuestionCardSummary } from './QuestionCard';
+import type { AskQuestionsInput } from '@/lib/chat/tools';
 
 interface ChatMessagesProps {
   chatId: string;
@@ -53,10 +56,9 @@ function ThinkingIndicator() {
 
 const TOOL_LABELS: Record<string, string> = {
   search_frames: 'Searching frames',
-  search_superframes: 'Searching superframes',
   select_frames: 'Looking up frames',
-  select_superframes: 'Looking up superframes',
   select_lexical_units: 'Looking up lexical units',
+  ask_questions: 'Waiting for your response',
 };
 
 function ToolCallIndicator({ part }: { part: any }) {
@@ -90,7 +92,13 @@ function ToolCallIndicator({ part }: { part: any }) {
   );
 }
 
-function MessageBubble({ message }: { message: UIMessage }) {
+function MessageBubble({
+  message,
+  renderedAnswerIds,
+}: {
+  message: UIMessage;
+  renderedAnswerIds: Set<string>;
+}) {
   const isUser = message.role === 'user';
 
   return (
@@ -136,6 +144,49 @@ function MessageBubble({ message }: { message: UIMessage }) {
             );
           }
 
+          if (!isUser && (part as any).type === 'tool-ask_questions') {
+            const toolPart = part as {
+              type: 'tool-ask_questions';
+              toolCallId: string;
+              input: AskQuestionsInput;
+              output?: unknown;
+              state: string;
+            };
+            if (toolPart.state === 'output-available') {
+              if (renderedAnswerIds.has(toolPart.toolCallId)) return null;
+              renderedAnswerIds.add(toolPart.toolCallId);
+              let skipped = false;
+              let selections: Record<string, Set<string>> | undefined;
+              let additionalText: string | undefined;
+              try {
+                const parsed = typeof toolPart.output === 'string'
+                  ? JSON.parse(toolPart.output)
+                  : toolPart.output;
+                if (parsed?.skipped) {
+                  skipped = true;
+                } else if (Array.isArray(parsed?.answers)) {
+                  selections = {};
+                  for (const q of toolPart.input.questions) {
+                    const a = parsed.answers.find((ans: any) => ans.question_id === q.id);
+                    selections[q.id] = new Set(a?.selected_option_ids ?? []);
+                  }
+                  additionalText = parsed.answers[0]?.additional_text;
+                }
+              } catch {}
+              return (
+                <QuestionCardSummary
+                  key={`question-summary-${toolPart.toolCallId}`}
+                  input={toolPart.input}
+                  selections={selections}
+                  additionalText={additionalText}
+                  skipped={skipped}
+                />
+              );
+            }
+            if (toolPart.state === 'input-available') return null;
+            return <ToolCallIndicator key={`tool-${i}`} part={part} />;
+          }
+
           if (!isUser && (part.type.startsWith('tool-') || part.type === 'dynamic-tool')) {
             return <ToolCallIndicator key={`tool-${i}`} part={part} />;
           }
@@ -159,30 +210,31 @@ export default function ChatMessages({ chatId, messages, status }: ChatMessagesP
   const isThinking =
     status === 'submitted' && messages.at(-1)?.role !== 'assistant';
 
+  const renderedAnswerIds = useMemo(() => new Set<string>(), [messages]);
+
   return (
-    <div className="relative flex-1 min-h-0">
-      <div
-        ref={containerRef}
-        className="h-full overflow-y-auto flex flex-col"
-      >
-        {messages.length === 0 && !isThinking && <Greeting />}
+    <div className="h-full overflow-y-auto flex flex-col" ref={containerRef}>
+      {messages.length === 0 && !isThinking && <Greeting />}
 
-        <div className="py-4">
-          {messages.map((message) => (
-            <MessageBubble key={message.id} message={message} />
-          ))}
+      <div className="py-4">
+        {messages.map((message) => (
+          <MessageBubble
+            key={message.id}
+            message={message}
+            renderedAnswerIds={renderedAnswerIds}
+          />
+        ))}
 
-          {isThinking && <ThinkingIndicator />}
+        {isThinking && <ThinkingIndicator />}
 
-          <div ref={endRef} />
-        </div>
+        <div ref={endRef} />
       </div>
 
       {!isAtBottom && (
         <button
           onClick={() => scrollToBottom('smooth')}
           type="button"
-          className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-white border border-gray-200 shadow-md rounded-full p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-all"
+          className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-white border border-gray-200 shadow-md rounded-full p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-all z-10"
         >
           <ArrowDownIcon className="w-4 h-4" />
         </button>

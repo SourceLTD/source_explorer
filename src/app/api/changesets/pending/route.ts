@@ -9,7 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
-const FRAME_REF_FIELDS = new Set(['frame_id', 'super_frame_id']);
+const FRAME_REF_FIELDS = new Set(['frame_id']);
 
 interface FieldChange {
   id: string;
@@ -126,7 +126,7 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    // Build display lookups for frame_id/super_frame_id so the UI can show codes instead of raw ints.
+    // Build display lookups for frame_id so the UI can show codes instead of raw ints.
     const positiveFrameIds = new Set<string>();
     const virtualCreateChangesetIds = new Set<string>(); // positive changeset id (virtual id = -changeset_id)
 

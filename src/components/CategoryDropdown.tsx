@@ -2,7 +2,7 @@
 
 import { useRouter, usePathname } from 'next/navigation';
 
-export type Category = 'super_frames' | 'frames' | 'lexical_units' | 'verbs' | 'nouns' | 'adjectives' | 'adverbs';
+export type Category = 'frames' | 'lexical_units' | 'verbs' | 'nouns' | 'adjectives' | 'adverbs';
 
 interface CategoryDropdownProps {
   currentCategory: Category;
@@ -16,17 +16,10 @@ const CATEGORIES: { id: Category; label: string; tablePath: string; graphPath?: 
 
 export default function CategoryDropdown({ currentCategory, currentView = 'table' }: CategoryDropdownProps) {
   const router = useRouter();
-  const pathname = usePathname();
 
-  // Detect super_frames from URL path since it shares the same editing mode as frames
-  const isOnSuperFramesPage = pathname?.includes('/super-frames');
-  
-  // Normalize category: super_frames -> frames (for nav highlighting), lexical POS -> lexical_units
-  const normalizedCategory = isOnSuperFramesPage || currentCategory === 'super_frames'
-    ? 'frames'
-    : (['verbs', 'nouns', 'adjectives', 'adverbs'].includes(currentCategory)) 
-      ? 'lexical_units' 
-      : currentCategory;
+  const normalizedCategory = (['verbs', 'nouns', 'adjectives', 'adverbs'].includes(currentCategory)) 
+    ? 'lexical_units' 
+    : currentCategory;
 
   return (
     <div className="flex items-center gap-8">
@@ -53,4 +46,3 @@ export default function CategoryDropdown({ currentCategory, currentView = 'table
     </div>
   );
 }
-

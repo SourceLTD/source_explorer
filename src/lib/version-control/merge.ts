@@ -746,3 +746,96 @@ export async function applyPendingToEntity<T extends object>(
   return { entity: updatedEntity, pending: pendingInfo };
 }
 
+// ============================================
+// Pending Frame Relation Overlays (for Graph)
+// ============================================
+
+export interface PendingRelationChange {
+  changeset_id: string;
+  operation: 'create' | 'delete';
+  source_id: string;
+  target_id: string;
+  type: string;
+  /** Label of the related frame (resolved from snapshot or DB) */
+  target_label?: string;
+  target_short_definition?: string | null;
+}
+
+/**
+ * Fetch pending frame_relation changesets that affect a given frame
+ * (either as source or target) and return them as overlay info
+ * for the graph to render pending reparents.
+ */
+export async function getPendingRelationChanges(
+  frameId: bigint
+): Promise<PendingRelationChange[]> {
+  const frameIdStr = frameId.toString();
+
+  // Find pending frame_relation changesets where this frame is involved
+  const pendingChangesets = await prisma.changesets.findMany({
+    where: {
+      entity_type: 'frame_relation',
+      status: 'pending',
+    },
+    include: {
+      field_changes: true,
+    },
+  });
+
+  const results: PendingRelationChange[] = [];
+
+  for (const cs of pendingChangesets) {
+    if (cs.operation === 'delete' && cs.before_snapshot) {
+      const snap = cs.before_snapshot as Record<string, unknown>;
+      const srcId = String(snap.source_id ?? '');
+      const tgtId = String(snap.target_id ?? '');
+
+      if (srcId === frameIdStr || tgtId === frameIdStr) {
+        results.push({
+          changeset_id: cs.id.toString(),
+          operation: 'delete',
+          source_id: srcId,
+          target_id: tgtId,
+          type: String(snap.type ?? ''),
+        });
+      }
+    } else if (cs.operation === 'create' && cs.after_snapshot) {
+      const snap = cs.after_snapshot as Record<string, unknown>;
+      const srcId = String(snap.source_id ?? '');
+      const tgtId = String(snap.target_id ?? '');
+
+      if (srcId === frameIdStr || tgtId === frameIdStr) {
+        // Resolve label for the other frame
+        const otherFrameId = srcId === frameIdStr ? tgtId : srcId;
+        let targetLabel: string | undefined;
+        let targetShortDef: string | null | undefined;
+
+        try {
+          const otherFrame = await prisma.frames.findUnique({
+            where: { id: BigInt(otherFrameId) },
+            select: { label: true, short_definition: true },
+          });
+          if (otherFrame) {
+            targetLabel = otherFrame.label;
+            targetShortDef = otherFrame.short_definition;
+          }
+        } catch {
+          // Non-critical: label resolution failure
+        }
+
+        results.push({
+          changeset_id: cs.id.toString(),
+          operation: 'create',
+          source_id: srcId,
+          target_id: tgtId,
+          type: String(snap.type ?? ''),
+          target_label: targetLabel,
+          target_short_definition: targetShortDef,
+        });
+      }
+    }
+  }
+
+  return results;
+}
+

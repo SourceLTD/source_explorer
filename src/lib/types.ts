@@ -187,11 +187,8 @@ export interface Frame {
   frame_roles?: FrameRole[];
   roles_count?: number;
   lexical_units_count?: number;
-  subframes_count?: number;
   lexical_units?: LexicalUnitsSample;
   pending?: PendingChangeInfo | null;
-  super_frame_id?: string | null;
-  super_frame?: { id: string; label: string; code?: string | null } | null;
   frame_type?: string | null;
   vendler?: string | null;
   multi_perspective?: boolean | null;
@@ -200,6 +197,30 @@ export interface Frame {
 }
 
 export type FrameRecipe = Record<string, unknown>;
+
+// ============================================
+// Recipe Graph Types (recipe_graph JSON column)
+// ============================================
+
+export interface RecipeGraphNode {
+  id: string;
+  node_type: 'entity' | 'event' | 'attribute' | string;
+  keywords: string[];
+  description: string;
+}
+
+export interface RecipeGraphEdge {
+  source: string;
+  target: string;
+  label: string;
+}
+
+export interface RecipeGraph {
+  nodes: RecipeGraphNode[];
+  edges: RecipeGraphEdge[];
+  confidence: string;
+  confidence_reasoning: string;
+}
 
 // ============================================
 // Graph Types
@@ -371,7 +392,6 @@ export interface PaginationParams {
   lexfile?: string;
   frame_id?: string;
   flaggedByJobId?: string;
-  isSuperFrame?: string;
   
   // Text filters
   gloss?: string;
@@ -420,13 +440,6 @@ export interface FramePaginationParams {
   createdBefore?: string;
   updatedAfter?: string;
   updatedBefore?: string;
-  /**
-   * String form because this is typically sourced from URLSearchParams.
-   * - 'true' => super frames only (super_frame_id is null)
-   * - 'false' => non-super frames only (super_frame_id is not null)
-   */
-  isSuperFrame?: 'true' | 'false';
-  super_frame_id?: string;
 }
 
 export interface PaginatedResult<T> {
@@ -523,21 +536,7 @@ export interface WithPendingInfo<T> {
 // Frame Graph Types
 // ============================================
 
-export type FrameRelationType = 
-  | 'causes'
-  | 'inherits_from'
-  | 'inherited_by'
-  | 'uses'
-  | 'used_by'
-  | 'subframe_of'
-  | 'has_subframe'
-  | 'precedes'
-  | 'preceded_by'
-  | 'perspective_on'
-  | 'perspectivized_in'
-  | 'see_also'
-  | 'reframing_mapping'
-  | 'metaphor';
+export type FrameRelationType = 'parent_of';
 
 export interface FrameGraphRole {
   id: string;
@@ -596,6 +595,7 @@ export interface FrameGraphNode {
   multi_perspective?: boolean | null;
   wikidata_id?: string | null;
   recipe?: FrameRecipe | null;
+  recipe_graph?: RecipeGraph | null;
 }
 
 export interface FrameRecipeRole {
@@ -651,15 +651,8 @@ export interface FrameRecipeData {
   roles: FrameRecipeRole[];
   lexical_units: FrameRecipeLexicalUnit[];
   relations: {
-    inherits_from: FrameRecipeRelatedFrame[];
-    inherited_by: FrameRecipeRelatedFrame[];
-    uses: FrameRecipeRelatedFrame[];
-    used_by: FrameRecipeRelatedFrame[];
-    other: Array<{
-      type: FrameRelationType;
-      direction: 'incoming' | 'outgoing';
-      frame: FrameRecipeRelatedFrame;
-    }>;
+    parent_of: FrameRecipeRelatedFrame[];
+    child_of: FrameRecipeRelatedFrame[];
   };
 }
 

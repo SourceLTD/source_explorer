@@ -36,7 +36,6 @@ export interface VirtualLexicalUnitSummary {
 
 export interface VirtualIndex {
   virtualFramesByRef: Map<string, VirtualFrameSummary>;
-  framesBySuperRef: Map<string, VirtualFrameSummary[]>;
   lexicalUnitsByFrameRef: Map<string, VirtualLexicalUnitSummary[]>;
 }
 
@@ -122,7 +121,6 @@ function getEffectiveParentRef(cs: VirtualIndexChangeset, fieldName: string): st
 
 export function buildVirtualIndex(changesets: VirtualIndexChangeset[]): VirtualIndex {
   const virtualFramesByRef = new Map<string, VirtualFrameSummary>();
-  const framesBySuperRef = new Map<string, VirtualFrameSummary[]>();
   const lexicalUnitsByFrameRef = new Map<string, VirtualLexicalUnitSummary[]>();
 
   for (const cs of changesets) {
@@ -136,20 +134,6 @@ export function buildVirtualIndex(changesets: VirtualIndexChangeset[]): VirtualI
   }
 
   for (const cs of changesets) {
-    if (cs.entity_type === 'frame') {
-      const parentRef = getEffectiveParentRef(cs, 'super_frame_id');
-      if (isVirtualRef(parentRef)) {
-        const snapshot = cs.operation === 'create' ? cs.after_snapshot : (cs.before_snapshot ?? cs.after_snapshot);
-        const ref = cs.entity_id ? String(cs.entity_id) : `-${cs.id}`;
-        const summary = summarizeFrame(ref, snapshot);
-        if (summary) {
-          const list = framesBySuperRef.get(parentRef!) ?? [];
-          list.push(summary);
-          framesBySuperRef.set(parentRef!, list);
-        }
-      }
-    }
-
     if (cs.entity_type === 'lexical_unit') {
       const parentRef = getEffectiveParentRef(cs, 'frame_id');
       if (isVirtualRef(parentRef)) {
@@ -167,7 +151,6 @@ export function buildVirtualIndex(changesets: VirtualIndexChangeset[]): VirtualI
 
   return {
     virtualFramesByRef,
-    framesBySuperRef,
     lexicalUnitsByFrameRef,
   };
 }

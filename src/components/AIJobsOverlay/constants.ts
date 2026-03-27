@@ -11,8 +11,7 @@ export const MODEL_OPTIONS = [
 export type JobType = 'flag' | 'edit' | 'allocate_contents' | 'allocate' | 'split';
 export type LexicalJobType = 'flag' | 'edit' | 'allocate';
 export type FrameJobType = 'flag' | 'edit' | 'allocate' | 'allocate_contents' | 'split';
-export type SuperframeJobType = 'flag' | 'edit' | 'allocate_contents' | 'split';
-export type EntityType = 'lexical_units' | 'frames' | 'super_frames' | 'frames_only';
+export type EntityType = 'lexical_units' | 'frames';
 
 // ============================================================================
 // PROMPT BUILDING BLOCKS
@@ -161,6 +160,23 @@ Evaluate whether verbs and other lexical units in this frame are correctly assig
 
 Respond using the provided JSON schema with your recommendations.`,
 
+  allocate: `You are evaluating the hierarchical placement of a semantic frame.
+
+Frame ID: {{id}}
+Frame Label: {{label}}
+Definition: {{definition}}
+Short Definition: {{short_definition}}
+Number of Roles: {{roles_count}}
+Number of Lexical Units: {{lexical_units_count}}
+
+Evaluate whether this frame is correctly placed in the parent_of hierarchy:
+- Does the frame's meaning suggest it should inherit from a different parent frame?
+- Consider the semantic relationships between this frame and potential parent frames
+- Use recommended_parent_frame_id to suggest a new parent in the parent_of DAG
+- Use recommended_super_frame_id to suggest a new superframe grouping
+
+Respond using the provided JSON schema with your recommendation.`,
+
   split: `You are splitting a semantic frame into multiple more specific frames.
 
 Frame ID: {{id}}
@@ -181,7 +197,7 @@ Your task is to split this frame into {{min_splits}} to {{max_splits}} new frame
 4. Assign each lexical unit to exactly one of the new frames
 
 IMPORTANT:
-- Roles are attached to superframes only. For a frame split, set roles = [] for every proposed new frame in the structured response.
+- Set roles = [] for every proposed new frame in the structured response.
 
 Guidelines:
 - Each new frame should be semantically coherent and distinct
@@ -193,139 +209,6 @@ Respond using the provided JSON schema with:
 - Whether the frame should be split
 - Proposed new frames (labels/definitions/short_definition)
 - Assignment of every lexical unit to exactly one proposed new frame
-- Whether the original should be deleted
-- Confidence + justification`,
-
-  allocate: `You are allocating a semantic frame to the best-fitting super frame (parent category).
-
-Frame ID: {{id}}
-Frame Label: {{label}}
-Definition: {{definition}}
-Short Definition: {{short_definition}}
-
-Current Parent Super Frame:
-- ID: {{super_frame.id}}
-- Label: {{super_frame.label}}
-- Definition: {{super_frame.definition}}
-
-Evaluate whether this frame should stay under its current super frame, or be moved to a different existing super frame.
-
-When researching candidate target superframes, use:
-- search_superframes / select_superframes (TOP-LEVEL superframes only)
-Do NOT use search_frames / select_frames to pick a superframe target (those tools return non-top-level frames only).
-
-Rules:
-- If the current parent is appropriate, set keep_current = true.
-- If re-parenting is needed, set keep_current = false and provide recommended_super_frame_id (must be an existing super frame ID; never null).
-
-Respond using the provided JSON schema.`,
-};
-
-// Prompts for superframes (frames that contain other frames, not lexical units)
-const SUPERFRAME_PROMPTS: Record<SuperframeJobType, string> = {
-  flag: `You are reviewing a superframe for quality assurance.
-
-Superframe Label: {{label}}
-Definition: {{definition}}
-Short Definition: {{short_definition}}
-Currently Flagged: {{flagged}}
-Flagged Reason: {{flagged_reason}}
-Verifiable: {{verifiable}}
-Unverifiable Reason: {{unverifiable_reason}}
-Number of Roles: {{roles_count}}
-Number of Child Frames: {{child_frames_count}}
-
-Decide whether the superframe should be flagged for review. Consider:
-- Is the definition clear and comprehensive?
-- Does the short definition accurately summarize the superframe's meaning?
-- Does the superframe properly categorize its child frames?
-
-Respond using the provided JSON schema.`,
-
-  edit: `You are improving the quality of superframe data.
-
-Superframe Label: {{label}}
-Current Definition: {{definition}}
-Current Short Definition: {{short_definition}}
-Number of Roles: {{roles_count}}
-Number of Child Frames: {{child_frames_count}}
-
-Review this superframe and suggest improvements to make the data more accurate and useful:
-- Improve the definition if it's unclear, incomplete, or could be more precise
-- Enhance the short definition to be more concise yet informative
-
-Respond using the provided JSON schema with your suggested edits.`,
-
-  allocate_contents: `You are reviewing the composition of a superframe.
-
-Superframe Label: {{label}}
-Definition: {{definition}}
-Short Definition: {{short_definition}}
-Number of Roles: {{roles_count}}
-Number of Child Frames: {{child_frames_count}}
-
-Child Frames in this Superframe:
-{% for frame in child_frames %}
-- ID {{frame.id}} ({{frame.code}}): {{frame.label}} - {{frame.definition}} ({{frame.roles_count}} roles, {{frame.lexical_units_count}} lexical units)
-{% endfor %}
-
-Evaluate whether the child frames in this superframe are correctly assigned:
-- Does each child frame's meaning align with the superframe's definition?
-- Should any child frame be moved to a different superframe?
-- Are there frames that should be added or removed from this superframe?
-- Consider the semantic coherence of the superframe's contents
-
-When researching candidate target superframes, use:
-- search_superframes / select_superframes (TOP-LEVEL superframes only)
-Use search_frames / select_frames only to inspect non-top-level child frames.
-
-IMPORTANT OUTPUT RULES (superframe allocate_contents):
-- Use ONLY the numeric child frame IDs shown above (the values in "ID {{frame.id}}").
-- If recommending moves, populate the output field:
-  frame_reallocations: [{ child_frame_id: <number>, target_super_frame_id: <number> }]
-- target_super_frame_id must be a TOP-LEVEL superframe ID (super_frame_id = null).
-- Set lexical_unit_reallocations = [] for this job type (do not suggest lexical unit moves here).
-- Do NOT output entry_code/target_frame_id for superframe jobs.
-
-Respond using the provided JSON schema with your recommendations.`,
-
-  split: `You are splitting a superframe into multiple more specific superframes.
-
-Superframe ID: {{id}}
-Superframe Label: {{label}}
-Definition: {{definition}}
-Short Definition: {{short_definition}}
-Number of Roles: {{roles_count}}
-Number of Child Frames: {{child_frames_count}}
-
-Current Roles:
-{% for role in roles %}
-- {{role.type}}: {{role.description}}{% if role.main %} [MAIN]{% endif %}
-{% endfor %}
-
-Child Frames in this Superframe:
-{% for frame in child_frames %}
-- ID {{frame.id}}: {{frame.label}} - {{frame.definition}} ({{frame.roles_count}} roles, {{frame.lexical_units_count}} lexical units)
-{% endfor %}
-
-Your task is to split this superframe into {{min_splits}} to {{max_splits}} new superframes. For each new superframe:
-1. Create a unique, descriptive label
-2. Write a clear definition that distinguishes it from sibling superframes
-3. Write a concise short_definition
-4. Define appropriate roles for the new superframe:
-   - Provide new role descriptions per superframe; examples are optional.
-5. Assign each child frame to exactly one of the new superframes
-
-Guidelines:
-- Each new superframe should represent a coherent semantic category
-- All child frames from the original superframe must be assigned to a new superframe
-- The split should result in better organization of the frame hierarchy
-- Consider the semantic relationships between child frames when grouping
-
-Respond using the provided JSON schema with:
-- Whether the superframe should be split
-- Proposed new superframes (labels/definitions/short_definition and roles)
-- Assignment of every child frame to exactly one proposed new superframe
 - Whether the original should be deleted
 - Confidence + justification`,
 };
@@ -342,25 +225,13 @@ export interface BuildPromptOptions {
   jobType: JobType;
   agenticMode: boolean;
   scopeMode: ScopeMode;
-  /** Whether targeting superframes (frames that contain other frames) */
-  isSuperFrame?: boolean;
 }
 
 /**
  * Get the base prompt template for a given entity type and job type
  */
-function getBasePrompt(entityType: EntityType, jobType: JobType, isSuperFrame?: boolean): string {
-  // Handle superframes
-  if (entityType === 'super_frames' || (entityType === 'frames' && isSuperFrame)) {
-    // Superframes support flag, edit, allocate_contents, and split
-    if (jobType === 'allocate') {
-      return SUPERFRAME_PROMPTS.flag; // Fallback - shouldn't happen
-    }
-    return SUPERFRAME_PROMPTS[jobType as SuperframeJobType];
-  }
-  
-  // frames_only is treated as regular frames
-  if (entityType === 'frames' || entityType === 'frames_only') {
+function getBasePrompt(entityType: EntityType, jobType: JobType): string {
+  if (entityType === 'frames') {
     return FRAME_PROMPTS[jobType as FrameJobType];
   }
   // Lexical entries only support flag, edit, and allocate
@@ -380,7 +251,7 @@ function getBasePrompt(entityType: EntityType, jobType: JobType, isSuperFrame?: 
  * 4. Persistence block (always)
  */
 export function buildPrompt(options: BuildPromptOptions): string {
-  const { entityType, jobType, agenticMode, scopeMode, isSuperFrame } = options;
+  const { entityType, jobType, agenticMode, scopeMode } = options;
   
   const sections: string[] = [];
   
@@ -391,7 +262,7 @@ export function buildPrompt(options: BuildPromptOptions): string {
   }
   
   // 2. Add base prompt
-  const basePrompt = getBasePrompt(entityType, jobType, isSuperFrame);
+  const basePrompt = getBasePrompt(entityType, jobType);
   sections.push(basePrompt);
   
   // 3. Add agentic instructions if enabled
@@ -409,13 +280,12 @@ export function buildPrompt(options: BuildPromptOptions): string {
  * Get the default prompt for a given entity type and job type.
  * This is a simplified version for backwards compatibility that uses default options.
  */
-export function getDefaultPrompt(entityType: EntityType, jobType: JobType, isSuperFrame?: boolean): string {
+export function getDefaultPrompt(entityType: EntityType, jobType: JobType): string {
   return buildPrompt({
     entityType,
     jobType,
-    agenticMode: true, // Default to agentic mode enabled
-    scopeMode: 'all',  // Default scope
-    isSuperFrame,
+    agenticMode: true,
+    scopeMode: 'all',
   });
 }
 

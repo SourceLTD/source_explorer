@@ -6,11 +6,10 @@ import { translateFilterASTToPrisma } from '@/lib/filters/translate';
 import type { BooleanFilterGroup, BooleanFilterNode, BooleanFilterRule, PostFilterCondition } from '@/lib/filters/types';
 import { attachPendingInfoToEntities } from '@/lib/version-control';
 
-type ChildCountMode = 'super' | 'frame' | 'mixed';
+type ChildCountMode = 'frame';
 
 const FRAME_TABLE_ALIAS = 'f';
 const FRAME_ID_REF = Prisma.raw('f."id"');
-const FRAME_SUPER_ID_REF = Prisma.raw('f."super_frame_id"');
 
 function toSqlDateEndOfDay(value: string): Date {
   return new Date(`${value}T23:59:59.999Z`);
@@ -103,19 +102,9 @@ function buildChildrenCountSql(
   const childFilters = computedFilters.filter(f => f.field === 'childrenCount');
   if (childFilters.length === 0) return null;
 
-  const frameChildCount = Prisma.sql`
-    (SELECT COUNT(*) FROM frames sf WHERE sf.super_frame_id = ${FRAME_ID_REF} AND sf.deleted = false)
-  `;
-  const lexicalUnitCount = Prisma.sql`
+  const childCountExpr = Prisma.sql`
     (SELECT COUNT(*) FROM frame_lexical_units flu JOIN lexical_units lu ON lu.id = flu.lexical_unit_id WHERE flu.frame_id = ${FRAME_ID_REF} AND COALESCE(lu.deleted, false) = false)
   `;
-
-  const childCountExpr =
-    mode === 'super'
-      ? frameChildCount
-      : mode === 'frame'
-        ? lexicalUnitCount
-        : Prisma.sql`CASE WHEN ${FRAME_SUPER_ID_REF} IS NULL THEN ${frameChildCount} ELSE ${lexicalUnitCount} END`;
 
   const conditions = childFilters.map(filter => {
     const value = Number(filter.value);
@@ -156,8 +145,7 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search');
     const rawSortBy = searchParams.get('sortBy') || 'label';
     const sortOrder = searchParams.get('sortOrder') === 'desc' ? 'desc' : 'asc';
-    const isSuperFrame = searchParams.get('isSuperFrame');
-    const super_frame_id = searchParams.get('super_frame_id');
+    const parent_frame_id = searchParams.get('parent_frame_id');
     
     const skip = (page - 1) * limit;
 
@@ -198,14 +186,15 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    if (isSuperFrame === 'true') {
-      baseConditions.push({ super_frame_id: null });
-    } else if (isSuperFrame === 'false') {
-      baseConditions.push({ super_frame_id: { not: null } });
-    }
-
-    if (super_frame_id) {
-      baseConditions.push({ super_frame_id: BigInt(super_frame_id) });
+    if (parent_frame_id) {
+      baseConditions.push({
+        frame_relations_frame_relations_target_idToframes: {
+          some: {
+            source_id: BigInt(parent_frame_id),
+            type: 'parent_of',
+          },
+        },
+      });
     }
 
     if (Object.keys(filterWhere).length > 0) {
@@ -214,8 +203,7 @@ export async function GET(request: NextRequest) {
 
     where = { AND: baseConditions };
 
-    const childCountMode: ChildCountMode =
-      isSuperFrame === 'true' ? 'super' : isSuperFrame === 'false' ? 'frame' : 'mixed';
+    const childCountMode: ChildCountMode = 'frame';
     const hasChildrenCountFilter = computedFilters.some(filter => filter.field === 'childrenCount');
     const filterSql = buildFilterSql(filterAST);
     const childrenCountSql = hasChildrenCountFilter ? buildChildrenCountSql(computedFilters, childCountMode) : null;
@@ -234,14 +222,13 @@ export async function GET(request: NextRequest) {
       sqlConditions.push(Prisma.sql`(${Prisma.join(searchConditions, ' OR ')})`);
     }
 
-    if (isSuperFrame === 'true') {
-      sqlConditions.push(Prisma.sql`f.super_frame_id IS NULL`);
-    } else if (isSuperFrame === 'false') {
-      sqlConditions.push(Prisma.sql`f.super_frame_id IS NOT NULL`);
-    }
-
-    if (super_frame_id) {
-      sqlConditions.push(Prisma.sql`f.super_frame_id = ${BigInt(super_frame_id)}`);
+    if (parent_frame_id) {
+      sqlConditions.push(Prisma.sql`EXISTS (
+        SELECT 1 FROM frame_relations fr
+        WHERE fr.target_id = f.id
+          AND fr.source_id = ${BigInt(parent_frame_id)}
+          AND fr.type = 'parent_of'
+      )`);
     }
 
     if (filterSql) {
@@ -259,10 +246,9 @@ export async function GET(request: NextRequest) {
     let totalCount = 0;
     let frames: Array<Prisma.framesGetPayload<{
       include: {
-        _count: { select: { frame_roles: true; other_frames: true; frame_lexical_units: true } };
+        _count: { select: { frame_roles: true; frame_lexical_units: true } };
         frame_roles: true;
         frame_lexical_units: { include: { lexical_units: { select: { code: true; lemmas: true; src_lemmas: true; pos: true; gloss: true } } } };
-        frames: { select: { id: true; label: true; code: true } };
       }
     }>> = [];
 
@@ -290,7 +276,6 @@ export async function GET(request: NextRequest) {
             _count: {
               select: {
                 frame_roles: true,
-                other_frames: true,
                 frame_lexical_units: {
                   where: {
                     lexical_units: { deleted: false },
@@ -307,13 +292,6 @@ export async function GET(request: NextRequest) {
                 },
               },
               take: 11,
-            },
-            frames: {
-              select: {
-                id: true,
-                label: true,
-                code: true,
-              },
             },
           },
         });
@@ -333,7 +311,6 @@ export async function GET(request: NextRequest) {
           _count: {
             select: {
               frame_roles: true,
-              other_frames: true,
               frame_lexical_units: {
                 where: {
                   lexical_units: { deleted: false },
@@ -351,38 +328,9 @@ export async function GET(request: NextRequest) {
             },
             take: 11,
           },
-          frames: {
-            select: {
-              id: true,
-              label: true,
-              code: true,
-            },
-          },
         },
       });
     }
-
-    // Attach pending info to super-frames referenced on this page so child frames can preview
-    // derived code prefix when the super-frame label is pending-changed.
-    const superFramesById = new Map<string, { id: string; label: string; code: string | null }>();
-    for (const f of frames) {
-      const sf = (f as any).frames as { id: bigint; label: string; code: string | null } | null | undefined;
-      if (!sf?.id) continue;
-      const id = sf.id.toString();
-      if (!superFramesById.has(id)) {
-        superFramesById.set(id, { id, label: sf.label, code: sf.code });
-      }
-    }
-
-    const superFramesWithPending =
-      superFramesById.size > 0
-        ? await attachPendingInfoToEntities(
-            Array.from(superFramesById.values()),
-            'frame',
-            (sf) => BigInt(sf.id)
-          )
-        : [];
-    const superFrameByIdWithPending = new Map(superFramesWithPending.map(sf => [sf.id, sf]));
 
     const serializedFrames = frames.map(frame => {
       const lexicalUnitsCount = frame._count.frame_lexical_units;
@@ -398,25 +346,6 @@ export async function GET(request: NextRequest) {
         id: frame.id.toString(),
         label: frame.label,
         code: frame.code,
-        super_frame_id: frame.super_frame_id?.toString() ?? null,
-        super_frame: (() => {
-          const sf = (frame as any).frames as { id: bigint; label: string; code: string | null } | null | undefined;
-          const sfId = sf?.id ? sf.id.toString() : null;
-          const sfPendingApplied = sfId ? superFrameByIdWithPending.get(sfId) : null;
-          if (sfPendingApplied) {
-            return {
-              id: sfPendingApplied.id,
-              label: sfPendingApplied.label,
-              code: sfPendingApplied.code ?? null,
-            };
-          }
-          if (!sfId) return null;
-          return {
-            id: sfId,
-            label: sf?.label ?? 'Unknown',
-            code: sf?.code ?? null,
-          };
-        })(),
         definition: frame.definition,
         short_definition: frame.short_definition,
         flagged: frame.flagged ?? false,
@@ -432,7 +361,6 @@ export async function GET(request: NextRequest) {
         recipe: frame.recipe,
         roles_count: frame._count.frame_roles,
         lexical_units_count: lexicalUnitsCount,
-        subframes_count: frame._count.other_frames,
         frame_roles: frame.frame_roles.map(fr => ({
           id: fr.id.toString(),
           description: fr.description,

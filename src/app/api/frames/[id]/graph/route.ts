@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { applyPendingToEntity } from '@/lib/version-control';
+import { applyPendingToEntity, getPendingRelationChanges } from '@/lib/version-control';
 
 export async function GET(
   request: NextRequest,
@@ -40,7 +40,6 @@ export async function GET(
           where: {
             frames_frame_relations_target_idToframes: {
               deleted: false,
-              super_frame_id: { not: null },
             },
           },
           include: {
@@ -57,7 +56,6 @@ export async function GET(
           where: {
             frames_frame_relations_source_idToframes: {
               deleted: false,
-              super_frame_id: { not: null },
             },
           },
           include: {
@@ -92,6 +90,7 @@ export async function GET(
       multi_perspective: frame.multi_perspective,
       wikidata_id: frame.wikidata_id,
       recipe: frame.recipe,
+      recipe_graph: frame.recipe_graph,
       roles: frame.frame_roles.map(role => ({
         id: role.id.toString(),
         frame_id: role.frame_id.toString(),
@@ -150,9 +149,12 @@ export async function GET(
       id
     );
 
+    const pendingRelationChanges = await getPendingRelationChanges(id);
+
     return NextResponse.json({
       ...graphNodeWithPending,
       pending: pendingInfo,
+      pendingRelationChanges,
     });
   } catch (error) {
     console.error('[API] Error fetching frame graph:', error);

@@ -192,10 +192,7 @@ export function AIJobsOverlay({
     switch (mode) {
       case 'lexical_units':
         return 'Lexical Unit AI Agent';
-      case 'super_frames':
-        return 'Super Frame AI Agent';
       case 'frames':
-      case 'frames_only':
         return 'Frame AI Agent';
       default:
         return 'AI Agent';

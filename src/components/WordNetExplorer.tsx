@@ -79,6 +79,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'lexical_units'
   // Transition overlay state
   const [transitionNode, setTransitionNode] = useState<{
     rect: { top: number; left: number; width: number; height: number };
+    targetRect: { top: number; left: number; width: number; height: number };
     label: string;
     color: string;
     direction: 'up' | 'down';
@@ -89,6 +90,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'lexical_units'
     direction: 'up' | 'down';
   } | null>(null);
   const transitionMinTimeRef = useRef<number>(0);
+  const overlayWrapperRef = useRef<HTMLDivElement>(null);
 
   const clearTransition = useCallback(() => {
     setTransitionNode(null);
@@ -217,14 +219,22 @@ export default function WordNetExplorer({ initialEntryId, mode = 'lexical_units'
   const handleNodeClick = (nodeId: string, clickedNode?: { rect: { top: number; left: number; width: number; height: number }; label: string; color: string; direction: 'up' | 'down' }) => {
     if (clickedNode) {
       const mainNodeEl = graphContainerRef.current?.querySelector('[data-main-node]');
+      const mainRect = mainNodeEl
+        ? mainNodeEl.getBoundingClientRect()
+        : (() => {
+            const c = graphContainerRef.current!.getBoundingClientRect();
+            return { top: c.top + 40, left: c.left + (c.width - 400) / 2, width: 400, height: 80 };
+          })();
       if (mainNodeEl) {
-        const r = mainNodeEl.getBoundingClientRect();
         setExitingNode({
-          rect: { top: r.top, left: r.left, width: r.width, height: r.height },
+          rect: { top: mainRect.top, left: mainRect.left, width: mainRect.width, height: mainRect.height },
           direction: clickedNode.direction,
         });
       }
-      setTransitionNode(clickedNode);
+      setTransitionNode({
+        ...clickedNode,
+        targetRect: { top: mainRect.top, left: mainRect.left, width: mainRect.width, height: mainRect.height },
+      });
       transitionMinTimeRef.current = Date.now() + 400;
     }
     lastLoadedEntryRef.current = null;
@@ -316,6 +326,40 @@ export default function WordNetExplorer({ initialEntryId, mode = 'lexical_units'
     }
   };
 
+  // Prevent all scrolling during transition so the fixed overlay doesn't drift
+  useEffect(() => {
+    if (!transitionNode) return;
+    const frozen: { el: HTMLElement; prev: string }[] = [];
+    const freeze = (el: HTMLElement | null) => {
+      while (el && el !== document.documentElement) {
+        const cs = getComputedStyle(el);
+        if (cs.overflow === 'auto' || cs.overflow === 'scroll' ||
+            cs.overflowY === 'auto' || cs.overflowY === 'scroll') {
+          frozen.push({ el, prev: el.style.overflow });
+          el.style.overflow = 'hidden';
+        }
+        el = el.parentElement;
+      }
+    };
+    freeze(graphContainerRef.current);
+    if (graphContainerRef.current) {
+      graphContainerRef.current.querySelectorAll('*').forEach((child) => {
+        const cs = getComputedStyle(child as HTMLElement);
+        if (cs.overflow === 'auto' || cs.overflow === 'scroll' ||
+            cs.overflowY === 'auto' || cs.overflowY === 'scroll') {
+          frozen.push({ el: child as HTMLElement, prev: (child as HTMLElement).style.overflow });
+          (child as HTMLElement).style.overflow = 'hidden';
+        }
+      });
+    }
+    const prevBody = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prevBody;
+      for (const { el, prev } of frozen) el.style.overflow = prev;
+    };
+  }, [transitionNode]);
+
   // Load entry based on URL params or initial prop and sync view from URL
   useEffect(() => {
     const viewParam = searchParams.get('view');
@@ -341,12 +385,6 @@ export default function WordNetExplorer({ initialEntryId, mode = 'lexical_units'
               Source Console
             </button>
             <div className="flex items-center gap-1 ml-2">
-              <button
-                onClick={() => router.push('/table/super-frames')}
-                className="px-4 py-2 text-base font-medium transition-colors relative cursor-pointer text-gray-600 hover:text-gray-900 hover:bg-gray-50"
-              >
-                Super Frames
-              </button>
               <button
                 onClick={() => router.push('/graph/frames?view=graph')}
                 className="px-4 py-2 text-base font-medium transition-colors relative cursor-pointer text-gray-600 hover:text-gray-900 hover:bg-gray-50"
@@ -1305,45 +1343,50 @@ export default function WordNetExplorer({ initialEntryId, mode = 'lexical_units'
           />
         )}
 
-        {/* Transition overlays */}
+        {/* Transition overlays — wrapped in a div that compensates for scroll */}
+        <div ref={overlayWrapperRef} style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 50 }}>
         <AnimatePresence>
-          {transitionNode && graphContainerRef.current && (() => {
-            const mainNodeEl = graphContainerRef.current!.querySelector('[data-main-node]');
-            const target = mainNodeEl
-              ? mainNodeEl.getBoundingClientRect()
-              : (() => {
-                  const c = graphContainerRef.current!.getBoundingClientRect();
-                  return { top: c.top + 40, left: c.left + (c.width - 600) / 2, width: 600, height: 80 };
-                })();
+          {transitionNode && (() => {
+            const src = transitionNode.rect;
+            const tgt = transitionNode.targetRect;
+            const initialScaleX = src.width / tgt.width;
+            const initialScaleY = src.height / tgt.height;
+            const srcCenterX = src.left + src.width / 2;
+            const srcCenterY = src.top + src.height / 2;
+            const tgtCenterX = tgt.left + tgt.width / 2;
+            const tgtCenterY = tgt.top + tgt.height / 2;
+            const initialTranslateX = srcCenterX - tgtCenterX;
+            const initialTranslateY = srcCenterY - tgtCenterY;
             return (
               <motion.div
                 key="transition-overlay"
-                className="fixed z-50 flex items-center justify-center overflow-hidden pointer-events-none"
+                className="flex items-center justify-center overflow-hidden pointer-events-none"
+                style={{
+                  position: 'absolute',
+                  top: tgt.top,
+                  left: tgt.left,
+                  width: tgt.width,
+                  height: tgt.height,
+                  borderRadius: 12,
+                  willChange: 'transform, opacity',
+                }}
                 initial={{
-                  top: transitionNode.rect.top,
-                  left: transitionNode.rect.left,
-                  width: transitionNode.rect.width,
-                  height: transitionNode.rect.height,
+                  transform: `translate3d(${initialTranslateX}px, ${initialTranslateY}px, 0) scale(${initialScaleX}, ${initialScaleY})`,
                   backgroundColor: transitionNode.color,
-                  borderRadius: 8,
                   opacity: 1,
                 }}
                 animate={{
-                  top: target.top,
-                  left: target.left,
-                  width: target.width,
-                  height: target.height,
+                  transform: 'translate3d(0px, 0px, 0) scale(1, 1)',
                   backgroundColor: '#bfdbfe',
-                  borderRadius: 12,
                   opacity: 1,
                 }}
                 exit={{
                   opacity: 0,
-                  transition: { duration: 0.2, ease: 'easeOut' },
+                  transition: { duration: 0.15, ease: 'easeOut' },
                 }}
                 transition={{
-                  duration: 0.4,
-                  ease: [0.32, 0.72, 0, 1],
+                  transform: { duration: 0.35, ease: [0.25, 0.1, 0.25, 1] },
+                  backgroundColor: { duration: 0.35, ease: 'easeOut' },
                 }}
               >
                 <ArrowPathIcon className="w-6 h-6 text-white animate-spin" />
@@ -1351,42 +1394,41 @@ export default function WordNetExplorer({ initialEntryId, mode = 'lexical_units'
             );
           })()}
           {exitingNode && (() => {
-            const exitTarget = {
-              top: exitingNode.rect.top + (exitingNode.direction === 'down' ? -120 : exitingNode.rect.height + 40),
-              left: exitingNode.rect.left + exitingNode.rect.width / 2 - 60,
-              width: 120,
-              height: 36,
-            };
+            const src = exitingNode.rect;
+            const moveY = exitingNode.direction === 'down' ? -160 : 160;
             return (
               <motion.div
                 key="exiting-overlay"
-                className="fixed z-40 rounded-lg pointer-events-none"
-                initial={{
-                  top: exitingNode.rect.top,
-                  left: exitingNode.rect.left,
-                  width: exitingNode.rect.width,
-                  height: exitingNode.rect.height,
-                  backgroundColor: '#3b82f6',
+                className="rounded-lg pointer-events-none"
+                style={{
+                  position: 'absolute',
+                  top: src.top,
+                  left: src.left,
+                  width: src.width,
+                  height: src.height,
                   borderRadius: 8,
+                  willChange: 'transform, opacity',
+                }}
+                initial={{
+                  transform: 'translate3d(0px, 0px, 0) scale(1, 1)',
+                  backgroundColor: '#3b82f6',
                   opacity: 1,
                 }}
                 animate={{
-                  top: exitTarget.top,
-                  left: exitTarget.left,
-                  width: exitTarget.width,
-                  height: exitTarget.height,
+                  transform: `translate3d(0px, ${moveY}px, 0) scale(0.15, 0.08)`,
                   backgroundColor: exitingNode.direction === 'down' ? '#93c5fd' : '#fbbf24',
-                  borderRadius: 8,
                   opacity: 0,
                 }}
                 transition={{
-                  duration: 0.4,
-                  ease: [0.32, 0.72, 0, 1],
+                  transform: { duration: 0.35, ease: [0.25, 0.1, 0.25, 1] },
+                  opacity: { duration: 0.3, ease: 'easeOut' },
+                  backgroundColor: { duration: 0.3, ease: 'easeOut' },
                 }}
               />
             );
           })()}
         </AnimatePresence>
+        </div>
       </main>
     </div>
   );

@@ -242,9 +242,8 @@ export function useJobCreation({
   const [promptTemplate, setPromptTemplate] = useState(() => buildPrompt({
     entityType: mode,
     jobType: 'flag',
-    agenticMode: true, // Default matches initial agenticMode state
-    scopeMode: 'all',  // Default matches initial scopeMode state
-    isSuperFrame: mode === 'super_frames',
+    agenticMode: true,
+    scopeMode: 'all',
   }));
   const [promptManuallyEdited, setPromptManuallyEdited] = useState(false);
   const promptRef = useRef<HTMLTextAreaElement>(null);
@@ -268,7 +267,6 @@ export function useJobCreation({
         jobType,
         agenticMode,
         scopeMode,
-        isSuperFrame: mode === 'super_frames',
       });
     }
     return promptTemplate;
@@ -506,15 +504,15 @@ export function useJobCreation({
   const isLastStep = stepIndex === STEPPER_STEPS.length - 1;
 
   const isAllocateAllowed = useCallback((tableMode: DataTableMode) => {
-    return tableMode === 'lexical_units' || tableMode === 'frames_only' || tableMode === 'frames';
+    return tableMode === 'lexical_units' || tableMode === 'frames';
   }, []);
 
   const isReallocateAllowed = useCallback((tableMode: DataTableMode) => {
-    return tableMode === 'frames' || tableMode === 'frames_only' || tableMode === 'super_frames';
+    return tableMode === 'frames';
   }, []);
 
   const isSplitAllowed = useCallback((tableMode: DataTableMode) => {
-    return tableMode === 'frames' || tableMode === 'frames_only' || tableMode === 'super_frames';
+    return tableMode === 'frames';
   }, []);
 
   // Generate dynamic label based on job type, scope, and timestamp
@@ -608,8 +606,7 @@ export function useJobCreation({
   const nextDisabled = useMemo(() => {
     if (currentStep === 'scope') {
       if (jobType === 'edit' && targetFields.length === 0) return true;
-      // For superframes, allocate_contents targets child frames, so no entity type selection needed
-      if (jobType === 'allocate_contents' && mode !== 'super_frames' && reallocationEntityTypes.length === 0) return true;
+      if (jobType === 'allocate_contents' && reallocationEntityTypes.length === 0) return true;
       return !isScopeValid;
     }
     if (currentStep === 'model') return false;
@@ -670,7 +667,6 @@ export function useJobCreation({
       jobType: 'flag',
       agenticMode: true,
       scopeMode: 'all',
-      isSuperFrame: mode === 'super_frames',
     }));
     setPromptManuallyEdited(false);
     setPreview(null);
@@ -757,8 +753,7 @@ export function useJobCreation({
       entityType: mode,
       jobType: loadedJobType,
       agenticMode: loadedAgenticMode,
-      scopeMode: 'all', // Will be determined later, but prompt is already stored in job
-      isSuperFrame: mode === 'super_frames',
+      scopeMode: 'all',
     });
     setPromptTemplate(loadedPrompt);
     setPromptManuallyEdited(true);
@@ -1244,15 +1239,11 @@ export function useJobCreation({
         jobType,
         agenticMode,
         scopeMode,
-        isSuperFrame: mode === 'super_frames',
       }));
     }
   }, [jobType, mode, agenticMode, scopeMode, promptManuallyEdited, isCreating]);
 
   // Reset job type to flag if it's not valid for the current mode
-  // - Allocate is only valid for lexical_units and frames (frames_only/frames)
-  // - Allocate Contents is only valid for frames and super frames
-  // - Split is only valid for frames and super frames
   useEffect(() => {
     if (jobType === 'allocate' && !isAllocateAllowed(mode)) {
       setJobType('flag');

@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { Group } from '@visx/group';
 import { 
   FrameGraphNode, 
+  RecipeGraph,
   sortRolesByPrecedence, 
 } from '@/lib/types';
 import { getPendingNodeStroke, getPendingNodeFill } from './PendingChangeIndicator';
@@ -19,10 +20,13 @@ interface FrameMainNodeProps {
   onFrameClick: (frameId: string) => void;
   onVerbClick: (verbId: string) => void;
   onEditClick?: () => void;
+  onVisualizeRecipeGraph?: (recipeGraph: RecipeGraph) => void;
   controlledRolesExpanded?: boolean;
   controlledLexicalUnitsExpanded?: boolean;
+  controlledRecipeGraphExpanded?: boolean;
   onRolesExpandedChange?: (expanded: boolean) => void;
   onLexicalUnitsExpandedChange?: (expanded: boolean) => void;
+  onRecipeGraphExpandedChange?: (expanded: boolean) => void;
 }
 
 export default function FrameMainNode({ 
@@ -33,17 +37,22 @@ export default function FrameMainNode({
   onFrameClick,
   onVerbClick,
   onEditClick,
+  onVisualizeRecipeGraph,
   controlledRolesExpanded,
   controlledLexicalUnitsExpanded,
+  controlledRecipeGraphExpanded,
   onRolesExpandedChange,
   onLexicalUnitsExpandedChange,
+  onRecipeGraphExpandedChange,
 }: FrameMainNodeProps) {
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [internalRolesExpanded, setInternalRolesExpanded] = useState<boolean>(true);
   const [internalLexicalUnitsExpanded, setInternalLexicalUnitsExpanded] = useState<boolean>(true);
+  const [internalRecipeGraphExpanded, setInternalRecipeGraphExpanded] = useState<boolean>(false);
 
   const rolesExpanded = controlledRolesExpanded !== undefined ? controlledRolesExpanded : internalRolesExpanded;
   const lexicalUnitsExpanded = controlledLexicalUnitsExpanded !== undefined ? controlledLexicalUnitsExpanded : internalLexicalUnitsExpanded;
+  const recipeGraphExpanded = controlledRecipeGraphExpanded !== undefined ? controlledRecipeGraphExpanded : internalRecipeGraphExpanded;
 
   const setRolesExpanded = (val: boolean) => {
     if (onRolesExpandedChange) onRolesExpandedChange(val);
@@ -53,12 +62,17 @@ export default function FrameMainNode({
     if (onLexicalUnitsExpandedChange) onLexicalUnitsExpandedChange(val);
     else setInternalLexicalUnitsExpanded(val);
   };
+  const setRecipeGraphExpanded = (val: boolean) => {
+    if (onRecipeGraphExpandedChange) onRecipeGraphExpandedChange(val);
+    else setInternalRecipeGraphExpanded(val);
+  };
 
   const nodeWidth = FRAME_MAIN_NODE_WIDTH;
-  const nodeHeights = calculateFrameNodeHeights(node, rolesExpanded, lexicalUnitsExpanded);
-  const nodeHeight = FRAME_MAIN_NODE_FIXED_HEIGHT;
+  const nodeHeights = calculateFrameNodeHeights(node, rolesExpanded, lexicalUnitsExpanded, recipeGraphExpanded);
+  const nodeHeight = Math.max(FRAME_MAIN_NODE_FIXED_HEIGHT, nodeHeights.totalHeight);
   const centerX = -nodeWidth / 2;
-  const centerY = -nodeHeight / 2;
+  // Anchor from a fixed top so expansion only extends downward
+  const topY = -FRAME_MAIN_NODE_FIXED_HEIGHT / 2;
   
   const hasPendingChanges = !!node.pending;
   const pendingOperation = node.pending?.operation;
@@ -67,10 +81,11 @@ export default function FrameMainNode({
     shortDefHeight, 
     glossHeight, 
     rolesHeight, 
-    lexicalUnitsHeight, 
+    lexicalUnitsHeight,
+    recipeGraphHeight,
   } = nodeHeights;
   
-  let currentY = centerY + 50 + shortDefHeight + glossHeight + 8;
+  let currentY = topY + 50 + shortDefHeight + glossHeight + 8;
 
   return (
     <Group
@@ -83,7 +98,7 @@ export default function FrameMainNode({
       <rect
         width={nodeWidth}
         height={nodeHeight}
-        y={centerY}
+        y={topY}
         x={centerX}
         fill={
           hasPendingChanges && pendingOperation
@@ -108,7 +123,7 @@ export default function FrameMainNode({
         <g>
           <rect
             x={centerX + nodeWidth - 80}
-            y={centerY + 5}
+            y={topY + 5}
             width={75}
             height={20}
             rx={10}
@@ -116,7 +131,7 @@ export default function FrameMainNode({
           />
           <text
             x={centerX + nodeWidth - 42}
-            y={centerY + 18}
+            y={topY + 18}
             fontSize={10}
             fontFamily="Arial"
             textAnchor="middle"
@@ -131,7 +146,7 @@ export default function FrameMainNode({
       {/* Title */}
       <text
         x={centerX + 12}
-        y={centerY + 35}
+        y={topY + 35}
         fontSize={24}
         fontFamily="Arial"
         textAnchor="start"
@@ -148,7 +163,7 @@ export default function FrameMainNode({
       {node.short_definition && (
         <foreignObject
           x={centerX + 12}
-          y={centerY + 50}
+          y={topY + 50}
           width={nodeWidth - 24}
           height={shortDefHeight}
           style={{ overflow: 'hidden' }}
@@ -174,7 +189,7 @@ export default function FrameMainNode({
       {/* Definition/gloss */}
       <foreignObject
         x={centerX + 12}
-        y={centerY + 50 + shortDefHeight}
+        y={topY + 50 + shortDefHeight}
         width={nodeWidth - 24}
         height={glossHeight}
         style={{ overflow: 'hidden' }}
@@ -440,13 +455,129 @@ export default function FrameMainNode({
           )}
         </g>
       )}
+      {(() => { currentY += lexicalUnitsHeight > 0 ? lexicalUnitsHeight + 4 : 0; return null; })()}
+
+      {/* Recipe Graph Section */}
+      {node.recipe_graph && (
+        <g>
+          <foreignObject
+            x={centerX + 12}
+            y={currentY}
+            width={nodeWidth - 24}
+            height={28}
+            style={{ overflow: 'hidden' }}
+          >
+            <div 
+              style={{
+                fontSize: '14px',
+                fontFamily: 'Arial',
+                color: 'white',
+                fontWeight: 'bold',
+                padding: '4px 6px 8px 6px',
+                backgroundColor: 'rgba(0, 0, 0, 0.2)',
+                borderRadius: '3px 3px 0 0',
+                cursor: 'pointer',
+                userSelect: 'none',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+              onClick={() => setRecipeGraphExpanded(!recipeGraphExpanded)}
+            >
+              <span>
+                {recipeGraphExpanded ? '▼' : '▶'} Recipe Graph ({node.recipe_graph.nodes?.length || 0} nodes, {node.recipe_graph.edges?.length || 0} edges)
+              </span>
+              {onVisualizeRecipeGraph && (
+                <span
+                  style={{
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    padding: '2px 8px',
+                    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                  }}
+                  onClick={(e: React.MouseEvent) => {
+                    e.stopPropagation();
+                    onVisualizeRecipeGraph(node.recipe_graph!);
+                  }}
+                >
+                  Visualize
+                </span>
+              )}
+            </div>
+          </foreignObject>
+          
+          {recipeGraphExpanded && (
+            <Group top={currentY + 28} left={centerX + 12}>
+              {(() => {
+                const rg = node.recipe_graph!;
+                const items: { label: string; value: string }[] = [];
+                
+                if (rg.confidence) {
+                  items.push({ label: 'Confidence', value: `${rg.confidence}${rg.confidence_reasoning ? ' — ' + rg.confidence_reasoning : ''}` });
+                }
+                
+                (rg.nodes || []).forEach(n => {
+                  items.push({
+                    label: `[${n.node_type}] ${n.id}`,
+                    value: `${n.description}  (${n.keywords.join(', ')})`,
+                  });
+                });
+                
+                (rg.edges || []).forEach(e => {
+                  items.push({
+                    label: `${e.source} → ${e.target}`,
+                    value: e.label,
+                  });
+                });
+
+                let rowY = 0;
+                return items.map((item, idx) => {
+                  const textLen = (item.label + ': ' + item.value).length;
+                  const rowHeight = textLen > 80 ? 44 : 28;
+                  const y = rowY;
+                  rowY += rowHeight + 2;
+                  return (
+                    <foreignObject
+                      key={`rg-item-${idx}`}
+                      x={0}
+                      y={y}
+                      width={nodeWidth - 24}
+                      height={rowHeight}
+                      style={{ overflow: 'hidden' }}
+                    >
+                      <div style={{
+                        fontSize: '12px',
+                        fontFamily: 'Arial, monospace',
+                        color: 'white',
+                        lineHeight: '1.4',
+                        padding: '3px 8px',
+                        backgroundColor: idx === 0 ? 'rgba(34, 197, 94, 0.2)' : 'rgba(255, 255, 255, 0.08)',
+                        borderRadius: '3px',
+                        overflow: 'hidden',
+                        height: '100%',
+                        boxSizing: 'border-box',
+                      }}>
+                        <span style={{ fontWeight: 'bold', color: '#bfdbfe' }}>{item.label}:</span>{' '}
+                        <span style={{ color: '#e0eaff' }}>{item.value}</span>
+                      </div>
+                    </foreignObject>
+                  );
+                });
+              })()}
+            </Group>
+          )}
+          {(() => { currentY += recipeGraphHeight + 4; return null; })()}
+        </g>
+      )}
 
       {/* Edit Button - Top Right */}
       {onEditClick && (
         <g>
           <rect
             x={centerX + nodeWidth - 44}
-            y={centerY + 8}
+            y={topY + 8}
             width={36}
             height={36}
             rx={6}
@@ -469,7 +600,7 @@ export default function FrameMainNode({
           </rect>
           <g
             style={{ pointerEvents: 'none' }}
-            transform={`translate(${centerX + nodeWidth - 26}, ${centerY + 26}) scale(0.75)`}
+            transform={`translate(${centerX + nodeWidth - 26}, ${topY + 26}) scale(0.75)`}
           >
             <g transform="translate(-12, -12)">
               <path
@@ -519,7 +650,8 @@ function estimateLuRowHeight(lu: { gloss?: string | null }, containerWidth: numb
 export function calculateFrameNodeHeights(
   node: FrameGraphNode,
   rolesExpanded: boolean = true,
-  lexicalUnitsExpanded: boolean = true
+  lexicalUnitsExpanded: boolean = true,
+  recipeGraphExpanded: boolean = false,
 ) {
   const nodeWidth = 1000;
   const contentWidth = nodeWidth - 24;
@@ -570,13 +702,36 @@ export function calculateFrameNodeHeights(
     if (lexicalUnitsExpanded) {
       const visibleLUs = lexicalUnits.slice(0, 15);
       const luRowGap = 4;
-      visibleLUs.forEach(lu => {
-        lexicalUnitsHeight += estimateLuRowHeight(lu, contentWidth) + luRowGap;
-      });
+      const colGap = 8;
+      const colWidth = (contentWidth - colGap) / 2;
+      for (let i = 0; i < visibleLUs.length; i += 2) {
+        const leftHeight = estimateLuRowHeight(visibleLUs[i], colWidth);
+        const rightHeight = visibleLUs[i + 1] ? estimateLuRowHeight(visibleLUs[i + 1], colWidth) : 0;
+        lexicalUnitsHeight += Math.max(leftHeight, rightHeight) + luRowGap;
+      }
       lexicalUnitsHeight += 8;
       if (lexicalUnits.length > 15) lexicalUnitsHeight += 25;
     }
     height += lexicalUnitsHeight + 4;
+  }
+
+  // Recipe graph section
+  let recipeGraphHeight = 0;
+  if (node.recipe_graph) {
+    recipeGraphHeight = 28;
+    if (recipeGraphExpanded) {
+      const rg = node.recipe_graph;
+      let itemCount = 0;
+      if (rg.confidence) itemCount++;
+      itemCount += (rg.nodes || []).length;
+      itemCount += (rg.edges || []).length;
+      
+      for (let i = 0; i < itemCount; i++) {
+        recipeGraphHeight += 30;
+      }
+      recipeGraphHeight += 8;
+    }
+    height += recipeGraphHeight + 4;
   }
 
   height += 20;
@@ -587,14 +742,16 @@ export function calculateFrameNodeHeights(
     glossHeight,
     rolesHeight,
     lexicalUnitsHeight,
+    recipeGraphHeight,
   };
 }
 
 export function calculateFrameMainNodeHeight(
   node: FrameGraphNode,
   rolesExpanded: boolean = true,
-  lexicalUnitsExpanded: boolean = true
+  lexicalUnitsExpanded: boolean = true,
+  recipeGraphExpanded: boolean = false,
 ): number {
-  return calculateFrameNodeHeights(node, rolesExpanded, lexicalUnitsExpanded).totalHeight;
+  return calculateFrameNodeHeights(node, rolesExpanded, lexicalUnitsExpanded, recipeGraphExpanded).totalHeight;
 }
 

@@ -21,8 +21,8 @@ import type { ConflictError } from './ui';
 import { useTableSelection } from '@/hooks/useTableSelection';
 import { refreshPendingChangesCount } from '@/hooks/usePendingChangesCount';
 import ContextSection from '@/components/pending/ContextSection';
-import FrameReallocationContext from '@/components/pending/context/FrameReallocationContext';
 import LexicalUnitReallocationContext from '@/components/pending/context/LexicalUnitReallocationContext';
+import DAGMoveVisualization from '@/components/pending/context/DAGMoveVisualization';
 import EntityHoverPopup from '@/components/pending/EntityHoverPopup';
 import ReferenceHoverPopup from '@/components/pending/ReferenceHoverPopup';
 import { buildVirtualIndex, type VirtualIndex } from '@/components/pending/virtualIndex';
@@ -48,7 +48,7 @@ interface Changeset {
   id: string;
   entity_type: string;
   entity_id: string | null;
-  operation: 'create' | 'update' | 'delete';
+  operation: 'create' | 'update' | 'delete' | 'move';
   entity_version: number | null;
   before_snapshot: Record<string, unknown> | null;
   after_snapshot: Record<string, unknown> | null;
@@ -100,6 +100,9 @@ interface FlatChangeset extends Omit<Changeset, 'field_changes'> {
   group_id: string | null;
   field_count: number;
   field_changes: FieldChange[];
+  /** For move-grouped frame_relation pairs: the linked changeset */
+  moveGroupPairId?: string;
+  moveGroupPairChangeset?: Changeset;
 }
 
 interface PendingChangesFilter {
@@ -159,7 +162,6 @@ function parseFrameRolesFieldName(fieldName: string): { roleType: string; field:
 }
 
 function formatFieldName(fieldName: string, opts?: { short?: boolean }): string {
-  if (fieldName === 'super_frame_id') return 'Super Frame';
   if (fieldName === 'frame_id') return 'Frame';
 
   const parsed = parseFrameRolesFieldName(fieldName);
@@ -191,6 +193,18 @@ function formatFieldChangeValue(fc: FieldChange, which: 'old' | 'new'): string {
 function getEntityDisplayName(changeset: Changeset): string {
   const snapshot = changeset.before_snapshot || changeset.after_snapshot;
   if (snapshot) {
+    // For frame_relation, show the relation type and involved frames
+    if (changeset.entity_type === 'frame_relation') {
+      const relType = String(snapshot.type ?? 'relation');
+      const srcLabel = snapshot.source_label ? String(snapshot.source_label) : null;
+      const tgtLabel = snapshot.target_label ? String(snapshot.target_label) : null;
+      if (srcLabel && tgtLabel) {
+        return `${srcLabel} → ${tgtLabel} (${relType})`;
+      }
+      const srcId = snapshot.source_id ? `#${snapshot.source_id}` : '?';
+      const tgtId = snapshot.target_id ? `#${snapshot.target_id}` : '?';
+      return `${srcId} → ${tgtId} (${relType})`;
+    }
     // For frames, show label (id); for verbs/nouns/adjectives/adverbs, show code
     if (changeset.entity_type === 'frame') {
       const label = snapshot.label;
@@ -215,6 +229,7 @@ function getOperationColor(operation: string): string {
     case 'create': return 'bg-green-100 text-green-800';
     case 'update': return 'bg-blue-100 text-blue-600';
     case 'delete': return 'bg-red-100 text-red-800';
+    case 'move': return 'bg-purple-100 text-purple-800';
     default: return 'bg-gray-100 text-gray-800';
   }
 }
@@ -250,12 +265,10 @@ function renderValueWithHover(
   const size = opts?.size || 'sm';
   const sizeClass = size === 'xs' ? 'text-xs' : 'text-sm';
 
-  const isSuperFrameRef = fc.field_name === 'super_frame_id';
   const isFrameRef = fc.field_name === 'frame_id';
-  const isRef = isSuperFrameRef || isFrameRef;
   const normalizedId = normalizeIntLike(rawVal);
   
-  if (!isRef || !normalizedId) {
+  if (!isFrameRef || !normalizedId) {
     return (
       <span className={`${sizeClass} break-all ${which === 'old' ? 'text-gray-500 line-through font-medium' : 'text-gray-900 font-bold'}`}>
         {val}
@@ -265,7 +278,7 @@ function renderValueWithHover(
 
   return (
     <ReferenceHoverPopup
-      mode={isSuperFrameRef ? 'super_frame_children' : 'frame_lexical_units'}
+      mode="frame_lexical_units"
       entityId={normalizedId}
       virtualIndex={virtualIndex}
     >
@@ -535,10 +548,60 @@ export default function PendingChangesList({ onRefresh, embedded }: PendingChang
       });
     });
 
-    return sets;
+    // Merge frame_relation move-group pairs into a single "move" row.
+    // A move group has a shared `move_group_id` in the snapshots.
+    const moveGroupMap = new Map<string, FlatChangeset[]>();
+    const nonMoveGroupSets: FlatChangeset[] = [];
+
+    for (const fc of sets) {
+      if (fc.entity_type === 'frame_relation') {
+        const snap = fc.before_snapshot || fc.after_snapshot;
+        const mgId = snap?.move_group_id;
+        if (typeof mgId === 'string' && mgId) {
+          if (!moveGroupMap.has(mgId)) moveGroupMap.set(mgId, []);
+          moveGroupMap.get(mgId)!.push(fc);
+          continue;
+        }
+      }
+      nonMoveGroupSets.push(fc);
+    }
+
+    // For each move group, merge the delete+create pair into a single row
+    for (const [, groupItems] of moveGroupMap) {
+      if (groupItems.length === 2) {
+        const deleteCs = groupItems.find(g => g.operation === 'delete');
+        const createCs = groupItems.find(g => g.operation === 'create');
+        if (deleteCs && createCs) {
+          const createSnap = createCs.after_snapshot;
+          const deleteSnap = deleteCs.before_snapshot;
+          const sourceLabel = String(createSnap?.source_label ?? deleteSnap?.source_label ?? '');
+          const oldParentLabel = String(deleteSnap?.target_label ?? '');
+          const newParentLabel = String(createSnap?.target_label ?? '');
+
+          const mergedDisplay = sourceLabel
+            ? `${sourceLabel}: ${oldParentLabel} → ${newParentLabel}`
+            : `Move: #${deleteSnap?.source_id} → #${createSnap?.target_id}`;
+
+          // Use the CREATE changeset as the primary row, enriched with move info
+          const merged: FlatChangeset = {
+            ...createCs,
+            operation: 'move',
+            entity_display: mergedDisplay,
+            moveGroupPairId: deleteCs.id,
+            moveGroupPairChangeset: deleteCs,
+          };
+          nonMoveGroupSets.push(merged);
+          continue;
+        }
+      }
+      // If we can't merge (orphaned or >2), show them individually
+      nonMoveGroupSets.push(...groupItems);
+    }
+
+    return nonMoveGroupSets;
   }, [data]);
 
-  const virtualIndex = useMemo(() => buildVirtualIndex(flatChangesets), [flatChangesets]);
+  const virtualIndex = useMemo(() => buildVirtualIndex(flatChangesets as any), [flatChangesets]);
 
   // --- Filter Options ---
   const filterOptions = useMemo(() => {
@@ -728,7 +791,7 @@ export default function PendingChangesList({ onRefresh, embedded }: PendingChang
             entityId={cs.entity_id}
             beforeSnapshot={cs.before_snapshot}
             afterSnapshot={cs.after_snapshot}
-            operation={cs.operation}
+            operation={cs.operation === 'move' ? 'create' : cs.operation}
             fieldChanges={cs.field_changes}
           >
             <span className="text-sm font-medium text-gray-900 border-b border-dotted border-gray-400">
@@ -885,16 +948,31 @@ export default function PendingChangesList({ onRefresh, embedded }: PendingChang
     setCommittingAction('commit');
     const changeset = flatChangesets.find(cs => cs.id === id);
     try {
-      await fetch(`/api/changesets/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'approve_all' }),
-      });
-      const result = await commitChangeset(id, changeset?.entity_display);
-      if (result.conflict) {
-        // Conflict dialog is shown, don't refresh data yet
-        setCommittingAction(null);
-        return;
+      // For merged move rows, commit both the delete and create changesets
+      if (changeset?.operation === 'move' && changeset.moveGroupPairId) {
+        // Commit the DELETE changeset first (remove old parent relation)
+        const deleteResult = await commitChangeset(changeset.moveGroupPairId, changeset.entity_display);
+        if (!deleteResult.success) {
+          setCommittingAction(null);
+          return;
+        }
+        // Then commit the CREATE changeset (add new parent relation)
+        const createResult = await commitChangeset(id, changeset.entity_display);
+        if (createResult.conflict) {
+          setCommittingAction(null);
+          return;
+        }
+      } else {
+        await fetch(`/api/changesets/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'approve_all' }),
+        });
+        const result = await commitChangeset(id, changeset?.entity_display);
+        if (result.conflict) {
+          setCommittingAction(null);
+          return;
+        }
       }
     } catch (err) {
       console.error(err);
@@ -966,8 +1044,13 @@ export default function PendingChangesList({ onRefresh, embedded }: PendingChang
     setCommittingAction('reject');
     try {
       const changeset = flatChangesets.find(cs => cs.id === id);
-      // For DELETE/CREATE operations, discard the changeset entirely
-      if (changeset && (changeset.operation === 'delete' || changeset.operation === 'create')) {
+
+      // For merged move rows, reject both changesets
+      if (changeset?.operation === 'move' && changeset.moveGroupPairId) {
+        await fetch(`/api/changesets/${changeset.moveGroupPairId}`, { method: 'DELETE' });
+        await fetch(`/api/changesets/${id}`, { method: 'DELETE' });
+      } else if (changeset && (changeset.operation === 'delete' || changeset.operation === 'create')) {
+        // For DELETE/CREATE operations, discard the changeset entirely
         await fetch(`/api/changesets/${id}`, {
           method: 'DELETE',
         });
@@ -1114,7 +1197,9 @@ export default function PendingChangesList({ onRefresh, embedded }: PendingChang
             <div className="flex-1">
               <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
                 <span>
-                  Pending {selectedDetail.entity_type === 'lexical_unit' ? 'Lexical Unit' : selectedDetail.entity_type.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')} Change
+                  {selectedDetail.operation === 'move'
+                    ? 'Pending DAG Move'
+                    : `Pending ${selectedDetail.entity_type === 'lexical_unit' ? 'Lexical Unit' : selectedDetail.entity_type === 'frame_relation' ? 'Frame Relation' : selectedDetail.entity_type.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')} Change`}
                 </span>
                 <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${getOperationColor(selectedDetail.operation)}`}>
                   {selectedDetail.operation}
@@ -1129,7 +1214,7 @@ export default function PendingChangesList({ onRefresh, embedded }: PendingChang
                 {formatUserName(selectedDetail.created_by)} · {new Date(selectedDetail.created_at).toLocaleDateString()}
               </span>
               <div className="flex items-center gap-2">
-                {selectedDetail.operation === 'update' && (
+                {(selectedDetail.operation === 'update' || selectedDetail.operation === 'move') && (
                   <button
                     onClick={async () => {
                       await handleSingleReject(selectedDetail.id);
@@ -1138,7 +1223,7 @@ export default function PendingChangesList({ onRefresh, embedded }: PendingChang
                     disabled={isCommitting}
                     className="px-4 py-1.5 bg-red-600 hover:bg-red-500 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 cursor-pointer"
                   >
-                    Reject All
+                    {selectedDetail.operation === 'move' ? 'Reject Move' : 'Reject All'}
                   </button>
                 )}
                 <button
@@ -1208,15 +1293,91 @@ export default function PendingChangesList({ onRefresh, embedded }: PendingChang
               <div className="space-y-6">
                 <ContextSection
                   entityType={selectedDetail.entity_type}
-                  operation={selectedDetail.operation}
+                  operation={selectedDetail.operation === 'move' ? 'create' : selectedDetail.operation}
                   entityId={selectedDetail.entity_id}
                   beforeSnapshot={selectedDetail.before_snapshot}
                   afterSnapshot={selectedDetail.after_snapshot}
                   fieldChanges={detailFieldChanges}
                 />
 
+                {/* DAG Move Visualization for frame_relation changesets */}
+                {selectedDetail.entity_type === 'frame_relation' && (() => {
+                  const snap = selectedDetail.after_snapshot || selectedDetail.before_snapshot;
+                  const pairSnap = selectedDetail.moveGroupPairChangeset?.before_snapshot
+                    ?? selectedDetail.moveGroupPairChangeset?.after_snapshot;
+                  const sourceId = String(snap?.source_id ?? pairSnap?.source_id ?? '');
+                  const sourceLabel = String(snap?.source_label ?? pairSnap?.source_label ?? '');
+
+                  // For merged move rows (operation === 'move')
+                  if (selectedDetail.operation === 'move' && selectedDetail.moveGroupPairChangeset) {
+                    const deleteSnap = selectedDetail.moveGroupPairChangeset.before_snapshot;
+                    const createSnap = selectedDetail.after_snapshot;
+                    const oldParentId = String(deleteSnap?.target_id ?? '');
+                    const newParentId = String(createSnap?.target_id ?? '');
+                    const oldParentLabel = String(deleteSnap?.target_label ?? '');
+                    const newParentLabel = String(createSnap?.target_label ?? '');
+
+                    if (sourceId && newParentId) {
+                      return (
+                        <DAGMoveVisualization
+                          frameId={sourceId}
+                          frameLabel={sourceLabel || undefined}
+                          oldParentId={oldParentId || null}
+                          oldParentLabel={oldParentLabel || null}
+                          newParentId={newParentId}
+                          newParentLabel={newParentLabel || null}
+                        />
+                      );
+                    }
+                  }
+
+                  // For standalone create/delete frame_relation changesets
+                  if (selectedDetail.operation === 'create' && snap) {
+                    const targetId = String(snap.target_id ?? '');
+                    const targetLabel = String(snap.target_label ?? '');
+                    if (sourceId && targetId) {
+                      return (
+                        <DAGMoveVisualization
+                          frameId={sourceId}
+                          frameLabel={sourceLabel || undefined}
+                          oldParentId={null}
+                          newParentId={targetId}
+                          newParentLabel={targetLabel || null}
+                        />
+                      );
+                    }
+                  }
+
+                  if (selectedDetail.operation === 'delete' && snap) {
+                    const targetId = String(snap.target_id ?? '');
+                    const targetLabel = String(snap.target_label ?? '');
+                    if (sourceId && targetId) {
+                      return (
+                        <div className="space-y-3">
+                          <div className="text-sm font-semibold text-gray-700">DAG Relation Removal</div>
+                          <div className="text-xs text-gray-500">
+                            Removing <span className="font-medium text-gray-700">{snap.type as string}</span> relation
+                            between <span className="font-medium">{sourceLabel || `#${sourceId}`}</span> and{' '}
+                            <span className="font-medium">{targetLabel || `#${targetId}`}</span>
+                          </div>
+                        </div>
+                      );
+                    }
+                  }
+
+                  return null;
+                })()}
+
                 <div className="space-y-3">
                   <div className="text-lg font-semibold text-gray-900">Changes</div>
+
+                  {/* Handle move operation (merged frame_relation pair) */}
+                  {selectedDetail.operation === 'move' && (
+                    <div className="text-sm text-purple-600 font-semibold">
+                      This frame will be moved to a new parent in the inheritance DAG.
+                      The visualization above shows the before and after states.
+                    </div>
+                  )}
 
                   {/* Handle delete operation */}
                   {selectedDetail.operation === 'delete' && (() => {
@@ -1353,14 +1514,6 @@ export default function PendingChangesList({ onRefresh, embedded }: PendingChang
                               </div>
                             </div>
 
-                            {/* Injected Reallocation Context */}
-                            {fc.field_name === 'super_frame_id' && selectedDetail.entity_type === 'frame' && (
-                              <FrameReallocationContext
-                                oldSuperFrameRef={normalizeIntLike(fc.old_value)}
-                                newSuperFrameRef={normalizeIntLike(fc.new_value)}
-                                virtualIndex={virtualIndex}
-                              />
-                            )}
                             {fc.field_name === 'frame_id' && selectedDetail.entity_type === 'lexical_unit' && (
                               <LexicalUnitReallocationContext
                                 oldFrameRef={normalizeIntLike(fc.old_value)}

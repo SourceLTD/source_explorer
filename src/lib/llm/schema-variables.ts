@@ -47,16 +47,6 @@ const LU_ITEM_FIELDS = [
   { key: 'flagged', label: 'Is Flagged (boolean)' },
 ];
 
-// Child frame fields for superframes
-const CHILD_FRAME_ITEM_FIELDS = [
-  { key: 'id', label: 'Frame ID' },
-  { key: 'label', label: 'Frame Label' },
-  { key: 'definition', label: 'Frame Definition' },
-  { key: 'short_definition', label: 'Frame Short Definition' },
-  { key: 'roles_count', label: 'Number of Roles' },
-  { key: 'lexical_units_count', label: 'Number of Lexical Units' },
-];
-
 // Common variables for all entity types
 const COMMON_VARIABLES: VariableDefinition[] = [
   { key: 'id', label: 'Id', category: 'basic' },
@@ -174,45 +164,12 @@ const FRAME_VARIABLES: VariableDefinition[] = [
   } as IterableVariableDefinition,
 ];
 
-// Superframe-specific variables (frames that contain other frames, not lexical units)
-const SUPERFRAME_VARIABLES: VariableDefinition[] = [
-  { key: 'id', label: 'Id', category: 'basic' },
-  { key: 'code', label: 'Code', category: 'basic' },
-  { key: 'pos', label: 'Pos', category: 'computed' },
-  { key: 'label', label: 'Label', category: 'basic' },
-  { key: 'definition', label: 'Definition', category: 'basic' },
-  { key: 'short_definition', label: 'Short Definition', category: 'basic' },
-  { key: 'roles', label: 'Roles', category: 'basic' },
-  { key: 'flagged', label: 'Flagged', category: 'basic' },
-  { key: 'flagged_reason', label: 'Flagged Reason', category: 'basic' },
-  { key: 'verifiable', label: 'Verifiable', category: 'basic' },
-  { key: 'unverifiable_reason', label: 'Unverifiable Reason', category: 'basic' },
-  { key: 'roles_count', label: 'Roles Count', category: 'computed' },
-  { key: 'child_frames_count', label: 'Child Frames Count', category: 'computed' },
-  // Iterable collections for {% for %} loops
-  {
-    key: 'roles',
-    label: 'Superframe Roles (iterable)',
-    category: 'iterable',
-    itemFields: ROLE_ITEM_FIELDS,
-    exampleLoop: '{% for role in roles %}\n{{ role.type }}: {{ role.description }}\n{% endfor %}',
-  } as IterableVariableDefinition,
-  {
-    key: 'child_frames',
-    label: 'Child Frames (iterable)',
-    category: 'iterable',
-    itemFields: CHILD_FRAME_ITEM_FIELDS,
-    exampleLoop: '{% for frame in child_frames %}\n- {{ frame.label }}: {{ frame.definition }}\n{% endfor %}',
-  } as IterableVariableDefinition,
-];
-
 /**
  * Get available variables for a specific entity type
  */
-export function getVariablesForEntityType(entityType: DataTableMode, isSuperFrame?: boolean): VariableDefinition[] {
+export function getVariablesForEntityType(entityType: DataTableMode): VariableDefinition[] {
   switch (entityType) {
     case 'lexical_units':
-      // Return combined variables for all lexical units
       return Array.from(new Map([
         ...VERB_VARIABLES,
         ...NOUN_VARIABLES,
@@ -220,11 +177,7 @@ export function getVariablesForEntityType(entityType: DataTableMode, isSuperFram
         ...ADVERB_VARIABLES
       ].map(v => [v.key, v])).values());
     case 'frames':
-    case 'frames_only':
-      // Return superframe or regular frame variables based on flag
-      return isSuperFrame ? SUPERFRAME_VARIABLES : FRAME_VARIABLES;
-    case 'super_frames':
-      return SUPERFRAME_VARIABLES;
+      return FRAME_VARIABLES;
     default:
       return COMMON_VARIABLES;
   }
@@ -249,17 +202,10 @@ export function getVariablesForLexicalPos(pos: 'verb' | 'noun' | 'adjective' | '
 }
 
 /**
- * Get variables specifically for superframes
- */
-export function getSuperframeVariables(): VariableDefinition[] {
-  return SUPERFRAME_VARIABLES;
-}
-
-/**
  * Get only iterable variables for a specific entity type
  */
-export function getIterableVariablesForEntityType(entityType: DataTableMode, isSuperFrame?: boolean): IterableVariableDefinition[] {
-  return getVariablesForEntityType(entityType, isSuperFrame).filter(isIterableVariable);
+export function getIterableVariablesForEntityType(entityType: DataTableMode): IterableVariableDefinition[] {
+  return getVariablesForEntityType(entityType).filter(isIterableVariable);
 }
 
 /**
@@ -269,6 +215,5 @@ export function getAllEntityVariables(): Record<string, VariableDefinition[]> {
   return {
     lexical_units: getVariablesForEntityType('lexical_units'),
     frames: FRAME_VARIABLES,
-    super_frames: SUPERFRAME_VARIABLES,
   };
 }

@@ -635,7 +635,6 @@ export const ItemList = memo(function ItemList({
   emptyMessage,
   totalCount,
   onLoadMore,
-  jobIsSuperFrame,
   showFlaggedStatus,
 }: {
   title: string;
@@ -643,7 +642,6 @@ export const ItemList = memo(function ItemList({
   emptyMessage: string;
   totalCount: number;
   onLoadMore?: () => void;
-  jobIsSuperFrame?: boolean;
   showFlaggedStatus?: boolean;
 }) {
   const hasMore = items.length < totalCount;
@@ -689,9 +687,7 @@ export const ItemList = memo(function ItemList({
                     <div>
                       <span className="font-semibold">{displayName}</span>
                       <span className="ml-2 uppercase opacity-75">
-                        {item.entry.pos === 'frames' 
-                          ? (item.entry.isSuperFrame ?? jobIsSuperFrame ? 'SUPER FRAME' : 'FRAME')
-                          : item.entry.pos}
+                        {item.entry.pos === 'frames' ? 'FRAME' : item.entry.pos}
                       </span>
                     </div>
                     <span className="opacity-75">{item.status}</span>
