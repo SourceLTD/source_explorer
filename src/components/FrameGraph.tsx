@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useMemo, useState, useCallback, useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
-import { FrameGraphNode, FrameRelationType, RecipeGraph } from '@/lib/types';
+import { FrameGraphNode, FrameGraphRelation, FrameRelationType, RecipeGraph } from '@/lib/types';
 import type { PendingRelationChange } from '@/lib/version-control';
 import FrameMainNode, { FRAME_MAIN_NODE_FIXED_HEIGHT, calculateFrameNodeHeights } from './FrameMainNode';
 import LoadingSpinner from '@/components/LoadingSpinner';
+import FrameRoleMappingModal from './FrameRoleMappingModal';
 
 // Color scheme
 const currentNodeColor = '#3b82f6';
@@ -30,7 +31,6 @@ interface FrameOption {
 interface FrameGraphProps {
   currentFrame: FrameGraphNode;
   onFrameClick: (frameId: string, clickedNode?: { rect: { top: number; left: number; width: number; height: number }; label: string; color: string; direction: 'up' | 'down' }) => void;
-  onVerbClick?: (verbId: string) => void;
   onEditClick?: () => void;
   onReparentComplete?: () => void;
   onVisualizeRecipeGraph?: (recipeGraph: RecipeGraph) => void;
@@ -53,14 +53,29 @@ const RELATION_LABELS: Record<FrameRelationType, string> = {
   'parent_of': 'Parent Of',
 };
 
+function dedupeRelationsByRelatedFrame(relations: FrameGraphRelation[], getRelatedId: (relation: FrameGraphRelation) => string | undefined) {
+  const seen = new Set<string>();
+  return relations.filter((relation) => {
+    const relatedId = getRelatedId(relation);
+    if (!relatedId || seen.has(relatedId)) return false;
+    seen.add(relatedId);
+    return true;
+  });
+}
+
+function getPositionedNodeKey(node: PositionedFrameNode) {
+  return `${node.type}-${node.id}`;
+}
+
 export interface FrameGraphHandle {
   openReparentModal: () => void;
 }
 
-function FrameGraphInner({ currentFrame, onFrameClick, onVerbClick, onEditClick, onReparentComplete, onVisualizeRecipeGraph, pendingRelationChanges }: FrameGraphProps, ref: React.Ref<FrameGraphHandle>) {
+function FrameGraphInner({ currentFrame, onFrameClick, onEditClick, onReparentComplete, onVisualizeRecipeGraph, pendingRelationChanges }: FrameGraphProps, ref: React.Ref<FrameGraphHandle>) {
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [rolesExpanded, setRolesExpanded] = useState<boolean>(true);
   const [lexicalUnitsExpanded, setLexicalUnitsExpanded] = useState<boolean>(true);
+  const [expandedSenses, setExpandedSenses] = useState<Set<string>>(new Set());
   const [recipeGraphExpanded, setRecipeGraphExpanded] = useState<boolean>(false);
   const [reparentModalOpen, setReparentModalOpen] = useState(false);
   const [reparentQuery, setReparentQuery] = useState('');
@@ -69,6 +84,7 @@ function FrameGraphInner({ currentFrame, onFrameClick, onVerbClick, onEditClick,
   const [reparentSubmitting, setReparentSubmitting] = useState(false);
   const [reparentError, setReparentError] = useState<string | null>(null);
   const reparentInputRef = useRef<HTMLInputElement>(null);
+  const [roleMappingModalOpen, setRoleMappingModalOpen] = useState(false);
 
   useImperativeHandle(ref, () => ({
     openReparentModal: () => {
@@ -165,6 +181,22 @@ function FrameGraphInner({ currentFrame, onFrameClick, onVerbClick, onEditClick,
     return rows;
   }, [calculateNodeWidth]);
 
+  // Incoming parent_of = another frame is the source (parent) pointing at this frame
+  const parentRels = useMemo(() => dedupeRelationsByRelatedFrame(
+    currentFrame.relations.filter(r =>
+      r.direction === 'incoming' && r.type === 'parent_of' && r.source && r.source.id !== currentFrame.id
+    ),
+    r => r.source?.id
+  ), [currentFrame.id, currentFrame.relations]);
+
+  // Outgoing parent_of = this frame is the source (parent) pointing at children
+  const childRels = useMemo(() => dedupeRelationsByRelatedFrame(
+    currentFrame.relations.filter(r =>
+      r.direction === 'outgoing' && r.type === 'parent_of' && r.target && r.target.id !== currentFrame.id
+    ),
+    r => r.target?.id
+  ), [currentFrame.id, currentFrame.relations]);
+
   // Layout calculation
   const layout = useMemo(() => {
     const width = 1400;
@@ -178,20 +210,11 @@ function FrameGraphInner({ currentFrame, onFrameClick, onVerbClick, onEditClick,
 
     const mainNodeWidth = 1000;
     const mainNodeLayoutHeight = FRAME_MAIN_NODE_FIXED_HEIGHT;
-    const dynamicHeights = calculateFrameNodeHeights(currentFrame, rolesExpanded, lexicalUnitsExpanded, recipeGraphExpanded);
+    const dynamicHeights = calculateFrameNodeHeights(currentFrame, rolesExpanded, lexicalUnitsExpanded, recipeGraphExpanded, expandedSenses);
     const mainNodeRenderHeight = Math.max(FRAME_MAIN_NODE_FIXED_HEIGHT, dynamicHeights.totalHeight);
     const renderOverflow = mainNodeRenderHeight - mainNodeLayoutHeight;
     
     const nodes: PositionedFrameNode[] = [];
-    
-    // Incoming parent_of = another frame is the source (parent) pointing at this frame
-    const parentRels = currentFrame.relations.filter(r => 
-      r.direction === 'incoming' && r.type === 'parent_of' && r.source
-    );
-    // Outgoing parent_of = this frame is the source (parent) pointing at children
-    const childRels = currentFrame.relations.filter(r => 
-      r.direction === 'outgoing' && r.type === 'parent_of' && r.target
-    );
 
     // Arrange rows
     const parentRows = arrangeNodesInRows(parentRels, maxRowWidth, nodeSpacing);
@@ -277,7 +300,7 @@ function FrameGraphInner({ currentFrame, onFrameClick, onVerbClick, onEditClick,
     }
     
     return { nodes, width, height: totalHeight, renderOverflow };
-  }, [currentFrame, arrangeNodesInRows, calculateNodeWidth, rolesExpanded, lexicalUnitsExpanded, recipeGraphExpanded]);
+  }, [currentFrame, parentRels, childRels, arrangeNodesInRows, calculateNodeWidth, rolesExpanded, lexicalUnitsExpanded, recipeGraphExpanded, expandedSenses]);
 
   // Identify pending relation changes for visualization
   const pendingDeletes = useMemo(() => {
@@ -298,7 +321,8 @@ function FrameGraphInner({ currentFrame, onFrameClick, onVerbClick, onEditClick,
 
   // Render related frame nodes
   const renderRelatedNode = (node: PositionedFrameNode) => {
-    const isHovered = hoveredNodeId === node.id;
+    const nodeKey = getPositionedNodeKey(node);
+    const isHovered = hoveredNodeId === nodeKey;
     const isPendingDelete = pendingDeletes.has(node.id);
     const fillColor = isPendingDelete
       ? pendingDeleteColor
@@ -309,9 +333,9 @@ function FrameGraphInner({ currentFrame, onFrameClick, onVerbClick, onEditClick,
     
     return (
       <g 
-        key={node.id}
+        key={nodeKey}
         style={{ cursor: 'pointer' }}
-        onMouseEnter={() => setHoveredNodeId(node.id)}
+        onMouseEnter={() => setHoveredNodeId(nodeKey)}
         onMouseLeave={() => setHoveredNodeId(null)}
         onClick={(e) => {
           const rect = (e.currentTarget as SVGGElement).getBoundingClientRect();
@@ -380,7 +404,7 @@ function FrameGraphInner({ currentFrame, onFrameClick, onVerbClick, onEditClick,
 
         return (
           <line
-            key={`line-${node.id}`}
+            key={`line-${getPositionedNodeKey(node)}`}
             x1={startX}
             y1={startY}
             x2={endX}
@@ -468,8 +492,6 @@ function FrameGraphInner({ currentFrame, onFrameClick, onVerbClick, onEditClick,
               x={node.x}
               y={node.y}
               onNodeClick={onFrameClick}
-              onFrameClick={onFrameClick}
-              onVerbClick={onVerbClick || (() => {})}
               onEditClick={onEditClick}
               onVisualizeRecipeGraph={onVisualizeRecipeGraph}
               controlledRolesExpanded={rolesExpanded}
@@ -478,6 +500,15 @@ function FrameGraphInner({ currentFrame, onFrameClick, onVerbClick, onEditClick,
               onRolesExpandedChange={setRolesExpanded}
               onLexicalUnitsExpandedChange={setLexicalUnitsExpanded}
               onRecipeGraphExpandedChange={setRecipeGraphExpanded}
+              expandedSenses={expandedSenses}
+              onToggleSense={(senseId) => {
+                const newSet = new Set(expandedSenses);
+                if (newSet.has(senseId)) newSet.delete(senseId);
+                else newSet.add(senseId);
+                setExpandedSenses(newSet);
+              }}
+              onRoleMappingClick={() => setRoleMappingModalOpen(true)}
+              hasParent={parentRels.length > 0}
             />
             </g>
           ))}
@@ -546,6 +577,18 @@ function FrameGraphInner({ currentFrame, onFrameClick, onVerbClick, onEditClick,
             </div>
           </div>
         </div>
+      )}
+
+      {roleMappingModalOpen && (
+        <FrameRoleMappingModal
+          parents={parentRels.map(r => ({
+            id: r.source!.id,
+            label: r.source!.label
+          }))}
+          childId={currentFrame.id}
+          childLabel={currentFrame.label}
+          onClose={() => setRoleMappingModalOpen(false)}
+        />
       )}
     </div>
   );

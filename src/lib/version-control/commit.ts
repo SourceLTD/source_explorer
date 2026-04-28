@@ -20,6 +20,10 @@ import {
   isFrameRolesFieldName,
   type NormalizedFrameRole,
 } from './frameRolesSubfields';
+import {
+  isSensesFieldName,
+  parseSensesExistsFieldName,
+} from './sensesSubfields';
 
 // Convert camelCase field names to snake_case for Prisma
 function camelToSnake(str: string): string {
@@ -230,6 +234,56 @@ async function commitCreate(
           });
         }
       }
+    } else if (changeset.entity_type === 'frame_sense') {
+      // CREATE frame_sense:
+      //   after_snapshot = { pos, definition, frame_type, [confidence], [type_dispute],
+      //                      [causative], [inchoative], [perspectival],
+      //                      frame_id, [lexical_unit_ids] }
+      const senseData = entityData as Record<string, unknown>;
+      const pos = typeof senseData.pos === 'string' ? senseData.pos : null;
+      const definition = typeof senseData.definition === 'string' ? senseData.definition : null;
+      const frameType = typeof senseData.frame_type === 'string' ? senseData.frame_type : null;
+      const frameIdRaw = senseData.frame_id;
+      if (!pos || !definition || !frameType) {
+        throw new Error('CREATE frame_sense requires pos, definition, frame_type');
+      }
+      if (frameIdRaw === undefined || frameIdRaw === null) {
+        throw new Error('CREATE frame_sense requires frame_id (senses anchor to exactly one frame)');
+      }
+      const frameId = toBigIntSafe(frameIdRaw);
+      if (!frameId) {
+        throw new Error(`CREATE frame_sense: invalid frame_id (${String(frameIdRaw)})`);
+      }
+      const luIdsRaw = Array.isArray(senseData.lexical_unit_ids) ? senseData.lexical_unit_ids : [];
+      const luIds: bigint[] = [];
+      for (const v of luIdsRaw) {
+        const b = toBigIntSafe(v);
+        if (b) luIds.push(b);
+      }
+
+      const sense = await tx.frame_senses.create({
+        data: {
+          pos,
+          definition,
+          frame_type: frameType,
+          confidence: (senseData.confidence as string | null | undefined) ?? null,
+          type_dispute: (senseData.type_dispute as string | null | undefined) ?? null,
+          causative: (senseData.causative as boolean | null | undefined) ?? null,
+          inchoative: (senseData.inchoative as boolean | null | undefined) ?? null,
+          perspectival: (senseData.perspectival as boolean | null | undefined) ?? null,
+        },
+      });
+      await tx.frame_sense_frames.create({
+        data: { frame_sense_id: sense.id, frame_id: frameId },
+      });
+      if (luIds.length > 0) {
+        await tx.lexical_unit_senses.createMany({
+          data: luIds.map(lu => ({ lexical_unit_id: lu, frame_sense_id: sense.id })),
+          skipDuplicates: true,
+        });
+      }
+      // frame_senses.id is Int, but audit_log.entity_id is BigInt. Safe to cast.
+      newEntityId = BigInt(sense.id);
     } else if (changeset.entity_type === 'frame_relation') {
       const relData = entityData as Record<string, unknown>;
       const sourceId = toBigIntSafe(relData.source_id);
@@ -310,7 +364,11 @@ async function commitCreate(
 // Special fields that require separate table updates instead of direct field updates
 
 function isComplexField(fieldName: string): boolean {
-  return fieldName === 'hypernym' || isFrameRolesFieldName(fieldName);
+  return (
+    fieldName === 'hypernym' ||
+    isFrameRolesFieldName(fieldName) ||
+    isSensesFieldName(fieldName)
+  );
 }
 
 async function commitFrameRolesSubChanges(
@@ -405,14 +463,41 @@ async function commitUpdate(
   const frameRolesLegacy = complexChanges.find(fc => fc.field_name === 'frame_roles');
   const frameRolesSub = complexChanges.filter(fc => fc.field_name.startsWith('frame_roles.'));
   const hypernymChanges = complexChanges.filter(fc => fc.field_name === 'hypernym');
+  // Sense attach/detach on a lexical_unit: `senses.<senseId>.__exists = true|false`.
+  const sensesSubChanges = complexChanges.filter(
+    fc => isLexicalUnitType(changeset.entity_type) && isSensesFieldName(fc.field_name),
+  );
 
   // Build the update data for simple fields only, resolving virtual IDs (negative IDs = -changeset_id)
   const updateData: Record<string, unknown> = {};
 
+  // For frame_sense updates, `frame_id` is not a scalar column — it's stored via
+  // frame_sense_frames. Pull it out and apply as a complex change after simple fields.
+  const senseFrameIdChange =
+    changeset.entity_type === 'frame_sense'
+      ? simpleChanges.find(fc => fc.field_name === 'frame_id') ?? null
+      : null;
+  const senseSimpleChanges =
+    changeset.entity_type === 'frame_sense'
+      ? simpleChanges.filter(fc => fc.field_name !== 'frame_id')
+      : simpleChanges;
+
   // Use a transaction
   await prisma.$transaction(async (tx) => {
-    for (const fc of simpleChanges) {
+    for (const fc of senseSimpleChanges) {
       let nextValue: unknown = fc.new_value;
+
+      // `frame_id` is no longer a scalar column on lexical_units — frames are routed
+      // through frame_senses. Skip any legacy staged field changes targeting it on a
+      // lexical unit; these changesets came from the pre-sense era and committing them
+      // would fail at the Prisma layer. Frame-level frame_id (e.g. on frame_roles) is
+      // unaffected and still committed normally.
+      if (fc.field_name === 'frame_id' && isLexicalUnitType(changeset.entity_type)) {
+        console.warn(
+          `[commit] Skipping legacy frame_id field change on lexical_unit ${changeset.entity_id} — use frame_senses instead.`
+        );
+        continue;
+      }
 
       // Virtual-ID resolution (used by AI SPLIT jobs to reference pending CREATEs)
       if (fc.field_name === 'frame_id') {
@@ -450,7 +535,11 @@ async function commitUpdate(
 
     // Update simple fields on the entity using optimistic locking, and bump version
     const hasSimpleChanges = Object.keys(updateData).length > 0;
-    const hasComplexChanges = !!frameRolesLegacy || frameRolesSub.length > 0 || hypernymChanges.length > 0;
+    const hasComplexChanges =
+      !!frameRolesLegacy ||
+      frameRolesSub.length > 0 ||
+      hypernymChanges.length > 0 ||
+      sensesSubChanges.length > 0;
 
     if (hasSimpleChanges || hasComplexChanges) {
       const versionedData = { ...updateData, version: { increment: 1 } };
@@ -474,6 +563,21 @@ async function commitUpdate(
           data: versionedData,
         });
         updateCount = result.count;
+      } else if (changeset.entity_type === 'frame_sense') {
+        // frame_senses has no `version` column — skip optimistic locking here.
+        if (hasSimpleChanges) {
+          const senseUpdateData = { ...updateData };
+          // Int PK — entity_id is stored as BigInt in the changeset.
+          const senseId = Number(changeset.entity_id!);
+          await tx.frame_senses.update({
+            where: { id: senseId },
+            data: {
+              ...senseUpdateData,
+              updated_at: new Date(),
+            },
+          });
+        }
+        updateCount = 1;
       } else {
         throw new Error(`UPDATE not implemented for entity type: ${changeset.entity_type}`);
       }
@@ -481,6 +585,22 @@ async function commitUpdate(
       if (updateCount === 0) {
         throw new Error('Version conflict: entity was modified by another user');
       }
+    }
+
+    // frame_sense: re-point the sense to a different frame (complex update).
+    if (senseFrameIdChange) {
+      const senseId = Number(changeset.entity_id!);
+      const raw = senseFrameIdChange.new_value;
+      const newFrameId = toBigIntSafe(raw);
+      if (!newFrameId) {
+        throw new Error(
+          `Invalid frame_id for frame_sense update: ${String(raw)} (must resolve to a BigInt)`
+        );
+      }
+      await tx.frame_sense_frames.deleteMany({ where: { frame_sense_id: senseId } });
+      await tx.frame_sense_frames.create({
+        data: { frame_sense_id: senseId, frame_id: newFrameId },
+      });
     }
 
     // Handle complex field changes (frame_roles.*, hypernym)
@@ -494,6 +614,53 @@ async function commitUpdate(
 
     for (const fc of hypernymChanges) {
       await commitComplexFieldChange(tx, changeset, fc);
+    }
+
+    // Apply sense attach/detach changes on the LU. Each subfield is idempotent:
+    //   senses.<senseId>.__exists = true  -> upsert lexical_unit_senses link
+    //   senses.<senseId>.__exists = false -> delete the link if present
+    if (sensesSubChanges.length > 0 && isLexicalUnitType(changeset.entity_type)) {
+      const luId = changeset.entity_id!;
+      // Dedupe by sense id; last write wins within a single changeset.
+      const effectiveBySenseId = new Map<number, boolean>();
+      for (const fc of sensesSubChanges) {
+        const parsed = parseSensesExistsFieldName(fc.field_name);
+        if (!parsed) continue;
+        const next =
+          typeof fc.new_value === 'boolean'
+            ? fc.new_value
+            : Boolean(fc.new_value);
+        effectiveBySenseId.set(parsed.senseId, next);
+      }
+      for (const [senseId, shouldExist] of effectiveBySenseId) {
+        if (shouldExist) {
+          // Validate the sense still exists before linking (defensive — keeps
+          // the audit log honest if the sense was deleted after staging).
+          const exists = await tx.frame_senses.findUnique({
+            where: { id: senseId },
+            select: { id: true },
+          });
+          if (!exists) {
+            throw new Error(
+              `Cannot attach sense ${senseId} to lexical_unit ${luId.toString()}: sense not found`
+            );
+          }
+          await tx.lexical_unit_senses.upsert({
+            where: {
+              lexical_unit_id_frame_sense_id: {
+                lexical_unit_id: luId,
+                frame_sense_id: senseId,
+              },
+            },
+            create: { lexical_unit_id: luId, frame_sense_id: senseId },
+            update: {},
+          });
+        } else {
+          await tx.lexical_unit_senses.deleteMany({
+            where: { lexical_unit_id: luId, frame_sense_id: senseId },
+          });
+        }
+      }
     }
 
     // Mark changeset as committed
@@ -701,6 +868,29 @@ async function commitDelete(
           version: { increment: 1 },
         },
       });
+    } else if (changeset.entity_type === 'frame_sense') {
+      // Hard-delete (frame_senses has no soft-delete column).
+      //
+      // FK cascade map (see prisma/schema.prisma):
+      //   frame_sense_frames        -> onDelete: Cascade  (cleaned up automatically)
+      //   lexical_unit_senses       -> onDelete: Cascade  (cleaned up automatically)
+      //   frame_sense_contrasts     -> onDelete: Cascade  (cleaned up automatically)
+      //   frame_sense_definition_revisions -> onDelete: NoAction (BLOCKING)
+      //
+      // We refuse to delete a sense that still has revision history rather
+      // than silently dropping the audit trail. Callers can prune/archive the
+      // revisions first (a deliberate, separate action).
+      const senseId = Number(changeset.entity_id!);
+      const revisionCount = await tx.frame_sense_definition_revisions.count({
+        where: { frame_sense_id: senseId },
+      });
+      if (revisionCount > 0) {
+        throw new Error(
+          `Cannot delete frame_sense ${senseId}: ${revisionCount} definition revision(s) still reference it ` +
+            `(frame_sense_definition_revisions.onDelete = NoAction). Archive or remove the revision history first.`
+        );
+      }
+      await tx.frame_senses.delete({ where: { id: senseId } });
     } else if (changeset.entity_type === 'frame_relation') {
       // Hard-delete (frame_relations has no soft-delete column)
       const rel = await tx.frame_relations.findUnique({
@@ -867,6 +1057,11 @@ async function checkVersionConflict(
   changeset: ChangesetWithFieldChanges
 ): Promise<CommitError | null> {
   if (!changeset.entity_id || changeset.entity_version === null) {
+    return null;
+  }
+
+  // frame_senses has no version column — cannot perform optimistic-locking check.
+  if (changeset.entity_type === 'frame_sense') {
     return null;
   }
 

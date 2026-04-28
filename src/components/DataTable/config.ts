@@ -11,7 +11,8 @@ export const LEXICAL_UNITS_DEFAULT_COLUMNS: ColumnConfig[] = [
   { key: 'legacy_id', label: 'Legacy ID', visible: false, sortable: true },
   { key: 'code', label: 'Code', visible: true, sortable: true },
   { key: 'pos', label: 'Part of Speech', visible: true, sortable: true },
-  { key: 'frame', label: 'Frame Code', visible: true, sortable: true },
+  { key: 'frame', label: 'Frame Code', visible: true, sortable: false },
+  { key: 'senses', label: 'Senses', visible: true, sortable: false },
   { key: 'lemmas', label: 'Lemmas', visible: true, sortable: true },
   { key: 'gloss', label: 'Gloss', visible: true, sortable: true },
   { key: 'lexfile', label: 'Lexfile', visible: false, sortable: true },
@@ -37,8 +38,8 @@ export const FRAMES_COLUMNS: ColumnConfig[] = [
   { key: 'short_definition', label: 'Short Definition', visible: false, sortable: false },
   { key: 'frame_roles', label: 'Frame Roles', visible: true, sortable: false },
   { key: 'roles_count', label: 'Roles', visible: false, sortable: false },
-  { key: 'lexical_units_count', label: 'Words', visible: false, sortable: false },
-  { key: 'lexical_units', label: 'Lexical Units', visible: true, sortable: false },
+  { key: 'lexical_units_count', label: 'Word Count', visible: false, sortable: false },
+  { key: 'lexical_units', label: 'Words', visible: true, sortable: false },
   { key: 'flagged', label: 'Flagged', visible: false, sortable: true },
   { key: 'flaggedReason', label: 'Flagged Reason', visible: false, sortable: false },
   { key: 'verifiable', label: 'Verifiable', visible: true, sortable: true },
@@ -64,6 +65,7 @@ export const DEFAULT_COLUMN_WIDTHS: ColumnWidthState = {
   legacy_id: 150,
   pos: 100,
   frame: 150,
+  senses: 320,
   lemmas: 150,
   gloss: 300,
   lexfile: 120,
@@ -169,7 +171,8 @@ export function getGraphBasePath(mode: DataTableMode): string {
  * Map column keys to actual field names for pending change detection
  */
 export const FIELD_NAME_MAP: Record<string, string> = {
-  'frame': 'frame_id',
+  // NB: `frame` is intentionally absent — frames are now edited via frame_senses,
+  // not as a direct field on lexical_units. The `frame` column is read-only.
   'label': 'label',
   'code': 'code',
   'gloss': 'gloss',

@@ -3,9 +3,9 @@ import { GraphNode, PendingChangeInfo } from '@/lib/types';
 import { Mode, EditableField, FrameOption } from './types';
 import { OverlaySection } from './OverlaySection';
 import { VendlerClassSelector } from './VendlerClassSelector';
-import { FrameSearchSelector } from './FrameSearchSelector';
 import { LexfileSelector } from './LexfileSelector';
 import { PendingFieldIndicator } from '@/components/PendingChangeIndicator';
+import { SenseFrameWarning } from '@/components/ui';
 
 interface LexicalPropertiesSectionProps {
   node: GraphNode;
@@ -52,20 +52,9 @@ export function LexicalPropertiesSection({
     return currentValue;
   };
 
-  // Helper to get frame label from frame_id (handles pending changes)
-  const getFrameLabel = (): string | null => {
-    const frameId = getDisplayValue('frame_id', node.frame_id);
-    if (!frameId) return null;
-    
-    // If there's a pending change, look up from availableFrames
-    if (hasPendingField('frame_id')) {
-      const frame = availableFrames.find(f => f.id === frameId);
-      return frame?.label ?? null;
-    }
-    
-    // Otherwise use the current node's frame label
-    return node.frame?.label ?? null;
-  };
+  // availableFrames is kept in the prop API for backward compatibility but is no
+  // longer used: frames are now read via `node.senses`.
+  void availableFrames;
 
   const getTitle = () => {
     switch (mode) {
@@ -73,7 +62,7 @@ export function LexicalPropertiesSection({
       case 'nouns': return 'Noun Properties';
       case 'adjectives': return 'Adjective Properties';
       case 'adverbs': return 'Adverb Properties';
-      case 'lexical_units': return 'Lexical Unit Properties';
+      case 'lexical_units': return 'Properties';
       default: return 'Properties';
     }
   };
@@ -126,39 +115,76 @@ export function LexicalPropertiesSection({
         </div>
       )}
 
-      {/* Frame - For lexical units */}
+      {/* Senses — each sense carries its own frame link. Frames are no longer
+          edited directly on the lexical unit; edit via the sense API. */}
       {(mode === 'lexical_units' || mode === 'verbs' || mode === 'nouns' || mode === 'adjectives' || mode === 'adverbs') && (
         <div>
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-sm font-medium text-gray-700">
-              Frame
-              {hasPendingField('frame_id') && (
-                <span className="ml-2 text-xs text-orange-600 font-normal">(pending)</span>
-              )}
-            </h3>
-            {editingField !== 'frame' && (
-              <button
-                onClick={() => onStartEdit('frame')}
-                className="text-xs text-blue-600 hover:text-blue-600 font-medium cursor-pointer"
-              >
-                Edit
-              </button>
-            )}
-          </div>
-          {editingField === 'frame' ? (
-            <FrameSearchSelector
-              value={editValue}
-              onChange={onValueChange}
-              onSave={onSave}
-              onCancel={onCancel}
-              isSaving={isSaving}
-            />
-          ) : (
-            <PendingFieldIndicator fieldName="frame_id" pending={pending}>
-              <span className="text-gray-900 text-sm">
-                {getFrameLabel() || <span className="text-gray-500 italic">None</span>}
+              Senses
+              <span className="ml-1 text-xs text-gray-400 font-normal">
+                ({node.senses?.length ?? 0})
               </span>
-            </PendingFieldIndicator>
+            </h3>
+          </div>
+          {!node.senses || node.senses.length === 0 ? (
+            <div className="text-sm text-gray-500 italic">
+              No senses attached — use the sense API to create one.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {node.senses.map(sense => {
+                const warning = sense.frameWarning;
+                return (
+                  <div
+                    key={sense.id}
+                    className={`rounded-lg border px-3 py-2 ${
+                      warning
+                        ? 'border-amber-300 bg-amber-50'
+                        : 'border-gray-200 bg-gray-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[10px] font-semibold uppercase bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">
+                        {sense.pos}
+                      </span>
+                      <span className="text-[10px] font-medium uppercase bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">
+                        {sense.frame_type}
+                      </span>
+                      <SenseFrameWarning
+                        warning={warning}
+                        frameCount={sense.frames.length}
+                        senseLabel={sense.definition?.slice(0, 32) ?? undefined}
+                      />
+                      <span className="text-xs text-gray-500 ml-auto">
+                        {warning === null && sense.frame ? (
+                          <>→ <span className="font-medium text-gray-700">{sense.frame.label}</span></>
+                        ) : warning === 'multiple' ? (
+                          <span>{sense.frames.length} frames</span>
+                        ) : null}
+                      </span>
+                    </div>
+                    {sense.definition && (
+                      <p className="text-sm text-gray-800 mt-1 leading-snug">
+                        {sense.definition}
+                      </p>
+                    )}
+                    {sense.lemmas && sense.lemmas.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {sense.lemmas.map((lemma, i) => (
+                          <span
+                            key={`${lemma}-${i}`}
+                            className="text-xs text-gray-600 bg-gray-200/50 px-2 py-0.5 rounded-full border border-gray-200"
+                          >
+                            {lemma}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
       )}

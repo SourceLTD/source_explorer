@@ -17,16 +17,18 @@ interface FrameMainNodeProps {
   x: number;
   y: number;
   onNodeClick: (nodeId: string) => void;
-  onFrameClick: (frameId: string) => void;
-  onVerbClick: (verbId: string) => void;
   onEditClick?: () => void;
   onVisualizeRecipeGraph?: (recipeGraph: RecipeGraph) => void;
   controlledRolesExpanded?: boolean;
   controlledLexicalUnitsExpanded?: boolean;
   controlledRecipeGraphExpanded?: boolean;
+  expandedSenses?: Set<string>;
   onRolesExpandedChange?: (expanded: boolean) => void;
   onLexicalUnitsExpandedChange?: (expanded: boolean) => void;
   onRecipeGraphExpandedChange?: (expanded: boolean) => void;
+  onToggleSense?: (senseId: string) => void;
+  onRoleMappingClick?: () => void;
+  hasParent?: boolean;
 }
 
 export default function FrameMainNode({ 
@@ -34,25 +36,29 @@ export default function FrameMainNode({
   x, 
   y, 
   onNodeClick,
-  onFrameClick,
-  onVerbClick,
   onEditClick,
   onVisualizeRecipeGraph,
   controlledRolesExpanded,
   controlledLexicalUnitsExpanded,
   controlledRecipeGraphExpanded,
+  expandedSenses: controlledExpandedSenses,
   onRolesExpandedChange,
   onLexicalUnitsExpandedChange,
   onRecipeGraphExpandedChange,
+  onToggleSense,
+  onRoleMappingClick,
+  hasParent,
 }: FrameMainNodeProps) {
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [internalRolesExpanded, setInternalRolesExpanded] = useState<boolean>(true);
   const [internalLexicalUnitsExpanded, setInternalLexicalUnitsExpanded] = useState<boolean>(true);
   const [internalRecipeGraphExpanded, setInternalRecipeGraphExpanded] = useState<boolean>(false);
+  const [internalExpandedSenses, setInternalExpandedSenses] = useState<Set<string>>(new Set());
 
   const rolesExpanded = controlledRolesExpanded !== undefined ? controlledRolesExpanded : internalRolesExpanded;
   const lexicalUnitsExpanded = controlledLexicalUnitsExpanded !== undefined ? controlledLexicalUnitsExpanded : internalLexicalUnitsExpanded;
   const recipeGraphExpanded = controlledRecipeGraphExpanded !== undefined ? controlledRecipeGraphExpanded : internalRecipeGraphExpanded;
+  const expandedSenses = controlledExpandedSenses !== undefined ? controlledExpandedSenses : internalExpandedSenses;
 
   const setRolesExpanded = (val: boolean) => {
     if (onRolesExpandedChange) onRolesExpandedChange(val);
@@ -66,9 +72,19 @@ export default function FrameMainNode({
     if (onRecipeGraphExpandedChange) onRecipeGraphExpandedChange(val);
     else setInternalRecipeGraphExpanded(val);
   };
+  const toggleSense = (senseId: string) => {
+    if (onToggleSense) {
+      onToggleSense(senseId);
+    } else {
+      const newSet = new Set(internalExpandedSenses);
+      if (newSet.has(senseId)) newSet.delete(senseId);
+      else newSet.add(senseId);
+      setInternalExpandedSenses(newSet);
+    }
+  };
 
   const nodeWidth = FRAME_MAIN_NODE_WIDTH;
-  const nodeHeights = calculateFrameNodeHeights(node, rolesExpanded, lexicalUnitsExpanded, recipeGraphExpanded);
+  const nodeHeights = calculateFrameNodeHeights(node, rolesExpanded, lexicalUnitsExpanded, recipeGraphExpanded, expandedSenses);
   const nodeHeight = Math.max(FRAME_MAIN_NODE_FIXED_HEIGHT, nodeHeights.totalHeight);
   const centerX = -nodeWidth / 2;
   // Anchor from a fixed top so expansion only extends downward
@@ -331,8 +347,8 @@ export default function FrameMainNode({
         {(() => { currentY += rolesHeight + 4; return null; })()}
       </g>
 
-      {/* Lexical Units Section */}
-      {node.lexical_units && node.lexical_units.length > 0 && (
+      {/* Senses Section — grouped view: each sense → its frame link + its LUs */}
+      {node.senses && node.senses.length > 0 && (
         <g>
           <foreignObject
             x={centerX + 12}
@@ -341,50 +357,143 @@ export default function FrameMainNode({
             height={28}
             style={{ overflow: 'hidden' }}
           >
-            <div 
+            <div
               style={{
-              fontSize: '14px',
-              fontFamily: 'Arial',
-              color: 'white',
-              fontWeight: 'bold',
-              padding: '4px 6px 8px 6px',
-              backgroundColor: 'rgba(0, 0, 0, 0.2)',
-              borderRadius: '3px 3px 0 0',
-              cursor: 'pointer',
-              userSelect: 'none',
-            }}
-            onClick={() => setLexicalUnitsExpanded(!lexicalUnitsExpanded)}
+                fontSize: '14px',
+                fontFamily: 'Arial',
+                color: 'white',
+                fontWeight: 'bold',
+                padding: '4px 6px 8px 6px',
+                backgroundColor: 'rgba(0, 0, 0, 0.2)',
+                borderRadius: '3px 3px 0 0',
+                cursor: 'pointer',
+                userSelect: 'none',
+              }}
+              onClick={() => setLexicalUnitsExpanded(!lexicalUnitsExpanded)}
             >
-              {lexicalUnitsExpanded ? '▼' : '▶'} Lexical Units ({node.lexical_units.length})
+              {lexicalUnitsExpanded ? '▼' : '▶'} Senses ({node.senses.length})
             </div>
           </foreignObject>
-          
+
           {lexicalUnitsExpanded && (
             <Group top={currentY + 28} left={centerX + 12}>
               {(() => {
+                const innerWidth = nodeWidth - 24;
                 const colGap = 8;
-                const colWidth = (nodeWidth - 24 - colGap) / 2;
+                const colWidth = (innerWidth - colGap) / 2;
                 const luRowGap = 4;
-                const visibleLUs = node.lexical_units.slice(0, 15);
-                const rows: { left: typeof visibleLUs[0]; right?: typeof visibleLUs[0] }[] = [];
-                for (let i = 0; i < visibleLUs.length; i += 2) {
-                  rows.push({ left: visibleLUs[i], right: visibleLUs[i + 1] });
-                }
-                let rowY = 0;
-                return rows.map((row, rowIdx) => {
-                  const leftHeight = estimateLuRowHeight(row.left, colWidth);
-                  const rightHeight = row.right ? estimateLuRowHeight(row.right, colWidth) : 0;
-                  const rowHeight = Math.max(leftHeight, rightHeight);
-                  const currentRowY = rowY;
-                  rowY += rowHeight + luRowGap;
+                  const senseHeaderHeight = 46;
+                const senseGap = 0;
+                const visibleSenses = node.senses.slice(0, 15);
 
-                  const renderLuCell = (lu: typeof visibleLUs[0], xPos: number) => (
+                let senseY = 0;
+                return visibleSenses.map((sense, senseIdx) => {
+                  const lus = sense.lexical_units ?? [];
+                  const rows: { left: typeof lus[0]; right?: typeof lus[0] }[] = [];
+                  for (let i = 0; i < lus.length; i += 2) {
+                    rows.push({ left: lus[i], right: lus[i + 1] });
+                  }
+                  const startY = senseY;
+                  const warning = sense.frameWarning;
+                  const frameLabel = sense.frames[0]?.label ?? '—';
+                  const headerBg =
+                    warning === null ? 'rgba(255, 255, 255, 0.12)' : 'rgba(251, 191, 36, 0.25)';
+                  const headerBorder =
+                    warning === null ? 'rgba(255, 255, 255, 0.2)' : 'rgba(251, 191, 36, 0.6)';
+
+                  const senseElements: React.ReactNode[] = [];
+                  senseElements.push(
+                    <foreignObject
+                      key={`sense-header-${sense.id}`}
+                      x={0}
+                      y={startY}
+                      width={innerWidth}
+                      height={senseHeaderHeight}
+                      style={{ overflow: 'hidden' }}
+                    >
+                      <div
+                        style={{
+                          fontSize: '12px',
+                          fontFamily: 'Arial, sans-serif',
+                          color: 'white',
+                          padding: '5px 8px',
+                          background: headerBg,
+                          border: `1px solid ${headerBorder}`,
+                          borderRadius: visibleSenses.length === 1 ? '4px' : (senseIdx === 0 ? (expandedSenses.has(sense.id) ? '4px' : '4px 4px 0 0') : (senseIdx === visibleSenses.length - 1 && !expandedSenses.has(sense.id) ? '0 0 4px 4px' : (expandedSenses.has(sense.id) ? '4px' : '0'))),
+                          height: '100%',
+                          boxSizing: 'border-box',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'flex-start', flex: 1, minWidth: 0, overflow: 'hidden' }}>
+                          <span
+                            style={{
+                              fontSize: '11px',
+                              fontWeight: 600,
+                              color: '#bfdbfe',
+                              backgroundColor: 'rgba(59, 130, 246, 0.4)',
+                              padding: '1px 5px',
+                              borderRadius: '3px',
+                              textTransform: 'uppercase' as const,
+                              marginRight: 6,
+                              marginTop: 1,
+                              flexShrink: 0,
+                            }}
+                          >
+                            {sense.pos}
+                          </span>
+                          <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, gap: 1 }}>
+                            {sense.lemmas && sense.lemmas.length > 0 ? (
+                              <span style={{ fontSize: 11, color: '#bfdbfe', fontStyle: 'italic', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: '1.2' }}>
+                                {sense.lemmas.join(', ')}
+                              </span>
+                            ) : null}
+                            <span style={{ fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: '1.2' }}>
+                              {sense.definition || 'No definition'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <span style={{ display: 'flex', alignItems: 'center', flexShrink: 0, marginLeft: 8 }}>
+                          {lus.length > 0 && (
+                            <span
+                              style={{ 
+                                cursor: 'pointer', 
+                                padding: '2px 6px', 
+                                borderRadius: '4px',
+                                background: 'rgba(255,255,255,0.15)',
+                                fontWeight: 600,
+                                fontSize: 11,
+                                color: '#bfdbfe'
+                              }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleSense(sense.id);
+                              }}
+                            >
+                              {expandedSenses.has(sense.id) ? 'Hide LUs' : `Show LUs (${lus.length})`}
+                            </span>
+                          )}
+                          {warning === 'none' && <span style={{ color: '#fde68a', fontWeight: 600, marginLeft: 4, fontSize: 11 }}>⚠ no frame</span>}
+                          {warning === 'multiple' && <span style={{ color: '#fde68a', fontWeight: 600, marginLeft: 4, fontSize: 11 }}>⚠ {sense.frames.length} frames</span>}
+                        </span>
+                      </div>
+                    </foreignObject>
+                  );
+                  senseY += senseHeaderHeight;
+                  if (!expandedSenses.has(sense.id) && senseIdx < visibleSenses.length - 1) {
+                    senseY -= 1;
+                  }
+
+                  const renderLuCell = (lu: typeof lus[0], xPos: number, rowTop: number, rowH: number) => (
                     <foreignObject
                       key={lu.id}
                       x={xPos}
-                      y={currentRowY}
+                      y={rowTop}
                       width={colWidth}
-                      height={rowHeight}
+                      height={rowH}
                       style={{ overflow: 'hidden' }}
                     >
                       <div
@@ -395,30 +504,43 @@ export default function FrameMainNode({
                           padding: '5px 8px',
                           background: 'rgba(255, 255, 255, 0.1)',
                           borderRadius: '4px',
-                          cursor: 'pointer',
                           overflow: 'hidden',
                           height: '100%',
                           boxSizing: 'border-box',
                         }}
-                        onClick={(e: React.MouseEvent) => {
-                          e.stopPropagation();
-                          onVerbClick(lu.id);
-                        }}
                       >
-                        <span style={{
-                          fontSize: '12px',
-                          fontWeight: 600,
-                          color: '#bfdbfe',
-                          backgroundColor: 'rgba(59, 130, 246, 0.4)',
-                          padding: '1px 5px',
-                          borderRadius: '3px',
-                          textTransform: 'uppercase' as const,
-                          marginRight: '6px',
-                        }}>
+                        <span
+                          style={{
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            color: '#bfdbfe',
+                            backgroundColor: 'rgba(59, 130, 246, 0.4)',
+                            padding: '1px 5px',
+                            borderRadius: '3px',
+                            textTransform: 'uppercase' as const,
+                            marginRight: '6px',
+                          }}
+                        >
                           {lu.pos}
                         </span>
-                        <span style={{ color: '#e0eaff', fontWeight: 700 }}>
-                          {lu.lemmas?.slice(0, 4).join(', ')}
+                        <span style={{ color: '#e0eaff' }}>
+                          {(() => {
+                            const all = [
+                              ...(lu.src_lemmas || []).map(l => ({ text: l, src: true })),
+                              ...(lu.lemmas || []).map(l => ({ text: l, src: false }))
+                            ];
+                            return (
+                              <>
+                                {all.slice(0, 4).map((item, i) => (
+                                  <React.Fragment key={i}>
+                                    {i > 0 && ', '}
+                                    <span style={{ fontWeight: item.src ? 700 : 400 }}>{item.text}</span>
+                                  </React.Fragment>
+                                ))}
+                                {all.length > 4 ? ', ...' : ''}
+                              </>
+                            );
+                          })()}
                         </span>
                         {lu.gloss && (
                           <>
@@ -432,15 +554,28 @@ export default function FrameMainNode({
                     </foreignObject>
                   );
 
-                  return (
-                    <g key={`lu-row-${rowIdx}`}>
-                      {renderLuCell(row.left, 0)}
-                      {row.right && renderLuCell(row.right, colWidth + colGap)}
-                    </g>
-                  );
+                  if (expandedSenses.has(sense.id)) {
+                    senseY += 4;
+                    rows.forEach((row, rowIdx) => {
+                      const leftHeight = estimateLuRowHeight(row.left, colWidth);
+                      const rightHeight = row.right ? estimateLuRowHeight(row.right, colWidth) : 0;
+                      const rowHeight = Math.max(leftHeight, rightHeight);
+                      const rowTop = senseY;
+                      senseElements.push(
+                        <g key={`sense-${sense.id}-row-${rowIdx}`}>
+                          {renderLuCell(row.left, 0, rowTop, rowHeight)}
+                          {row.right && renderLuCell(row.right, colWidth + colGap, rowTop, rowHeight)}
+                        </g>
+                      );
+                      senseY += rowHeight + luRowGap;
+                    });
+                  }
+
+                  senseY += senseGap;
+                  return <g key={`sense-${sense.id}-${senseIdx}`}>{senseElements}</g>;
                 });
               })()}
-              {node.lexical_units.length > 15 && (
+              {node.senses.length > 15 && (
                 <text
                   x={8}
                   y={lexicalUnitsHeight - 40}
@@ -448,7 +583,7 @@ export default function FrameMainNode({
                   fill="white"
                   style={{ opacity: 0.7 }}
                 >
-                  + {node.lexical_units.length - 15} more lexical units
+                  + {node.senses.length - 15} more senses
                 </text>
               )}
             </Group>
@@ -572,6 +707,50 @@ export default function FrameMainNode({
         </g>
       )}
 
+      {/* Role Mapping Button - Next to Edit Button */}
+      {onRoleMappingClick && (
+        <g>
+          <rect
+            x={centerX + nodeWidth - 88}
+            y={topY + 8}
+            width={36}
+            height={36}
+            rx={6}
+            fill={hasParent ? "rgba(59, 130, 246, 0.95)" : "rgba(156, 163, 175, 0.95)"}
+            stroke="rgba(255, 255, 255, 0.9)"
+            strokeWidth={2}
+            style={{ cursor: hasParent ? 'pointer' : 'not-allowed' }}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (hasParent) onRoleMappingClick();
+            }}
+            onMouseEnter={(e) => {
+              if (hasParent) e.currentTarget.setAttribute('fill', 'rgba(29, 78, 216, 1)');
+            }}
+            onMouseLeave={(e) => {
+              if (hasParent) e.currentTarget.setAttribute('fill', 'rgba(59, 130, 246, 0.95)');
+            }}
+          >
+            <title>{hasParent ? "View role mappings from parent frames" : "No parent frames to map roles from"}</title>
+          </rect>
+          <g
+            style={{ pointerEvents: 'none' }}
+            transform={`translate(${centerX + nodeWidth - 70}, ${topY + 26}) scale(0.75)`}
+          >
+            <g transform="translate(-12, -12)">
+              <path 
+                strokeLinecap="round" 
+                strokeLinejoin="round" 
+                strokeWidth={2.5}
+                stroke="white"
+                fill="none"
+                d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" 
+              />
+            </g>
+          </g>
+        </g>
+      )}
+
       {/* Edit Button - Top Right */}
       {onEditClick && (
         <g>
@@ -652,6 +831,7 @@ export function calculateFrameNodeHeights(
   rolesExpanded: boolean = true,
   lexicalUnitsExpanded: boolean = true,
   recipeGraphExpanded: boolean = false,
+  expandedSenses: Set<string> = new Set()
 ) {
   const nodeWidth = 1000;
   const contentWidth = nodeWidth - 24;
@@ -694,23 +874,42 @@ export function calculateFrameNodeHeights(
   }
   height += rolesHeight + 4;
 
-  // Lexical units section
+  // Senses section (each sense renders a header + its LUs as a 2-col grid)
   let lexicalUnitsHeight = 0;
-  const lexicalUnits = node.lexical_units || [];
-  if (lexicalUnits.length > 0) {
+  const senses = node.senses || [];
+  if (senses.length > 0) {
     lexicalUnitsHeight = 28;
     if (lexicalUnitsExpanded) {
-      const visibleLUs = lexicalUnits.slice(0, 15);
       const luRowGap = 4;
       const colGap = 8;
       const colWidth = (contentWidth - colGap) / 2;
-      for (let i = 0; i < visibleLUs.length; i += 2) {
-        const leftHeight = estimateLuRowHeight(visibleLUs[i], colWidth);
-        const rightHeight = visibleLUs[i + 1] ? estimateLuRowHeight(visibleLUs[i + 1], colWidth) : 0;
-        lexicalUnitsHeight += Math.max(leftHeight, rightHeight) + luRowGap;
+                  const senseHeaderHeight = 46;
+      const senseGap = 0;
+      const visibleSenses = senses.slice(0, 15);
+      for (let senseIdx = 0; senseIdx < visibleSenses.length; senseIdx++) {
+        const sense = visibleSenses[senseIdx];
+        lexicalUnitsHeight += senseHeaderHeight;
+        if (!expandedSenses.has(sense.id) && senseIdx < visibleSenses.length - 1) {
+          lexicalUnitsHeight -= 1;
+        }
+        
+        const lus = sense.lexical_units ?? [];
+        if (expandedSenses.has(sense.id)) {
+          lexicalUnitsHeight += 4;
+          if (lus.length === 0) {
+            lexicalUnitsHeight += 22 + luRowGap;
+          } else {
+            for (let i = 0; i < lus.length; i += 2) {
+              const leftHeight = estimateLuRowHeight(lus[i], colWidth);
+              const rightHeight = lus[i + 1] ? estimateLuRowHeight(lus[i + 1], colWidth) : 0;
+              lexicalUnitsHeight += Math.max(leftHeight, rightHeight) + luRowGap;
+            }
+          }
+        }
+        lexicalUnitsHeight += senseGap;
       }
       lexicalUnitsHeight += 8;
-      if (lexicalUnits.length > 15) lexicalUnitsHeight += 25;
+      if (senses.length > 15) lexicalUnitsHeight += 25;
     }
     height += lexicalUnitsHeight + 4;
   }
@@ -751,7 +950,8 @@ export function calculateFrameMainNodeHeight(
   rolesExpanded: boolean = true,
   lexicalUnitsExpanded: boolean = true,
   recipeGraphExpanded: boolean = false,
+  expandedSenses: Set<string> = new Set()
 ): number {
-  return calculateFrameNodeHeights(node, rolesExpanded, lexicalUnitsExpanded, recipeGraphExpanded).totalHeight;
+  return calculateFrameNodeHeights(node, rolesExpanded, lexicalUnitsExpanded, recipeGraphExpanded, expandedSenses).totalHeight;
 }
 

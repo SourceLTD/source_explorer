@@ -34,6 +34,7 @@ export interface LexicalUnit {
   unverifiableReason?: string;
   legal_gloss?: string | null;
   deleted?: boolean;
+  senses?: FrameSenseWithFrame[];
   frame_id?: string | null;
   frame_ids?: string[];
   frame?: Frame | null;
@@ -186,7 +187,12 @@ export interface Frame {
   updatedAt: Date;
   frame_roles?: FrameRole[];
   roles_count?: number;
+  /** Distinct lexical units reachable through frame senses (via frame_sense_frames). */
   lexical_units_count?: number;
+  /** Number of frame_senses linked to this frame. */
+  senses_count?: number;
+  /** Number of senses linked to this frame that ALSO link to another frame (>1). */
+  sensesWithMultipleFrames?: number;
   lexical_units?: LexicalUnitsSample;
   pending?: PendingChangeInfo | null;
   frame_type?: string | null;
@@ -197,6 +203,55 @@ export interface Frame {
 }
 
 export type FrameRecipe = Record<string, unknown>;
+
+// ============================================
+// Frame Sense Types
+// ============================================
+
+/**
+ * Indicates an anomaly in a sense's frame linkage.
+ * - 'none': the sense is linked to zero frames
+ * - 'multiple': the sense is linked to more than one frame
+ * - null: exactly one frame (the happy path)
+ */
+export type FrameSenseWarning = 'none' | 'multiple' | null;
+
+export interface FrameSenseFrameRef {
+  id: string;
+  label: string;
+  code: string | null;
+}
+
+/**
+ * A frame_sense row — the intermediate concept between a lexical_unit and a frame.
+ * Carries its own POS/definition/frame_type/... and is expected to link to exactly
+ * one frame in practice.
+ */
+export interface FrameSense {
+  id: string;
+  pos: string;
+  definition: string;
+  frame_type: string;
+  lemmas?: string[];
+  confidence?: string | null;
+  type_dispute?: string | null;
+  causative?: boolean | null;
+  inchoative?: boolean | null;
+  perspectival?: boolean | null;
+  createdAt?: Date | null;
+  updatedAt?: Date | null;
+}
+
+/**
+ * Frame sense with its linked frames. `frame` is the canonical single frame
+ * (first entry of `frames`), `frames` is the raw list (for drilldown / warning UX),
+ * and `frameWarning` signals when the 1:1 invariant is violated.
+ */
+export interface FrameSenseWithFrame extends FrameSense {
+  frame: FrameSenseFrameRef | null;
+  frames: FrameSenseFrameRef[];
+  frameWarning: FrameSenseWarning;
+}
 
 // ============================================
 // Recipe Graph Types (recipe_graph JSON column)
@@ -244,10 +299,16 @@ export interface GraphNode {
   
   // Verb-specific fields
   vendler_class?: VendlerClass | null;
+
+  // Senses chain (frame_senses) — each sense links to zero-or-more frames;
+  // the 1:1 happy path is surfaced as `frame` and anomalies via `frameWarning`.
+  senses?: FrameSenseWithFrame[];
+  // Legacy/derived: kept for UI backward compatibility. `frame` / `frame_id`
+  // correspond to the first sense's single frame when present.
   frame_id?: string | null;
   frame_ids?: string[];
   frame?: Frame | null;
-  
+
   // Noun-specific fields
   countable?: boolean | null;
   proper?: boolean;
@@ -323,11 +384,16 @@ export interface TableEntry {
   gloss: string;
   pos: string;
   lexfile: string;
+  // Senses for this entry (canonical source of frame info going forward).
+  senses?: FrameSenseWithFrame[];
+  // Count of senses with frameWarning !== null — for row-level flagging.
+  anomalousSenseCount?: number;
+  // Legacy/derived from senses for backward compat.
   frame_id?: string | null;
   frame_ids?: string[];
   frame?: string | null;
-  frames?: Array<{ id: string; label: string; code: string | null }>;
-  
+  frames?: FrameSenseFrameRef[];
+
   // Verb-specific
   vendler_class?: VendlerClass | null;
   
@@ -555,9 +621,31 @@ export interface FrameGraphLexicalUnit {
   gloss: string;
   pos: PartOfSpeech;
   lemmas: string[];
+  src_lemmas: string[];
   examples: string[];
   flagged: boolean | null;
   flagged_reason: string | null;
+}
+
+/**
+ * A sense attached to a frame, with its expected-single linkage back to that frame
+ * (`frameWarning !== null` means the sense links to zero or multiple frames — render
+ * a warning). `lexical_units` lists the LUs attached to this sense.
+ */
+export interface FrameGraphSense {
+  id: string;
+  pos: string;
+  definition: string;
+  frame_type: string;
+  lemmas?: string[];
+  confidence: string | null;
+  type_dispute: string | null;
+  causative: boolean | null;
+  inchoative: boolean | null;
+  perspectival: boolean | null;
+  frames: FrameSenseFrameRef[];
+  frameWarning: FrameSenseWarning;
+  lexical_units: FrameGraphLexicalUnit[];
 }
 
 export interface FrameGraphRelation {
@@ -583,6 +671,9 @@ export interface FrameGraphNode {
   gloss?: string | null;
   short_definition?: string | null;
   roles: FrameGraphRole[];
+  // Senses attached to this frame (senses-first view); each sense carries its LUs.
+  senses: FrameGraphSense[];
+  // Flattened de-duplicated LUs across all senses — kept for legacy UI paths.
   lexical_units: FrameGraphLexicalUnit[];
   relations: FrameGraphRelation[];
   flagged?: boolean;
@@ -634,6 +725,20 @@ export interface FrameRecipeRelatedFrame {
   }>;
 }
 
+export interface FrameRecipeSense {
+  id: string;
+  pos: string;
+  definition: string;
+  frame_type: string;
+  confidence: string | null;
+  type_dispute: string | null;
+  causative: boolean | null;
+  inchoative: boolean | null;
+  perspectival: boolean | null;
+  frameWarning: FrameSenseWarning;
+  lexical_units: FrameRecipeLexicalUnit[];
+}
+
 export interface FrameRecipeData {
   frame: {
     id: string;
@@ -649,6 +754,7 @@ export interface FrameRecipeData {
     recipe?: FrameRecipe | null;
   };
   roles: FrameRecipeRole[];
+  senses: FrameRecipeSense[];
   lexical_units: FrameRecipeLexicalUnit[];
   relations: {
     parent_of: FrameRecipeRelatedFrame[];

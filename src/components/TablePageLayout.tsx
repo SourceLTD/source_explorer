@@ -27,6 +27,7 @@ interface TablePageLayoutProps {
   tabs?: React.ReactNode;
   children?: React.ReactNode;
   showViewToggle?: boolean;
+  searchPlaceholder?: string;
 }
 
 /**
@@ -40,7 +41,7 @@ const modeConfig: Record<Mode, {
 }> = {
   lexical_units: {
     graphPath: '/graph',
-    searchPlaceholder: 'Search Lexical Units...',
+    searchPlaceholder: 'Search...',
     showRecipes: false,
     showPendingChanges: true,
   },
@@ -94,9 +95,11 @@ export function TablePageLayout({
   tabs,
   children,
   showViewToggle = false,
+  searchPlaceholder,
 }: TablePageLayoutProps) {
   const router = useRouter();
   const config = modeConfig[mode];
+  const resolvedSearchPlaceholder = searchPlaceholder ?? config.searchPlaceholder;
 
   const handleSearchResult = (result: SearchResult) => {
     router.push(`${config.graphPath}?entry=${result.id}`);
@@ -132,7 +135,7 @@ export function TablePageLayout({
               <SearchBox 
                 onSelectResult={handleSearchResult}
                 onSearchChange={onSearchQueryChange}
-                placeholder={config.searchPlaceholder}
+                placeholder={resolvedSearchPlaceholder}
                 mode={mode === 'verbs' ? undefined : mode}
               />
             </div>

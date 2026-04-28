@@ -34,16 +34,20 @@ function buildStructuredFrameData(frameRecord: {
     examples: string[] | null;
     label: string | null;
   }>;
-  frame_lexical_units?: Array<{
-    lexical_units: {
-      id: bigint;
-      code: string;
-      pos: part_of_speech;
-      gloss: string;
-      lemmas: string[];
-      src_lemmas?: string[] | null;
-      examples: string[];
-      flagged: boolean | null;
+  frame_sense_frames?: Array<{
+    frame_senses: {
+      lexical_unit_senses: Array<{
+        lexical_units: {
+          id: bigint;
+          code: string;
+          pos: part_of_speech;
+          gloss: string;
+          lemmas: string[];
+          src_lemmas?: string[] | null;
+          examples: string[];
+          flagged: boolean | null;
+        };
+      }>;
     };
   }>;
 }): { additional: Record<string, unknown>; frame: FrameRelationData } {
@@ -62,17 +66,25 @@ function buildStructuredFrameData(frameRecord: {
     main: fr.main,
   }));
 
-  // Build structured lexical units array
-  const lexical_units: FrameLexicalUnitData[] = (frameRecord.frame_lexical_units ?? []).map(flu => flu.lexical_units).map(lu => ({
-    id: lu.id.toString(),
-    code: lu.code,
-    gloss: lu.gloss,
-    pos: lu.pos as POSType,
-    // Abstract away src_lemmas vs lemmas: combine both into one list
-    lemmas: mergeLemmas(lu.lemmas, lu.src_lemmas),
-    examples: lu.examples,
-    flagged: lu.flagged ?? false,
-  }));
+  // Build structured lexical units array — flatten across senses and dedupe by LU id.
+  const luMap = new Map<string, FrameLexicalUnitData>();
+  for (const sfLink of (frameRecord.frame_sense_frames ?? [])) {
+    for (const lus of (sfLink.frame_senses.lexical_unit_senses ?? [])) {
+      const lu = lus.lexical_units;
+      const key = lu.id.toString();
+      if (luMap.has(key)) continue;
+      luMap.set(key, {
+        id: key,
+        code: lu.code,
+        gloss: lu.gloss,
+        pos: lu.pos as POSType,
+        lemmas: mergeLemmas(lu.lemmas, lu.src_lemmas),
+        examples: lu.examples,
+        flagged: lu.flagged ?? false,
+      });
+    }
+  }
+  const lexical_units: FrameLexicalUnitData[] = Array.from(luMap.values());
 
   // Build flat additional data for backward compatibility
   const additional: Record<string, unknown> = {
@@ -156,17 +168,25 @@ export async function countEntriesForScope(scope: JobScope): Promise<number> {
 
     if (flagTarget === 'lexical_unit' || flagTarget === 'both') {
       const targetType = scope.targetType;
-      // Process in chunks if we have many frameIds to avoid "in" clause limits
+      // Count distinct LUs reachable via frame_sense_frames → frame_senses → lexical_unit_senses.
       for (let i = 0; i < frameIds.length; i += MAX_BIND_VARS) {
         const chunk = frameIds.slice(i, i + MAX_BIND_VARS);
-        const fluWhere: any = {
-          frame_id: { in: chunk },
-          lexical_units: { deleted: false },
+        const luWhere: Prisma.lexical_unitsWhereInput = {
+          deleted: false,
+          lexical_unit_senses: {
+            some: {
+              frame_senses: {
+                frame_sense_frames: {
+                  some: { frame_id: { in: chunk } },
+                },
+              },
+            },
+          },
         };
         if (targetType && targetType !== 'frames' && targetType !== 'lexical_units') {
-          fluWhere.lexical_units = { ...fluWhere.lexical_units, pos: targetType };
+          luWhere.pos = targetType as part_of_speech;
         }
-        const luCount = await prisma.frame_lexical_units.count({ where: fluWhere });
+        const luCount = await prisma.lexical_units.count({ where: luWhere });
         count += luCount;
       }
     }
@@ -251,23 +271,31 @@ async function fetchEntriesByIds(targetType: JobTargetType, ids: string[]): Prom
               label: true,
             },
           },
-          frame_lexical_units: {
-            where: { lexical_units: { deleted: false } },
+          frame_sense_frames: {
             include: {
-              lexical_units: {
-                select: {
-                  id: true,
-                  code: true,
-                  pos: true,
-                  gloss: true,
-                  lemmas: true,
-                  src_lemmas: true,
-                  examples: true,
-                  flagged: true,
+              frame_senses: {
+                include: {
+                  lexical_unit_senses: {
+                    where: { lexical_units: { deleted: false } },
+                    include: {
+                      lexical_units: {
+                        select: {
+                          id: true,
+                          code: true,
+                          pos: true,
+                          gloss: true,
+                          lemmas: true,
+                          src_lemmas: true,
+                          examples: true,
+                          flagged: true,
+                        },
+                      },
+                    },
+                  },
                 },
               },
             },
-            take: 100,
+            take: 200,
           },
         },
       });
@@ -302,23 +330,31 @@ async function fetchEntriesByIds(targetType: JobTargetType, ids: string[]): Prom
               label: true,
             },
           },
-          frame_lexical_units: {
-            where: { lexical_units: { deleted: false } },
+          frame_sense_frames: {
             include: {
-              lexical_units: {
-                select: {
-                  id: true,
-                  code: true,
-                  pos: true,
-                  gloss: true,
-                  lemmas: true,
-                  src_lemmas: true,
-                  examples: true,
-                  flagged: true,
+              frame_senses: {
+                include: {
+                  lexical_unit_senses: {
+                    where: { lexical_units: { deleted: false } },
+                    include: {
+                      lexical_units: {
+                        select: {
+                          id: true,
+                          code: true,
+                          pos: true,
+                          gloss: true,
+                          lemmas: true,
+                          src_lemmas: true,
+                          examples: true,
+                          flagged: true,
+                        },
+                      },
+                    },
+                  },
                 },
               },
             },
-            take: 100,
+            take: 200,
           },
         },
       });
@@ -379,42 +415,57 @@ async function fetchEntriesByIds(targetType: JobTargetType, ids: string[]): Prom
           flagged: true,
           flagged_reason: true,
           lexfile: true,
-          frame_lexical_units: {
+          lexical_unit_senses: {
             include: {
-              frames: {
-                select: {
-                  id: true,
-                  code: true,
-                  label: true,
-                  definition: true,
-                  short_definition: true,
-                  frame_roles: {
-                    select: {
-                      id: true,
-                      description: true,
-                      notes: true,
-                      main: true,
-                      examples: true,
-                      label: true,
-                    },
-                  },
-                  frame_lexical_units: {
-                    where: { lexical_units: { deleted: false } },
+              frame_senses: {
+                include: {
+                  frame_sense_frames: {
                     include: {
-                      lexical_units: {
+                      frames: {
                         select: {
                           id: true,
                           code: true,
-                          pos: true,
-                          gloss: true,
-                          lemmas: true,
-                          src_lemmas: true,
-                          examples: true,
-                          flagged: true,
+                          label: true,
+                          definition: true,
+                          short_definition: true,
+                          frame_roles: {
+                            select: {
+                              id: true,
+                              description: true,
+                              notes: true,
+                              main: true,
+                              examples: true,
+                              label: true,
+                            },
+                          },
+                          frame_sense_frames: {
+                            include: {
+                              frame_senses: {
+                                include: {
+                                  lexical_unit_senses: {
+                                    where: { lexical_units: { deleted: false } },
+                                    include: {
+                                      lexical_units: {
+                                        select: {
+                                          id: true,
+                                          code: true,
+                                          pos: true,
+                                          gloss: true,
+                                          lemmas: true,
+                                          src_lemmas: true,
+                                          examples: true,
+                                          flagged: true,
+                                        },
+                                      },
+                                    },
+                                  },
+                                },
+                              },
+                            },
+                          },
                         },
                       },
                     },
-                    take: 100,
                   },
                 },
               },
@@ -430,8 +481,9 @@ async function fetchEntriesByIds(targetType: JobTargetType, ids: string[]): Prom
       .map(code => byCode.get(code))
       .filter((record): record is (typeof records)[number] => Boolean(record))
       .map(record => {
-        const frameRecord = record.frame_lexical_units?.[0]?.frames;
-        const frameInfo = frameRecord 
+        // Walk the sense chain to find the primary frame for this LU (first sense's first frame).
+        const frameRecord = record.lexical_unit_senses?.[0]?.frame_senses?.frame_sense_frames?.[0]?.frames;
+        const frameInfo = frameRecord
           ? buildStructuredFrameData(frameRecord)
           : { additional: {}, frame: null };
 
@@ -502,25 +554,33 @@ async function fetchEntriesByFrameIds(
             label: true,
           },
         },
-        frame_lexical_units: {
-          where: { lexical_units: { deleted: false } },
+        frame_sense_frames: {
           include: {
-            lexical_units: {
-              select: {
-                id: true,
-                code: true,
-                pos: true,
-                gloss: true,
-                lemmas: true,
-                src_lemmas: true,
-                examples: true,
-                flagged: true,
-                flagged_reason: true,
-                lexfile: true,
+            frame_senses: {
+              include: {
+                lexical_unit_senses: {
+                  where: { lexical_units: { deleted: false } },
+                  include: {
+                    lexical_units: {
+                      select: {
+                        id: true,
+                        code: true,
+                        pos: true,
+                        gloss: true,
+                        lemmas: true,
+                        src_lemmas: true,
+                        examples: true,
+                        flagged: true,
+                        flagged_reason: true,
+                        lexfile: true,
+                      },
+                    },
+                  },
+                },
               },
             },
           },
-          take: 100,
+          take: 200,
         },
       },
     });
@@ -555,25 +615,33 @@ async function fetchEntriesByFrameIds(
             label: true,
           },
         },
-        frame_lexical_units: {
-          where: { lexical_units: { deleted: false } },
+        frame_sense_frames: {
           include: {
-            lexical_units: {
-              select: {
-                id: true,
-                code: true,
-                pos: true,
-                gloss: true,
-                lemmas: true,
-                src_lemmas: true,
-                examples: true,
-                flagged: true,
-                flagged_reason: true,
-                lexfile: true,
+            frame_senses: {
+              include: {
+                lexical_unit_senses: {
+                  where: { lexical_units: { deleted: false } },
+                  include: {
+                    lexical_units: {
+                      select: {
+                        id: true,
+                        code: true,
+                        pos: true,
+                        gloss: true,
+                        lemmas: true,
+                        src_lemmas: true,
+                        examples: true,
+                        flagged: true,
+                        flagged_reason: true,
+                        lexfile: true,
+                      },
+                    },
+                  },
+                },
               },
             },
           },
-          take: 100,
+          take: 200,
         },
       },
     });
@@ -612,28 +680,35 @@ async function fetchEntriesByFrameIds(
   if (includeLexicalUnits && frames.length > 0) {
     for (const frame of frames) {
       const frameInfo = buildStructuredFrameData(frame);
-      
-      for (const flu of (frame.frame_lexical_units ?? [])) {
-        const lu = flu.lexical_units;
-        // Apply targetType filter if specified (and not 'frames')
-        if (targetType && targetType !== 'frames' && lu.pos !== targetType) {
-          continue;
-        }
 
-        entries.push({
-          dbId: lu.id,
-          code: lu.code,
-          pos: lu.pos as POSType,
-          gloss: lu.gloss,
-          lemmas: mergeLemmas(lu.lemmas, lu.src_lemmas),
-          examples: lu.examples,
-          flagged: lu.flagged,
-          flagged_reason: lu.flagged_reason,
-          label: frame.label,
-          lexfile: lu.lexfile,
-          additional: frameInfo.additional,
-          frame: frameInfo.frame,
-        });
+      // Walk the sense chain and dedupe LUs across senses for this frame.
+      const seenLuIds = new Set<string>();
+      for (const sfLink of (frame.frame_sense_frames ?? [])) {
+        for (const lus of (sfLink.frame_senses?.lexical_unit_senses ?? [])) {
+          const lu = lus.lexical_units;
+          const key = lu.id.toString();
+          if (seenLuIds.has(key)) continue;
+          seenLuIds.add(key);
+          // Apply targetType filter if specified (and not 'frames')
+          if (targetType && targetType !== 'frames' && lu.pos !== targetType) {
+            continue;
+          }
+
+          entries.push({
+            dbId: lu.id,
+            code: lu.code,
+            pos: lu.pos as POSType,
+            gloss: lu.gloss,
+            lemmas: mergeLemmas(lu.lemmas, lu.src_lemmas),
+            examples: lu.examples,
+            flagged: lu.flagged,
+            flagged_reason: lu.flagged_reason,
+            label: frame.label,
+            lexfile: lu.lexfile,
+            additional: frameInfo.additional,
+            frame: frameInfo.frame,
+          });
+        }
       }
     }
   }
@@ -698,23 +773,31 @@ async function fetchEntriesByFilters(
             label: true,
           },
         },
-        frame_lexical_units: {
-          where: { lexical_units: { deleted: false } },
+        frame_sense_frames: {
           include: {
-            lexical_units: {
-              select: {
-                id: true,
-                code: true,
-                pos: true,
-                gloss: true,
-                lemmas: true,
-                src_lemmas: true,
-                examples: true,
-                flagged: true,
+            frame_senses: {
+              include: {
+                lexical_unit_senses: {
+                  where: { lexical_units: { deleted: false } },
+                  include: {
+                    lexical_units: {
+                      select: {
+                        id: true,
+                        code: true,
+                        pos: true,
+                        gloss: true,
+                        lemmas: true,
+                        src_lemmas: true,
+                        examples: true,
+                        flagged: true,
+                      },
+                    },
+                  },
+                },
               },
             },
           },
-          take: 100,
+          take: 200,
         },
       },
     });
@@ -766,42 +849,57 @@ async function fetchEntriesByFilters(
           lexical_unit_relations_lexical_unit_relations_target_idTolexical_units: { where: { type: 'hypernym' } },
         },
       },
-      frame_lexical_units: {
+      lexical_unit_senses: {
         include: {
-          frames: {
-            select: {
-              id: true,
-              code: true,
-              label: true,
-              definition: true,
-              short_definition: true,
-              frame_roles: {
-                select: {
-                  id: true,
-                  description: true,
-                  notes: true,
-                  main: true,
-                  examples: true,
-                  label: true,
-                },
-              },
-              frame_lexical_units: {
-                where: { lexical_units: { deleted: false } },
+          frame_senses: {
+            include: {
+              frame_sense_frames: {
                 include: {
-                  lexical_units: {
+                  frames: {
                     select: {
                       id: true,
                       code: true,
-                      pos: true,
-                      gloss: true,
-                      lemmas: true,
-                      src_lemmas: true,
-                      examples: true,
-                      flagged: true,
+                      label: true,
+                      definition: true,
+                      short_definition: true,
+                      frame_roles: {
+                        select: {
+                          id: true,
+                          description: true,
+                          notes: true,
+                          main: true,
+                          examples: true,
+                          label: true,
+                        },
+                      },
+                      frame_sense_frames: {
+                        include: {
+                          frame_senses: {
+                            include: {
+                              lexical_unit_senses: {
+                                where: { lexical_units: { deleted: false } },
+                                include: {
+                                  lexical_units: {
+                                    select: {
+                                      id: true,
+                                      code: true,
+                                      pos: true,
+                                      gloss: true,
+                                      lemmas: true,
+                                      src_lemmas: true,
+                                      examples: true,
+                                      flagged: true,
+                                    },
+                                  },
+                                },
+                              },
+                            },
+                          },
+                        },
+                      },
                     },
                   },
                 },
-                take: 100,
               },
             },
           },
@@ -811,8 +909,8 @@ async function fetchEntriesByFilters(
   });
 
   let entries = records.map(record => {
-    const frameRecord = record.frame_lexical_units?.[0]?.frames;
-    const frameInfo = frameRecord 
+    const frameRecord = record.lexical_unit_senses?.[0]?.frame_senses?.frame_sense_frames?.[0]?.frames;
+    const frameInfo = frameRecord
       ? buildStructuredFrameData(frameRecord)
       : { additional: {}, frame: null };
 

@@ -102,8 +102,14 @@ function buildChildrenCountSql(
   const childFilters = computedFilters.filter(f => f.field === 'childrenCount');
   if (childFilters.length === 0) return null;
 
+  // Distinct LUs reachable through the frame's senses:
+  // frame → frame_sense_frames → frame_senses → lexical_unit_senses → lexical_units.
   const childCountExpr = Prisma.sql`
-    (SELECT COUNT(*) FROM frame_lexical_units flu JOIN lexical_units lu ON lu.id = flu.lexical_unit_id WHERE flu.frame_id = ${FRAME_ID_REF} AND COALESCE(lu.deleted, false) = false)
+    (SELECT COUNT(DISTINCT lus.lexical_unit_id)
+     FROM frame_sense_frames fsf
+     JOIN lexical_unit_senses lus ON lus.frame_sense_id = fsf.frame_sense_id
+     JOIN lexical_units lu ON lu.id = lus.lexical_unit_id
+     WHERE fsf.frame_id = ${FRAME_ID_REF} AND COALESCE(lu.deleted, false) = false)
   `;
 
   const conditions = childFilters.map(filter => {
@@ -246,10 +252,24 @@ export async function GET(request: NextRequest) {
     let totalCount = 0;
     let frames: Array<Prisma.framesGetPayload<{
       include: {
-        _count: { select: { frame_roles: true; frame_lexical_units: true } };
+        _count: { select: { frame_roles: true; frame_sense_frames: true } };
         frame_roles: true;
-        frame_lexical_units: { include: { lexical_units: { select: { code: true; lemmas: true; src_lemmas: true; pos: true; gloss: true } } } };
-      }
+        frame_sense_frames: {
+          include: {
+            frame_senses: {
+              include: {
+                lexical_unit_senses: {
+                  include: {
+                    lexical_units: {
+                      select: { id: true; code: true; lemmas: true; src_lemmas: true; pos: true; gloss: true };
+                    };
+                  };
+                };
+              };
+            };
+          };
+        };
+      };
     }>> = [];
 
     if (hasChildrenCountFilter) {
@@ -273,25 +293,23 @@ export async function GET(request: NextRequest) {
         const fetchedFrames = await prisma.frames.findMany({
           where: { id: { in: pageIds } },
           include: {
-            _count: {
-              select: {
-                frame_roles: true,
-                frame_lexical_units: {
-                  where: {
-                    lexical_units: { deleted: false },
+            _count: { select: { frame_roles: true, frame_sense_frames: true } },
+            frame_roles: true,
+            frame_sense_frames: {
+              include: {
+                frame_senses: {
+                  include: {
+                    lexical_unit_senses: {
+                      where: { lexical_units: { deleted: false } },
+                      include: {
+                        lexical_units: {
+                          select: { id: true, code: true, lemmas: true, src_lemmas: true, pos: true, gloss: true },
+                        },
+                      },
+                    },
                   },
                 },
               },
-            },
-            frame_roles: true,
-            frame_lexical_units: {
-              where: { lexical_units: { deleted: false } },
-              include: {
-                lexical_units: {
-                  select: { code: true, lemmas: true, src_lemmas: true, pos: true, gloss: true },
-                },
-              },
-              take: 11,
             },
           },
         });
@@ -308,39 +326,49 @@ export async function GET(request: NextRequest) {
         take: limit,
         orderBy: { [sortBy]: sortOrder },
         include: {
-          _count: {
-            select: {
-              frame_roles: true,
-              frame_lexical_units: {
-                where: {
-                  lexical_units: { deleted: false },
+          _count: { select: { frame_roles: true, frame_sense_frames: true } },
+          frame_roles: true,
+          frame_sense_frames: {
+            include: {
+              frame_senses: {
+                include: {
+                  lexical_unit_senses: {
+                    where: { lexical_units: { deleted: false } },
+                    include: {
+                      lexical_units: {
+                        select: { id: true, code: true, lemmas: true, src_lemmas: true, pos: true, gloss: true },
+                      },
+                    },
+                  },
                 },
               },
             },
-          },
-          frame_roles: true,
-          frame_lexical_units: {
-            where: { lexical_units: { deleted: false } },
-            include: {
-              lexical_units: {
-                select: { code: true, lemmas: true, src_lemmas: true, pos: true, gloss: true },
-              },
-            },
-            take: 11,
           },
         },
       });
     }
 
     const serializedFrames = frames.map(frame => {
-      const lexicalUnitsCount = frame._count.frame_lexical_units;
-      const lexicalUnitSnippets = frame.frame_lexical_units.slice(0, 10).map((flu: any) => ({
-        code: flu.lexical_units.code,
-        lemmas: flu.lexical_units.lemmas,
-        src_lemmas: flu.lexical_units.src_lemmas,
-        pos: flu.lexical_units.pos,
-        gloss: flu.lexical_units.gloss,
-      }));
+      // Collect distinct LUs across all senses linked to this frame.
+      const luMap = new Map<string, { code: string; lemmas: string[]; src_lemmas: string[]; pos: string; gloss: string }>();
+      for (const sfLink of frame.frame_sense_frames) {
+        for (const lus of sfLink.frame_senses.lexical_unit_senses) {
+          const lu = lus.lexical_units;
+          const key = lu.id.toString();
+          if (!luMap.has(key)) {
+            luMap.set(key, {
+              code: lu.code,
+              lemmas: lu.lemmas,
+              src_lemmas: lu.src_lemmas,
+              pos: lu.pos,
+              gloss: lu.gloss,
+            });
+          }
+        }
+      }
+      const lexicalUnitsCount = luMap.size;
+      const lexicalUnitSnippets = Array.from(luMap.values()).slice(0, 10);
+      const sensesCount = frame._count.frame_sense_frames;
 
       return {
         id: frame.id.toString(),
@@ -360,6 +388,7 @@ export async function GET(request: NextRequest) {
         wikidata_id: frame.wikidata_id,
         recipe: frame.recipe,
         roles_count: frame._count.frame_roles,
+        senses_count: sensesCount,
         lexical_units_count: lexicalUnitsCount,
         frame_roles: frame.frame_roles.map(fr => ({
           id: fr.id.toString(),

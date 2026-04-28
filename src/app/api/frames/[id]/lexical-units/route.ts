@@ -27,39 +27,60 @@ export async function GET(
       );
     }
 
-    // Fetch all lexical units for this frame via junction table (no limit)
-    const frameLexicalUnits = await prisma.frame_lexical_units.findMany({
-      where: {
-        frame_id: frameId,
-        lexical_units: {
-          deleted: false,
-        },
-      },
-      include: {
-        lexical_units: {
+    // Fetch lexical units via the sense chain: frame → frame_sense_frames →
+    // frame_senses → lexical_unit_senses → lexical_units. Deduplicate by LU id
+    // because multiple senses on the frame may reference the same LU.
+    const senseFrameLinks = await prisma.frame_sense_frames.findMany({
+      where: { frame_id: frameId },
+      select: {
+        frame_senses: {
           select: {
-            id: true,
-            code: true,
-            lemmas: true,
-            src_lemmas: true,
-            pos: true,
-            gloss: true,
+            lexical_unit_senses: {
+              where: { lexical_units: { deleted: false } },
+              select: {
+                lexical_units: {
+                  select: {
+                    id: true,
+                    code: true,
+                    lemmas: true,
+                    src_lemmas: true,
+                    pos: true,
+                    gloss: true,
+                  },
+                },
+              },
+            },
           },
         },
       },
-      orderBy: {
-        lexical_units: { code: 'asc' },
-      },
     });
 
-    // Extract lexical units from junction table results
-    const lexicalUnits = frameLexicalUnits.map(flu => flu.lexical_units);
+    const deduped = new Map<string, {
+      id: string;
+      code: string;
+      lemmas: string[];
+      src_lemmas: string[];
+      pos: string;
+      gloss: string;
+    }>();
+    for (const sfLink of senseFrameLinks) {
+      for (const lus of sfLink.frame_senses.lexical_unit_senses) {
+        const lu = lus.lexical_units;
+        const key = lu.id.toString();
+        if (!deduped.has(key)) {
+          deduped.set(key, {
+            id: key,
+            code: lu.code,
+            lemmas: lu.lemmas,
+            src_lemmas: lu.src_lemmas,
+            pos: lu.pos,
+            gloss: lu.gloss,
+          });
+        }
+      }
+    }
 
-    // Serialize BigInt ids to strings
-    const serialized = lexicalUnits.map((lu) => ({
-      ...lu,
-      id: lu.id.toString(),
-    }));
+    const serialized = Array.from(deduped.values()).sort((a, b) => a.code.localeCompare(b.code));
 
     return NextResponse.json({
       entries: serialized,

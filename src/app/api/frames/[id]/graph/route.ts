@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { applyPendingToEntity, getPendingRelationChanges } from '@/lib/version-control';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -18,23 +20,37 @@ export async function GET(
             id: 'asc',
           },
         },
-        frame_lexical_units: {
-          where: { lexical_units: { deleted: false } },
+        frame_sense_frames: {
           include: {
-            lexical_units: {
-              select: {
-                id: true,
-                code: true,
-                gloss: true,
-                lemmas: true,
-                examples: true,
-                flagged: true,
-                flagged_reason: true,
-                pos: true,
+            frame_senses: {
+              include: {
+                frame_sense_frames: {
+                  include: {
+                    frames: { select: { id: true, label: true, code: true } },
+                  },
+                },
+                lexical_unit_senses: {
+                  where: { lexical_units: { deleted: false } },
+                  include: {
+                    lexical_units: {
+                      select: {
+                        id: true,
+                        code: true,
+                        gloss: true,
+                        lemmas: true,
+                        src_lemmas: true,
+                        examples: true,
+                        flagged: true,
+                        flagged_reason: true,
+                        pos: true,
+                      },
+                    },
+                  },
+                },
               },
             },
           },
-          take: 100,
+          take: 200,
         },
         frame_relations_frame_relations_source_idToframes: {
           where: {
@@ -101,22 +117,75 @@ export async function GET(
         label: role.label,
         fillers: role.fillers,
       })),
-      lexical_units: frame.frame_lexical_units.map((flu: any) => flu.lexical_units).map((lu: any) => ({
+      senses: frame.frame_sense_frames.map(sfLink => {
+        const sense = sfLink.frame_senses;
+        const senseFrames = (sense.frame_sense_frames ?? []).map(fsf => ({
+          id: fsf.frames.id.toString(),
+          label: fsf.frames.label,
+          code: fsf.frames.code,
+        }));
+        const frameWarning = senseFrames.length === 0
+          ? 'none' as const
+          : senseFrames.length > 1
+            ? 'multiple' as const
+            : null;
+        return {
+          id: sense.id.toString(),
+          pos: sense.pos,
+          definition: sense.definition,
+          frame_type: sense.frame_type,
+          lemmas: sense.lemmas,
+          confidence: sense.confidence,
+          type_dispute: sense.type_dispute,
+          causative: sense.causative,
+          inchoative: sense.inchoative,
+          perspectival: sense.perspectival,
+          frames: senseFrames,
+          frameWarning,
+          lexical_units: (sense.lexical_unit_senses ?? []).map(lus => ({
+            id: lus.lexical_units.id.toString(),
+            code: lus.lexical_units.code,
+            gloss: lus.lexical_units.gloss,
+            lemmas: lus.lexical_units.lemmas,
+            src_lemmas: lus.lexical_units.src_lemmas,
+            examples: lus.lexical_units.examples,
+            flagged: lus.lexical_units.flagged,
+            flagged_reason: lus.lexical_units.flagged_reason,
+            pos: lus.lexical_units.pos,
+          })),
+        };
+      }),
+      // Legacy flat LUs across senses (deduped), kept for back-compat UIs.
+      lexical_units: Array.from(
+        new Map(
+          frame.frame_sense_frames
+            .flatMap(sfLink => sfLink.frame_senses.lexical_unit_senses ?? [])
+            .map(lus => [lus.lexical_units.id.toString(), lus.lexical_units])
+        ).values()
+      ).map((lu: any) => ({
         id: lu.id.toString(),
         code: lu.code,
         gloss: lu.gloss,
         lemmas: lu.lemmas,
+        src_lemmas: lu.src_lemmas,
         examples: lu.examples,
         flagged: lu.flagged,
         flagged_reason: lu.flagged_reason,
         pos: lu.pos,
       })),
-      // Legacy verbs alias
-      verbs: frame.frame_lexical_units.map((flu: any) => flu.lexical_units).filter((lu: any) => lu.pos === 'verb').map((verb: any) => ({
+      verbs: Array.from(
+        new Map(
+          frame.frame_sense_frames
+            .flatMap(sfLink => sfLink.frame_senses.lexical_unit_senses ?? [])
+            .filter(lus => lus.lexical_units.pos === 'verb')
+            .map(lus => [lus.lexical_units.id.toString(), lus.lexical_units])
+        ).values()
+      ).map((verb: any) => ({
         id: verb.id.toString(),
         code: verb.code,
         gloss: verb.gloss,
         lemmas: verb.lemmas,
+        src_lemmas: verb.src_lemmas,
         examples: verb.examples,
         flagged: verb.flagged,
         flagged_reason: verb.flagged_reason,

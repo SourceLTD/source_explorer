@@ -658,13 +658,15 @@ export async function createChangesetFromUpdate(
     };
   }
   
-  // Create a new changeset
+  // Create a new changeset. `version` may be absent (e.g. frame_senses has no
+  // optimistic-locking column); in that case pass undefined so no conflict check runs.
+  const hasVersion = typeof currentEntity.version === 'number';
   const newChangeset = await createChangeset({
     llm_job_id: llmJobId,
     entity_type: entityType,
     entity_id: entityId,
     operation: 'update',
-    entity_version: (currentEntity.version as number) ?? 1,
+    entity_version: hasVersion ? (currentEntity.version as number) : undefined,
     before_snapshot: currentEntity,
     created_by: createdBy,
   });

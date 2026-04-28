@@ -191,7 +191,7 @@ export function AIJobsOverlay({
   const overlayTitle = useMemo(() => {
     switch (mode) {
       case 'lexical_units':
-        return 'Lexical Unit AI Agent';
+        return 'AI Agent';
       case 'frames':
         return 'Frame AI Agent';
       default:

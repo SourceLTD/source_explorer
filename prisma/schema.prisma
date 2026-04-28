@@ -23,37 +23,40 @@ model frame_roles {
   role_group_members role_group_members[]
 
   @@unique([id, frame_id], map: "uq_frame_roles_id_frame")
+  @@index([frame_id], map: "idx_frame_roles_frame_id")
 }
 
 model frames {
-  label                                             String
-  definition                                        String?
-  short_definition                                  String?
-  created_at                                        DateTime               @default(now())
-  updated_at                                        DateTime               @default(now())
-  id                                                BigInt                 @id @default(autoincrement())
-  flagged                                           Boolean?               @default(false)
-  flagged_reason                                    String?
-  verifiable                                        Boolean?               @default(false)
-  unverifiable_reason                               String?
-  version                                           Int                    @default(1)
-  embedding                                         Unsupported("vector")?
-  deleted                                           Boolean                @default(false)
-  deleted_at                                        DateTime?              @db.Timestamp(6)
-  deleted_reason                                    String?
-  code                                              String?
-  frame_type                                        String?
-  vendler                                           String?
-  multi_perspective                                 Boolean?
-  wikidata_id                                       String?
-  recipe                                            Json?
-  recipe_graph                                      Json?
-  frame_lexical_units                               frame_lexical_units[]
-  frame_relations_frame_relations_source_idToframes frame_relations[]      @relation("frame_relations_source_idToframes")
-  frame_relations_frame_relations_target_idToframes frame_relations[]      @relation("frame_relations_target_idToframes")
-  frame_roles                                       frame_roles[]
-  llm_job_items                                     llm_job_items[]
-  role_groups                                       role_groups[]
+  label                                                           String
+  definition                                                      String?
+  short_definition                                                String?
+  created_at                                                      DateTime               @default(now())
+  updated_at                                                      DateTime               @default(now())
+  id                                                              BigInt                 @id @default(autoincrement())
+  flagged                                                         Boolean?               @default(false)
+  flagged_reason                                                  String?
+  verifiable                                                      Boolean?               @default(false)
+  unverifiable_reason                                             String?
+  version                                                         Int                    @default(1)
+  embedding                                                       Unsupported("vector")?
+  deleted                                                         Boolean                @default(false)
+  deleted_at                                                      DateTime?              @db.Timestamp(6)
+  deleted_reason                                                  String?
+  code                                                            String?
+  frame_type                                                      String?
+  vendler                                                         String?
+  multi_perspective                                               Boolean?
+  wikidata_id                                                     String?
+  recipe                                                          Json?
+  recipe_graph                                                    Json?
+  frame_relations_frame_relations_source_idToframes               frame_relations[]      @relation("frame_relations_source_idToframes")
+  frame_relations_frame_relations_target_idToframes               frame_relations[]      @relation("frame_relations_target_idToframes")
+  frame_role_mappings_frame_role_mappings_child_frame_idToframes  frame_role_mappings[]  @relation("frame_role_mappings_child_frame_idToframes")
+  frame_role_mappings_frame_role_mappings_parent_frame_idToframes frame_role_mappings[]  @relation("frame_role_mappings_parent_frame_idToframes")
+  frame_roles                                                     frame_roles[]
+  frame_sense_frames                                              frame_sense_frames[]
+  llm_job_items                                                   llm_job_items[]
+  role_groups                                                     role_groups[]
 
   @@index([label], map: "idx_frames_frame_name")
   @@index([flagged], map: "idx_frames_flagged")
@@ -181,6 +184,25 @@ model frame_relations {
   @@index([type], map: "idx_frame_relations_type")
 }
 
+model frame_role_mappings {
+  id                                                 BigInt   @id @default(autoincrement())
+  parent_frame_id                                    BigInt
+  child_frame_id                                     BigInt
+  parent_role_label                                  String
+  child_role_label                                   String?
+  is_absorbed                                        Boolean?
+  incorporated_value                                 String?
+  model                                              String?
+  run_id                                             String   @default("")
+  created_at                                         DateTime @default(now()) @db.Timestamptz(6)
+  frames_frame_role_mappings_child_frame_idToframes  frames   @relation("frame_role_mappings_child_frame_idToframes", fields: [child_frame_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  frames_frame_role_mappings_parent_frame_idToframes frames   @relation("frame_role_mappings_parent_frame_idToframes", fields: [parent_frame_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([parent_frame_id, child_frame_id, parent_role_label, run_id], map: "frame_role_mappings_edge_role_run_uq")
+  @@index([parent_frame_id], map: "frame_role_mappings_parent_frame_idx")
+  @@index([child_frame_id], map: "frame_role_mappings_child_frame_idx")
+}
+
 model audit_log {
   id           BigInt           @id @default(autoincrement())
   entity_type  entity_type
@@ -214,9 +236,11 @@ model changesets {
   reviewed_at     DateTime?         @db.Timestamptz(6)
   committed_at    DateTime?         @db.Timestamptz(6)
   llm_job_id      BigInt?
+  issue_id        BigInt?
   ai_revisions    ai_revisions[]
   audit_log       audit_log[]
   change_comments change_comments[]
+  issues          issues?           @relation(fields: [issue_id], references: [id], onUpdate: NoAction, map: "fk_changesets_issue")
   llm_jobs        llm_jobs?         @relation(fields: [llm_job_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_changesets_llm_job")
   comment_reads   comment_reads[]
   field_changes   field_changes[]
@@ -226,6 +250,28 @@ model changesets {
   @@index([entity_type, entity_id], map: "idx_changesets_entity")
   @@index([status], map: "idx_changesets_status")
   @@index([llm_job_id], map: "idx_changesets_llm_job")
+  @@index([issue_id], map: "idx_changesets_issue")
+}
+
+model issues {
+  id          BigInt         @id @default(autoincrement())
+  title       String
+  description String?
+  status      issue_status   @default(open)
+  priority    issue_priority @default(medium)
+  labels      String[]       @default([])
+  created_by  String
+  assignee    String?
+  created_at  DateTime       @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime       @default(now()) @updatedAt @db.Timestamptz(6)
+  closed_at   DateTime?      @db.Timestamptz(6)
+  changesets  changesets[]
+
+  @@index([status], map: "idx_issues_status")
+  @@index([priority], map: "idx_issues_priority")
+  @@index([assignee], map: "idx_issues_assignee")
+  @@index([created_by], map: "idx_issues_created_by")
+  @@index([created_at], map: "idx_issues_created_at")
 }
 
 model field_changes {
@@ -357,9 +403,9 @@ model lexical_units {
   relational                                                             Boolean?                 @default(false)
   embedding_1536                                                         Unsupported("vector")?
   wikidata_id                                                            String?                  @db.VarChar
-  frame_lexical_units                                                    frame_lexical_units[]
   lexical_unit_relations_lexical_unit_relations_source_idTolexical_units lexical_unit_relations[] @relation("lexical_unit_relations_source_idTolexical_units")
   lexical_unit_relations_lexical_unit_relations_target_idTolexical_units lexical_unit_relations[] @relation("lexical_unit_relations_target_idTolexical_units")
+  lexical_unit_senses                                                    lexical_unit_senses[]
   lexical_unit_types                                                     lexical_unit_types[]
   llm_job_items                                                          llm_job_items[]
 
@@ -373,19 +419,6 @@ model lexical_units {
   @@index([vendler_class], map: "idx_lexical_units_vendler_class")
   @@index([verifiable], map: "idx_lexical_units_verifiable")
   @@index([embedding_1536], map: "idx_lexical_units_embedding_1536_hnsw_cosine")
-}
-
-model frame_lexical_units {
-  frame_id        BigInt
-  lexical_unit_id BigInt
-  created_at      DateTime      @default(now()) @db.Timestamptz(6)
-  created_by      String?       @db.Uuid
-  frames          frames        @relation(fields: [frame_id], references: [id], onDelete: Cascade, map: "frame_lexical_units_frame_fk")
-  lexical_units   lexical_units @relation(fields: [lexical_unit_id], references: [id], onDelete: Cascade, map: "frame_lexical_units_lexical_unit_fk")
-
-  @@id([frame_id, lexical_unit_id])
-  @@index([frame_id], map: "idx_frame_lexical_units_frame")
-  @@index([lexical_unit_id], map: "idx_frame_lexical_units_lexical")
 }
 
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
@@ -430,6 +463,141 @@ model chat_streams {
   chat_id    String
   created_at DateTime           @default(now()) @db.Timestamptz(6)
   chat       chat_conversations @relation(fields: [chat_id], references: [id], onDelete: Cascade)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model frame_sense_contrasts {
+  id                                                                   Int          @id @default(autoincrement())
+  frame_sense_id                                                       Int
+  contrasted_sense_id                                                  Int
+  contrast_text                                                        String
+  created_at                                                           DateTime?    @default(now()) @db.Timestamp(6)
+  updated_at                                                           DateTime?    @default(now()) @db.Timestamp(6)
+  frame_senses_frame_sense_contrasts_contrasted_sense_idToframe_senses frame_senses @relation("frame_sense_contrasts_contrasted_sense_idToframe_senses", fields: [contrasted_sense_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  frame_senses_frame_sense_contrasts_frame_sense_idToframe_senses      frame_senses @relation("frame_sense_contrasts_frame_sense_idToframe_senses", fields: [frame_sense_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([frame_sense_id, contrasted_sense_id])
+  @@index([contrasted_sense_id], map: "idx_frame_sense_contrasts_contrasted_id")
+  @@index([frame_sense_id], map: "idx_frame_sense_contrasts_sense_id")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model frame_sense_definition_revisions {
+  id                     BigInt       @id @default(autoincrement())
+  frame_sense_id         Int
+  old_definition         String?
+  new_definition         String?
+  old_frame_type         String?
+  suggested_frame_type   String?
+  canonical_pattern      String?
+  revision_process       String
+  action_type            String
+  referent               String?
+  referent_class         String?
+  heuristic_flags        String[]
+  sibling_sense_ids      BigInt[]
+  preserved_content_lost String?
+  reasoning              String?
+  confidence             Float?       @db.Real
+  model                  String?
+  applied_at             DateTime?    @db.Timestamptz(6)
+  reverted_at            DateTime?    @db.Timestamptz(6)
+  created_at             DateTime     @default(now()) @db.Timestamptz(6)
+  frame_senses           frame_senses @relation(fields: [frame_sense_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([action_type], map: "idx_fsdr_action_type")
+  @@index([applied_at], map: "idx_fsdr_applied_at")
+  @@index([canonical_pattern], map: "idx_fsdr_canonical_pattern")
+  @@index([frame_sense_id], map: "idx_fsdr_frame_sense_id")
+  @@index([revision_process], map: "idx_fsdr_revision_process")
+  @@index([suggested_frame_type], map: "idx_fsdr_suggested_frame_type")
+}
+
+model frame_sense_frames {
+  frame_sense_id Int
+  frame_id       BigInt
+  created_at     DateTime?    @default(now()) @db.Timestamp(6)
+  frames         frames       @relation(fields: [frame_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_frame_sense_frames_frame")
+  frame_senses   frame_senses @relation(fields: [frame_sense_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_frame_sense_frames_sense")
+
+  @@id([frame_sense_id, frame_id])
+  @@index([frame_id], map: "idx_frame_sense_frames_frame_id")
+  @@index([frame_sense_id], map: "idx_frame_sense_frames_sense_id")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model frame_senses {
+  id                                                                            Int                                @id @default(autoincrement())
+  pos                                                                           String
+  definition                                                                    String
+  created_at                                                                    DateTime?                          @default(now()) @db.Timestamp(6)
+  updated_at                                                                    DateTime?                          @default(now()) @db.Timestamp(6)
+  confidence                                                                    String?
+  frame_type                                                                    String
+  type_dispute                                                                  String?
+  causative                                                                     Boolean?
+  inchoative                                                                    Boolean?
+  perspectival                                                                  Boolean?
+  lemmas                                                                        String[]                           @default([])
+  frame_sense_contrasts_frame_sense_contrasts_contrasted_sense_idToframe_senses frame_sense_contrasts[]            @relation("frame_sense_contrasts_contrasted_sense_idToframe_senses")
+  frame_sense_contrasts_frame_sense_contrasts_frame_sense_idToframe_senses      frame_sense_contrasts[]            @relation("frame_sense_contrasts_frame_sense_idToframe_senses")
+  frame_sense_definition_revisions                                              frame_sense_definition_revisions[]
+  frame_sense_frames                                                            frame_sense_frames[]
+  lexical_unit_senses                                                           lexical_unit_senses[]
+
+  @@index([pos], map: "idx_frame_senses_pos")
+  @@index([frame_type], map: "idx_frame_senses_type")
+  @@index([lemmas], map: "idx_frame_senses_lemmas_gin", type: Gin)
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model labile_sense_updates {
+  id                  Int      @id @default(autoincrement())
+  sense_id            Int
+  frame_id            Int
+  frame_label         String
+  original_definition String
+  new_definition      String
+  classification      String
+  confidence          Float
+  labile_lemmas       String[]
+  performed_at        DateTime @db.Timestamp(6)
+  performed_by        String
+
+  @@index([classification], map: "idx_labile_updates_classification")
+  @@index([performed_at], map: "idx_labile_updates_performed_at")
+  @@index([sense_id], map: "idx_labile_updates_sense_id")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model lexical_unit_senses {
+  lexical_unit_id BigInt
+  frame_sense_id  Int
+  created_at      DateTime?     @default(now()) @db.Timestamp(6)
+  frame_senses    frame_senses  @relation(fields: [frame_sense_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  lexical_units   lexical_units @relation(fields: [lexical_unit_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([lexical_unit_id, frame_sense_id])
+  @@index([frame_sense_id], map: "idx_lexical_unit_senses_fs_id")
+  @@index([lexical_unit_id], map: "idx_lexical_unit_senses_lu_id")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model sense_replacements {
+  id                    Int      @id @default(autoincrement())
+  original_sense_id     Int
+  replacement_sense_ids Int[]
+  operation_type        String
+  broadness_type        String?
+  partition_reasoning   String?
+  performed_at          DateTime @default(now()) @db.Timestamp(6)
+  performed_by          String?
+
+  @@index([original_sense_id], map: "idx_sense_replacements_original")
+  @@index([performed_at(sort: Desc)], map: "idx_sense_replacements_performed_at")
+  @@index([operation_type], map: "idx_sense_replacements_type")
 }
 
 enum vendler_class_type {
@@ -488,12 +656,27 @@ enum entity_type {
   adverb_relation
   frame_relation
   lexical_unit
+  frame_sense
 }
 
 enum field_change_status {
   pending
   approved
   rejected
+}
+
+enum issue_status {
+  open
+  in_progress
+  resolved
+  closed
+}
+
+enum issue_priority {
+  low
+  medium
+  high
+  critical
 }
 
 enum ai_revision_status {

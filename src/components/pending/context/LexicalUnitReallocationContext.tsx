@@ -282,7 +282,7 @@ export default function LexicalUnitReallocationContext(props: LexicalUnitRealloc
 
           <div className="space-y-2 overflow-y-auto pr-1 custom-scrollbar">
             {pageItems.length === 0 ? (
-              <div className="text-[11px] text-gray-400 italic">No pending lexical units found inside.</div>
+              <div className="text-[11px] text-gray-400 italic">Nothing inside yet.</div>
             ) : (
               pageItems.map((sibling, idx) => (
                 <NodeCard

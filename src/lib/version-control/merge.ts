@@ -24,6 +24,14 @@ import {
   applyFrameRolesSubChanges,
   type NormalizedFrameRole,
 } from './frameRolesSubfields';
+import {
+  isSensesExistsFieldName,
+  parseSensesExistsFieldName,
+} from './sensesSubfields';
+import {
+  senseWithFramesInclude,
+  transformFrameSense,
+} from '@/lib/db/senses';
 
 // ============================================
 // Core Merge Functions
@@ -682,6 +690,7 @@ export async function applyPendingToEntity<T extends object>(
   // Apply pending field values to entity for preview
   const updatedEntity = { ...entity };
   const pendingFrameRoleSubChanges: Array<{ field_name: string; new_value: unknown }> = [];
+  const pendingSensesSubChanges: Array<{ field_name: string; new_value: unknown }> = [];
 
   for (const fc of changeset.field_changes) {
     // Apply all pending changes (not just approved) for preview
@@ -701,6 +710,13 @@ export async function applyPendingToEntity<T extends object>(
         }
       }
 
+      // LU sense attach/detach: accumulate, apply after the loop so we can
+      // hydrate newly-attached sense rows in one DB round-trip.
+      if (entityType === 'lexical_unit' && isSensesExistsFieldName(fc.field_name)) {
+        pendingSensesSubChanges.push({ field_name: fc.field_name, new_value: fc.new_value });
+        continue;
+      }
+
       (updatedEntity as Record<string, unknown>)[fc.field_name] = fc.new_value;
     }
   }
@@ -712,6 +728,10 @@ export async function applyPendingToEntity<T extends object>(
       updatedEntity as unknown as Record<string, unknown>,
       normalizedFrameRolesToClientPayload(patched),
     );
+  }
+
+  if (pendingSensesSubChanges.length > 0) {
+    await applyPendingSensesToLexicalUnit(updatedEntity as Record<string, unknown>, pendingSensesSubChanges);
   }
 
   const pendingInfo = toPendingChangeInfo({
@@ -744,6 +764,67 @@ export async function applyPendingToEntity<T extends object>(
   });
 
   return { entity: updatedEntity, pending: pendingInfo };
+}
+
+/**
+ * Overlay pending sense attach/detach subfield changes onto an LU entity's
+ * `senses` array. Mutates `updatedEntity` in place.
+ *
+ * Newly-attached senses are hydrated from the DB (so the UI can render them
+ * with frame warnings, definitions, etc.) and flagged via `_pending: 'attach'`
+ * so the client can render a pending-badge. Detached senses are simply
+ * filtered out of the array (rather than flagged) so the preview matches the
+ * post-commit state — callers that need a "still-visible-but-marked" preview
+ * should fork this helper.
+ */
+async function applyPendingSensesToLexicalUnit(
+  updatedEntity: Record<string, unknown>,
+  changes: Array<{ field_name: string; new_value: unknown }>,
+): Promise<void> {
+  const effectiveBySenseId = new Map<number, boolean>();
+  for (const c of changes) {
+    const parsed = parseSensesExistsFieldName(c.field_name);
+    if (!parsed) continue;
+    const next =
+      typeof c.new_value === 'boolean' ? c.new_value : Boolean(c.new_value);
+    effectiveBySenseId.set(parsed.senseId, next);
+  }
+  if (effectiveBySenseId.size === 0) return;
+
+  const currentSenses = Array.isArray(updatedEntity.senses) ? [...(updatedEntity.senses as unknown[])] : [];
+
+  // Drop senses that are staged-detached.
+  const toDetach = new Set<string>();
+  for (const [senseId, exists] of effectiveBySenseId) {
+    if (!exists) toDetach.add(String(senseId));
+  }
+  const kept = currentSenses.filter(s => {
+    const id = (s as { id?: unknown })?.id;
+    return id === undefined ? true : !toDetach.has(String(id));
+  });
+
+  // Figure out which attach targets are not already in the list and fetch them.
+  const existingIds = new Set(
+    kept.map(s => String((s as { id?: unknown })?.id ?? '')).filter(Boolean),
+  );
+  const attachIds: number[] = [];
+  for (const [senseId, exists] of effectiveBySenseId) {
+    if (exists && !existingIds.has(String(senseId))) attachIds.push(senseId);
+  }
+
+  let attachedHydrated: Array<Record<string, unknown>> = [];
+  if (attachIds.length > 0) {
+    const rows = await prisma.frame_senses.findMany({
+      where: { id: { in: attachIds } },
+      include: senseWithFramesInclude,
+    });
+    attachedHydrated = rows.map(r => ({
+      ...transformFrameSense(r as unknown as Parameters<typeof transformFrameSense>[0]),
+      _pending: 'attach' as const,
+    }));
+  }
+
+  updatedEntity.senses = [...kept, ...attachedHydrated];
 }
 
 // ============================================

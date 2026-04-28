@@ -30,8 +30,8 @@ function getEntityName(_lexicalType: LexicalType | 'lexical_units'): string {
  * Valid sortBy fields for pagination
  */
 const VALID_SORT_FIELDS = [
-  'id', 'legacy_id', 'code', 'gloss', 'pos', 'lexfile', 'lemmas', 'src_lemmas', 
-  'frame_id', 'vendler_class', 'parentsCount', 'childrenCount', 
+  'id', 'legacy_id', 'code', 'gloss', 'pos', 'lexfile', 'lemmas', 'src_lemmas',
+  'vendler_class', 'parentsCount', 'childrenCount',
   'createdAt', 'updatedAt', 'created_at', 'updated_at'
 ];
 
@@ -46,8 +46,9 @@ function parsePaginationParams(searchParams: URLSearchParams): {
   if (sortBy === 'src_id') {
     sortBy = 'legacy_id';
   }
-  if (sortBy === 'frame') {
-    sortBy = 'frame_id';
+  if (sortBy === 'frame' || sortBy === 'frame_id') {
+    // Sorting by frame is no longer a top-level concept on lexical_units; fall back to id order.
+    sortBy = 'id';
   }
 
   const pageParam = searchParams.get('page') ? parseInt(searchParams.get('page')!, 10) : 1;
@@ -207,7 +208,9 @@ export async function handleGetById(
  * Get allowed fields for each entity type
  */
 function getAllowedFieldsForType(lexicalType: LexicalType | 'lexical_units'): string[] {
-  const commonFields = ['id', 'gloss', 'lemmas', 'src_lemmas', 'examples', 'lexfile', 'flagged', 'flaggedReason', 'frame_id'];
+  // NB: `frame_id` is intentionally absent — frames now live behind frame_senses.
+  // Use `/api/frame-senses` + `/api/lexical-units/[id]/senses` to change a unit's frame.
+  const commonFields = ['id', 'gloss', 'lemmas', 'src_lemmas', 'examples', 'lexfile', 'flagged', 'flaggedReason'];
   
   return [...commonFields, 'vendler_class', 'countable', 'proper', 'collective', 'concrete', 'predicate', 'isMwe', 'gradable', 'predicative', 'attributive', 'subjective', 'relational', 'isSatellite'];
 }

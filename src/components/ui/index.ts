@@ -10,3 +10,5 @@ export type { ConfirmDialogProps } from './ConfirmDialog';
 
 export { default as ConflictDialog } from './ConflictDialog';
 export type { ConflictDialogProps, ConflictError } from './ConflictDialog';
+
+export { default as SenseFrameWarning } from './SenseFrameWarning';

@@ -24,6 +24,12 @@ import type {
   FramePaginationParams,
   VendlerClass,
 } from './types';
+import {
+  lexicalUnitSensesInclude,
+  transformLexicalUnitSenses,
+  derivePrimaryFrame,
+  flattenFrames,
+} from './db/senses';
 
 // Re-export the unified pagination function
 export { getPaginatedLexicalUnits, getLexicalUnitById } from '@/lib/db/entities';
@@ -85,13 +91,7 @@ export async function getEntryById(id: string): Promise<LexicalUnitWithRelations
     () => prisma.lexical_units.findFirst({
       where: whereClause,
       include: {
-        frame_lexical_units: {
-          include: {
-            frames: {
-              select: { id: true, label: true, code: true, definition: true, short_definition: true }
-            },
-          },
-        },
+        ...lexicalUnitSensesInclude,
         lexical_unit_relations_lexical_unit_relations_source_idTolexical_units: {
           where: { lexical_units_lexical_unit_relations_target_idTolexical_units: { deleted: false } },
           include: {
@@ -152,6 +152,10 @@ function transformToLexicalUnitWithRelations(entry: any): LexicalUnitWithRelatio
  * Transform Prisma entry to LexicalUnit
  */
 function transformToLexicalUnit(entry: any): LexicalUnit {
+  const senses = transformLexicalUnitSenses(entry.lexical_unit_senses);
+  const primaryFrame = derivePrimaryFrame(senses);
+  const allFrames = flattenFrames(senses);
+
   return {
     id: entry.code || entry.id.toString(),
     code: entry.code,
@@ -169,16 +173,18 @@ function transformToLexicalUnit(entry: any): LexicalUnit {
     unverifiableReason: entry.unverifiable_reason ?? undefined,
     legal_gloss: entry.legal_gloss ?? undefined,
     deleted: entry.deleted ?? undefined,
-    frame_id: entry.frame_lexical_units?.[0]?.frame_id?.toString() ?? null,
-    frame: entry.frame_lexical_units?.[0]?.frames ? {
-      id: entry.frame_lexical_units[0].frames.id.toString(),
-      label: entry.frame_lexical_units[0].frames.label,
-      code: entry.frame_lexical_units[0].frames.code,
-      definition: entry.frame_lexical_units[0].frames.definition,
-      short_definition: entry.frame_lexical_units[0].frames.short_definition,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    } : null,
+    senses,
+    frame_id: primaryFrame?.id ?? null,
+    frame_ids: allFrames.map(f => f.id),
+    frame: primaryFrame
+      ? {
+          id: primaryFrame.id,
+          label: primaryFrame.label,
+          code: primaryFrame.code,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }
+      : null,
     createdAt: entry.created_at ?? new Date(),
     updatedAt: entry.updated_at ?? new Date(),
     version: entry.version ?? 1,
@@ -298,14 +304,20 @@ export async function getGraphNodeUncached(idOrCode: string): Promise<GraphNode 
     () => prisma.lexical_units.findFirst({
       where: whereClause,
       include: {
-        frame_lexical_units: {
+        lexical_unit_senses: {
           include: {
-            frames: {
+            frame_senses: {
               include: {
-                frame_roles: true,
-                role_groups: {
+                frame_sense_frames: {
                   include: {
-                    role_group_members: true,
+                    frames: {
+                      include: {
+                        frame_roles: true,
+                        role_groups: {
+                          include: { role_group_members: true },
+                        },
+                      },
+                    },
                   },
                 },
               },
@@ -348,6 +360,9 @@ export const getGraphNode = unstable_cache(
  * Transform database entry to GraphNode with full context.
  */
 function transformToGraphNode(entry: any): GraphNode {
+  const senses = transformLexicalUnitSenses(entry.lexical_unit_senses);
+  const primaryFrame = derivePrimaryFrame(senses);
+  const allFrames = flattenFrames(senses);
   return {
     id: entry.code || entry.id.toString(),
     numericId: entry.id.toString(),
@@ -364,7 +379,9 @@ function transformToGraphNode(entry: any): GraphNode {
     verifiable: entry.verifiable ?? undefined,
     unverifiableReason: entry.unverifiable_reason ?? undefined,
     vendler_class: entry.vendler_class,
-    frame_id: entry.frame_lexical_units?.[0]?.frame_id?.toString() ?? null,
+    senses,
+    frame_id: primaryFrame?.id ?? null,
+    frame_ids: allFrames.map(f => f.id),
     countable: entry.countable ?? undefined,
     proper: entry.proper ?? undefined,
     collective: entry.collective ?? undefined,
@@ -387,10 +404,12 @@ function transformToGraphNode(entry: any): GraphNode {
 
 function transformToGraphNodeWithContext(entry: any): GraphNode {
   const node = transformToGraphNode(entry);
-  
-  // Frame context (via join table; use the first linked frame)
-  const primaryFlu = entry.frame_lexical_units?.[0];
-  const frame = primaryFlu?.frames;
+
+  // Frame context: use the first sense's first frame (1:1 happy path) and hydrate
+  // the richer frame_roles/role_groups from the include.
+  const firstSenseLink = entry.lexical_unit_senses?.[0];
+  const firstFrameLink = firstSenseLink?.frame_senses?.frame_sense_frames?.[0];
+  const frame = firstFrameLink?.frames;
   if (frame) {
     node.frame = {
       id: frame.id.toString(),
@@ -400,7 +419,7 @@ function transformToGraphNodeWithContext(entry: any): GraphNode {
       short_definition: frame.short_definition,
       createdAt: frame.created_at,
       updatedAt: frame.updated_at,
-      frame_roles: frame.frame_roles.map((role: any) => ({
+      frame_roles: (frame.frame_roles ?? []).map((role: any) => ({
         id: role.id.toString(),
         description: role.description,
         notes: role.notes,
@@ -416,12 +435,12 @@ function transformToGraphNodeWithContext(entry: any): GraphNode {
       wikidata_id: frame.wikidata_id,
       recipe: frame.recipe as Frame['recipe'],
     };
-    
+
     node.roles = node.frame.frame_roles;
-    node.role_groups = frame.role_groups.map((group: any) => ({
+    node.role_groups = (frame.role_groups ?? []).map((group: any) => ({
       id: group.id.toString(),
       description: group.description,
-      role_ids: group.role_group_members.map((m: any) => m.role_id.toString()),
+      role_ids: (group.role_group_members ?? []).map((m: any) => m.role_id.toString()),
     }));
   }
 
@@ -553,7 +572,6 @@ export async function updateEntry(
     unverifiableReason: string;
     vendler_class: VendlerClass | null;
     lexfile: string;
-    frame_id: string | null;
     countable: boolean | null;
     proper: boolean;
     collective: boolean;
@@ -607,20 +625,8 @@ export async function updateEntry(
       where: whereClause,
       data: dbUpdates,
     });
-
-    // Handle frame assignment via join table
-    if (updates.frame_id !== undefined) {
-      const luId = numericId ?? (await prisma.lexical_units.findUnique({ where: whereClause, select: { id: true } }))?.id;
-      if (luId) {
-        await prisma.frame_lexical_units.deleteMany({ where: { lexical_unit_id: luId } });
-        if (updates.frame_id !== null) {
-          await prisma.frame_lexical_units.create({
-            data: { frame_id: BigInt(updates.frame_id), lexical_unit_id: luId },
-          });
-        }
-      }
-    }
-
+    // Frame assignment is no longer an LU-level concept; it's mediated by frame_senses.
+    // Use the /api/frame-senses endpoints (or src/lib/db/senses.ts helpers) instead.
     return getEntryById(id);
   } catch (error) {
     console.error('Error updating entry:', error);
@@ -700,53 +706,26 @@ export async function updateFlagStatus(
 }
 
 /**
- * Update frame for multiple entries
+ * Bulk "set the frame" for multiple lexical units is no longer meaningful now that
+ * frames live behind `frame_senses`. Callers should instead create or attach
+ * `frame_senses` via `src/lib/db/senses.ts`. This function is kept as a no-op so
+ * any lingering callers fail loudly in the logs without crashing the request.
+ *
+ * @deprecated Use `createFrameSense` / `attachSenseToLexicalUnit` in `src/lib/db/senses.ts`.
  */
 export async function updateFramesForEntries(
-  ids: string[],
-  frameId: string | null
+  _ids: string[],
+  _frameId: string | null
 ): Promise<{ success: boolean; updatedCount: number }> {
-  const entries = await prisma.lexical_units.findMany({
-    where: {
-      OR: ids.map(id => {
-        const numericId = parseNumericEntryId(id);
-        return numericId ? { id: numericId } : { code: id };
-      }),
-    },
-    select: { id: true },
-  });
-
-  const numericIds = entries.map(e => e.id);
-
-  // Remove existing frame links for these LUs
-  await prisma.frame_lexical_units.deleteMany({
-    where: { lexical_unit_id: { in: numericIds } },
-  });
-
-  // Create new links if a frame is specified
-  if (frameId) {
-    await prisma.frame_lexical_units.createMany({
-      data: numericIds.map(luId => ({
-        frame_id: BigInt(frameId),
-        lexical_unit_id: luId,
-      })),
-    });
-  }
-
-  // Update timestamps
-  await prisma.lexical_units.updateMany({
-    where: { id: { in: numericIds } },
-    data: { updated_at: new Date() },
-  });
-
-  return {
-    success: true,
-    updatedCount: numericIds.length,
-  };
+  console.warn(
+    '[db.updateFramesForEntries] Bulk frame assignment on lexical units is no longer supported. ' +
+      'Frames are now linked via frame_senses; use the senses API instead.'
+  );
+  return { success: false, updatedCount: 0 };
 }
 
 /**
- * @deprecated Use `updateFramesForEntries` (same behavior).
+ * @deprecated Use `createFrameSense` / `attachSenseToLexicalUnit` in `src/lib/db/senses.ts`.
  */
 export async function updateFramesForLexicalUnits(
   ids: string[],
@@ -831,11 +810,25 @@ export async function getPaginatedFrames(
       _count: {
         select: {
           frame_roles: true,
-          frame_lexical_units: true,
+          frame_sense_frames: true,
         },
       },
     },
   });
+
+  // Compute distinct-LU counts per frame via the sense chain. A single raw SQL
+  // keeps this O(1) round-trip instead of N+1.
+  const frameIds = frames.map(f => f.id);
+  const luCountRows = frameIds.length > 0
+    ? await prisma.$queryRaw<Array<{ frame_id: bigint; lu_count: bigint }>>`
+        SELECT fsf.frame_id AS frame_id, COUNT(DISTINCT lus.lexical_unit_id)::bigint AS lu_count
+        FROM frame_sense_frames fsf
+        LEFT JOIN lexical_unit_senses lus ON lus.frame_sense_id = fsf.frame_sense_id
+        WHERE fsf.frame_id = ANY(${frameIds}::bigint[])
+        GROUP BY fsf.frame_id
+      `
+    : [];
+  const luCountByFrame = new Map(luCountRows.map(r => [r.frame_id.toString(), Number(r.lu_count)]));
 
   // Transform to Frame type
   const data: Frame[] = frames.map(frame => ({
@@ -851,7 +844,8 @@ export async function getPaginatedFrames(
     createdAt: frame.created_at,
     updatedAt: frame.updated_at,
     roles_count: frame._count.frame_roles,
-    lexical_units_count: frame._count.frame_lexical_units,
+    senses_count: frame._count.frame_sense_frames,
+    lexical_units_count: luCountByFrame.get(frame.id.toString()) ?? 0,
     frame_roles: frame.frame_roles.map(role => ({
       id: role.id.toString(),
       description: role.description,
@@ -893,6 +887,7 @@ export function revalidateAllEntryCaches() {
   revalidateTag('graph-node');
   revalidateTag('entries');
   revalidateTag('frames');
+  revalidateTag('frame-hierarchy-counts');
 }
 
 /**

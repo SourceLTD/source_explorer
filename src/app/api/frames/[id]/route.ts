@@ -5,6 +5,8 @@ import { stageUpdate, stageDelete, getPendingInfoForEntity } from '@/lib/version
 import { getCurrentUserName } from '@/utils/supabase/server';
 import { applyFrameRolesSubChanges, type NormalizedFrameRole } from '@/lib/version-control/frameRolesSubfields';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -17,20 +19,29 @@ export async function GET(
       where: { id },
       include: {
         frame_roles: true,
-        frame_lexical_units: {
-          where: { lexical_units: { deleted: false } },
+        frame_sense_frames: {
           include: {
-            lexical_units: {
-              select: {
-                id: true,
-                code: true,
-                gloss: true,
-                lemmas: true,
-                pos: true,
+            frame_senses: {
+              include: {
+                frame_sense_frames: true,
+                lexical_unit_senses: {
+                  where: { lexical_units: { deleted: false } },
+                  include: {
+                    lexical_units: {
+                      select: {
+                        id: true,
+                        code: true,
+                        gloss: true,
+                        lemmas: true,
+                        pos: true,
+                      },
+                    },
+                  },
+                },
               },
             },
           },
-          take: 100,
+          take: 200,
         },
       },
     });
@@ -53,15 +64,45 @@ export async function GET(
       fillers: role.fillers,
     }));
 
+    // Build senses-first payload and dedupe flat LUs for legacy consumers.
+    const senseLinks = (frame as any).frame_sense_frames ?? [];
+    const senses = senseLinks.map((sfLink: any) => {
+      const sense = sfLink.frame_senses;
+      const senseFrameCount = (sense.frame_sense_frames ?? []).length;
+      const frameWarning =
+        senseFrameCount === 0 ? 'none' : senseFrameCount > 1 ? 'multiple' : null;
+      return {
+        id: sense.id.toString(),
+        pos: sense.pos,
+        definition: sense.definition,
+        frame_type: sense.frame_type,
+        confidence: sense.confidence,
+        type_dispute: sense.type_dispute,
+        causative: sense.causative,
+        inchoative: sense.inchoative,
+        perspectival: sense.perspectival,
+        frameWarning,
+        lexical_units: (sense.lexical_unit_senses ?? []).map((lus: any) => ({
+          ...lus.lexical_units,
+          id: lus.lexical_units.id.toString(),
+        })),
+      };
+    });
+    const luDedupe = new Map<string, any>();
+    for (const sense of senses) {
+      for (const lu of sense.lexical_units) {
+        if (!luDedupe.has(lu.id)) luDedupe.set(lu.id, lu);
+      }
+    }
+
     const serialized = {
       ...frame,
       id: frame.id.toString(),
       frame_roles: serializeRoles(frame.frame_roles || []),
-      lexical_units: (frame as any).frame_lexical_units.map((flu: any) => ({
-        ...flu.lexical_units,
-        id: flu.lexical_units.id.toString(),
-      })),
+      senses,
+      lexical_units: Array.from(luDedupe.values()),
     };
+    delete (serialized as any).frame_sense_frames;
 
     // Attach & apply pending changes so the edit overlay can immediately reflect staged updates
     const pendingInfo = await getPendingInfoForEntity('frame', id);

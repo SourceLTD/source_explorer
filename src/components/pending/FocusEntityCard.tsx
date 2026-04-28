@@ -1,6 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
 import NodeCard from '@/components/pending/context/NodeCard';
-import LoadingSpinner from '@/components/LoadingSpinner';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -81,20 +80,15 @@ function formatLemmas(value: unknown): string {
 
 function renderLexicalUnitSnippets(lus: { id?: string; code?: string; gloss?: string }[] | undefined) {
   const items = Array.isArray(lus) ? lus : [];
-  if (items.length === 0) return <div className="text-[11px] text-gray-500 italic">No lexical units found.</div>;
+  if (items.length === 0) return null;
 
   return (
     <div className="mt-2 space-y-2">
       {items.slice(0, 10).map((lu, idx) => (
         <div key={lu.id || idx} className="flex flex-col gap-0.5 border-l-2 border-blue-100 pl-2">
-          <a
-            href={`/table?search=${encodeURIComponent(lu.id || lu.code || '')}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[10px] font-mono text-blue-700 hover:text-blue-800 cursor-pointer font-bold"
-          >
+          <div className="text-[10px] font-mono text-blue-700 font-bold">
             {lu.code}
-          </a>
+          </div>
           <div className="text-[10px] text-gray-600 leading-tight line-clamp-2" title={lu.gloss}>
             {lu.gloss}
           </div>
@@ -187,8 +181,12 @@ export default function FocusEntityCard({
         className={`${subtle ? 'shadow-none' : 'shadow-md'} ${className}`}
       >
         {def && <div className="text-[11px] text-gray-700 font-medium mb-2">{def}</div>}
-        <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Lexical entries</div>
-        {renderLexicalUnitSnippets(lus)}
+        {lus.length > 0 && (
+          <>
+            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Words</div>
+            {renderLexicalUnitSnippets(lus)}
+          </>
+        )}
       </NodeCard>
     );
   }
@@ -200,7 +198,7 @@ export default function FocusEntityCard({
     const lemmas = formatLemmas(summarySnapshot.lemmas || richData?.lemmas);
     return (
       <NodeCard
-        title={code || 'Lexical Unit'}
+        title={code || 'Word'}
         loading={loading}
         error={error}
         noDivider

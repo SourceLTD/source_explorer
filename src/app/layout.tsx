@@ -20,7 +20,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Source Console",
-  description: "Explore lexical relationships through interactive graphs",
+  description: "Explore relationships through interactive graphs",
 };
 
 export default function RootLayout({

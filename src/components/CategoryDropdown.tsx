@@ -1,6 +1,6 @@
 'use client';
 
-import { useRouter, usePathname } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 
 export type Category = 'frames' | 'lexical_units' | 'verbs' | 'nouns' | 'adjectives' | 'adverbs';
 
@@ -11,7 +11,6 @@ interface CategoryDropdownProps {
 
 const CATEGORIES: { id: Category; label: string; tablePath: string; graphPath?: string }[] = [
   { id: 'frames', label: 'Frames', tablePath: '/table/frames', graphPath: '/graph/frames' },
-  { id: 'lexical_units', label: 'Lexical Units', tablePath: '/table' },
 ];
 
 export default function CategoryDropdown({ currentCategory, currentView = 'table' }: CategoryDropdownProps) {

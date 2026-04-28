@@ -16,6 +16,8 @@ import {
   FieldChangeStatus,
 } from '@/lib/version-control';
 import { getCurrentUserName } from '@/utils/supabase/server';
+import { prisma } from '@/lib/prisma';
+import { parseIdParam } from '@/lib/issues/validation';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -41,6 +43,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       id: changeset.id.toString(),
       llm_job_id: changeset.llm_job_id?.toString() ?? null,
       entity_id: changeset.entity_id?.toString() ?? null,
+      issue_id: (changeset as { issue_id?: bigint | null }).issue_id?.toString() ?? null,
       field_changes: changeset.field_changes.map(fc => ({
         ...fc,
         id: fc.id.toString(),
@@ -63,8 +66,66 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     const changesetId = BigInt(id);
     const body = await request.json();
     
-    const { action, field_change_id, field_changes_updates } = body;
+    const { action, field_change_id, field_changes_updates, issue_id } = body;
     const userId = await getCurrentUserName();
+
+    // Link or unlink a changeset to an issue.
+    // Pass issue_id: null (or "") to unlink, a numeric string/number to link.
+    if (issue_id !== undefined) {
+      let issueIdValue: bigint | null;
+      if (issue_id === null || issue_id === '') {
+        issueIdValue = null;
+      } else {
+        const parsed = parseIdParam(issue_id);
+        if (parsed === null) {
+          return NextResponse.json(
+            { error: 'Invalid issue_id' },
+            { status: 400 }
+          );
+        }
+        issueIdValue = parsed;
+      }
+
+      if (issueIdValue !== null) {
+        const exists = await prisma.issues.findUnique({
+          where: { id: issueIdValue },
+          select: { id: true },
+        });
+        if (!exists) {
+          return NextResponse.json(
+            { error: 'Issue not found' },
+            { status: 404 }
+          );
+        }
+      }
+
+      try {
+        const updated = await prisma.changesets.update({
+          where: { id: changesetId },
+          data: { issue_id: issueIdValue },
+          select: { id: true, issue_id: true },
+        });
+
+        return NextResponse.json({
+          success: true,
+          id: updated.id.toString(),
+          issue_id: updated.issue_id?.toString() ?? null,
+        });
+      } catch (err) {
+        if (
+          typeof err === 'object' &&
+          err !== null &&
+          'code' in err &&
+          (err as { code?: string }).code === 'P2025'
+        ) {
+          return NextResponse.json(
+            { error: 'Changeset not found' },
+            { status: 404 }
+          );
+        }
+        throw err;
+      }
+    }
 
     // Option 1: Bulk action on all fields
     if (action) {

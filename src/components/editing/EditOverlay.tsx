@@ -179,7 +179,7 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
 
       // Handle other fields
       let value: unknown;
-      let fieldName: string = editor.editingField;
+      const fieldName: string = editor.editingField;
       
       switch (editor.editingField) {
         case 'src_lemmas':
@@ -198,10 +198,16 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
           value = editor.editValue;
           break;
         case 'frame':
-          // Map 'frame' to 'frame_id' for API
-          fieldName = 'frame_id';
-          value = editor.editValue || null;
-          break;
+          // Frame editing on lexical units is no longer supported — frames now live
+          // behind frame_senses. Callers should use /api/frame-senses and
+          // /api/lexical-units/[id]/senses instead. Swallow the edit here rather
+          // than firing a stale request.
+          editor.setCodeValidationMessage(
+            'Frame assignment moved to senses. Use the sense editor.'
+          );
+          editor.cancelEditing();
+          editor.setCodeValidationMessage('');
+          return;
         case 'label':
           value = editor.editValue.trim();
           break;

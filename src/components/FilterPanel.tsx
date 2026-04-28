@@ -988,7 +988,7 @@ export default function FilterPanel({
 
             {isFramesMode && (
               <FilterSection
-                title="Lexical Units"
+                title="Words"
                 icon={<HashtagIcon className="w-4 h-4 text-gray-600" />}
                 isOpen={openSections.has('relationships')}
                 onToggle={() => toggleSection('relationships')}
@@ -1083,7 +1083,6 @@ export default function FilterPanel({
                     />
                     <span>Exclude entries without frames</span>
                   </label>
-                  <p className="mt-1 ml-6 text-xs text-gray-500">Only show lexical units that are assigned to a frame.</p>
                 </div>
               </FilterSection>
             )}

@@ -10,6 +10,13 @@ import { withRetry } from '../db-utils';
 import { Prisma, entity_type, change_operation, part_of_speech } from '@prisma/client';
 import type { PartOfSpeech, PaginationParams, PaginatedResult, TableLexicalUnit, VendlerClass } from '../types';
 import { getPOSConfig, parsePOSFilter, isValidPOS } from './config';
+import {
+  lexicalUnitSensesInclude,
+  transformLexicalUnitSenses,
+  derivePrimaryFrame,
+  flattenFrames,
+  countAnomalousSenses,
+} from './senses';
 
 /**
  * Build WHERE clause conditions for lexical_units queries
@@ -114,7 +121,8 @@ function buildWhereConditions(
   }
 
   if (excludeNullFrame === true) {
-    conditions.push({ frame_lexical_units: { some: {} } });
+    // "Has at least one sense" is the senses-era equivalent of "has a frame".
+    conditions.push({ lexical_unit_senses: { some: {} } });
   }
 
   // Date filters
@@ -178,7 +186,18 @@ async function buildAdvancedWhereConditions(
       }
 
       if (numericIds.size > 0) {
-        conditions.push({ frame_lexical_units: { some: { frame_id: { in: Array.from(numericIds) } } } });
+        // Traverse senses: LU → lexical_unit_senses → frame_senses → frame_sense_frames → frame_id.
+        conditions.push({
+          lexical_unit_senses: {
+            some: {
+              frame_senses: {
+                frame_sense_frames: {
+                  some: { frame_id: { in: Array.from(numericIds) } },
+                },
+              },
+            },
+          },
+        });
       }
     }
   }
@@ -357,14 +376,10 @@ function transformToTableLexicalUnit(
   const entryCode = entry.code || entry.id.toString();
   const numericId = entry.id.toString();
 
-  const frameLinks: Array<{ frames: { id: bigint; label: string; code: string | null } }> = entry.frame_lexical_units ?? [];
-  const primaryFrame = frameLinks[0]?.frames ?? null;
-  const frameIds = frameLinks.map((flu: any) => flu.frames.id.toString());
-  const frames = frameLinks.map((flu: any) => ({
-    id: flu.frames.id.toString(),
-    label: flu.frames.label,
-    code: flu.frames.code,
-  }));
+  const senses = transformLexicalUnitSenses(entry.lexical_unit_senses);
+  const primaryFrame = derivePrimaryFrame(senses);
+  const allFrames = flattenFrames(senses);
+  const anomalousSenseCount = countAnomalousSenses(senses);
 
   return {
     id: entryCode,
@@ -381,8 +396,10 @@ function transformToTableLexicalUnit(
     flaggedReason: entry.flagged_reason ?? undefined,
     verifiable: entry.verifiable ?? undefined,
     unverifiableReason: entry.unverifiable_reason ?? undefined,
-    frame_ids: frameIds,
-    frames,
+    senses,
+    anomalousSenseCount,
+    frame_ids: allFrames.map(f => f.id),
+    frames: allFrames,
     frame: primaryFrame?.code || null,
     
     // Verb-specific
@@ -447,22 +464,14 @@ async function getPaginatedLexicalUnits(
     'getPaginatedLexicalUnits:count'
   );
 
-  // Fetch entries with frames
+  // Fetch entries with frames (via the sense chain)
   const entries = await withRetry(
     () => prisma.lexical_units.findMany({
       where: whereClause,
       skip,
       take: limit,
       orderBy,
-      include: {
-        frame_lexical_units: {
-          include: {
-            frames: {
-              select: { id: true, label: true, code: true },
-            },
-          },
-        },
-      },
+      include: lexicalUnitSensesInclude,
     }),
     undefined,
     'getPaginatedLexicalUnits:findMany'
@@ -512,31 +521,15 @@ async function getLexicalUnitById(
   if (/^\d+$/.test(idOrCode)) {
     entry = await prisma.lexical_units.findUnique({
       where: { id: BigInt(idOrCode) },
-      include: {
-        frame_lexical_units: {
-          include: {
-            frames: {
-              select: { id: true, label: true, code: true },
-            },
-          },
-        },
-      },
+      include: lexicalUnitSensesInclude,
     });
   }
-  
+
   // If not found by ID, try by code
   if (!entry) {
     entry = await prisma.lexical_units.findUnique({
       where: { code: idOrCode },
-      include: {
-        frame_lexical_units: {
-          include: {
-            frames: {
-              select: { id: true, label: true, code: true },
-            },
-          },
-        },
-      },
+      include: lexicalUnitSensesInclude,
     });
   }
 

@@ -17,6 +17,7 @@ import {
 } from './create';
 import { randomUUID } from 'crypto';
 import { parseFrameRolesFieldName } from './frameRolesSubfields';
+import { sensesExistsFieldName } from './sensesSubfields';
 import {
   EntityType,
   ENTITY_TYPE_TO_TABLE,
@@ -63,6 +64,22 @@ async function fetchEntityByCode(
         deleted: false 
       },
     }) as Record<string, unknown> | null;
+  } else if (normalizedType === 'frame_sense') {
+    // frame_senses uses Int PK and has no string "code". Fetch the row and
+    // flatten the single linked frame_id onto the pseudo-entity so staged field
+    // changes to `frame_id` have an accurate before_value.
+    if (!isNumericId(code)) return null;
+    const senseId = Number(code);
+    const sense = await prisma.frame_senses.findUnique({
+      where: { id: senseId },
+      include: { frame_sense_frames: { select: { frame_id: true } } },
+    });
+    if (!sense) return null;
+    const linkedFrameId = sense.frame_sense_frames[0]?.frame_id ?? null;
+    const { frame_sense_frames: _omit, ...senseRest } = sense;
+    void _omit;
+    entity = { ...senseRest, frame_id: linkedFrameId } as Record<string, unknown>;
+    return { entity, numericId: BigInt(sense.id) };
   } else {
     // Standard numeric ID lookup for other tables
     if (!isNumericId(code)) return null;
@@ -216,6 +233,88 @@ export async function stageDelete(
     changeset_id: changeset.id.toString(),
     message: 'Delete operation staged for review',
     field_changes_count: 0,
+  };
+}
+
+/**
+ * Stage an attach/detach of an existing frame_sense to/from a lexical unit.
+ *
+ * The link change is recorded as a subfield change on the LU's changeset using
+ * the `senses.<senseId>.__exists` convention, so it flows through the normal
+ * review/commit/audit pipeline.
+ *
+ * Idempotency: if the link already matches the requested state, the call is a
+ * no-op (no changeset is created and any existing matching field change is
+ * cleared via `upsertFieldChange`).
+ *
+ * @param luCodeOrId - LU code (e.g. "run.v.01") or numeric id as a string
+ * @param senseId    - The frame_sense.id to attach/detach
+ * @param attach     - true to attach, false to detach
+ * @param userId     - The user making the change
+ */
+export async function stageSenseAttachment(
+  luCodeOrId: string,
+  senseId: number,
+  attach: boolean,
+  userId: string,
+): Promise<StagedResponse> {
+  const result = await fetchEntityByCode('lexical_unit', luCodeOrId);
+  if (!result) {
+    throw new Error(`Lexical unit not found: ${luCodeOrId}`);
+  }
+  const { entity, numericId } = result;
+
+  const existingLink = await prisma.lexical_unit_senses.findUnique({
+    where: {
+      lexical_unit_id_frame_sense_id: {
+        lexical_unit_id: numericId,
+        frame_sense_id: senseId,
+      },
+    },
+    select: { lexical_unit_id: true },
+  });
+  const currentlyExists = existingLink !== null;
+
+  // We intentionally route through `createChangesetFromUpdate` so that this
+  // field change coexists cleanly with other pending LU updates (merges into an
+  // existing pending changeset on the same entity, rather than creating a new
+  // one per attach/detach call).
+  const fieldName = sensesExistsFieldName(senseId);
+  // Seed the pseudo-entity with the subfield's current boolean so no-op /
+  // revert detection works.
+  const pseudoEntity: Record<string, unknown> = { ...entity, [fieldName]: currentlyExists };
+
+  const changeset = await createChangesetFromUpdate(
+    'lexical_unit',
+    numericId,
+    pseudoEntity,
+    { [fieldName]: attach },
+    userId,
+    undefined,
+  );
+
+  if (changeset.id === BigInt(0) || changeset.field_changes.length === 0) {
+    if (changeset.id !== BigInt(0)) {
+      return {
+        staged: true,
+        changeset_id: '',
+        message: 'Changes reverted - changeset discarded',
+        field_changes_count: 0,
+      };
+    }
+    return {
+      staged: true,
+      changeset_id: '',
+      message: 'No changes detected - link already in requested state',
+      field_changes_count: 0,
+    };
+  }
+
+  return {
+    staged: true,
+    changeset_id: changeset.id.toString(),
+    message: `Sense ${attach ? 'attach' : 'detach'} staged for review`,
+    field_changes_count: changeset.field_changes.length,
   };
 }
 

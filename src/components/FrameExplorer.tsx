@@ -359,12 +359,6 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
               <button className="px-4 py-2 text-base font-medium transition-colors relative cursor-pointer text-blue-600 border-b-2 border-blue-600">
                 Frames
               </button>
-              <button
-                onClick={() => router.push('/graph?view=graph')}
-                className="px-4 py-2 text-base font-medium transition-colors relative cursor-pointer text-gray-600 hover:text-gray-900 hover:bg-gray-50"
-              >
-                Lexical Units
-              </button>
             </div>
           </div>
           
@@ -483,7 +477,6 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
                     ref={frameGraphRef}
                     currentFrame={currentFrame}
                     onFrameClick={handleFrameClick}
-                    onVerbClick={(verbId) => router.push(`/graph?entry=${verbId}`)}
                     onEditClick={() => setIsEditOverlayOpen(true)}
                     onVisualizeRecipeGraph={(rg) => setRecipeGraphForVisualize(rg)}
                     onReparentComplete={() => {

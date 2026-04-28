@@ -21,12 +21,19 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
             id: 'asc',
           },
         },
-        frame_lexical_units: {
-          where: { lexical_units: { deleted: false } },
+        frame_sense_frames: {
           include: {
-            lexical_units: true,
+            frame_senses: {
+              include: {
+                frame_sense_frames: true,
+                lexical_unit_senses: {
+                  where: { lexical_units: { deleted: false } },
+                  include: { lexical_units: true },
+                },
+              },
+            },
           },
-          take: 50,
+          take: 100,
         },
         frame_relations_frame_relations_source_idToframes: {
           where: { frames_frame_relations_target_idToframes: { deleted: false } },
@@ -82,7 +89,43 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         fillers: role.fillers,
         groups: [],
       })),
-      lexical_units: frame.frame_lexical_units.map((flu: any) => flu.lexical_units).map((lu: any) => ({
+      senses: frame.frame_sense_frames.map(sfLink => {
+        const sense = sfLink.frame_senses;
+        const senseFrameCount = (sense.frame_sense_frames ?? []).length;
+        const frameWarning = senseFrameCount === 0
+          ? 'none' as const
+          : senseFrameCount > 1
+            ? 'multiple' as const
+            : null;
+        return {
+          id: sense.id.toString(),
+          pos: sense.pos,
+          definition: sense.definition,
+          frame_type: sense.frame_type,
+          confidence: sense.confidence,
+          type_dispute: sense.type_dispute,
+          causative: sense.causative,
+          inchoative: sense.inchoative,
+          perspectival: sense.perspectival,
+          frameWarning,
+          lexical_units: (sense.lexical_unit_senses ?? []).map(lus => ({
+            id: lus.lexical_units.id.toString(),
+            code: lus.lexical_units.code,
+            lemmas: lus.lexical_units.lemmas,
+            gloss: lus.lexical_units.gloss,
+            pos: lus.lexical_units.pos,
+            vendler_class: lus.lexical_units.vendler_class,
+          })),
+        };
+      }),
+      // Legacy flat LUs across senses (deduped), kept for back-compat UIs.
+      lexical_units: Array.from(
+        new Map(
+          frame.frame_sense_frames
+            .flatMap(sfLink => sfLink.frame_senses.lexical_unit_senses ?? [])
+            .map(lus => [lus.lexical_units.id.toString(), lus.lexical_units])
+        ).values()
+      ).map((lu: any) => ({
         id: lu.id.toString(),
         code: lu.code,
         lemmas: lu.lemmas,
@@ -92,8 +135,14 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         roles: [],
         role_groups: [],
       })),
-      // Legacy verbs alias
-      verbs: frame.frame_lexical_units.map((flu: any) => flu.lexical_units).filter((lu: any) => lu.pos === 'verb').map((verb: any) => ({
+      verbs: Array.from(
+        new Map(
+          frame.frame_sense_frames
+            .flatMap(sfLink => sfLink.frame_senses.lexical_unit_senses ?? [])
+            .filter(lus => lus.lexical_units.pos === 'verb')
+            .map(lus => [lus.lexical_units.id.toString(), lus.lexical_units])
+        ).values()
+      ).map((verb: any) => ({
         id: verb.id.toString(),
         code: verb.code,
         lemmas: verb.lemmas,

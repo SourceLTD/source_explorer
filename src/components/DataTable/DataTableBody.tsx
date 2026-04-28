@@ -402,25 +402,96 @@ export function CellContent({
           </div>
         );
       case 'frame': {
-      const primaryFrameId = entry.frame_ids?.[0] ?? entry.frame_id;
-      const frameCode = entry.frame || primaryFrameId;
-      const dotIndex = frameCode?.indexOf('.');
-      
+      // With the senses refactor, a lexical unit may have multiple frames (via its senses).
+      // We show all of them, deduped, as clickable chips. `entry.frames` is populated from
+      // the senses chain; `entry.frame`/`entry.frame_id` remain as legacy single-value fields.
+      const frames = entry.frames && entry.frames.length > 0
+        ? entry.frames
+        : (entry.frame_id
+            ? [{ id: entry.frame_id, label: entry.frame ?? entry.frame_id, code: entry.frame ?? null }]
+            : []);
+
+      if (frames.length === 0) {
+        return <div className="flex items-center gap-2 group"><NoneCell /></div>;
+      }
+
       return (
-        <div className="flex items-center gap-2 group">
-          {frameCode ? (
-            <span 
-              className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-600 hover:bg-blue-100 cursor-pointer transition-colors"
-              onClick={() => router.push(`/graph/frames?entry=${primaryFrameId}`)}
-            >
-              {dotIndex !== undefined && dotIndex !== -1 ? (
-                <>
-                  {frameCode.substring(0, dotIndex + 1)}
-                  <span className="font-bold">{frameCode.substring(dotIndex + 1)}</span>
-                </>
-              ) : frameCode}
-            </span>
-          ) : <NoneCell />}
+        <div className="flex flex-wrap items-center gap-1 group">
+          {frames.map(f => {
+            const code = f.code ?? f.label ?? f.id;
+            const dotIndex = code.indexOf('.');
+            return (
+              <span
+                key={f.id}
+                className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-600 hover:bg-blue-100 cursor-pointer transition-colors"
+                onClick={() => router.push(`/graph/frames?entry=${f.id}`)}
+                title={f.label}
+              >
+                {dotIndex !== -1 ? (
+                  <>
+                    {code.substring(0, dotIndex + 1)}
+                    <span className="font-bold">{code.substring(dotIndex + 1)}</span>
+                  </>
+                ) : code}
+              </span>
+            );
+          })}
+        </div>
+      );
+    }
+    case 'senses': {
+      const senses = entry.senses ?? [];
+      if (senses.length === 0) {
+        return (
+          <div className="text-xs text-gray-400 italic">no senses</div>
+        );
+      }
+      return (
+        <div className="flex flex-col gap-1">
+          {senses.slice(0, 4).map(sense => {
+            const warning = sense.frameWarning;
+            return (
+              <div
+                key={sense.id}
+                className={`flex items-start gap-1.5 text-xs leading-tight p-1 rounded ${
+                  warning ? 'bg-amber-50 border border-amber-200' : ''
+                }`}
+              >
+                <span className="shrink-0 font-semibold uppercase text-[9px] text-blue-700 bg-blue-100 px-1 py-0.5 rounded">
+                  {sense.pos}
+                </span>
+                <span className="min-w-0 flex-1 text-gray-800">
+                  {sense.definition?.slice(0, 80) || '(no definition)'}
+                  {sense.definition && sense.definition.length > 80 ? '…' : ''}
+                </span>
+                {warning === null && sense.frame && (
+                  <span
+                    className="shrink-0 text-[10px] text-gray-500"
+                    title={sense.frame.label}
+                  >
+                    → {sense.frame.code ?? sense.frame.label}
+                  </span>
+                )}
+                {warning !== null && (
+                  <span
+                    className="shrink-0 text-[10px] font-semibold text-amber-700"
+                    title={
+                      warning === 'none'
+                        ? 'No frame linked'
+                        : `${sense.frames.length} frames linked`
+                    }
+                  >
+                    {warning === 'none' ? '⚠ no frame' : `⚠ ${sense.frames.length}`}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+          {senses.length > 4 && (
+            <div className="text-[10px] text-gray-400">
+              + {senses.length - 4} more
+            </div>
+          )}
         </div>
       );
     }

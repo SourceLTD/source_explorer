@@ -128,11 +128,11 @@ export const JobDetails = memo(function JobDetails({
             </svg>
               Clone
           </button>
-          {job.status === 'completed' && job.job_type === 'flag' && (
+          {job.status === 'completed' && job.job_type === 'flag' && mode === 'frames' && (
             <button
               onClick={() => {
                 onClose();
-                const baseUrl = `/table?flaggedByJobId=${encodeURIComponent(job.id)}&tab=${mode === 'frames' ? 'frames' : 'lexical_units'}`;
+                const baseUrl = `/table/frames?flaggedByJobId=${encodeURIComponent(job.id)}`;
                 router.push(baseUrl);
               }}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 transition-colors"

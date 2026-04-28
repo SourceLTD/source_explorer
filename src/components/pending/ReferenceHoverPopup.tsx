@@ -18,7 +18,11 @@ type HoverData =
   | null;
 
 interface ReferenceHoverPopupProps {
-  mode: 'frame_lexical_units';
+  // `frame_senses` renders the lexical units that sit inside any sense of the
+  // referenced frame (frame → frame_sense_frames → frame_senses →
+  // lexical_unit_senses → lexical_units). The legacy 'frame_lexical_units'
+  // tag is accepted for back-compat and behaves identically.
+  mode: 'frame_senses' | 'frame_lexical_units';
   entityId: string | null;
   virtualIndex?: VirtualIndex;
   children: React.ReactNode;
@@ -162,11 +166,10 @@ export default function ReferenceHoverPopup({
   const pageStart = (page - 1) * pageSize;
   const pageEnd = pageStart + pageSize;
   const pagedVirtualLexicalUnits = isVirtualRef ? virtualLexicalUnits.slice(pageStart, pageEnd) : [];
-  const collectionLabel = 'Lexical Units';
   const containerName = isVirtualRef
     ? (virtualParent?.label || (entityId ? `#${entityId}` : ''))
     : (containerLabel ? containerLabel : (entityId ? `#${entityId}` : ''));
-  const headerTitle = containerName ? `${collectionLabel} inside ${containerName}` : `${collectionLabel} inside`;
+  const headerTitle = containerName ? `Inside ${containerName}` : 'Inside';
 
   return (
     <div 
@@ -251,7 +254,7 @@ export default function ReferenceHoverPopup({
             )}
             {isVirtualRef ? (
               pagedVirtualLexicalUnits.length === 0 ? (
-                <div className="text-[11px] text-gray-400 italic">No pending lexical units found inside.</div>
+                <div className="text-[11px] text-gray-400 italic">Nothing inside yet.</div>
               ) : (
                 pagedVirtualLexicalUnits.map((lu, idx) => (
                   <NodeCard
@@ -270,7 +273,7 @@ export default function ReferenceHoverPopup({
             ) : error ? (
               <div className="text-[11px] text-red-500">{error}</div>
             ) : data?.kind === 'lexical_units' && data.data.length === 0 ? (
-              <div className="text-[11px] text-gray-400 italic">No lexical units found inside.</div>
+              <div className="text-[11px] text-gray-400 italic">Nothing inside.</div>
             ) : data?.kind === 'lexical_units' ? (
               <>
                 {data.data.map((lu, idx) => (

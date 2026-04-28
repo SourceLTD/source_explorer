@@ -16,6 +16,7 @@ export type EntityType =
   | 'lexical_unit'           // Unified type
   | 'frame'
   | 'frame_role'
+  | 'frame_sense'            // Intermediate sense entity between LUs and frames
   | 'recipe'
   | 'frame_relation';
 
@@ -259,6 +260,7 @@ export const ENTITY_TYPE_TO_TABLE: Record<EntityType, string> = {
   lexical_unit: 'lexical_units',
   frame: 'frames',
   frame_role: 'frame_roles',
+  frame_sense: 'frame_senses',
   recipe: 'recipes',
   frame_relation: 'frame_relations',
 };
@@ -270,6 +272,7 @@ export const TABLE_TO_ENTITY_TYPE: Record<string, EntityType> = {
   lexical_units: 'lexical_unit',
   frames: 'frame',
   frame_roles: 'frame_role',
+  frame_senses: 'frame_sense',
   recipes: 'recipe',
   frame_relations: 'frame_relation',
 };

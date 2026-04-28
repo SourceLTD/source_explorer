@@ -7,7 +7,6 @@ interface FrameRecipeViewProps {
   currentFrame: FrameGraphNode;
   recipeData: FrameRecipeData | null;
   onFrameClick: (frameId: string) => void;
-  onVerbClick: (verbId: string) => void;
   onEditClick?: () => void;
 }
 
@@ -28,12 +27,11 @@ export default function FrameRecipeView({
   currentFrame, 
   recipeData, 
   onFrameClick, 
-  onVerbClick,
   onEditClick 
 }: FrameRecipeViewProps) {
   const [expandedSections, setExpandedSections] = useState({
     roles: true,
-    verbs: true,
+    senses: true,
     inheritance: true,
   });
 
@@ -239,64 +237,97 @@ export default function FrameRecipeView({
             )}
           </div>
 
-          {/* Verbs Section */}
+          {/* Senses Section — each sense lists its lexical units */}
           <div className="mb-6">
             {(() => {
-              const verbs = recipeData?.lexical_units.filter(lu => lu.pos === 'verb') || 
-                            currentFrame.lexical_units?.filter(lu => lu.pos === 'verb') || [];
-              
+              const senses = recipeData?.senses || currentFrame.senses || [];
+
               return (
                 <>
                   <button
-                    onClick={() => toggleSection('verbs')}
+                    onClick={() => toggleSection('senses')}
                     className="flex items-center gap-2 text-gray-800 font-semibold mb-3"
                   >
-                    <span>{expandedSections.verbs ? '▼' : '▶'}</span>
-                    Verbs Using This Frame ({verbs.length})
+                    <span>{expandedSections.senses ? '▼' : '▶'}</span>
+                    Senses ({senses.length})
                   </button>
-                  
-                  {expandedSections.verbs && (
-                    <div className="space-y-2 max-h-80 overflow-auto">
-                      {verbs.map(verb => (
-                        <div 
-                          key={verb.id}
-                          onClick={() => onVerbClick(verb.id)}
-                          className="p-3 bg-blue-50 border border-blue-200 rounded-lg cursor-pointer hover:bg-blue-100 transition-colors"
-                        >
-                          <div className="flex items-center gap-2">
-                            <span className="font-semibold text-blue-600">{verb.code || verb.id}</span>
-                            {('vendler_class' in verb) && verb.vendler_class && (
-                              <span className={`text-xs px-2 py-0.5 rounded ${VENDLER_COLORS[verb.vendler_class as keyof typeof VENDLER_COLORS].bg} ${VENDLER_COLORS[verb.vendler_class as keyof typeof VENDLER_COLORS].text}`}>
-                                {verb.vendler_class}
-                              </span>
+
+                  {expandedSections.senses && (
+                    <div className="space-y-3 max-h-80 overflow-auto">
+                      {senses.map(sense => {
+                        const warning = sense.frameWarning;
+                        return (
+                          <div
+                            key={sense.id}
+                            className={`rounded-lg border ${
+                              warning
+                                ? 'border-amber-300 bg-amber-50'
+                                : 'border-gray-200 bg-white'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-2 p-3 border-b border-gray-100">
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[10px] font-semibold uppercase bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">
+                                    {sense.pos}
+                                  </span>
+                                  <span className="text-[10px] font-medium uppercase bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">
+                                    {sense.frame_type}
+                                  </span>
+                                  {warning && (
+                                    <span className="text-[10px] font-semibold text-amber-700 bg-amber-100 border border-amber-300 px-1.5 py-0.5 rounded">
+                                      {warning === 'none' ? '⚠ no frame' : '⚠ multiple frames'}
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-sm text-gray-800 mt-1 leading-snug">
+                                  {sense.definition || 'No definition'}
+                                </p>
+                              </div>
+                            </div>
+                            {(sense.lexical_units?.length ?? 0) > 0 && (
+                              <div className="p-2 space-y-2">
+                                {sense.lexical_units!.map(verb => (
+                                  <div
+                                    key={verb.id}
+                                    className="p-2 bg-blue-50 border border-blue-200 rounded"
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-semibold text-blue-600 text-sm">
+                                        {verb.code || verb.id}
+                                      </span>
+                                      {'vendler_class' in verb && verb.vendler_class && (
+                                        <span
+                                          className={`text-xs px-2 py-0.5 rounded ${
+                                            VENDLER_COLORS[verb.vendler_class as keyof typeof VENDLER_COLORS].bg
+                                          } ${
+                                            VENDLER_COLORS[verb.vendler_class as keyof typeof VENDLER_COLORS].text
+                                          }`}
+                                        >
+                                          {verb.vendler_class}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p className="text-xs text-blue-600 mt-0.5">
+                                      {verb.lemmas?.slice(0, 3).join(', ')}
+                                    </p>
+                                    {verb.gloss && (
+                                      <p className="text-xs text-gray-600 mt-0.5 line-clamp-2">
+                                        {verb.gloss}
+                                      </p>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
                             )}
                           </div>
-                          <p className="text-sm text-blue-600 mt-1">
-                            {verb.lemmas?.slice(0, 3).join(', ')}
-                          </p>
-                          {verb.gloss && (
-                            <p className="text-xs text-gray-600 mt-1 line-clamp-2">{verb.gloss}</p>
-                          )}
-                          {('roles' in verb) && Array.isArray(verb.roles) && verb.roles.length > 0 && (
-                            <div className="mt-2 flex flex-wrap gap-1">
-                              {verb.roles.slice(0, 5).map((role: any) => (
-                                <span 
-                                  key={role.id}
-                                  className={`text-xs px-2 py-0.5 rounded ${role.main ? 'bg-blue-200 text-blue-600' : 'bg-gray-200 text-gray-700'}`}
-                                >
-                                  {role.label || 'Unnamed'}
-                                </span>
-                              ))}
-                              {verb.roles.length > 5 && (
-                                <span className="text-xs text-gray-500">+{verb.roles.length - 5}</span>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                      
-                      {verbs.length === 0 && (
-                        <p className="text-gray-500 text-sm italic">No verbs using this frame</p>
+                        );
+                      })}
+
+                      {senses.length === 0 && (
+                        <p className="text-gray-500 text-sm italic">
+                          No senses attached to this frame
+                        </p>
                       )}
                     </div>
                   )}

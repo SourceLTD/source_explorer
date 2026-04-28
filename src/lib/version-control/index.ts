@@ -168,7 +168,16 @@ export {
   stageFlagUpdates,
   stageFrameRolesUpdate,
   stageFrameRelationReparent,
+  stageSenseAttachment,
 } from './stage';
+
+// Senses subfield helpers (for UI pending-state overlays and API callers)
+export {
+  isSensesFieldName,
+  isSensesExistsFieldName,
+  parseSensesExistsFieldName,
+  sensesExistsFieldName,
+} from './sensesSubfields';
 
 export type { StagedResponse, ReparentResult } from './stage';
 

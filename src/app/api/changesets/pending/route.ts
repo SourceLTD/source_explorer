@@ -41,6 +41,13 @@ interface Changeset {
   reviewed_at: string | null;
   committed_at: string | null;
   llm_job_id: string | null;
+  issue_id: string | null;
+  issue: {
+    id: string;
+    title: string;
+    status: string;
+    priority: string;
+  } | null;
   field_changes: FieldChange[];
 }
 
@@ -121,6 +128,14 @@ export async function GET(request: NextRequest) {
             label: true,
             status: true,
             submitted_by: true,
+          },
+        },
+        issues: {
+          select: {
+            id: true,
+            title: true,
+            status: true,
+            priority: true,
           },
         },
       },
@@ -227,6 +242,15 @@ export async function GET(request: NextRequest) {
           reviewed_at: c.reviewed_at?.toISOString() ?? null,
           committed_at: c.committed_at?.toISOString() ?? null,
           llm_job_id: c.llm_job_id?.toString() ?? null,
+          issue_id: c.issue_id?.toString() ?? null,
+          issue: c.issues
+            ? {
+                id: c.issues.id.toString(),
+                title: c.issues.title,
+                status: c.issues.status,
+                priority: c.issues.priority,
+              }
+            : null,
           field_changes: c.field_changes.map(fc => {
             const shouldDecorate = FRAME_REF_FIELDS.has(fc.field_name);
             const oldRaw = shouldDecorate ? normalizeIntLike(fc.old_value) : null;
