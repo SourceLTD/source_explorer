@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
-import { PaginatedResult, PaginationParams, TableLexicalUnit, Frame } from '@/lib/types';
+import { PaginatedResult, PaginationParams, TableLexicalUnit, Frame, FrameSenseTableRow } from '@/lib/types';
 import type { FilterState } from '../filterState';
 import { toDeltaFilters, toEffectiveFilters } from '../filterState';
 import { ColumnVisibilityState } from '@/components/ColumnVisibilityPanel';
@@ -18,6 +18,8 @@ import {
 } from '../config';
 import { SortState } from '../types';
 
+type DataTableEntry = TableLexicalUnit | Frame | FrameSenseTableRow;
+
 export interface UseDataTableStateOptions {
   mode: DataTableMode;
   searchQuery?: string;
@@ -26,7 +28,7 @@ export interface UseDataTableStateOptions {
 
 export interface UseDataTableStateReturn {
   // Data
-  data: PaginatedResult<TableLexicalUnit | Frame> | null;
+  data: PaginatedResult<DataTableEntry> | null;
   loading: boolean;
   error: string | null;
   fetchData: () => Promise<void>;
@@ -91,10 +93,10 @@ function parseURLParams(
   const filters: FilterState = {};
   
   // Parse text filters
-  ['gloss', 'lemmas', 'examples', 'frames', 'flaggedReason', 'unverifiableReason', 'label', 'definition', 'short_definition'].forEach(key => {
+  ['gloss', 'lemmas', 'examples', 'frames', 'flaggedReason', 'unverifiableReason', 'label', 'definition', 'short_definition', 'frame_type'].forEach(key => {
     const value = searchParams.get(key);
     if (value !== null) {
-      filters[key as 'gloss' | 'lemmas' | 'examples' | 'frames' | 'flaggedReason' | 'unverifiableReason' | 'label' | 'definition' | 'short_definition'] = value;
+      filters[key as 'gloss' | 'lemmas' | 'examples' | 'frames' | 'flaggedReason' | 'unverifiableReason' | 'label' | 'definition' | 'short_definition' | 'frame_type'] = value;
     }
   });
   
@@ -105,6 +107,11 @@ function parseURLParams(
       filters[key as 'pos' | 'lexfile' | 'frame_id' | 'parent_frame_id' | 'flaggedByJobId'] = value;
     }
   });
+
+  const frameWarning = searchParams.get('frameWarning');
+  if (frameWarning === 'none' || frameWarning === 'multiple') {
+    filters.frameWarning = frameWarning;
+  }
   
   // Parse boolean filters
   ['isMwe', 'flagged', 'verifiable', 'pendingCreate', 'pendingUpdate', 'pendingDelete', 'excludeNullFrame'].forEach(key => {
@@ -161,12 +168,12 @@ function parseURLParams(
   const validColumnKeys = modeColumns.map(col => col.key);
   
   // Map between mode-specific column names
-  if (mode === 'frames' && rawSortBy === 'gloss') {
+    if (mode === 'frames' && rawSortBy === 'gloss') {
     sortBy = 'label';
-  } else if (mode !== 'frames' && rawSortBy === 'short_definition') {
+    } else if (mode === 'lexical_units' && rawSortBy === 'short_definition') {
     sortBy = 'gloss';
   } else if (!validColumnKeys.includes(sortBy)) {
-    sortBy = mode === 'frames' ? 'label' : 'id';
+      sortBy = mode === 'frames' ? 'label' : 'id';
   }
 
   // Parse pagination
@@ -208,7 +215,7 @@ export function useDataTableState({
   const initialState = getInitialStateFromURL();
 
   // Data state
-  const [data, setData] = useState<PaginatedResult<TableLexicalUnit | Frame> | null>(null);
+  const [data, setData] = useState<PaginatedResult<DataTableEntry> | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
@@ -374,8 +381,9 @@ export function useDataTableState({
     
     // Remove DataTable-managed params to rebuild them
     const managedParams = [
-      'gloss', 'lemmas', 'examples', 'frames', 'flaggedReason', 'unverifiableReason', 'label', 'definition', 'short_definition',
+      'gloss', 'lemmas', 'examples', 'frames', 'flaggedReason', 'unverifiableReason', 'label', 'definition', 'short_definition', 'frame_type',
       'pos', 'lexfile', 'frame_id', 'parent_frame_id', 'flaggedByJobId',
+      'frameWarning',
       'isMwe', 'flagged', 'verifiable', 'excludeNullFrame',
       'pendingCreate', 'pendingUpdate', 'pendingDelete',
       'parentsCountMin', 'parentsCountMax', 'childrenCountMin', 'childrenCountMax',
@@ -461,7 +469,7 @@ export function useDataTableState({
         throw new Error('Failed to fetch data');
       }
 
-      const result: PaginatedResult<TableLexicalUnit> = await response.json();
+      const result: PaginatedResult<DataTableEntry> = await response.json();
       setData(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');

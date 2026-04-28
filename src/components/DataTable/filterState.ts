@@ -1,4 +1,4 @@
-import type { DataTableMode } from './types';
+import type { DataTableRenderMode } from './types';
 
 export interface FilterState {
   // Text filters
@@ -47,11 +47,13 @@ export interface FilterState {
   label?: string;
   definition?: string;
   short_definition?: string;
+  frame_type?: string;
+  frameWarning?: 'none' | 'multiple';
 }
 
 export const DEFAULT_LEXICAL_POS = ['verb', 'noun', 'adjective', 'adverb'] as const;
 
-export function getDefaultFilters(mode: DataTableMode): FilterState {
+export function getDefaultFilters(mode: DataTableRenderMode): FilterState {
   if (mode === 'lexical_units') {
     return { excludeNullFrame: true };
   }
@@ -86,7 +88,7 @@ function normalizePosValue(value: unknown): string | undefined {
   return selected.length > 0 ? selected.join(',') : 'none';
 }
 
-export function toDeltaFilters(mode: DataTableMode, next: FilterState): FilterState {
+export function toDeltaFilters(mode: DataTableRenderMode, next: FilterState): FilterState {
   const defaults = getDefaultFilters(mode);
   const delta: FilterState = {};
 
@@ -112,7 +114,7 @@ export function toDeltaFilters(mode: DataTableMode, next: FilterState): FilterSt
   return delta;
 }
 
-export function toEffectiveFilters(mode: DataTableMode, state: FilterState): FilterState {
+export function toEffectiveFilters(mode: DataTableRenderMode, state: FilterState): FilterState {
   const delta = toDeltaFilters(mode, state);
   return { ...getDefaultFilters(mode), ...delta };
 }

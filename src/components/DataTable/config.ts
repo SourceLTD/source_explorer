@@ -1,6 +1,6 @@
 import { ColumnConfig, ColumnVisibilityState } from '@/components/ColumnVisibilityPanel';
-import type { DataTableMode } from './types';
-export type { DataTableMode };
+import type { DataTableRenderMode } from './types';
+export type { DataTableRenderMode as DataTableMode };
 
 /**
  * Unified Lexical Units default columns
@@ -54,6 +54,24 @@ export const FRAMES_COLUMNS: ColumnConfig[] = [
   { key: 'actions', label: 'Actions', visible: true, sortable: false },
 ];
 
+export const FRAME_SENSES_COLUMNS: ColumnConfig[] = [
+  { key: 'id', label: 'ID', visible: false, sortable: true },
+  { key: 'pos', label: 'POS', visible: true, sortable: true },
+  { key: 'lemmas', label: 'Lemmas', visible: true, sortable: false },
+  { key: 'definition', label: 'Definition', visible: true, sortable: true },
+  { key: 'frame_type', label: 'Frame Type', visible: true, sortable: true },
+  { key: 'frame', label: 'Frame', visible: true, sortable: false },
+  { key: 'lexical_units', label: 'Lexical Units', visible: true, sortable: false },
+  { key: 'frameWarning', label: 'Warning', visible: true, sortable: false },
+  { key: 'confidence', label: 'Confidence', visible: false, sortable: false },
+  { key: 'causative', label: 'Causative', visible: false, sortable: true },
+  { key: 'inchoative', label: 'Inchoative', visible: false, sortable: true },
+  { key: 'perspectival', label: 'Perspectival', visible: false, sortable: true },
+  { key: 'createdAt', label: 'Created', visible: false, sortable: true },
+  { key: 'updatedAt', label: 'Updated', visible: false, sortable: true },
+  { key: 'actions', label: 'Actions', visible: false, sortable: false },
+];
+
 
 export interface ColumnWidthState {
   [columnKey: string]: number;
@@ -89,6 +107,11 @@ export const DEFAULT_COLUMN_WIDTHS: ColumnWidthState = {
   roles_count: 80,
   lexical_units_count: 80,
   lexical_units: 400,
+  frameWarning: 120,
+  confidence: 120,
+  causative: 110,
+  inchoative: 110,
+  perspectival: 120,
   frame_type: 120,
   vendler: 120,
   multi_perspective: 120,
@@ -99,8 +122,10 @@ export const DEFAULT_COLUMN_WIDTHS: ColumnWidthState = {
 /**
  * Get the columns configuration for a specific mode
  */
-export function getColumnsForMode(mode: DataTableMode): ColumnConfig[] {
+export function getColumnsForMode(mode: DataTableRenderMode): ColumnConfig[] {
   switch (mode) {
+    case 'frame_senses':
+      return FRAME_SENSES_COLUMNS;
     case 'frames':
       return FRAMES_COLUMNS;
     case 'lexical_units':
@@ -112,7 +137,7 @@ export function getColumnsForMode(mode: DataTableMode): ColumnConfig[] {
 /**
  * Get the default column visibility state for a specific mode
  */
-export function getDefaultVisibility(mode?: DataTableMode): ColumnVisibilityState {
+export function getDefaultVisibility(mode?: DataTableRenderMode): ColumnVisibilityState {
   const visibility: ColumnVisibilityState = {};
   const columns = getColumnsForMode(mode || 'lexical_units');
   
@@ -134,7 +159,7 @@ export function getDefaultColumnWidths(): ColumnWidthState {
  */
 export function sanitizeColumnVisibility(
   visibility?: ColumnVisibilityState | null,
-  mode?: DataTableMode
+  mode?: DataTableRenderMode
 ): ColumnVisibilityState {
   const defaultVisibility = getDefaultVisibility(mode);
   if (!visibility) {
@@ -154,7 +179,8 @@ export function sanitizeColumnVisibility(
 /**
  * Get the API prefix
  */
-export function getApiPrefix(mode: DataTableMode): string {
+export function getApiPrefix(mode: DataTableRenderMode): string {
+  if (mode === 'frame_senses') return '/api/frame-senses';
   if (mode === 'frames') return '/api/frames';
   return '/api/lexical-units';
 }
@@ -162,8 +188,9 @@ export function getApiPrefix(mode: DataTableMode): string {
 /**
  * Get the graph base path
  */
-export function getGraphBasePath(mode: DataTableMode): string {
+export function getGraphBasePath(mode: DataTableRenderMode): string {
   if (mode === 'frames') return '/graph/frames';
+  if (mode === 'frame_senses') return '/table';
   return '/table';
 }
 

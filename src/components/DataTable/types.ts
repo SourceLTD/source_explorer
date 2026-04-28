@@ -1,13 +1,15 @@
-import { TableLexicalUnit, Frame } from '@/lib/types';
+import { TableLexicalUnit, Frame, FrameSenseTableRow } from '@/lib/types';
 
 export type DataTableMode = 'lexical_units' | 'frames';
+export type DataTableRenderMode = DataTableMode | 'frame_senses';
+export type DataTableEntry = TableLexicalUnit | Frame | FrameSenseTableRow;
 
 export interface DataTableProps {
   onRowClick?: (entry: TableLexicalUnit | Frame) => void;
   onEditClick?: (entry: TableLexicalUnit | Frame) => void;
   searchQuery?: string;
   className?: string;
-  mode?: DataTableMode;
+  mode?: DataTableRenderMode;
   refreshTrigger?: number;
 }
 
@@ -49,6 +51,6 @@ export interface FlagState {
 }
 
 // Re-export commonly used types
-export type { TableLexicalUnit, Frame, PaginatedResult, PaginationParams } from '@/lib/types';
+export type { TableLexicalUnit, Frame, FrameSenseTableRow, PaginatedResult, PaginationParams } from '@/lib/types';
 export type { FilterState } from './filterState';
 export type { ColumnConfig, ColumnVisibilityState } from '@/components/ColumnVisibilityPanel';

@@ -253,6 +253,27 @@ export interface FrameSenseWithFrame extends FrameSense {
   frameWarning: FrameSenseWarning;
 }
 
+export interface FrameSenseLexicalUnitSnippet {
+  id: string;
+  code: string;
+  lemmas: string[];
+  src_lemmas: string[];
+  pos: string;
+  gloss: string;
+}
+
+export interface FrameSenseTableRow extends Omit<FrameSenseWithFrame, 'createdAt' | 'updatedAt'> {
+  createdAt: string | null;
+  updatedAt: string | null;
+  lexical_units: {
+    entries: FrameSenseLexicalUnitSnippet[];
+    totalCount: number;
+    hasMore: boolean;
+  };
+  lexical_units_count: number;
+  pending?: PendingChangeInfo | null;
+}
+
 // ============================================
 // Recipe Graph Types (recipe_graph JSON column)
 // ============================================

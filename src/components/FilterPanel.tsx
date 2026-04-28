@@ -15,7 +15,7 @@ import {
 import LoadingSpinner from './LoadingSpinner';
 import { SparklesIcon } from '@heroicons/react/24/outline';
 import { POS_LABELS } from '@/lib/types';
-import type { DataTableMode } from './DataTable/types';
+import type { DataTableRenderMode } from './DataTable/types';
 import type { FilterState } from './DataTable/filterState';
 
 interface Frame {
@@ -31,7 +31,7 @@ interface FilterPanelProps {
   onFiltersChange: (filters: FilterState) => void;
   onClearAll: () => void;
   className?: string;
-  mode?: DataTableMode;
+  mode?: DataTableRenderMode;
 }
 
 interface FilterSectionProps {
@@ -91,6 +91,7 @@ export default function FilterPanel({
   const frameDropdownContainerRef = useRef<HTMLDivElement>(null);
   const jobDropdownContainerRef = useRef<HTMLDivElement>(null);
   const isFramesMode = mode === 'frames';
+  const isFrameSensesMode = mode === 'frame_senses';
   const canFilterByParentFrameId = mode === 'frames';
   
   const toggleSection = (section: string) => {
@@ -444,8 +445,8 @@ export default function FilterPanel({
 
           {/* Filter Sections */}
           <div className="max-h-[32rem] overflow-y-auto">
-            {/* Category Filters - only show for lexical units */}
-            {mode === 'lexical_units' && (
+            {/* Category Filters */}
+            {(mode === 'lexical_units' || isFrameSensesMode) && (
               <FilterSection
                 title="Categories"
                 icon={<HashtagIcon className="w-4 h-4 text-gray-600" />}
@@ -494,47 +495,49 @@ export default function FilterPanel({
                       ))}
                   </div>
                 </div>
-                <div className="relative">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Lexfile</label>
-                  <input
-                    type="text"
-                    value={lexfileSearchQuery}
-                    onChange={(e) => setLexfileSearchQuery(e.target.value)}
-                    onFocus={() => setLexfileDropdownOpen(true)}
-                    onBlur={() => setTimeout(() => setLexfileDropdownOpen(false), 200)}
-                    placeholder="Search lexfiles..."
-                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 mb-2"
-                  />
-                  {lexfileDropdownOpen && (
-                    <div className="max-h-48 overflow-y-auto border border-gray-300 rounded-xl bg-white">
-                      {filteredLexfiles.length === 0 ? (
-                        <div className="px-3 py-2 text-sm text-gray-500">No lexfiles found</div>
-                      ) : (
-                        filteredLexfiles.map((lexfile) => (
-                          <label
-                            key={lexfile}
-                            className="flex items-center px-3 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
-                          >
+                {mode === 'lexical_units' && (
+                  <div className="relative">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Lexfile</label>
                     <input
-                      type="checkbox"
-                      checked={selectedLexfiles.includes(lexfile)}
-                      onChange={() => toggleLexfile(lexfile)}
-                      className="mr-3 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      type="text"
+                      value={lexfileSearchQuery}
+                      onChange={(e) => setLexfileSearchQuery(e.target.value)}
+                      onFocus={() => setLexfileDropdownOpen(true)}
+                      onBlur={() => setTimeout(() => setLexfileDropdownOpen(false), 200)}
+                      placeholder="Search lexfiles..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 mb-2"
                     />
-                            <div className="flex-1 min-w-0">
-                              <div className="text-sm font-medium text-gray-900">{lexfile}</div>
-                            </div>
-                          </label>
-                        ))
-                      )}
-                    </div>
-                  )}
-                  {selectedLexfiles.length > 0 && (
-                    <div className="mt-2 text-xs text-gray-600">
-                      {selectedLexfiles.length} lexfile{selectedLexfiles.length !== 1 ? 's' : ''} selected
-                    </div>
-                  )}
-                </div>
+                    {lexfileDropdownOpen && (
+                      <div className="max-h-48 overflow-y-auto border border-gray-300 rounded-xl bg-white">
+                        {filteredLexfiles.length === 0 ? (
+                          <div className="px-3 py-2 text-sm text-gray-500">No lexfiles found</div>
+                        ) : (
+                          filteredLexfiles.map((lexfile) => (
+                            <label
+                              key={lexfile}
+                              className="flex items-center px-3 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedLexfiles.includes(lexfile)}
+                                onChange={() => toggleLexfile(lexfile)}
+                                className="mr-3 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              />
+                              <div className="flex-1 min-w-0">
+                                <div className="text-sm font-medium text-gray-900">{lexfile}</div>
+                              </div>
+                            </label>
+                          ))
+                        )}
+                      </div>
+                    )}
+                    {selectedLexfiles.length > 0 && (
+                      <div className="mt-2 text-xs text-gray-600">
+                        {selectedLexfiles.length} lexfile{selectedLexfiles.length !== 1 ? 's' : ''} selected
+                      </div>
+                    )}
+                  </div>
+                )}
                 <div className="relative" ref={frameDropdownContainerRef}>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Frame ID</label>
                   <input
@@ -665,6 +668,39 @@ export default function FilterPanel({
                     />
                   </div>
                 </>
+              ) : isFrameSensesMode ? (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Definition</label>
+                    <input
+                      type="text"
+                      value={filters.definition || ''}
+                      onChange={(e) => updateFilter('definition', e.target.value)}
+                      placeholder="Search in definitions..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Lemmas</label>
+                    <input
+                      type="text"
+                      value={filters.lemmas || ''}
+                      onChange={(e) => updateFilter('lemmas', e.target.value)}
+                      placeholder="Search in lemmas..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Frame Type</label>
+                    <input
+                      type="text"
+                      value={filters.frame_type || ''}
+                      onChange={(e) => updateFilter('frame_type', e.target.value)}
+                      placeholder="Search frame types..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+                    />
+                  </div>
+                </>
               ) : (
                 <>
                   <div>
@@ -709,6 +745,7 @@ export default function FilterPanel({
                   </div>
                 </>
               )}
+              {!isFrameSensesMode && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Flagged Reason</label>
                 <input
@@ -719,6 +756,8 @@ export default function FilterPanel({
                   className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
                 />
               </div>
+              )}
+              {!isFrameSensesMode && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Unverifiable Reason</label>
                 <input
@@ -729,9 +768,11 @@ export default function FilterPanel({
                   className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
                 />
               </div>
+              )}
             </FilterSection>
 
             {/* AI Jobs Filters */}
+            {!isFrameSensesMode && (
             <FilterSection
               title="AI Jobs"
               icon={<SparklesIcon className="w-4 h-4 shrink-0 text-gray-600" />}
@@ -803,6 +844,7 @@ export default function FilterPanel({
                 <p className="mt-1 text-xs text-gray-500">Show entries the AI flagged in a specific job.</p>
               </div>
             </FilterSection>
+            )}
 
             {/* Boolean Filters */}
             <FilterSection
@@ -813,6 +855,32 @@ export default function FilterPanel({
             >
               {mode === 'frames' ? (
                 <div className="text-sm text-gray-500 italic">No frame properties to filter.</div>
+              ) : isFrameSensesMode ? (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Frame Link Warning</label>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => updateFilter('frameWarning', filters.frameWarning === 'none' ? undefined : 'none')}
+                      className={`px-3 py-1 rounded-xl text-sm font-medium transition-colors cursor-pointer ${
+                        filters.frameWarning === 'none'
+                          ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                          : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
+                      }`}
+                    >
+                      No frame
+                    </button>
+                    <button
+                      onClick={() => updateFilter('frameWarning', filters.frameWarning === 'multiple' ? undefined : 'multiple')}
+                      className={`px-3 py-1 rounded-xl text-sm font-medium transition-colors cursor-pointer ${
+                        filters.frameWarning === 'multiple'
+                          ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                          : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
+                      }`}
+                    >
+                      Multiple frames
+                    </button>
+                  </div>
+                </div>
               ) : (
                 <>
                   {mode === 'lexical_units' && (
@@ -844,6 +912,7 @@ export default function FilterPanel({
                   )}
                 </>
               )}
+              {!isFrameSensesMode && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Flagged</label>
                 <div className="flex gap-2">
@@ -869,6 +938,8 @@ export default function FilterPanel({
                   </button>
                 </div>
               </div>
+              )}
+              {!isFrameSensesMode && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Verifiable</label>
                 <div className="flex gap-2">
@@ -894,8 +965,10 @@ export default function FilterPanel({
                   </button>
                 </div>
               </div>
+              )}
               
               {/* Pending State Filters */}
+              {!isFrameSensesMode && (
               <div className="pt-3 border-t border-gray-200">
                 <label className="block text-sm font-medium text-gray-700 mb-2">Pending Changes</label>
                 <div className="flex flex-wrap gap-2">
@@ -931,6 +1004,7 @@ export default function FilterPanel({
                   </button>
                 </div>
               </div>
+              )}
             </FilterSection>
 
             {/* Numeric Filters - only show for non-frames modes */}

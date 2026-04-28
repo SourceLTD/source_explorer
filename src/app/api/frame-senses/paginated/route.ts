@@ -26,6 +26,10 @@ const VALID_SORT_FIELDS: Record<string, string> = {
   pos: 'pos',
   definition: 'definition',
   frame_type: 'frame_type',
+  confidence: 'confidence',
+  causative: 'causative',
+  inchoative: 'inchoative',
+  perspectival: 'perspectival',
   createdAt: 'created_at',
   created_at: 'created_at',
   updatedAt: 'updated_at',
@@ -33,6 +37,10 @@ const VALID_SORT_FIELDS: Record<string, string> = {
 };
 
 const LU_SNIPPET_LIMIT = 10;
+
+function toEndOfDay(value: string): Date {
+  return new Date(`${value}T23:59:59.999Z`);
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -58,8 +66,20 @@ export async function GET(request: NextRequest) {
     const sortOrder = searchParams.get('sortOrder') === 'desc' ? 'desc' : 'asc';
 
     const search = searchParams.get('search')?.trim() || '';
+    const definition = searchParams.get('definition')?.trim() || '';
+    const lemmas = searchParams.get('lemmas')?.trim() || '';
+    const frameType = searchParams.get('frame_type')?.trim() || '';
+    const frameId = searchParams.get('frame_id')?.trim() || '';
+    const pos = searchParams.get('pos')?.trim() || '';
+    const frameWarning = searchParams.get('frameWarning');
+    const createdAfter = searchParams.get('createdAfter')?.trim() || '';
+    const createdBefore = searchParams.get('createdBefore')?.trim() || '';
+    const updatedAfter = searchParams.get('updatedAfter')?.trim() || '';
+    const updatedBefore = searchParams.get('updatedBefore')?.trim() || '';
 
     const where: Prisma.frame_sensesWhereInput = {};
+    const and: Prisma.frame_sensesWhereInput[] = [];
+
     if (search) {
       const or: Prisma.frame_sensesWhereInput[] = [
         { definition: { contains: search, mode: 'insensitive' } },
@@ -97,7 +117,74 @@ export async function GET(request: NextRequest) {
         or.push({ id: Number(search) });
       }
 
-      where.OR = or;
+      and.push({ OR: or });
+    }
+
+    if (definition) {
+      and.push({ definition: { contains: definition, mode: 'insensitive' } });
+    }
+
+    if (lemmas) {
+      and.push({ lemmas: { has: lemmas } });
+    }
+
+    if (frameType) {
+      and.push({ frame_type: { contains: frameType, mode: 'insensitive' } });
+    }
+
+    if (pos && pos !== 'none') {
+      const selectedPos = pos.split(',').map(p => p.trim()).filter(Boolean);
+      if (selectedPos.length > 0) {
+        and.push({ pos: { in: selectedPos } });
+      }
+    } else if (pos === 'none') {
+      and.push({ id: { equals: -1 } });
+    }
+
+    if (frameId) {
+      const frameIds = frameId
+        .split(',')
+        .map(value => value.trim())
+        .filter(value => /^\d+$/.test(value))
+        .map(value => BigInt(value));
+      if (frameIds.length > 0) {
+        and.push({
+          frame_sense_frames: {
+            some: {
+              frame_id: { in: frameIds },
+            },
+          },
+        });
+      }
+    }
+
+    if (frameWarning === 'none') {
+      and.push({ frame_sense_frames: { none: {} } });
+    } else if (frameWarning === 'multiple') {
+      const multiFrameRows = await prisma.frame_sense_frames.groupBy({
+        by: ['frame_sense_id'],
+        having: {
+          frame_id: { _count: { gt: 1 } },
+        },
+      });
+      and.push({ id: { in: multiFrameRows.map(row => row.frame_sense_id) } });
+    }
+
+    if (createdAfter) {
+      and.push({ created_at: { gte: new Date(createdAfter) } });
+    }
+    if (createdBefore) {
+      and.push({ created_at: { lte: toEndOfDay(createdBefore) } });
+    }
+    if (updatedAfter) {
+      and.push({ updated_at: { gte: new Date(updatedAfter) } });
+    }
+    if (updatedBefore) {
+      and.push({ updated_at: { lte: toEndOfDay(updatedBefore) } });
+    }
+
+    if (and.length > 0) {
+      where.AND = and;
     }
 
     const [totalCount, senses] = await Promise.all([

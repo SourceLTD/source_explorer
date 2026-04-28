@@ -23,6 +23,7 @@ import AIAgentQuickEditModal from '@/components/AIAgentQuickEditModal';
 import { getColumnsForMode, hasNestedFields, NESTED_FIELD_CONFIGS } from './config';
 import {
   DataTableProps,
+  DataTableEntry,
   FlagModalState,
   EditingState,
   ContextMenuState,
@@ -70,7 +71,7 @@ export default function DataTable({
   }, []);
 
   // Use the existing useTableSelection hook for selection management
-  const selection = useTableSelection<TableLexicalUnit | Frame>({
+  const selection = useTableSelection<DataTableEntry>({
     pageItems: tableState.data?.data || [],
   });
 
@@ -117,7 +118,7 @@ export default function DataTable({
   const copyFieldSelection = useCopyFieldSelection(mode);
   const [copyMenuState, setCopyMenuState] = useState<{
     isOpen: boolean;
-    entry: TableLexicalUnit | Frame | null;
+    entry: DataTableEntry | null;
     anchorEl: HTMLElement | null;
   }>({
     isOpen: false,
@@ -132,6 +133,11 @@ export default function DataTable({
     }
     return tableState.data.data.filter(entry => selection.selectedIds.has(entry.id));
   }, [tableState.data, selection.selectedIds, selection.selectedCount]);
+
+  const selectedFlaggableEntriesOnCurrentPage = useMemo(
+    () => selectedEntriesOnCurrentPage.filter((entry): entry is TableLexicalUnit | Frame => 'flagged' in entry),
+    [selectedEntriesOnCurrentPage]
+  );
 
   // Subscribe to job completion broadcasts from other tabs and same-tab events
   // This ensures all DataTable instances refresh when ANY AI job completes
@@ -171,6 +177,11 @@ export default function DataTable({
 
   // Fetch pending AI jobs (filtered by current mode)
   const fetchPendingAIJobs = useCallback(async () => {
+    if (mode === 'frame_senses') {
+      setPendingAIJobs(0);
+      return;
+    }
+
     try {
       const response = await api.get<{ jobs: Array<{ status: string }> }>(`/api/llm-jobs?entityType=${mode}`);
       const pending = response.jobs?.filter(job => job.status === 'queued' || job.status === 'running').length ?? 0;
@@ -621,7 +632,10 @@ export default function DataTable({
   };
 
   // AI Agent Quick Edit handlers
-  const handleAIClick = (entry: TableLexicalUnit | Frame) => {
+  const handleAIClick = (entry: DataTableEntry) => {
+    if (!('flagged' in entry)) {
+      return;
+    }
     setAiQuickEditEntry(entry);
   };
 
@@ -687,7 +701,7 @@ export default function DataTable({
 
   // Format an entire column value, handling nested objects with selected sub-fields
   const formatEntryValue = useCallback((
-    entry: TableLexicalUnit | Frame, 
+    entry: DataTableEntry, 
     columnKey: string,
     selectedNestedFields?: string[]
   ): string => {
@@ -734,7 +748,7 @@ export default function DataTable({
     return formatSingleValue(value);
   }, [formatArrayItem, formatSingleValue]);
 
-  const handleCopyClick = useCallback((entry: TableLexicalUnit | Frame) => {
+  const handleCopyClick = useCallback((entry: DataTableEntry) => {
     const columns = getColumnsForMode(mode).filter(col => col.key !== 'actions');
     const selectedFieldKeys = copyFieldSelection.getSelectedFieldKeys();
     
@@ -778,7 +792,7 @@ export default function DataTable({
     });
   }, [mode, copyFieldSelection, formatEntryValue]);
 
-  const handleCopyLongPress = useCallback((entry: TableLexicalUnit | Frame, buttonEl: HTMLButtonElement) => {
+  const handleCopyLongPress = useCallback((entry: DataTableEntry, buttonEl: HTMLButtonElement) => {
     setCopyMenuState({
       isOpen: true,
       entry,
@@ -805,6 +819,20 @@ export default function DataTable({
   const visibleColumnsWithActions = useMemo(() => {
     return currentColumnsWithActions.filter(col => col.visible);
   }, [currentColumnsWithActions]);
+
+  const handleRowClick = useCallback((entry: DataTableEntry) => {
+    if ('frameWarning' in entry) {
+      return;
+    }
+    onRowClick?.(entry);
+  }, [onRowClick]);
+
+  const handleEditEntryClick = useCallback((entry: DataTableEntry) => {
+    if ('frameWarning' in entry) {
+      return;
+    }
+    onEditClick?.(entry);
+  }, [onEditClick]);
 
   // Loading state
   if (tableState.loading && !tableState.data) {
@@ -860,7 +888,7 @@ export default function DataTable({
         onResetColumnWidths={tableState.handleResetColumnWidths}
         pendingAIJobs={pendingAIJobs}
         onOpenAIOverlay={() => setIsAIOverlayOpen(true)}
-        selectedCount={selection.selectedCount}
+        selectedCount={mode === 'frame_senses' ? 0 : selection.selectedCount}
         flagState={getSelectionFlagState()}
         onOpenFlagModal={handleOpenFlagModal}
         onOpenFrameModal={handleOpenFrameModal}
@@ -890,8 +918,8 @@ export default function DataTable({
           isResizing={tableState.isResizing}
           highlightId={activeHighlightId}
           onSort={tableState.handleSort}
-          onRowClick={onRowClick}
-          onEditClick={onEditClick}
+          onRowClick={handleRowClick}
+          onEditClick={handleEditEntryClick}
           onAIClick={handleAIClick}
           onCopyClick={handleCopyClick}
           onCopyLongPress={handleCopyLongPress}
@@ -917,24 +945,26 @@ export default function DataTable({
         pageSize={tableState.data?.limit || tableState.pageSize}
         onPageChange={tableState.handlePageChange}
         loading={tableState.loading}
-        itemLabel="entries"
+        itemLabel={mode === 'frame_senses' ? 'senses' : 'entries'}
       />
 
       {/* Context Menu */}
-      <ContextMenu
-        contextMenu={contextMenu}
-        entry={contextMenuEntry}
-        mode={mode}
-        onClose={handleCloseContextMenu}
-        onAction={handleContextMenuAction}
-      />
+      {mode !== 'frame_senses' && (
+        <ContextMenu
+          contextMenu={contextMenu}
+          entry={contextMenuEntry as TableLexicalUnit | Frame | null}
+          mode={mode}
+          onClose={handleCloseContextMenu}
+          onAction={handleContextMenuAction}
+        />
+      )}
 
       {/* Flag Modal */}
       <FlagModal
         isOpen={flagModal.isOpen}
         modalState={flagModal}
         selectedCount={selection.selectedCount}
-        selectedEntriesOnPage={selectedEntriesOnCurrentPage}
+        selectedEntriesOnPage={selectedFlaggableEntriesOnCurrentPage}
         isLoading={isFlagLoading}
         onClose={handleCloseFlagModal}
         onConfirm={handleConfirmFlag}
@@ -946,7 +976,7 @@ export default function DataTable({
         <FrameChangeModal
           isOpen={isFrameModalOpen}
           selectedCount={selection.selectedCount}
-          selectedEntriesOnCurrentPage={selectedEntriesOnCurrentPage}
+          selectedEntriesOnCurrentPage={selectedFlaggableEntriesOnCurrentPage}
           frameOptions={frameOptions}
           filteredFrameOptions={filteredFrameOptions}
           frameOptionsLoading={frameOptionsLoading}
@@ -964,17 +994,19 @@ export default function DataTable({
       )}
 
       {/* AI Jobs Overlay */}
-      <AIJobsOverlay
-        isOpen={isAIOverlayOpen}
-        onClose={() => setIsAIOverlayOpen(false)}
-        mode={mode}
-        selectedIds={Array.from(selection.selectedIds)}
-        onJobsUpdated={setPendingAIJobs}
-        onJobCompleted={tableState.fetchData}
-      />
+      {mode !== 'frame_senses' && (
+        <AIJobsOverlay
+          isOpen={isAIOverlayOpen}
+          onClose={() => setIsAIOverlayOpen(false)}
+          mode={mode}
+          selectedIds={Array.from(selection.selectedIds)}
+          onJobsUpdated={setPendingAIJobs}
+          onJobCompleted={tableState.fetchData}
+        />
+      )}
 
       {/* AI Agent Quick Edit Modal */}
-      {aiQuickEditEntry && (
+      {aiQuickEditEntry && mode !== 'frame_senses' && (
         <AIAgentQuickEditModal
           isOpen={!!aiQuickEditEntry}
           onClose={handleCloseAIQuickEdit}

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { TableEntry, Frame, POS_LABELS, PendingChangeInfo, getRoleTypeAcronym } from '@/lib/types';
+import { TableEntry, Frame, FrameSenseTableRow, POS_LABELS, PendingChangeInfo, getRoleTypeAcronym } from '@/lib/types';
 import { ColumnConfig } from '@/components/ColumnVisibilityPanel';
 import { CheckCircleIcon, XCircleIcon, SparklesIcon, ClipboardDocumentIcon } from '@heroicons/react/24/outline';
 import {
@@ -17,6 +17,8 @@ import { EmptyState } from '@/components/ui';
 import { DataTableMode, getGraphBasePath, FIELD_NAME_MAP } from './config';
 import { SortState, EditingState, FilterState } from './types';
 
+type DataTableEntry = TableEntry | Frame | FrameSenseTableRow;
+
 // Helper components for empty/null values
 export const EmptyCell = () => <span className="text-gray-400 text-sm">—</span>;
 export const NACell = () => <span className="text-gray-400 text-sm">N/A</span>;
@@ -24,9 +26,9 @@ export const NoneCell = () => <span className="text-gray-400 text-sm">None</span
 
 // Copy button with long-press detection
 interface CopyButtonProps {
-  entry: TableEntry | Frame;
-  onCopyClick?: (entry: TableEntry | Frame) => void;
-  onCopyLongPress?: (entry: TableEntry | Frame, buttonEl: HTMLButtonElement) => void;
+  entry: DataTableEntry;
+  onCopyClick?: (entry: DataTableEntry) => void;
+  onCopyLongPress?: (entry: DataTableEntry, buttonEl: HTMLButtonElement) => void;
 }
 
 function CopyButton({ entry, onCopyClick, onCopyLongPress }: CopyButtonProps) {
@@ -90,7 +92,7 @@ export function formatDate(date: Date | string | null | undefined): string {
   return dateObj.toLocaleDateString();
 }
 
-export function getRowBackgroundColor(entry: TableEntry | Frame, isSelected: boolean): string {
+export function getRowBackgroundColor(entry: DataTableEntry, isSelected: boolean): string {
   const pending = (entry as TableEntry & { pending?: PendingChangeInfo | null }).pending;
   const isFlagged = 'flagged' in entry && entry.flagged;
   
@@ -126,7 +128,7 @@ export function getRowBackgroundColor(entry: TableEntry | Frame, isSelected: boo
   return 'bg-white hover:bg-gray-50';
 }
 
-export function getRowInlineStyles(entry: TableEntry | Frame, isSelected: boolean): React.CSSProperties {
+export function getRowInlineStyles(entry: DataTableEntry, isSelected: boolean): React.CSSProperties {
   const pending = (entry as TableEntry & { pending?: PendingChangeInfo | null }).pending;
   const isFlagged = 'flagged' in entry && entry.flagged;
   
@@ -193,14 +195,14 @@ export function SortIcon({ field, sortState }: SortIconProps) {
 }
 
 interface CellContentProps {
-  entry: TableEntry | Frame;
+  entry: DataTableEntry;
   columnKey: string;
   mode: DataTableMode;
   editing: EditingState;
-  onEditClick?: (entry: TableEntry | Frame) => void;
-  onAIClick?: (entry: TableEntry | Frame) => void;
-  onCopyClick?: (entry: TableEntry | Frame) => void;
-  onCopyLongPress?: (entry: TableEntry | Frame, buttonEl: HTMLButtonElement) => void;
+  onEditClick?: (entry: DataTableEntry) => void;
+  onAIClick?: (entry: DataTableEntry) => void;
+  onCopyClick?: (entry: DataTableEntry) => void;
+  onCopyLongPress?: (entry: DataTableEntry, buttonEl: HTMLButtonElement) => void;
   onStartEdit: (entryId: string, field: string, currentValue: string) => void;
   onEditChange: (value: string) => void;
   onSaveEdit: () => void;
@@ -224,14 +226,106 @@ export function CellContent({
   const router = useRouter();
   const graphBasePath = getGraphBasePath(mode);
 
-  const isFrame = (e: TableEntry | Frame): e is Frame => {
+  const isFrame = (e: DataTableEntry): e is Frame => {
     return mode === 'frames' && 'label' in e;
+  };
+
+  const isFrameSense = (e: DataTableEntry): e is FrameSenseTableRow => {
+    return mode === 'frame_senses' && 'frameWarning' in e;
   };
 
   // Common styles
   const textContainerClasses = "text-sm text-gray-900 break-words max-w-full";
 
-  if (isFrame(entry)) {
+  if (isFrameSense(entry)) {
+    switch (columnKey) {
+      case 'id':
+        return <span className="text-xs font-mono text-blue-600 break-all">{entry.id}</span>;
+      case 'pos':
+        return (
+          <span className="inline-flex items-center rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-800 uppercase">
+            {entry.pos}
+          </span>
+        );
+      case 'lemmas':
+        return entry.lemmas && entry.lemmas.length > 0 ? (
+          <div className="flex flex-wrap gap-1">
+            {entry.lemmas.slice(0, 6).map((lemma, idx) => (
+              <span key={`${entry.id}-lemma-${idx}`} className="inline-flex items-center rounded bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+                {lemma}
+              </span>
+            ))}
+            {entry.lemmas.length > 6 && (
+              <span className="text-xs text-gray-500 self-center">+{entry.lemmas.length - 6}</span>
+            )}
+          </div>
+        ) : <EmptyCell />;
+      case 'definition':
+        return <div className={textContainerClasses}>{entry.definition || '—'}</div>;
+      case 'frame_type':
+        return <span className="text-xs font-medium text-gray-700">{entry.frame_type || '—'}</span>;
+      case 'frame':
+        return entry.frames.length > 0 ? (
+          <div className="flex flex-wrap gap-1">
+            {entry.frames.map(frame => (
+              <button
+                key={frame.id}
+                type="button"
+                onClick={() => router.push(`/graph/frames?entry=${encodeURIComponent(frame.id)}`)}
+                className="inline-flex items-center rounded bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-600 hover:bg-blue-100 cursor-pointer transition-colors"
+                title={frame.label}
+              >
+                {frame.code ?? frame.label ?? frame.id}
+              </button>
+            ))}
+          </div>
+        ) : <EmptyCell />;
+      case 'lexical_units':
+        if (!entry.lexical_units.entries.length) return <EmptyCell />;
+        return (
+          <div className="space-y-1">
+            {entry.lexical_units.entries.map(lu => {
+              const allLemmas = [...(lu.src_lemmas || []), ...(lu.lemmas || [])];
+              const firstLemma = allLemmas[0] || lu.code || '—';
+              const extraCount = Math.max(0, allLemmas.length - 1);
+              return (
+                <div key={lu.id} className="flex items-start gap-2 text-xs" title={lu.gloss}>
+                  <span className="inline-flex items-center rounded bg-gray-100 px-2 py-0.5 font-medium text-gray-800 whitespace-nowrap">
+                    {firstLemma}
+                    {extraCount > 0 && <span className="ml-1 text-gray-500">+{extraCount}</span>}
+                  </span>
+                  <span className="truncate text-gray-600">{lu.gloss}</span>
+                </div>
+              );
+            })}
+            {entry.lexical_units.hasMore && (
+              <div className="text-xs text-gray-400 italic">
+                +{entry.lexical_units.totalCount - entry.lexical_units.entries.length} more
+              </div>
+            )}
+          </div>
+        );
+      case 'frameWarning':
+        if (entry.frameWarning === null) return <EmptyCell />;
+        return (
+          <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+            {entry.frameWarning === 'none' ? 'No frame' : 'Multiple frames'}
+          </span>
+        );
+      case 'confidence':
+        return <span className="text-xs text-gray-600">{entry.confidence || '—'}</span>;
+      case 'causative':
+      case 'inchoative':
+      case 'perspectival': {
+        const value = entry[columnKey];
+        return value === null || value === undefined ? <NACell /> : (
+          <span className="text-xs text-gray-700">{value ? 'Yes' : 'No'}</span>
+        );
+      }
+      default:
+        break;
+    }
+  } else if (isFrame(entry)) {
     switch (columnKey) {
       case 'id':
         return <span className="text-xs font-mono text-blue-600 break-words">{entry.id}</span>;
@@ -578,7 +672,7 @@ export function CellContent({
     case 'flagged':
       return (
         <div className="flex items-center justify-center gap-2">
-          {entry.flagged ? (
+          {'flagged' in entry && entry.flagged ? (
             <XCircleIcon className="w-5 h-5 text-red-500" />
           ) : (
             <CheckCircleIcon className="w-5 h-5 text-gray-300" />
@@ -588,13 +682,13 @@ export function CellContent({
     case 'flaggedReason':
       return (
         <span className="text-xs text-gray-600">
-          {entry.flaggedReason || ''}
+          {'flaggedReason' in entry ? entry.flaggedReason || '' : ''}
         </span>
       );
     case 'verifiable':
       return (
         <div className="flex items-center justify-center gap-2">
-          {entry.verifiable === false ? (
+          {'verifiable' in entry && entry.verifiable === false ? (
             <XCircleIcon className="w-5 h-5 text-orange-500" title="Unverifiable" />
           ) : (
             <CheckCircleIcon className="w-5 h-5 text-green-500" title="Verifiable" />
@@ -604,7 +698,7 @@ export function CellContent({
     case 'unverifiableReason':
       return (
         <span className="text-xs text-gray-600">
-          {entry.unverifiableReason || ''}
+          {'unverifiableReason' in entry ? entry.unverifiableReason || '' : ''}
         </span>
       );
     case 'createdAt':
@@ -653,7 +747,7 @@ export function CellContent({
 // ============================================
 
 interface DataTableBodyProps {
-  data: Array<TableEntry | Frame> | null;
+  data: DataTableEntry[] | null;
   visibleColumns: ColumnConfig[];
   mode: DataTableMode;
   sortState: SortState;
@@ -665,11 +759,11 @@ interface DataTableBodyProps {
   isResizing: boolean;
   highlightId?: string | null;
   onSort: (field: string) => void;
-  onRowClick?: (entry: TableEntry | Frame) => void;
-  onEditClick?: (entry: TableEntry | Frame) => void;
-  onAIClick?: (entry: TableEntry | Frame) => void;
-  onCopyClick?: (entry: TableEntry | Frame) => void;
-  onCopyLongPress?: (entry: TableEntry | Frame, buttonEl: HTMLButtonElement) => void;
+  onRowClick?: (entry: DataTableEntry) => void;
+  onEditClick?: (entry: DataTableEntry) => void;
+  onAIClick?: (entry: DataTableEntry) => void;
+  onCopyClick?: (entry: DataTableEntry) => void;
+  onCopyLongPress?: (entry: DataTableEntry, buttonEl: HTMLButtonElement) => void;
   onSelectAll: () => void;
   onSelectRow: (id: string) => void;
   onContextMenu: (e: React.MouseEvent, entryId: string) => void;

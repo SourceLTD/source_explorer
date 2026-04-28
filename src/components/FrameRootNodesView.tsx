@@ -15,7 +15,6 @@ const rootFrames: RootFrame[] = [
   { id: '280229', label: 'Event' },
   { id: '85483', label: 'Entity' },
   { id: '319610', label: 'State' },
-  { id: '317158', label: 'Relation' },
 ];
 
 const auxiliaryFrames: RootFrame[] = [

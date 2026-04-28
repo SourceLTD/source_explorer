@@ -356,8 +356,15 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
               Source Console
             </button>
             <div className="flex items-center gap-1 ml-2">
-              <button className="px-4 py-2 text-base font-medium transition-colors relative cursor-pointer text-blue-600 border-b-2 border-blue-600">
+              <button className="px-4 py-2 text-base font-medium transition-colors relative cursor-default text-blue-600 border-b-2 border-blue-600">
                 Frames
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push('/table')}
+                className="px-4 py-2 text-base font-medium transition-colors relative cursor-pointer text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+              >
+                Senses
               </button>
             </div>
           </div>

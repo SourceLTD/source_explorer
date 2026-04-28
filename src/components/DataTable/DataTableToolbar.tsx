@@ -222,20 +222,22 @@ export function DataTableToolbar({
             </svg>
             Reset Widths
           </button>
-          <button
-            onClick={onOpenAIOverlay}
-            className="relative inline-flex items-center gap-2 rounded-xl px-3 py-2 text-white transition-colors hover:brightness-110 focus:outline-none focus:ring-2 bg-gradient-to-r from-blue-500 to-blue-600 focus:ring-blue-500 cursor-pointer"
-            title="Open AI batch flagging"
-            aria-label="Open AI batch flagging"
-            type="button"
-          >
-            <SparklesIcon className="h-5 w-5 flex-shrink-0" aria-hidden="true" />
-            {pendingAIJobs > 0 && (
-              <span className="absolute -top-1 -right-1 inline-flex min-h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-600 px-1 text-[11px] font-bold text-white">
-                {pendingAIJobs > 99 ? '99+' : pendingAIJobs}
-              </span>
+          {mode !== 'frame_senses' && (
+            <button
+              onClick={onOpenAIOverlay}
+              className="relative inline-flex items-center gap-2 rounded-xl px-3 py-2 text-white transition-colors hover:brightness-110 focus:outline-none focus:ring-2 bg-gradient-to-r from-blue-500 to-blue-600 focus:ring-blue-500 cursor-pointer"
+              title="Open AI batch flagging"
+              aria-label="Open AI batch flagging"
+              type="button"
+            >
+              <SparklesIcon className="h-5 w-5 flex-shrink-0" aria-hidden="true" />
+              {pendingAIJobs > 0 && (
+                <span className="absolute -top-1 -right-1 inline-flex min-h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-600 px-1 text-[11px] font-bold text-white">
+                  {pendingAIJobs > 99 ? '99+' : pendingAIJobs}
+                </span>
+              )}
+            </button>
             )}
-          </button>
           
           {/* Flag Actions */}
           {selectedCount > 0 && (
