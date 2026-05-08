@@ -18,6 +18,10 @@ import {
 import { getCurrentUserName } from '@/utils/supabase/server';
 import { prisma } from '@/lib/prisma';
 import { parseIdParam } from '@/lib/issues/validation';
+import {
+  emitChangesetLinkChangeEvents,
+  emitChangesetStatusEvents,
+} from '@/lib/issues/events';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -99,11 +103,41 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         }
       }
 
+      // Snapshot the previous link so we can emit events on both old and new issues.
+      const existing = await prisma.changesets.findUnique({
+        where: { id: changesetId },
+        select: {
+          id: true,
+          issue_id: true,
+          entity_type: true,
+          entity_id: true,
+          operation: true,
+        },
+      });
+      if (!existing) {
+        return NextResponse.json(
+          { error: 'Changeset not found' },
+          { status: 404 }
+        );
+      }
+
       try {
         const updated = await prisma.changesets.update({
           where: { id: changesetId },
           data: { issue_id: issueIdValue },
           select: { id: true, issue_id: true },
+        });
+
+        void emitChangesetLinkChangeEvents({
+          actor: userId,
+          changesetId,
+          previousIssueId: existing.issue_id,
+          newIssueId: issueIdValue,
+          changesetSummary: {
+            entity_type: existing.entity_type,
+            entity_id: existing.entity_id?.toString() ?? null,
+            operation: existing.operation,
+          },
         });
 
         return NextResponse.json({
@@ -144,6 +178,15 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         });
       } else {
         const result = await rejectAllFieldChanges(changesetId, userId);
+        // If reject_all auto-discarded the changeset and it was linked to an
+        // issue, surface that in the timeline.
+        if (result.changeset_discarded) {
+          void emitChangesetStatusEvents({
+            actor: userId,
+            changesetIds: [changesetId],
+            eventType: 'changeset_discarded',
+          });
+        }
         return NextResponse.json({
           success: true,
           field_changes_affected: result.count,
@@ -219,8 +262,15 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params;
     const changesetId = BigInt(id);
+    const actor = await getCurrentUserName();
 
     await discardChangeset(changesetId);
+
+    void emitChangesetStatusEvents({
+      actor,
+      changesetIds: [changesetId],
+      eventType: 'changeset_discarded',
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {

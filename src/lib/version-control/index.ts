@@ -161,6 +161,20 @@ export {
 
 export type { BulkOperationResult } from './commit';
 
+// Plan-level commit (v2)
+export {
+  commitPlan,
+  discardPlan,
+  PlanNotFoundError,
+  PlanNotPendingError,
+} from './commit-plan';
+
+export type {
+  ChangePlanStatus,
+  CommitPlanResult,
+  PlanConflictReport,
+} from './commit-plan';
+
 // Staging operations (for API routes)
 export {
   stageUpdate,

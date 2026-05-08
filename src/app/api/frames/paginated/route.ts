@@ -64,6 +64,8 @@ function buildFilterRuleSql(rule: BooleanFilterRule): Prisma.Sql | null {
       return buildTextRuleSql('definition', rule);
     case 'short_definition':
       return buildTextRuleSql('short_definition', rule);
+    case 'subtype':
+      return buildTextRuleSql('subtype', rule);
     case 'flagged_reason':
       return buildTextRuleSql('flagged_reason', rule);
     case 'unverifiable_reason':
@@ -72,6 +74,8 @@ function buildFilterRuleSql(rule: BooleanFilterRule): Prisma.Sql | null {
       return buildBooleanRuleSql('flagged', rule);
     case 'verifiable':
       return buildBooleanRuleSql('verifiable', rule);
+    case 'disable_healthcheck':
+      return buildBooleanRuleSql('disable_healthcheck', rule);
     case 'created_at':
       return buildDateRuleSql('created_at', rule);
     case 'updated_at':
@@ -165,7 +169,7 @@ export async function GET(request: NextRequest) {
     
     const validSortColumns = [
       'id', 'label', 'code', 'definition', 
-      'short_definition', 'created_at', 'updated_at'
+      'short_definition', 'subtype', 'disable_healthcheck', 'created_at', 'updated_at'
     ];
     
     if (!validSortColumns.includes(sortBy)) {
@@ -383,6 +387,8 @@ export async function GET(request: NextRequest) {
         createdAt: frame.created_at.toISOString(),
         updatedAt: frame.updated_at.toISOString(),
         frame_type: frame.frame_type,
+        subtype: frame.subtype,
+        disable_healthcheck: frame.disable_healthcheck,
         vendler: frame.vendler,
         multi_perspective: frame.multi_perspective,
         wikidata_id: frame.wikidata_id,

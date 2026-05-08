@@ -3,6 +3,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { ChatBubbleLeftRightIcon, ArrowPathIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import LoadingSpinner from '@/components/LoadingSpinner';
+import {
+  SYSTEM_USER_ID,
+  SYSTEM_USER_DISPLAY_NAME,
+} from '@/lib/users/displayName';
 
 interface UnreadChangesetInfo {
   changeset_id: string;
@@ -27,7 +31,7 @@ interface UnreadCommentsPanelProps {
  * Format a user identifier for display.
  */
 function formatAuthor(author: string): string {
-  if (author === 'system') return 'System';
+  if (author === SYSTEM_USER_ID) return SYSTEM_USER_DISPLAY_NAME;
   if (author === 'system:llm-agent') return 'LLM Agent';
   if (author.includes('@')) return author.split('@')[0];
   return author;

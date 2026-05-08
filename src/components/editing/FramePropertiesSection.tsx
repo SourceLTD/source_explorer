@@ -16,6 +16,11 @@ interface FramePropertiesSectionProps {
   onCancel: () => void;
   isSaving: boolean;
   pending?: PendingChangeInfo | null;
+  /**
+   * Direct toggle for the boolean `disable_healthcheck` field — bypasses the
+   * single-field text editor since the value is binary.
+   */
+  onToggleDisableHealthcheck?: (next: boolean) => Promise<void> | void;
 }
 
 export function FramePropertiesSection({
@@ -30,7 +35,9 @@ export function FramePropertiesSection({
   onCancel,
   isSaving,
   pending,
+  onToggleDisableHealthcheck,
 }: FramePropertiesSectionProps) {
+  const [togglingHealthcheck, setTogglingHealthcheck] = React.useState(false);
   const hasPendingField = (fieldName: string) => {
     return !!pending?.pending_fields?.[fieldName];
   };
@@ -207,6 +214,103 @@ export function FramePropertiesSection({
           </PendingFieldIndicator>
         )}
       </div>
+
+      {/* Subtype */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-sm font-medium text-gray-700">
+            Subtype
+            {hasPendingField('subtype') && (
+              <span className="ml-2 text-xs text-orange-600 font-normal">(pending)</span>
+            )}
+          </h3>
+          {editingField !== 'subtype' && (
+            <button
+              onClick={() => onStartEdit('subtype')}
+              className="text-xs text-blue-600 hover:text-blue-600 font-medium cursor-pointer"
+            >
+              Edit
+            </button>
+          )}
+        </div>
+        {editingField === 'subtype' ? (
+          <div className="space-y-2">
+            <input
+              type="text"
+              value={editValue}
+              onChange={(e) => onValueChange(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              placeholder="Subtype (leave empty for none)"
+              autoFocus
+            />
+            <div className="flex space-x-2">
+              <button
+                onClick={onSave}
+                disabled={isSaving}
+                className="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
+              >
+                {isSaving ? 'Saving...' : 'Save'}
+              </button>
+              <button
+                onClick={onCancel}
+                className="px-4 py-2 bg-gray-200 text-gray-700 text-sm rounded hover:bg-gray-300 cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <PendingFieldIndicator fieldName="subtype" pending={pending}>
+            {getDisplayValue('subtype', frame.subtype) ? (
+              <span className="inline-flex px-2 py-0.5 rounded-full border text-xs font-medium bg-indigo-50 text-indigo-700 border-indigo-200">
+                {getDisplayValue('subtype', frame.subtype)}
+              </span>
+            ) : (
+              <span className="text-gray-400 text-sm italic">none</span>
+            )}
+          </PendingFieldIndicator>
+        )}
+      </div>
+
+      {/* Disable Health Check */}
+      {onToggleDisableHealthcheck && (
+        <div>
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-medium text-gray-700">
+              Disable Health Checks
+              {hasPendingField('disable_healthcheck') && (
+                <span className="ml-2 text-xs text-orange-600 font-normal">(pending)</span>
+              )}
+            </h3>
+          </div>
+          <p className="text-xs text-gray-500 mb-2">
+            Skip this frame when running health checks.
+          </p>
+          <PendingFieldIndicator fieldName="disable_healthcheck" pending={pending}>
+            <label className="inline-flex items-center cursor-pointer gap-2">
+              <input
+                type="checkbox"
+                checked={Boolean(getDisplayValue('disable_healthcheck', frame.disable_healthcheck))}
+                disabled={togglingHealthcheck}
+                onChange={async (e) => {
+                  setTogglingHealthcheck(true);
+                  try {
+                    await onToggleDisableHealthcheck(e.target.checked);
+                  } finally {
+                    setTogglingHealthcheck(false);
+                  }
+                }}
+                className="rounded border-gray-300"
+              />
+              <span className="text-sm text-gray-700">
+                {getDisplayValue('disable_healthcheck', frame.disable_healthcheck)
+                  ? 'Disabled'
+                  : 'Enabled'}
+              </span>
+            </label>
+          </PendingFieldIndicator>
+        </div>
+      )}
 
     </OverlaySection>
   );

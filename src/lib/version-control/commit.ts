@@ -15,6 +15,7 @@ import {
 } from './types';
 import { getChangeset, createChangesetFromUpdate } from './create';
 import { addComment } from './comments';
+import { setRowHistoryContext } from './rowHistoryContext';
 import {
   applyFrameRolesSubChanges,
   isFrameRolesFieldName,
@@ -174,6 +175,11 @@ async function commitCreate(
 
   // Use a transaction to create the entity and update the changeset
   await prisma.$transaction(async (tx) => {
+    await setRowHistoryContext(tx, {
+      userId: committedBy,
+      changesetId: changeset.id,
+    });
+
     const entityData = changeset.after_snapshot!;
     let newEntityId: bigint;
     
@@ -484,6 +490,11 @@ async function commitUpdate(
 
   // Use a transaction
   await prisma.$transaction(async (tx) => {
+    await setRowHistoryContext(tx, {
+      userId: committedBy,
+      changesetId: changeset.id,
+    });
+
     for (const fc of senseSimpleChanges) {
       let nextValue: unknown = fc.new_value;
 
@@ -848,6 +859,11 @@ async function commitDelete(
   }
 
   await prisma.$transaction(async (tx) => {
+    await setRowHistoryContext(tx, {
+      userId: committedBy,
+      changesetId: changeset.id,
+    });
+
     if (isLexicalUnitType(changeset.entity_type)) {
       await tx.lexical_units.update({
         where: { id: changeset.entity_id! },

@@ -223,6 +223,12 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
             value = trimmed.length > 0 ? trimmed : null;
           }
           break;
+        case 'subtype':
+          {
+            const trimmed = editor.editValue.trim();
+            value = trimmed.length > 0 ? trimmed : null;
+          }
+          break;
         default:
           return;
       }
@@ -398,6 +404,10 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
               onCancel={editor.cancelEditing}
               isSaving={editor.isSaving}
               pending={node.pending}
+              onToggleDisableHealthcheck={async (next) => {
+                await mutations.updateField(node.id, 'disable_healthcheck', next);
+                await onUpdate();
+              }}
             />
           )}
 

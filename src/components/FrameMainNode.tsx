@@ -7,10 +7,55 @@ import {
   RecipeGraph,
   sortRolesByPrecedence, 
 } from '@/lib/types';
+import FrameSenseTypeBadges from './FrameSenseTypeBadges';
 import { getPendingNodeStroke, getPendingNodeFill } from './PendingChangeIndicator';
 
 export const FRAME_MAIN_NODE_FIXED_HEIGHT = 600;
 export const FRAME_MAIN_NODE_WIDTH = 1000;
+
+type RecipeGraphDisplayItem = { label: string; value: string };
+
+const RECIPE_GRAPH_ROW_GAP = 2;
+const RECIPE_GRAPH_ROW_MIN_HEIGHT = 28;
+const RECIPE_GRAPH_ROW_FONT_SIZE = 12;
+const RECIPE_GRAPH_ROW_LINE_HEIGHT = 1.4;
+
+function buildRecipeGraphItems(recipeGraph: RecipeGraph): RecipeGraphDisplayItem[] {
+  const items: RecipeGraphDisplayItem[] = [];
+
+  if (recipeGraph.confidence) {
+    items.push({
+      label: 'Confidence',
+      value: `${recipeGraph.confidence}${recipeGraph.confidence_reasoning ? ' — ' + recipeGraph.confidence_reasoning : ''}`,
+    });
+  }
+
+  (recipeGraph.nodes || []).forEach((recipeNode) => {
+    items.push({
+      label: `[${recipeNode.node_type}] ${recipeNode.id}`,
+      value: `${recipeNode.description}  (${recipeNode.keywords.join(', ')})`,
+    });
+  });
+
+  (recipeGraph.edges || []).forEach((edge) => {
+    items.push({
+      label: `${edge.source} → ${edge.target}`,
+      value: edge.label,
+    });
+  });
+
+  return items;
+}
+
+function estimateRecipeGraphRowHeight(item: RecipeGraphDisplayItem, containerWidth: number): number {
+  const text = `${item.label}: ${item.value}`;
+  const avgCharWidth = RECIPE_GRAPH_ROW_FONT_SIZE * 0.58;
+  const usableWidth = containerWidth - 16;
+  const charsPerLine = Math.max(1, Math.floor(usableWidth / avgCharWidth));
+  const lines = Math.max(1, Math.ceil(text.length / charsPerLine));
+  const textHeight = lines * RECIPE_GRAPH_ROW_FONT_SIZE * RECIPE_GRAPH_ROW_LINE_HEIGHT;
+  return Math.max(RECIPE_GRAPH_ROW_MIN_HEIGHT, Math.ceil(textHeight + 6));
+}
 
 interface FrameMainNodeProps {
   node: FrameGraphNode;
@@ -395,7 +440,6 @@ export default function FrameMainNode({
                   }
                   const startY = senseY;
                   const warning = sense.frameWarning;
-                  const frameLabel = sense.frames[0]?.label ?? '—';
                   const headerBg =
                     warning === null ? 'rgba(255, 255, 255, 0.12)' : 'rgba(251, 191, 36, 0.25)';
                   const headerBorder =
@@ -456,7 +500,8 @@ export default function FrameMainNode({
                           </div>
                         </div>
 
-                        <span style={{ display: 'flex', alignItems: 'center', flexShrink: 0, marginLeft: 8 }}>
+                        <span style={{ display: 'flex', alignItems: 'center', flexShrink: 0, marginLeft: 8, gap: 4 }}>
+                          <FrameSenseTypeBadges sense={sense} />
                           {lus.length > 0 && (
                             <span
                               style={{ 
@@ -523,6 +568,18 @@ export default function FrameMainNode({
                         >
                           {lu.pos}
                         </span>
+                        {lu.legacy_id && (
+                          <span
+                            style={{
+                              fontSize: '12px',
+                              fontWeight: 600,
+                              color: '#bfdbfe',
+                              marginRight: '6px',
+                            }}
+                          >
+                            {lu.legacy_id}
+                          </span>
+                        )}
                         <span style={{ color: '#e0eaff' }}>
                           {(() => {
                             const all = [
@@ -647,32 +704,13 @@ export default function FrameMainNode({
             <Group top={currentY + 28} left={centerX + 12}>
               {(() => {
                 const rg = node.recipe_graph!;
-                const items: { label: string; value: string }[] = [];
-                
-                if (rg.confidence) {
-                  items.push({ label: 'Confidence', value: `${rg.confidence}${rg.confidence_reasoning ? ' — ' + rg.confidence_reasoning : ''}` });
-                }
-                
-                (rg.nodes || []).forEach(n => {
-                  items.push({
-                    label: `[${n.node_type}] ${n.id}`,
-                    value: `${n.description}  (${n.keywords.join(', ')})`,
-                  });
-                });
-                
-                (rg.edges || []).forEach(e => {
-                  items.push({
-                    label: `${e.source} → ${e.target}`,
-                    value: e.label,
-                  });
-                });
+                const items = buildRecipeGraphItems(rg);
 
                 let rowY = 0;
                 return items.map((item, idx) => {
-                  const textLen = (item.label + ': ' + item.value).length;
-                  const rowHeight = textLen > 80 ? 44 : 28;
+                  const rowHeight = estimateRecipeGraphRowHeight(item, nodeWidth - 24);
                   const y = rowY;
-                  rowY += rowHeight + 2;
+                  rowY += rowHeight + RECIPE_GRAPH_ROW_GAP;
                   return (
                     <foreignObject
                       key={`rg-item-${idx}`}
@@ -919,14 +957,9 @@ export function calculateFrameNodeHeights(
   if (node.recipe_graph) {
     recipeGraphHeight = 28;
     if (recipeGraphExpanded) {
-      const rg = node.recipe_graph;
-      let itemCount = 0;
-      if (rg.confidence) itemCount++;
-      itemCount += (rg.nodes || []).length;
-      itemCount += (rg.edges || []).length;
-      
-      for (let i = 0; i < itemCount; i++) {
-        recipeGraphHeight += 30;
+      const items = buildRecipeGraphItems(node.recipe_graph);
+      for (const item of items) {
+        recipeGraphHeight += estimateRecipeGraphRowHeight(item, contentWidth) + RECIPE_GRAPH_ROW_GAP;
       }
       recipeGraphHeight += 8;
     }

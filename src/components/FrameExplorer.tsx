@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowPathIcon } from '@heroicons/react/24/outline';
 import { Frame, FrameGraphNode, RecipeGraph, SearchResult, BreadcrumbItem } from '@/lib/types';
 import FrameGraph, { FrameGraphHandle } from './FrameGraph';
 import Breadcrumbs from './Breadcrumbs';
@@ -35,32 +34,10 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
   
   // Track last loaded frame to prevent duplicate calls
   const lastLoadedFrameRef = useRef<string | null>(null);
-  const graphContainerRef = useRef<HTMLDivElement>(null);
   const frameGraphRef = useRef<FrameGraphHandle>(null);
 
   // Prefetch cache for related nodes
   const prefetchCacheRef = useRef<Map<string, { graph: FrameGraphNode; breadcrumbs: BreadcrumbItem[] }>>(new Map());
-
-  // Transition overlay state: a phantom of the clicked node that expands to become the main node
-  const [transitionNode, setTransitionNode] = useState<{
-    rect: { top: number; left: number; width: number; height: number };
-    targetRect: { top: number; left: number; width: number; height: number };
-    label: string;
-    color: string;
-    direction: 'up' | 'down';
-  } | null>(null);
-  // Exiting node overlay: the old main node shrinks and moves away
-  const [exitingNode, setExitingNode] = useState<{
-    rect: { top: number; left: number; width: number; height: number };
-    direction: 'up' | 'down';
-  } | null>(null);
-  const transitionMinTimeRef = useRef<number>(0);
-  const overlayWrapperRef = useRef<HTMLDivElement>(null);
-
-  const clearTransition = useCallback(() => {
-    setTransitionNode(null);
-    setExitingNode(null);
-  }, []);
 
   const prefetchRelatedNodes = useCallback((graphData: FrameGraphNode) => {
     const MAX_PREFETCH_GROUP = 30;
@@ -120,12 +97,6 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
         prefetchCacheRef.current.delete(frameId);
         setCurrentFrame(cached.graph);
         setBreadcrumbs(cached.breadcrumbs);
-        const remaining = Math.max(0, transitionMinTimeRef.current - Date.now());
-        if (remaining > 0) {
-          setTimeout(() => clearTransition(), remaining);
-        } else {
-          clearTransition();
-        }
         prefetchRelatedNodes(cached.graph);
         return;
       }
@@ -156,12 +127,6 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
       } else {
         setBreadcrumbs([]);
       }
-      const remaining = Math.max(0, transitionMinTimeRef.current - Date.now());
-      if (remaining > 0) {
-        setTimeout(() => clearTransition(), remaining);
-      } else {
-        clearTransition();
-      }
       prefetchRelatedNodes(graphData);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
@@ -171,40 +136,17 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
     }
   }, [prefetchRelatedNodes]);
 
-  const handleFrameClick = (frameId: string, clickedNode?: { rect: { top: number; left: number; width: number; height: number }; label: string; color: string; direction: 'up' | 'down' }) => {
-    if (clickedNode) {
-      // Capture the current main node rect for the exiting animation
-      const mainNodeEl = graphContainerRef.current?.querySelector('[data-main-node]');
-      const mainRect = mainNodeEl
-        ? mainNodeEl.getBoundingClientRect()
-        : (() => {
-            const c = graphContainerRef.current!.getBoundingClientRect();
-            return { top: c.top + 40, left: c.left + (c.width - 600) / 2, width: 600, height: 80 };
-          })();
-      if (mainNodeEl) {
-        setExitingNode({
-          rect: { top: mainRect.top, left: mainRect.left, width: mainRect.width, height: mainRect.height },
-          direction: clickedNode.direction,
-        });
-      }
-      setTransitionNode({
-        ...clickedNode,
-        targetRect: { top: mainRect.top, left: mainRect.left, width: mainRect.width, height: mainRect.height },
-      });
-      transitionMinTimeRef.current = Date.now() + 400;
-    }
+  const handleFrameClick = (frameId: string) => {
     lastLoadedFrameRef.current = null;
     updateUrlParam(frameId);
   };
 
   const handleSearchResult = (result: SearchResult) => {
-    clearTransition();
     lastLoadedFrameRef.current = null;
     updateUrlParam(result.id);
   };
 
   const handleHomeClick = () => {
-    clearTransition();
     lastLoadedFrameRef.current = null;
     setCurrentFrame(null);
     setBreadcrumbs([]);
@@ -216,7 +158,6 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
   };
 
   const handleBreadcrumbNavigate = (id: string) => {
-    clearTransition();
     lastLoadedFrameRef.current = null;
     updateUrlParam(id);
   };
@@ -288,40 +229,6 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
       console.error('Error toggling verifiable:', err);
     }
   };
-
-  // Prevent all scrolling during transition so the fixed overlay doesn't drift
-  useEffect(() => {
-    if (!transitionNode) return;
-    const frozen: { el: HTMLElement; prev: string }[] = [];
-    const freeze = (el: HTMLElement | null) => {
-      while (el && el !== document.documentElement) {
-        const cs = getComputedStyle(el);
-        if (cs.overflow === 'auto' || cs.overflow === 'scroll' ||
-            cs.overflowY === 'auto' || cs.overflowY === 'scroll') {
-          frozen.push({ el, prev: el.style.overflow });
-          el.style.overflow = 'hidden';
-        }
-        el = el.parentElement;
-      }
-    };
-    freeze(graphContainerRef.current);
-    if (graphContainerRef.current) {
-      graphContainerRef.current.querySelectorAll('*').forEach((child) => {
-        const cs = getComputedStyle(child as HTMLElement);
-        if (cs.overflow === 'auto' || cs.overflow === 'scroll' ||
-            cs.overflowY === 'auto' || cs.overflowY === 'scroll') {
-          frozen.push({ el: child as HTMLElement, prev: (child as HTMLElement).style.overflow });
-          (child as HTMLElement).style.overflow = 'hidden';
-        }
-      });
-    }
-    const prevBody = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = prevBody;
-      for (const { el, prev } of frozen) el.style.overflow = prev;
-    };
-  }, [transitionNode]);
 
   // Load frame based on URL params or initial prop and sync view from URL
   useEffect(() => {
@@ -472,14 +379,8 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
               </div>
               
               {/* Graph Content */}
-              <div className="flex-1 overflow-hidden relative" ref={graphContainerRef}>
-                <div
-                  className="h-full"
-                  style={{
-                    opacity: transitionNode ? 0 : 1,
-                    transition: transitionNode ? 'none' : 'opacity 0.2s ease',
-                  }}
-                >
+              <div className="flex-1 overflow-hidden relative">
+                <div className="h-full">
                   <FrameGraph 
                     ref={frameGraphRef}
                     currentFrame={currentFrame}
@@ -537,92 +438,6 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
           />
         )}
 
-        {/* Transition overlays — wrapped in a div that compensates for scroll */}
-        <div ref={overlayWrapperRef} style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 50 }}>
-        <AnimatePresence>
-          {transitionNode && (() => {
-            const src = transitionNode.rect;
-            const tgt = transitionNode.targetRect;
-            const initialScaleX = src.width / tgt.width;
-            const initialScaleY = src.height / tgt.height;
-            const srcCenterX = src.left + src.width / 2;
-            const srcCenterY = src.top + src.height / 2;
-            const tgtCenterX = tgt.left + tgt.width / 2;
-            const tgtCenterY = tgt.top + tgt.height / 2;
-            const initialTranslateX = srcCenterX - tgtCenterX;
-            const initialTranslateY = srcCenterY - tgtCenterY;
-            return (
-              <motion.div
-                key="transition-overlay"
-                className="flex items-center justify-center overflow-hidden pointer-events-none"
-                style={{
-                  position: 'absolute',
-                  top: tgt.top,
-                  left: tgt.left,
-                  width: tgt.width,
-                  height: tgt.height,
-                  borderRadius: 12,
-                  willChange: 'transform, opacity',
-                }}
-                initial={{
-                  transform: `translate3d(${initialTranslateX}px, ${initialTranslateY}px, 0) scale(${initialScaleX}, ${initialScaleY})`,
-                  backgroundColor: transitionNode.color,
-                  opacity: 1,
-                }}
-                animate={{
-                  transform: 'translate3d(0px, 0px, 0) scale(1, 1)',
-                  backgroundColor: '#bfdbfe',
-                  opacity: 1,
-                }}
-                exit={{
-                  opacity: 0,
-                  transition: { duration: 0.15, ease: 'easeOut' },
-                }}
-                transition={{
-                  transform: { duration: 0.35, ease: [0.25, 0.1, 0.25, 1] },
-                  backgroundColor: { duration: 0.35, ease: 'easeOut' },
-                }}
-              >
-                <ArrowPathIcon className="w-6 h-6 text-white animate-spin" />
-              </motion.div>
-            );
-          })()}
-          {exitingNode && (() => {
-            const src = exitingNode.rect;
-            const moveY = exitingNode.direction === 'down' ? -160 : 160;
-            return (
-              <motion.div
-                key="exiting-overlay"
-                className="rounded-lg pointer-events-none"
-                style={{
-                  position: 'absolute',
-                  top: src.top,
-                  left: src.left,
-                  width: src.width,
-                  height: src.height,
-                  borderRadius: 8,
-                  willChange: 'transform, opacity',
-                }}
-                initial={{
-                  transform: 'translate3d(0px, 0px, 0) scale(1, 1)',
-                  backgroundColor: '#3b82f6',
-                  opacity: 1,
-                }}
-                animate={{
-                  transform: `translate3d(0px, ${moveY}px, 0) scale(0.15, 0.08)`,
-                  backgroundColor: exitingNode.direction === 'down' ? '#93c5fd' : '#fbbf24',
-                  opacity: 0,
-                }}
-                transition={{
-                  transform: { duration: 0.35, ease: [0.25, 0.1, 0.25, 1] },
-                  opacity: { duration: 0.3, ease: 'easeOut' },
-                  backgroundColor: { duration: 0.3, ease: 'easeOut' },
-                }}
-              />
-            );
-          })()}
-        </AnimatePresence>
-        </div>
         </div>
       </main>
     </div>

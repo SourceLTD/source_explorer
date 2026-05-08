@@ -1,6 +1,10 @@
 'use client';
 
 import React from 'react';
+import {
+  SYSTEM_USER_ID,
+  SYSTEM_USER_DISPLAY_NAME,
+} from '@/lib/users/displayName';
 
 interface CommentItemProps {
   id: string;
@@ -13,7 +17,7 @@ interface CommentItemProps {
  * Format a user identifier for display.
  */
 function formatAuthor(author: string): string {
-  if (author === 'system') return 'System';
+  if (author === SYSTEM_USER_ID) return SYSTEM_USER_DISPLAY_NAME;
   if (author === 'system:llm-agent') return 'LLM Agent';
   if (author.includes('@')) return author.split('@')[0];
   return author;
@@ -24,7 +28,10 @@ function formatAuthor(author: string): string {
  */
 function getInitials(author: string): string {
   const formatted = formatAuthor(author);
-  if (formatted === 'System' || formatted === 'LLM Agent') return formatted[0];
+  // Only the obviously-non-human actor keeps a single-letter avatar.
+  // The system actor now has a person-like name and gets two letters
+  // so it reads consistently with real teammates.
+  if (formatted === 'LLM Agent') return formatted[0];
   return formatted.slice(0, 2).toUpperCase();
 }
 

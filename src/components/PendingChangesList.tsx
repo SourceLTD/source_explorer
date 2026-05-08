@@ -28,6 +28,10 @@ import ReferenceHoverPopup from '@/components/pending/ReferenceHoverPopup';
 import { buildVirtualIndex, type VirtualIndex } from '@/components/pending/virtualIndex';
 import LinkIssueDialog from '@/components/issues/LinkIssueDialog';
 import { ISSUE_STATUS_STYLES, type IssueStatus } from '@/lib/issues/types';
+import {
+  SYSTEM_USER_ID,
+  SYSTEM_USER_DISPLAY_NAME,
+} from '@/lib/users/displayName';
 import { LinkIcon } from '@heroicons/react/24/outline';
 
 // --- Types ---
@@ -70,6 +74,15 @@ interface Changeset {
   comment: string | null;
   issue_id?: string | null;
   issue?: ChangesetIssue | null;
+  /**
+   * v2: when set, this changeset belongs to a `change_plans` row.
+   * Takes precedence over the snapshot-based `plan_id` marker so the
+   * UI reliably groups N-step plans even when the writer skipped the
+   * legacy snapshot decoration.
+   */
+  change_plan_id?: string | null;
+  /** v2: plan kind hint mirrored from `change_plans.plan_kind`. */
+  change_plan_kind?: string | null;
   field_changes: FieldChange[];
 }
 
@@ -115,6 +128,73 @@ interface FlatChangeset extends Omit<Changeset, 'field_changes'> {
   /** For move-grouped frame_relation pairs: the linked changeset */
   moveGroupPairId?: string;
   moveGroupPairChangeset?: Changeset;
+  /**
+   * Generic plan grouping marker. v1.5 forward-compat field used by the
+   * remediation pipeline (and any future multi-changeset operation) to
+   * keep N changesets visually grouped in this list.
+   *
+   * Reads from `before_snapshot.plan_id` / `after_snapshot.plan_id` (or
+   * legacy `move_group_id`). Stays `null` for ordinary single-entity
+   * edits.
+   */
+  planId?: string | null;
+  /** Optional plan_kind hint when the writer set one (e.g. 'split_frame'). */
+  planKind?: string | null;
+  /**
+   * Other changesets sharing this plan_id. Empty array when the plan
+   * collapses into a single row (today's move pair). Plan-aware renderers
+   * read this to render N-step plans in v2; in v1.5 it's surfaced only as
+   * a small "linked changes: N" hint.
+   */
+  planSiblings?: FlatChangeset[];
+  /**
+   * v2: when the plan came from a real `change_plans` row (not the
+   * legacy snapshot marker), this carries the raw FK so the row can
+   * deep-link to `/api/change-plans/[id]` or render a "Open plan"
+   * affordance routed through the issue page.
+   */
+  changePlanId?: string | null;
+  planSource?: 'change_plan' | 'snapshot' | null;
+}
+
+/**
+ * Generic plan-marker reader. Lookup priority:
+ *   1. v2 dedicated `change_plan_id` FK / `change_plan_kind` (most authoritative).
+ *   2. v1.5 generic `plan_id` snapshot marker.
+ *   3. Legacy `move_group_id` snapshot marker (frame_relation move pairs).
+ *
+ * `planSource` lets downstream renderers light up the v2-only
+ * "Open plan" affordance without re-checking which path produced the
+ * id.
+ */
+function readPlanMarker(cs: {
+  before_snapshot: Record<string, unknown> | null;
+  after_snapshot: Record<string, unknown> | null;
+  change_plan_id?: string | null;
+  change_plan_kind?: string | null;
+}): {
+  planId: string | null;
+  planKind: string | null;
+  planSource: 'change_plan' | 'snapshot' | null;
+} {
+  if (cs.change_plan_id) {
+    return {
+      planId: `cp:${cs.change_plan_id}`,
+      planKind: cs.change_plan_kind ?? null,
+      planSource: 'change_plan',
+    };
+  }
+  const snap = cs.before_snapshot ?? cs.after_snapshot ?? null;
+  if (!snap) return { planId: null, planKind: null, planSource: null };
+  const planId = (() => {
+    const explicit = snap.plan_id;
+    if (typeof explicit === 'string' && explicit) return explicit;
+    const legacy = snap.move_group_id;
+    if (typeof legacy === 'string' && legacy) return legacy;
+    return null;
+  })();
+  const planKind = typeof snap.plan_kind === 'string' && snap.plan_kind ? snap.plan_kind : null;
+  return { planId, planKind, planSource: planId ? 'snapshot' : null };
 }
 
 interface PendingChangesFilter {
@@ -254,6 +334,7 @@ function capitalizeFirst(str: string): string {
 function formatUserName(user: string | null): string {
   if (!user) return 'Unknown';
   if (user === 'current-user') return 'Current user';
+  if (user === SYSTEM_USER_ID) return SYSTEM_USER_DISPLAY_NAME;
   if (user === 'system:llm-agent') return 'LLM Agent';
   if (user.includes('@')) return capitalizeFirst(user.split('@')[0]);
   return capitalizeFirst(user);
@@ -261,7 +342,11 @@ function formatUserName(user: string | null): string {
 
 function getInitials(user: string | null): string {
   const formatted = formatUserName(user);
-  if (formatted === 'System' || formatted === 'LLM Agent') return formatted[0];
+  // Synthetic non-human actors keep a single-letter avatar so they
+  // read as "the bot" rather than "a teammate". The system user now
+  // has a person-like name (Gabriel) and intentionally falls through
+  // to the two-letter default.
+  if (formatted === 'LLM Agent') return formatted[0];
   if (formatted === 'unknown') return '?';
   return formatted.slice(0, 2).toUpperCase();
 }
@@ -569,27 +654,42 @@ export default function PendingChangesList({ onRefresh, embedded }: PendingChang
       });
     });
 
-    // Merge frame_relation move-group pairs into a single "move" row.
-    // A move group has a shared `move_group_id` in the snapshots.
-    const moveGroupMap = new Map<string, FlatChangeset[]>();
-    const nonMoveGroupSets: FlatChangeset[] = [];
+    // Plan-group merging.
+    //
+    // Any changesets sharing a `plan_id` (v1.5 generic marker) or the
+    // legacy `move_group_id` (v1 frame_relation moves) are bucketed
+    // together. The frame_relation move pair retains its specialised
+    // delete+create -> "move" collapse; other plan groups (multi-entity
+    // remediation plans introduced in v2) are surfaced as N rows that
+    // each carry a `planSiblings` reference so the table can render them
+    // grouped.
+    const planGroupMap = new Map<string, FlatChangeset[]>();
+    const standaloneSets: FlatChangeset[] = [];
 
     for (const fc of sets) {
-      if (fc.entity_type === 'frame_relation') {
-        const snap = fc.before_snapshot || fc.after_snapshot;
-        const mgId = snap?.move_group_id;
-        if (typeof mgId === 'string' && mgId) {
-          if (!moveGroupMap.has(mgId)) moveGroupMap.set(mgId, []);
-          moveGroupMap.get(mgId)!.push(fc);
-          continue;
+      const { planId, planKind, planSource } = readPlanMarker(fc);
+      if (planId) {
+        fc.planId = planId;
+        fc.planKind = planKind;
+        fc.planSource = planSource;
+        // For v2 plans we also expose the raw change_plans FK so a
+        // future "Open plan" affordance can link to the canonical plan
+        // surface without re-deriving it from the prefixed marker.
+        if (planSource === 'change_plan' && fc.change_plan_id) {
+          fc.changePlanId = fc.change_plan_id;
         }
+        if (!planGroupMap.has(planId)) planGroupMap.set(planId, []);
+        planGroupMap.get(planId)!.push(fc);
+        continue;
       }
-      nonMoveGroupSets.push(fc);
+      standaloneSets.push(fc);
     }
 
-    // For each move group, merge the delete+create pair into a single row
-    for (const [, groupItems] of moveGroupMap) {
-      if (groupItems.length === 2) {
+    for (const [planId, groupItems] of planGroupMap) {
+      // Specialised: legacy frame_relation move pair (delete + create).
+      // Collapses to a single "move" row to preserve the existing UI.
+      const allFrameRelations = groupItems.every(g => g.entity_type === 'frame_relation');
+      if (allFrameRelations && groupItems.length === 2) {
         const deleteCs = groupItems.find(g => g.operation === 'delete');
         const createCs = groupItems.find(g => g.operation === 'create');
         if (deleteCs && createCs) {
@@ -603,23 +703,38 @@ export default function PendingChangesList({ onRefresh, embedded }: PendingChang
             ? `${sourceLabel}: ${oldParentLabel} → ${newParentLabel}`
             : `Move: #${deleteSnap?.source_id} → #${createSnap?.target_id}`;
 
-          // Use the CREATE changeset as the primary row, enriched with move info
           const merged: FlatChangeset = {
             ...createCs,
             operation: 'move',
             entity_display: mergedDisplay,
             moveGroupPairId: deleteCs.id,
             moveGroupPairChangeset: deleteCs,
+            planId,
+            planKind: createCs.planKind ?? deleteCs.planKind ?? 'move_frame_parent',
           };
-          nonMoveGroupSets.push(merged);
+          standaloneSets.push(merged);
           continue;
         }
       }
-      // If we can't merge (orphaned or >2), show them individually
-      nonMoveGroupSets.push(...groupItems);
+
+      // Generic plan: surface each row individually but cross-link siblings
+      // so a renderer can show "linked changes: N" or open a plan dialog.
+      // Stable order: by entity type then id, so the UI is deterministic.
+      const sorted = [...groupItems].sort((a, b) => {
+        if (a.entity_type !== b.entity_type) {
+          return a.entity_type < b.entity_type ? -1 : 1;
+        }
+        const ai = a.entity_id ?? '';
+        const bi = b.entity_id ?? '';
+        return ai < bi ? -1 : ai > bi ? 1 : 0;
+      });
+      for (const fc of sorted) {
+        fc.planSiblings = sorted.filter(s => s.id !== fc.id);
+        standaloneSets.push(fc);
+      }
     }
 
-    return nonMoveGroupSets;
+    return standaloneSets;
   }, [data]);
 
   const virtualIndex = useMemo(() => buildVirtualIndex(flatChangesets as any), [flatChangesets]);

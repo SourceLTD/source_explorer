@@ -4,7 +4,7 @@ import React, { useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { TableEntry, Frame, FrameSenseTableRow, POS_LABELS, PendingChangeInfo, getRoleTypeAcronym } from '@/lib/types';
 import { ColumnConfig } from '@/components/ColumnVisibilityPanel';
-import { CheckCircleIcon, XCircleIcon, SparklesIcon, ClipboardDocumentIcon } from '@heroicons/react/24/outline';
+import { CheckCircleIcon, XCircleIcon, ClipboardDocumentIcon } from '@heroicons/react/24/outline';
 import {
   getPendingCellClasses,
   getPendingRowClasses,
@@ -200,6 +200,11 @@ interface CellContentProps {
   mode: DataTableMode;
   editing: EditingState;
   onEditClick?: (entry: DataTableEntry) => void;
+  /**
+   * @deprecated Per-row AI Quick Edit button was removed from the table.
+   * Retained on the props for now in case the feature is reintroduced; it is
+   * no longer wired to any UI element.
+   */
   onAIClick?: (entry: DataTableEntry) => void;
   onCopyClick?: (entry: DataTableEntry) => void;
   onCopyLongPress?: (entry: DataTableEntry, buttonEl: HTMLButtonElement) => void;
@@ -215,7 +220,7 @@ export function CellContent({
   mode,
   editing,
   onEditClick,
-  onAIClick,
+  onAIClick: _onAIClick,
   onCopyClick,
   onCopyLongPress,
   onStartEdit,
@@ -263,7 +268,13 @@ export function CellContent({
       case 'definition':
         return <div className={textContainerClasses}>{entry.definition || '—'}</div>;
       case 'frame_type':
-        return <span className="text-xs font-medium text-gray-700">{entry.frame_type || '—'}</span>;
+        return entry.frame_type ? (
+          <span className="inline-flex px-1.5 py-0.5 rounded-full border text-xs font-medium bg-blue-50 text-blue-700 border-blue-200">
+            {entry.frame_type}
+          </span>
+        ) : (
+          <span className="text-xs text-gray-300"></span>
+        );
       case 'frame':
         return entry.frames.length > 0 ? (
           <div className="flex flex-wrap gap-1">
@@ -343,6 +354,24 @@ export function CellContent({
         return <div className={textContainerClasses}>{entry.definition || '—'}</div>;
       case 'short_definition':
         return <div className={textContainerClasses}>{entry.short_definition || '—'}</div>;
+      case 'subtype':
+        return entry.subtype ? (
+          <span className="inline-flex px-1.5 py-0.5 rounded-full border text-xs font-medium bg-indigo-50 text-indigo-700 border-indigo-200">
+            {entry.subtype}
+          </span>
+        ) : (
+          <span className="text-sm text-gray-300"></span>
+        );
+      case 'disable_healthcheck':
+        return (
+          <div className="flex items-center justify-center gap-2">
+            {entry.disable_healthcheck ? (
+              <XCircleIcon className="w-5 h-5 text-orange-500" title="Health checks disabled" />
+            ) : (
+              <CheckCircleIcon className="w-5 h-5 text-green-500" title="Health checks enabled" />
+            )}
+          </div>
+        );
       case 'lexical_units_count':
         return <div className="text-sm text-gray-600">{entry.lexical_units_count ?? 0}</div>;
       case 'frame_roles':
@@ -720,16 +749,12 @@ export function CellContent({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
             </svg>
           </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onAIClick?.(entry);
-            }}
-            className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition-colors cursor-pointer"
-            title="AI Quick Edit"
-          >
-            <SparklesIcon className="w-4 h-4" />
-          </button>
+          {/*
+            Deprecated: Per-row "AI Quick Edit" trigger has been removed.
+            `onAIClick` and the AIAgentQuickEditModal infrastructure remain in
+            place but are no longer reachable from this surface. To re-enable,
+            restore the button below.
+          */}
           <CopyButton
             entry={entry}
             onCopyClick={onCopyClick}
@@ -761,6 +786,10 @@ interface DataTableBodyProps {
   onSort: (field: string) => void;
   onRowClick?: (entry: DataTableEntry) => void;
   onEditClick?: (entry: DataTableEntry) => void;
+  /**
+   * @deprecated Per-row AI Quick Edit button was removed from the table UI.
+   * Retained on the props for now; not consumed by any rendered element.
+   */
   onAIClick?: (entry: DataTableEntry) => void;
   onCopyClick?: (entry: DataTableEntry) => void;
   onCopyLongPress?: (entry: DataTableEntry, buttonEl: HTMLButtonElement) => void;

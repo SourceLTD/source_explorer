@@ -92,13 +92,21 @@ export default function DataTable({
     y: 0,
     unitId: null
   });
+  // ----------------------------------------------------------------------
+  // DEPRECATED: AI batch flagging + AI Quick Edit feature
+  //
+  // The trigger buttons for these features have been removed from the table
+  // UI. The state, handlers, modals, hooks, API routes, and polling logic
+  // are intentionally retained as deprecated infrastructure so the feature
+  // can be reintroduced without rebuilding it. As long as no UI element
+  // sets `isAIOverlayOpen` to true or assigns a value to `aiQuickEditEntry`,
+  // the modals stay closed and no jobs are submitted from this surface.
+  // ----------------------------------------------------------------------
   const [isAIOverlayOpen, setIsAIOverlayOpen] = useState(false);
   const [pendingAIJobs, setPendingAIJobs] = useState(0);
-  
-  // AI Agent Quick Edit modal state
+
   const [aiQuickEditEntry, setAiQuickEditEntry] = useState<TableLexicalUnit | Frame | null>(null);
-  
-  // Track submitted quick edit job IDs for background polling
+
   const quickEditJobIdsRef = useRef<Set<string>>(new Set());
   const [isPollingQuickEditJobs, setIsPollingQuickEditJobs] = useState(false);
   

@@ -5,10 +5,38 @@ import { prisma } from '@/lib/prisma';
  * GET /api/frames/[id]/dag-context
  *
  * Returns the immediate DAG neighborhood for a frame:
- * - The frame itself (label, short_definition)
+ * - The frame itself (label, short_definition, definition_excerpt)
  * - Its parent_of parents
  * - Its child_of children (siblings under each parent)
+ *
+ * Both `short_definition` (curated, may be null) and a derived
+ * `definition_excerpt` (the first sentence of the long definition)
+ * are returned so callers can fall back to whichever exists. Many
+ * frames have a long `definition` but no `short_definition`, and
+ * the visualization needs *something* to show alongside the label.
  */
+
+/**
+ * Extract the first sentence from a definition.
+ *
+ * Heuristic: match up to the first sentence terminator (.!?) that
+ * is followed by either whitespace + an uppercase letter or the
+ * end of the string. This skips over common abbreviations like
+ * "e.g." or "i.e." that are followed by a lowercase word.
+ *
+ * Falls back to the whole trimmed string when no clear sentence
+ * boundary is found — better to return everything than to chop a
+ * word in half with an ellipsis.
+ */
+function firstSentence(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const match = trimmed.match(/^[\s\S]+?[.!?](?=\s+[A-Z(]|$)/);
+  if (match) return match[0].trim();
+  return trimmed;
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -23,6 +51,7 @@ export async function GET(
         id: true,
         label: true,
         short_definition: true,
+        definition: true,
         deleted: true,
       },
     });
@@ -36,7 +65,7 @@ export async function GET(
       where: { target_id: id, type: 'parent_of' },
       include: {
         frames_frame_relations_source_idToframes: {
-          select: { id: true, label: true, short_definition: true },
+          select: { id: true, label: true, short_definition: true, definition: true },
         },
       },
     });
@@ -46,27 +75,36 @@ export async function GET(
       where: { source_id: id, type: 'parent_of' },
       include: {
         frames_frame_relations_target_idToframes: {
-          select: { id: true, label: true, short_definition: true },
+          select: { id: true, label: true, short_definition: true, definition: true },
         },
       },
     });
 
-    const parents = parentRels.map(r => ({
-      id: r.frames_frame_relations_source_idToframes.id.toString(),
-      label: r.frames_frame_relations_source_idToframes.label,
-      short_definition: r.frames_frame_relations_source_idToframes.short_definition,
-    }));
+    const parents = parentRels.map(r => {
+      const f = r.frames_frame_relations_source_idToframes;
+      return {
+        id: f.id.toString(),
+        label: f.label,
+        short_definition: f.short_definition,
+        definition_excerpt: firstSentence(f.definition),
+      };
+    });
 
-    const children = childRels.map(r => ({
-      id: r.frames_frame_relations_target_idToframes.id.toString(),
-      label: r.frames_frame_relations_target_idToframes.label,
-      short_definition: r.frames_frame_relations_target_idToframes.short_definition,
-    }));
+    const children = childRels.map(r => {
+      const f = r.frames_frame_relations_target_idToframes;
+      return {
+        id: f.id.toString(),
+        label: f.label,
+        short_definition: f.short_definition,
+        definition_excerpt: firstSentence(f.definition),
+      };
+    });
 
     return NextResponse.json({
       id: frame.id.toString(),
       label: frame.label,
       short_definition: frame.short_definition,
+      definition_excerpt: firstSentence(frame.definition),
       parents,
       children,
     });

@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import NodeCard from './NodeCard';
 import LoadingSpinner from '@/components/LoadingSpinner';
+import FrameRefPopover from './FrameRefPopover';
 
 // ============================================
 // Types
@@ -12,14 +13,26 @@ interface FrameSummary {
   id: string;
   label: string;
   short_definition?: string | null;
+  /**
+   * Server-truncated excerpt of the long `definition`. Used as a
+   * graceful fallback when `short_definition` is null so the
+   * NodeCards always have at least *some* identity context to show.
+   */
+  definition_excerpt?: string | null;
 }
 
 interface DAGContext {
   id: string;
   label: string;
   short_definition?: string | null;
+  definition_excerpt?: string | null;
   parents: FrameSummary[];
   children: FrameSummary[];
+}
+
+/** Pick the best available short blurb for a frame card. */
+function frameBlurb(frame: { short_definition?: string | null; definition_excerpt?: string | null }): string | null {
+  return frame.short_definition || frame.definition_excerpt || null;
 }
 
 export interface DAGMoveVisualizationProps {
@@ -118,6 +131,40 @@ function MiniDAGTree({
   const displayedParent = parent ?? (parentLabel ? { id: '', label: parentLabel, short_definition: null } : null);
   const filteredSiblings = siblings.filter(s => s.id !== movingFrame.id).slice(0, 4);
 
+  // Split siblings into two halves around a central spacer so the
+  // straight parent → moving line drops cleanly through the middle
+  // of the row instead of clipping a centered sibling card. Heavier
+  // half on the left when the count is odd. The two halves are
+  // rendered as `flex-1` containers so the central spacer sits on
+  // the container's exact centerline regardless of how wide each
+  // individual sibling card ends up being.
+  const leftCount = Math.ceil(filteredSiblings.length / 2);
+  const leftSiblings = filteredSiblings.slice(0, leftCount);
+  const rightSiblings = filteredSiblings.slice(leftCount);
+
+  const renderSiblingCard = (sib: FrameSummary) => (
+    <div
+      key={sib.id}
+      ref={el => {
+        if (el) siblingRefs.current.set(sib.id, el);
+        else siblingRefs.current.delete(sib.id);
+      }}
+      className="max-w-[140px]"
+    >
+      <FrameRefPopover as="div" frameId={sib.id} fallbackLabel={sib.label}>
+        <NodeCard
+          title={sib.label}
+          subtitle={`#${sib.id}`}
+          type="sibling"
+          className="!p-1.5 opacity-60"
+          titleClassName="text-[10px] leading-tight"
+          noDivider
+          wrap
+        />
+      </FrameRefPopover>
+    </div>
+  );
+
   useEffect(() => {
     const timer = setTimeout(() => {
       if (!containerRef.current) return;
@@ -206,70 +253,95 @@ function MiniDAGTree({
           {isBefore ? 'Before' : 'After'}
         </div>
 
-        {/* Parent */}
+        {/* Parent — hero card: full title + full first-sentence blurb,
+            no truncation. Width sized so most labels fit on one line. */}
         {displayedParent ? (
-          <div ref={parentRef} className="w-full max-w-[200px]">
-            <NodeCard
-              title={displayedParent.label}
-              subtitle={displayedParent.id ? `#${displayedParent.id}` : undefined}
-              type={isBefore ? 'origin' : 'destination'}
-              className="!p-2.5"
+          <div ref={parentRef} className="w-full max-w-[380px]">
+            <FrameRefPopover
+              as="div"
+              frameId={displayedParent.id || null}
+              fallbackLabel={displayedParent.label}
             >
-              {displayedParent.short_definition && (
-                <div className="line-clamp-2">{displayedParent.short_definition}</div>
-              )}
-            </NodeCard>
+              <NodeCard
+                title={displayedParent.label}
+                subtitle={displayedParent.id ? `#${displayedParent.id}` : undefined}
+                type={isBefore ? 'origin' : 'destination'}
+                className="!p-2.5"
+                wrap
+              >
+                {frameBlurb(displayedParent) && (
+                  <div>{frameBlurb(displayedParent)}</div>
+                )}
+              </NodeCard>
+            </FrameRefPopover>
           </div>
         ) : (
-          <div ref={parentRef} className="w-full max-w-[200px]">
+          <div ref={parentRef} className="w-full max-w-[380px]">
             <div className="px-3 py-2 rounded-lg border border-dashed border-gray-300 text-center text-xs text-gray-400 italic">
               No parent (root)
             </div>
           </div>
         )}
 
-        {/* Siblings + Moving frame row */}
-        <div className="flex flex-wrap justify-center gap-2 w-full">
-          {filteredSiblings.map(sib => (
-            <div
-              key={sib.id}
-              ref={el => {
-                if (el) siblingRefs.current.set(sib.id, el);
-                else siblingRefs.current.delete(sib.id);
-              }}
-              className="max-w-[130px]"
-            >
-              <NodeCard
-                title={sib.label}
-                subtitle={`#${sib.id}`}
-                type="sibling"
-                className="!p-2 !text-[11px] opacity-60"
-                noDivider
-              />
+        {/* Siblings row. Siblings are split into two halves with a fixed
+            central spacer so the parent → moving line drops cleanly through
+            the middle of the row instead of clipping a centered sibling
+            card. A phantom placeholder pads the right when the count is
+            odd, keeping the spacer exactly on the centerline. */}
+        {filteredSiblings.length > 0 && (
+          <div className="flex w-full items-start">
+            <div className="flex-1 flex flex-wrap justify-center items-start gap-2 min-w-0">
+              {leftSiblings.map(renderSiblingCard)}
             </div>
-          ))}
+            <div className="w-10 shrink-0" aria-hidden />
+            <div className="flex-1 flex flex-wrap justify-center items-start gap-2 min-w-0">
+              {rightSiblings.map(renderSiblingCard)}
+            </div>
+          </div>
+        )}
 
-          {/* The moving frame */}
+        {/* Moving frame row. Always on its own line below the siblings so
+            the parent → moving line passes vertically through the spacer
+            opened up in the siblings row above. */}
+        <div className="flex justify-center w-full">
           <div
             ref={movingRef}
-            className="max-w-[170px]"
+            className="w-full max-w-[400px]"
           >
-            <NodeCard
-              title={movingFrame.label}
-              subtitle={`#${movingFrame.id}`}
-              type="focus"
-              className={`!p-2.5 ring-2 ${
-                isBefore
-                  ? 'ring-red-300 border-red-300 bg-red-50/50'
-                  : 'ring-emerald-400 border-emerald-400 bg-emerald-50/50'
-              }`}
+            <FrameRefPopover
+              as="div"
+              frameId={movingFrame.id}
+              fallbackLabel={movingFrame.label}
             >
-              <div className={`text-[10px] font-semibold ${
-                isBefore ? 'text-red-500' : 'text-emerald-600'
-              }`}>
-                {isBefore ? 'Departing' : 'Arriving'}
-              </div>
-            </NodeCard>
+              <NodeCard
+                title={movingFrame.label}
+                subtitle={`#${movingFrame.id}`}
+                type="focus"
+                className={`!p-2.5 ring-2 ${
+                  isBefore
+                    ? 'ring-red-300 border-red-300 bg-red-50/50'
+                    : 'ring-emerald-400 border-emerald-400 bg-emerald-50/50'
+                }`}
+                wrap
+              >
+                <div className={`text-[10px] font-semibold ${
+                  isBefore ? 'text-red-500' : 'text-emerald-600'
+                }`}>
+                  {isBefore ? 'Departing' : 'Arriving'}
+                </div>
+                {/* Option A: keep the focus frame's identity visible at rest. The
+                    parent already shows a definition; matching that here gives the
+                    reviewer constant context for the most important frame in the
+                    diagram without the noise of a tooltip. Falls back to the
+                    first sentence of the long definition so the line isn't blank
+                    when `short_definition` is null. */}
+                {frameBlurb(movingFrame) && (
+                  <div className="mt-1 text-gray-600 font-normal">
+                    {frameBlurb(movingFrame)}
+                  </div>
+                )}
+              </NodeCard>
+            </FrameRefPopover>
           </div>
         </div>
 
@@ -283,15 +355,19 @@ function MiniDAGTree({
                   if (el) childRefs.current.set(child.id, el);
                   else childRefs.current.delete(child.id);
                 }}
-                className="max-w-[120px]"
+                className="max-w-[130px]"
               >
-                <NodeCard
-                  title={child.label}
-                  subtitle={`#${child.id}`}
-                  type="sibling"
-                  className="!p-2 !text-[11px] opacity-50"
-                  noDivider
-                />
+                <FrameRefPopover as="div" frameId={child.id} fallbackLabel={child.label}>
+                  <NodeCard
+                    title={child.label}
+                    subtitle={`#${child.id}`}
+                    type="sibling"
+                    className="!p-1.5 opacity-50"
+                    titleClassName="text-[10px] leading-tight"
+                    noDivider
+                    wrap
+                  />
+                </FrameRefPopover>
               </div>
             ))}
             {movingFrameChildren.length > 4 && (
@@ -326,7 +402,12 @@ export default function DAGMoveVisualization(props: DAGMoveVisualizationProps) {
   }
 
   const movingFrameSummary: FrameSummary = movingFrame
-    ? { id: movingFrame.id, label: movingFrame.label, short_definition: movingFrame.short_definition }
+    ? {
+        id: movingFrame.id,
+        label: movingFrame.label,
+        short_definition: movingFrame.short_definition,
+        definition_excerpt: movingFrame.definition_excerpt,
+      }
     : { id: props.frameId, label: props.frameLabel || `Frame #${props.frameId}` };
 
   const movingFrameChildren = movingFrame?.children ?? [];
@@ -338,31 +419,28 @@ export default function DAGMoveVisualization(props: DAGMoveVisualizationProps) {
   const newSiblings = newParent?.children ?? [];
 
   const oldParentSummary: FrameSummary | null = oldParent
-    ? { id: oldParent.id, label: oldParent.label, short_definition: oldParent.short_definition }
+    ? {
+        id: oldParent.id,
+        label: oldParent.label,
+        short_definition: oldParent.short_definition,
+        definition_excerpt: oldParent.definition_excerpt,
+      }
     : null;
 
   const newParentSummary: FrameSummary | null = newParent
-    ? { id: newParent.id, label: newParent.label, short_definition: newParent.short_definition }
+    ? {
+        id: newParent.id,
+        label: newParent.label,
+        short_definition: newParent.short_definition,
+        definition_excerpt: newParent.definition_excerpt,
+      }
     : null;
 
   return (
     <div className="space-y-3">
-      <div className="text-sm font-semibold text-gray-700">
-        DAG Inheritance Move
-      </div>
-      <div className="text-xs text-gray-500">
-        Moving <span className="font-medium text-gray-700">{movingFrameSummary.label}</span>
-        {oldParentSummary && (
-          <>
-            {' '}from <span className="font-medium text-red-600">{oldParentSummary.label}</span>
-          </>
-        )}
-        {' '}to <span className="font-medium text-emerald-600">{newParentSummary?.label ?? 'unknown'}</span>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4 mt-4">
+      <div className="grid grid-cols-2 gap-3">
         {/* Before */}
-        <div className="p-3 rounded-xl border border-gray-200 bg-gray-50/50">
+        <div className="px-2 py-3 rounded-xl border border-gray-200 bg-gray-50/50">
           <MiniDAGTree
             parent={oldParentSummary}
             parentLabel={props.oldParentLabel}
@@ -374,7 +452,7 @@ export default function DAGMoveVisualization(props: DAGMoveVisualizationProps) {
         </div>
 
         {/* After */}
-        <div className="p-3 rounded-xl border border-emerald-200 bg-emerald-50/30">
+        <div className="px-2 py-3 rounded-xl border border-emerald-200 bg-emerald-50/30">
           <MiniDAGTree
             parent={newParentSummary}
             parentLabel={props.newParentLabel}

@@ -12,6 +12,7 @@ export type EditableField =
   | 'label'
   | 'definition'
   | 'short_definition'
+  | 'subtype'
   | 'frame_roles'
   | 'parent_of';
 

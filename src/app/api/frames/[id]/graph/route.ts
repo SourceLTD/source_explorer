@@ -36,6 +36,7 @@ export async function GET(
                       select: {
                         id: true,
                         code: true,
+                        legacy_id: true,
                         gloss: true,
                         lemmas: true,
                         src_lemmas: true,
@@ -102,6 +103,8 @@ export async function GET(
       gloss: frame.definition,
       short_definition: frame.short_definition,
       frame_type: frame.frame_type,
+      subtype: frame.subtype,
+      disable_healthcheck: frame.disable_healthcheck,
       vendler: frame.vendler,
       multi_perspective: frame.multi_perspective,
       wikidata_id: frame.wikidata_id,
@@ -145,6 +148,7 @@ export async function GET(
           lexical_units: (sense.lexical_unit_senses ?? []).map(lus => ({
             id: lus.lexical_units.id.toString(),
             code: lus.lexical_units.code,
+            legacy_id: lus.lexical_units.legacy_id,
             gloss: lus.lexical_units.gloss,
             lemmas: lus.lexical_units.lemmas,
             src_lemmas: lus.lexical_units.src_lemmas,
@@ -165,6 +169,7 @@ export async function GET(
       ).map((lu: any) => ({
         id: lu.id.toString(),
         code: lu.code,
+        legacy_id: lu.legacy_id,
         gloss: lu.gloss,
         lemmas: lu.lemmas,
         src_lemmas: lu.src_lemmas,
@@ -183,6 +188,7 @@ export async function GET(
       ).map((verb: any) => ({
         id: verb.id.toString(),
         code: verb.code,
+        legacy_id: verb.legacy_id,
         gloss: verb.gloss,
         lemmas: verb.lemmas,
         src_lemmas: verb.src_lemmas,

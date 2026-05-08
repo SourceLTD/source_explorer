@@ -74,6 +74,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         flagged: frame.flagged,
         flagged_reason: frame.flagged_reason,
         frame_type: frame.frame_type,
+        subtype: frame.subtype,
+        disable_healthcheck: frame.disable_healthcheck,
         vendler: frame.vendler,
         multi_perspective: frame.multi_perspective,
         wikidata_id: frame.wikidata_id,

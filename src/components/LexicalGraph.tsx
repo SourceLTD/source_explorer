@@ -414,6 +414,11 @@ export default function LexicalGraph({ currentNode, onNodeClick, onEditClick, mo
                       <span style={{ backgroundColor: '#059669', padding: '2px 6px', borderRadius: '3px', fontWeight: '600', fontSize: '10px', color: 'white' }}>
                         {POS_LABELS[posNode.node.pos]?.toUpperCase() || posNode.node.pos.toUpperCase()}
                       </span>
+                      {posNode.node.legacy_id && (
+                        <span style={{ fontWeight: '600', fontSize: '10px', color: 'white', opacity: 0.9 }}>
+                          {posNode.node.legacy_id}
+                        </span>
+                      )}
                       <span style={{ fontWeight: '500', fontSize: '10px', color: 'white' }}>
                         {cleanLexfile(posNode.node.lexfile).toUpperCase()}
                       </span>

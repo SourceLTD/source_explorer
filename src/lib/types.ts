@@ -196,6 +196,8 @@ export interface Frame {
   lexical_units?: LexicalUnitsSample;
   pending?: PendingChangeInfo | null;
   frame_type?: string | null;
+  subtype?: string | null;
+  disable_healthcheck?: boolean;
   vendler?: string | null;
   multi_perspective?: boolean | null;
   wikidata_id?: string | null;
@@ -377,6 +379,8 @@ export interface SearchResult {
   gloss: string;
   pos: string;
   rank?: number;
+  frameDefinition?: string | null;
+  frameType?: string | null;
 }
 
 export interface SearchOptions {
@@ -639,6 +643,7 @@ export interface FrameGraphRole {
 export interface FrameGraphLexicalUnit {
   id: string;
   code: string;
+  legacy_id: string;
   gloss: string;
   pos: PartOfSpeech;
   lemmas: string[];
@@ -769,6 +774,8 @@ export interface FrameRecipeData {
     flagged: boolean | null;
     flagged_reason: string | null;
     frame_type?: string | null;
+    subtype?: string | null;
+    disable_healthcheck?: boolean;
     vendler?: string | null;
     multi_perspective?: boolean | null;
     wikidata_id?: string | null;

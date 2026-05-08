@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { SparklesIcon, FlagIcon } from '@heroicons/react/24/outline';
+import { FlagIcon } from '@heroicons/react/24/outline';
 import FilterPanel from '@/components/FilterPanel';
 import type { FilterState } from './filterState';
 import ColumnVisibilityPanel, { ColumnConfig, ColumnVisibilityState } from '@/components/ColumnVisibilityPanel';
@@ -29,11 +29,18 @@ interface DataTableToolbarProps {
   
   // Column widths
   onResetColumnWidths: () => void;
-  
-  // AI Jobs
-  pendingAIJobs: number;
-  onOpenAIOverlay: () => void;
-  
+
+  /**
+   * @deprecated AI batch flagging UI was removed. The underlying AI jobs
+   * infrastructure (overlay, API, polling) is retained for now but no longer
+   * surfaced in the toolbar. Kept on the props to avoid breaking callers.
+   */
+  pendingAIJobs?: number;
+  /**
+   * @deprecated AI batch flagging UI was removed. See `pendingAIJobs` above.
+   */
+  onOpenAIOverlay?: () => void;
+
   // Selection & Flags
   selectedCount: number;
   flagState: FlagState;
@@ -172,8 +179,7 @@ export function DataTableToolbar({
   onColumnVisibilityChange,
   onResetColumns,
   onResetColumnWidths,
-  pendingAIJobs,
-  onOpenAIOverlay,
+  // pendingAIJobs and onOpenAIOverlay are deprecated and intentionally unused.
   selectedCount,
   flagState,
   onOpenFlagModal,
@@ -222,23 +228,14 @@ export function DataTableToolbar({
             </svg>
             Reset Widths
           </button>
-          {mode !== 'frame_senses' && (
-            <button
-              onClick={onOpenAIOverlay}
-              className="relative inline-flex items-center gap-2 rounded-xl px-3 py-2 text-white transition-colors hover:brightness-110 focus:outline-none focus:ring-2 bg-gradient-to-r from-blue-500 to-blue-600 focus:ring-blue-500 cursor-pointer"
-              title="Open AI batch flagging"
-              aria-label="Open AI batch flagging"
-              type="button"
-            >
-              <SparklesIcon className="h-5 w-5 flex-shrink-0" aria-hidden="true" />
-              {pendingAIJobs > 0 && (
-                <span className="absolute -top-1 -right-1 inline-flex min-h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-600 px-1 text-[11px] font-bold text-white">
-                  {pendingAIJobs > 99 ? '99+' : pendingAIJobs}
-                </span>
-              )}
-            </button>
-            )}
-          
+          {/*
+            Deprecated: AI batch flagging trigger button has been removed from
+            the toolbar. The underlying AI jobs overlay/API/polling code is
+            retained but no longer reachable from this surface. To re-enable,
+            restore the button below and pass `pendingAIJobs` / `onOpenAIOverlay`
+            from the parent again.
+          */}
+
           {/* Flag Actions */}
           {selectedCount > 0 && (
             <FlagActions

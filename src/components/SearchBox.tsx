@@ -11,6 +11,34 @@ interface SearchBoxProps {
   mode?: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames' | 'lexical_units';
 }
 
+function FrameResultPreview({ result }: { result: SearchResult }) {
+  const definition = result.frameDefinition || result.gloss;
+
+  return (
+    <div className="w-full min-w-0">
+      <div className="flex items-center gap-2 mb-1">
+        <div className="font-semibold text-gray-950 truncate">
+          {result.label || result.id}
+        </div>
+        <span className="shrink-0 px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-600 text-[10px] font-mono">
+          #{result.id}
+        </span>
+        {result.frameType && (
+          <span className="shrink-0 rounded-full bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700">
+            {result.frameType}
+          </span>
+        )}
+      </div>
+
+      {definition && (
+        <div className="rounded-lg bg-slate-50 border border-slate-100 px-2 py-1.5 text-xs leading-snug text-slate-700 line-clamp-2">
+          {definition}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function SearchBox({ onSelectResult, onSearchChange, placeholder = "Search...", mode = 'verbs' }: SearchBoxProps) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
@@ -138,44 +166,48 @@ export default function SearchBox({ onSelectResult, onSearchChange, placeholder 
       </div>
 
       {isOpen && results.length > 0 && (
-        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-xl max-h-[600px] overflow-y-auto">
-                      {results.map((result) => (
+        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-xl max-h-[600px] overflow-y-auto shadow-lg">
+          {results.map((result) => (
             <button
               key={result.id}
               onClick={() => handleSelectResult(result)}
               className="w-full px-4 py-3 text-left hover:bg-gray-50 focus:bg-gray-50 focus:outline-none border-b border-gray-100 last:border-b-0 cursor-pointer"
             >
-              <div className="w-full">
-                <div className="font-medium text-gray-900 truncate mb-1">
-                  {result.label || result.id}
-                  <span className="ml-2 text-xs text-gray-500 font-normal">
-                    ({result.pos})
-                  </span>
+              {mode === 'frames' ? (
+                <FrameResultPreview result={result} />
+              ) : (
+                <div className="w-full">
+                  <div className="font-medium text-gray-900 truncate mb-1">
+                    {result.label || result.id}
+                    <span className="ml-2 text-xs text-gray-500 font-normal">
+                      ({result.pos})
+                    </span>
+                  </div>
+                  {(() => {
+                    const allLemmas = result.lemmas || [];
+                    const srcLemmas = result.src_lemmas || [];
+                    // Only show regular lemmas that are NOT in src_lemmas
+                    const regularLemmas = allLemmas.filter(lemma => !srcLemmas.includes(lemma));
+                    const hasLemmas = regularLemmas.length > 0 || srcLemmas.length > 0;
+
+                    return hasLemmas && (
+                      <div className="text-sm text-blue-600 mb-1 font-medium">
+                        {regularLemmas.join(', ')}
+                        {regularLemmas.length > 0 && srcLemmas.length > 0 && ', '}
+                        {srcLemmas.map((lemma, idx) => (
+                          <span key={idx}>
+                            <strong>{lemma}</strong>
+                            {idx < srcLemmas.length - 1 && ', '}
+                          </span>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                  <div className="text-sm text-gray-600 line-clamp-2 w-full">
+                    {result.gloss}
+                  </div>
                 </div>
-                {(() => {
-                  const allLemmas = result.lemmas || [];
-                  const srcLemmas = result.src_lemmas || [];
-                  // Only show regular lemmas that are NOT in src_lemmas
-                  const regularLemmas = allLemmas.filter(lemma => !srcLemmas.includes(lemma));
-                  const hasLemmas = regularLemmas.length > 0 || srcLemmas.length > 0;
-                  
-                  return hasLemmas && (
-                    <div className="text-sm text-blue-600 mb-1 font-medium">
-                      {regularLemmas.join(', ')}
-                      {regularLemmas.length > 0 && srcLemmas.length > 0 && ', '}
-                      {srcLemmas.map((lemma, idx) => (
-                        <span key={idx}>
-                          <strong>{lemma}</strong>
-                          {idx < srcLemmas.length - 1 && ', '}
-                        </span>
-                      ))}
-                    </div>
-                  );
-                })()}
-                <div className="text-sm text-gray-600 line-clamp-2 w-full">
-                  {result.gloss}
-                </div>
-              </div>
+              )}
             </button>
           ))}
         </div>

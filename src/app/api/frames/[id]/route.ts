@@ -226,6 +226,10 @@ export async function PATCH(
     if (body.verifiable !== undefined) updateData.verifiable = body.verifiable;
     if (body.unverifiableReason !== undefined) updateData.unverifiable_reason = body.unverifiableReason;
     if (body.frame_type !== undefined) updateData.frame_type = body.frame_type;
+    if (body.subtype !== undefined) updateData.subtype = body.subtype;
+    if (body.disable_healthcheck !== undefined) {
+      updateData.disable_healthcheck = Boolean(body.disable_healthcheck);
+    }
     if (body.vendler !== undefined) updateData.vendler = body.vendler;
     if (body.multi_perspective !== undefined) updateData.multi_perspective = body.multi_perspective;
     if (body.wikidata_id !== undefined) updateData.wikidata_id = body.wikidata_id;

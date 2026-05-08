@@ -1,59 +1,26 @@
 /**
  * API Route: /api/changesets/pending
- * 
+ *
  * GET - Get all pending changesets grouped by:
  *   - LLM job (if llm_job_id is set)
  *   - User (if llm_job_id is null - manual changes)
+ *
+ * The wire shape per changeset is owned by `src/lib/changesets/pending-shape.ts`
+ * so this endpoint and the by-issue endpoint stay byte-identical.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-
-const FRAME_REF_FIELDS = new Set(['frame_id']);
-
-interface FieldChange {
-  id: string;
-  changeset_id: string;
-  field_name: string;
-  old_value: unknown;
-  new_value: unknown;
-  old_display?: string;
-  new_display?: string;
-  status: string;
-  approved_by: string | null;
-  approved_at: string | null;
-  rejected_by: string | null;
-  rejected_at: string | null;
-}
-
-interface Changeset {
-  id: string;
-  entity_type: string;
-  entity_id: string | null;
-  operation: string;
-  entity_version: number | null;
-  before_snapshot: Record<string, unknown> | null;
-  after_snapshot: Record<string, unknown> | null;
-  status: string;
-  created_by: string;
-  created_at: string;
-  reviewed_by: string | null;
-  reviewed_at: string | null;
-  committed_at: string | null;
-  llm_job_id: string | null;
-  issue_id: string | null;
-  issue: {
-    id: string;
-    title: string;
-    status: string;
-    priority: string;
-  } | null;
-  field_changes: FieldChange[];
-}
+import {
+  PENDING_CHANGESET_INCLUDE,
+  buildFrameRefLookup,
+  shapePendingChangeset,
+  type ShapedChangeset,
+} from '@/lib/changesets/pending-shape';
 
 interface ChangesetsByType {
   entity_type: string;
-  changesets: Changeset[];
+  changesets: ShapedChangeset[];
 }
 
 interface LlmJobGroup {
@@ -78,130 +45,23 @@ interface ManualGroup {
 
 type ChangeGroup = LlmJobGroup | ManualGroup;
 
-function normalizeIntLike(value: unknown): string | null {
-  if (value === null || value === undefined) return null;
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    if (!trimmed) return null;
-    return /^-?\d+$/.test(trimmed) ? trimmed : null;
-  }
-  if (typeof value === 'number') {
-    if (!Number.isInteger(value)) return null;
-    return String(value);
-  }
-  if (typeof value === 'bigint') return value.toString();
-  return null;
-}
-
-function pickSnapshotName(snapshot: unknown): string | null {
-  if (!snapshot || typeof snapshot !== 'object') return null;
-  if (Array.isArray(snapshot)) return null;
-  const rec = snapshot as Record<string, unknown>;
-  const code = rec.code;
-  if (typeof code === 'string' && code.trim() !== '') return code.trim();
-  const label = rec.label;
-  if (typeof label === 'string' && label.trim() !== '') return label.trim();
-  return null;
-}
-
-function pickFrameName(frame: { code: string | null; label: string }): string {
-  const code = typeof frame.code === 'string' ? frame.code.trim() : '';
-  if (code) return code;
-  const label = frame.label.trim();
-  if (label) return label;
-  return 'Unknown';
-}
-
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
-    // Get all pending changesets with their field changes and llm_job info
     const changesets = await prisma.changesets.findMany({
-      where: {
-        status: 'pending',
-      },
+      where: { status: 'pending' },
       orderBy: { created_at: 'desc' },
-      include: {
-        field_changes: true,
-        llm_jobs: {
-          select: {
-            id: true,
-            label: true,
-            status: true,
-            submitted_by: true,
-          },
-        },
-        issues: {
-          select: {
-            id: true,
-            title: true,
-            status: true,
-            priority: true,
-          },
-        },
-      },
+      include: PENDING_CHANGESET_INCLUDE,
     });
 
-    // Build display lookups for frame_id so the UI can show codes instead of raw ints.
-    const positiveFrameIds = new Set<string>();
-    const virtualCreateChangesetIds = new Set<string>(); // positive changeset id (virtual id = -changeset_id)
+    const lookup = await buildFrameRefLookup(changesets);
 
-    for (const cs of changesets) {
-      for (const fc of cs.field_changes) {
-        if (!FRAME_REF_FIELDS.has(fc.field_name)) continue;
-        for (const v of [fc.old_value, fc.new_value]) {
-          const raw = normalizeIntLike(v);
-          if (!raw) continue;
-          if (/^\d+$/.test(raw)) positiveFrameIds.add(raw);
-          else if (/^-\d+$/.test(raw)) virtualCreateChangesetIds.add(raw.slice(1));
-        }
+    const llmJobGroups = new Map<
+      string,
+      {
+        llm_job: typeof changesets[0]['llm_jobs'];
+        changesets: typeof changesets;
       }
-    }
-
-    const frameIdToName = new Map<string, string>(); // id -> code/label
-    if (positiveFrameIds.size > 0) {
-      const ids = Array.from(positiveFrameIds, s => BigInt(s));
-      const frames = await prisma.frames.findMany({
-        where: { id: { in: ids } },
-        select: { id: true, code: true, label: true },
-      });
-      for (const f of frames) {
-        frameIdToName.set(f.id.toString(), pickFrameName(f));
-      }
-    }
-
-    const createChangesetIdToName = new Map<string, string>(); // create-changeset-id -> code/label
-    if (virtualCreateChangesetIds.size > 0) {
-      const ids = Array.from(virtualCreateChangesetIds, s => BigInt(s));
-      const createChangesets = await prisma.changesets.findMany({
-        where: { id: { in: ids } },
-        select: { id: true, entity_type: true, operation: true, after_snapshot: true },
-      });
-      for (const cs of createChangesets) {
-        // Only frames are expected here, but we can safely fall back for any snapshot with code/label.
-        const name = pickSnapshotName(cs.after_snapshot);
-        if (name) createChangesetIdToName.set(cs.id.toString(), name);
-      }
-    }
-
-    const displayForFrameRef = (raw: string | null): string | null => {
-      if (!raw) return null;
-      if (/^\d+$/.test(raw)) {
-        const name = frameIdToName.get(raw) ?? 'Unknown';
-        return `${name} (#${raw})`;
-      }
-      if (/^-\d+$/.test(raw)) {
-        const createId = raw.slice(1);
-        const name = createChangesetIdToName.get(createId) ?? 'Unknown';
-        return `${name} (${raw}) (pending)`;
-      }
-      return null;
-    };
-
-    // Group by llm_job_id (for LLM changes) or created_by (for manual changes)
-    const llmJobGroups = new Map<string, {
-      llm_job: typeof changesets[0]['llm_jobs'];
-      changesets: typeof changesets;
-    }>();
+    >();
     const manualGroups = new Map<string, typeof changesets>();
 
     for (const cs of changesets) {
@@ -219,89 +79,39 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Helper to group changesets by entity type
     const groupByEntityType = (cs: typeof changesets): ChangesetsByType[] => {
-      const byType = new Map<string, Changeset[]>();
-      
+      const byType = new Map<string, ShapedChangeset[]>();
       for (const c of cs) {
         if (!byType.has(c.entity_type)) {
           byType.set(c.entity_type, []);
         }
-        byType.get(c.entity_type)!.push({
-          id: c.id.toString(),
-          entity_type: c.entity_type,
-          entity_id: c.entity_id?.toString() ?? null,
-          operation: c.operation,
-          entity_version: c.entity_version,
-          before_snapshot: c.before_snapshot as Record<string, unknown> | null,
-          after_snapshot: c.after_snapshot as Record<string, unknown> | null,
-          status: c.status,
-          created_by: c.created_by,
-          created_at: c.created_at.toISOString(),
-          reviewed_by: c.reviewed_by,
-          reviewed_at: c.reviewed_at?.toISOString() ?? null,
-          committed_at: c.committed_at?.toISOString() ?? null,
-          llm_job_id: c.llm_job_id?.toString() ?? null,
-          issue_id: c.issue_id?.toString() ?? null,
-          issue: c.issues
-            ? {
-                id: c.issues.id.toString(),
-                title: c.issues.title,
-                status: c.issues.status,
-                priority: c.issues.priority,
-              }
-            : null,
-          field_changes: c.field_changes.map(fc => {
-            const shouldDecorate = FRAME_REF_FIELDS.has(fc.field_name);
-            const oldRaw = shouldDecorate ? normalizeIntLike(fc.old_value) : null;
-            const newRaw = shouldDecorate ? normalizeIntLike(fc.new_value) : null;
-            const oldDisplay = shouldDecorate ? displayForFrameRef(oldRaw) : null;
-            const newDisplay = shouldDecorate ? displayForFrameRef(newRaw) : null;
-
-            return {
-              id: fc.id.toString(),
-              changeset_id: fc.changeset_id.toString(),
-              field_name: fc.field_name,
-              old_value: fc.old_value,
-              new_value: fc.new_value,
-              old_display: oldDisplay ?? undefined,
-              new_display: newDisplay ?? undefined,
-              status: fc.status,
-              approved_by: fc.approved_by,
-              approved_at: fc.approved_at?.toISOString() ?? null,
-              rejected_by: fc.rejected_by,
-              rejected_at: fc.rejected_at?.toISOString() ?? null,
-            };
-          }),
-        });
+        byType.get(c.entity_type)!.push(shapePendingChangeset(c, lookup));
       }
-
       return Array.from(byType.entries()).map(([entity_type, changesets]) => ({
         entity_type,
         changesets,
       }));
     };
 
-    // Build response groups
     const groups: ChangeGroup[] = [];
 
-    // Add LLM job groups
     for (const [jobId, { llm_job, changesets: cs }] of llmJobGroups) {
       groups.push({
         type: 'llm_job',
         llm_job_id: jobId,
-        llm_job: llm_job ? {
-          id: llm_job.id.toString(),
-          label: llm_job.label,
-          status: llm_job.status,
-          submitted_by: llm_job.submitted_by,
-        } : null,
+        llm_job: llm_job
+          ? {
+              id: llm_job.id.toString(),
+              label: llm_job.label,
+              status: llm_job.status,
+              submitted_by: llm_job.submitted_by,
+            }
+          : null,
         changesets_by_type: groupByEntityType(cs),
         total_changesets: cs.length,
       });
     }
 
-    // Add manual groups
     for (const [createdBy, cs] of manualGroups) {
       groups.push({
         type: 'manual',
@@ -331,4 +141,3 @@ export async function GET(request: NextRequest) {
     );
   }
 }
-

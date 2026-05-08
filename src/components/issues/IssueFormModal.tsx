@@ -11,6 +11,7 @@ import {
   ISSUE_STATUS_LABELS,
   ISSUE_PRIORITY_LABELS,
 } from '@/lib/issues/types';
+import type { HealthDiagnosisCode } from '@/lib/health-checks/types';
 
 interface IssueFormModalProps {
   isOpen: boolean;
@@ -30,6 +31,8 @@ export default function IssueFormModal({
   const [status, setStatus] = useState<IssueStatus>('open');
   const [priority, setPriority] = useState<IssuePriority>('medium');
   const [labelsText, setLabelsText] = useState('');
+  const [diagnosisCodeId, setDiagnosisCodeId] = useState<string>('');
+  const [diagnosisCodes, setDiagnosisCodes] = useState<HealthDiagnosisCode[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -42,9 +45,28 @@ export default function IssueFormModal({
       setStatus(issue?.status ?? 'open');
       setPriority(issue?.priority ?? 'medium');
       setLabelsText((issue?.labels ?? []).join(', '));
+      setDiagnosisCodeId(issue?.diagnosis_code_id ?? '');
       setError(null);
     }
   }, [isOpen, issue]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch('/api/health-checks/diagnosis-codes?enabled=true');
+        if (!res.ok) return;
+        const data = (await res.json()) as { diagnosis_codes: HealthDiagnosisCode[] };
+        if (!cancelled) setDiagnosisCodes(data.diagnosis_codes);
+      } catch {
+        // Non-critical; the dropdown just stays empty.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen]);
 
   const handleSave = async () => {
     if (!title.trim()) {
@@ -65,6 +87,7 @@ export default function IssueFormModal({
       status,
       priority,
       labels,
+      diagnosis_code_id: diagnosisCodeId === '' ? null : diagnosisCodeId,
     };
 
     try {
@@ -191,6 +214,24 @@ export default function IssueFormModal({
             placeholder="bug, docs"
             className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Health Check Diagnosis (optional)
+          </label>
+          <select
+            value={diagnosisCodeId}
+            onChange={(e) => setDiagnosisCodeId(e.target.value)}
+            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">— None —</option>
+            {diagnosisCodes.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.code} · {c.label}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
     </Modal>

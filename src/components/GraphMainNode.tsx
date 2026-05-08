@@ -2,7 +2,8 @@
 
 import React, { useState, useCallback } from 'react';
 import { Group } from '@visx/group';
-import { GraphNode, sortRolesByPrecedence, PendingChangeInfo } from '@/lib/types';
+import { GraphNode, sortRolesByPrecedence } from '@/lib/types';
+import FrameSenseTypeBadges from './FrameSenseTypeBadges';
 import { getPendingNodeStroke, getPendingNodeFill } from './PendingChangeIndicator';
 
 interface GraphMainNodeProps {
@@ -88,6 +89,18 @@ export default function GraphMainNode({
     else setInternalAlsoSeeExpanded(val);
   };
 
+  const frameSenseTypeBadgeSource = {
+    inchoative: node.senses?.some(sense => sense.inchoative) ?? false,
+    causative: node.senses?.some(sense => sense.causative) ?? false,
+    perspectival: node.senses?.some(sense => sense.perspectival) ?? false,
+  };
+  const hasFrameSenseRow = Boolean(
+    node.frame ||
+    frameSenseTypeBadgeSource.inchoative ||
+    frameSenseTypeBadgeSource.causative ||
+    frameSenseTypeBadgeSource.perspectival
+  );
+
   // Helper function to remove POS prefix from lexfile
   const cleanLexfile = (lexfile: string): string => {
     return lexfile.replace(/^(verb|noun|adj|adv|satellite)\./i, '');
@@ -126,7 +139,7 @@ export default function GraphMainNode({
     
     height += 22; // Category badge
     
-    if (node.frame) {
+    if (hasFrameSenseRow) {
       height += 22;
     }
     
@@ -211,7 +224,7 @@ export default function GraphMainNode({
       entailsHeight,
       alsoSeeHeight
     };
-  }, [node, rolesExpanded, lemmasExpanded, examplesExpanded, causesExpanded, entailsExpanded, alsoSeeExpanded]);
+  }, [node, rolesExpanded, lemmasExpanded, examplesExpanded, causesExpanded, entailsExpanded, alsoSeeExpanded, hasFrameSenseRow]);
 
   const nodeWidth = 600;
   const nodeHeights = calculateNodeHeights();
@@ -225,7 +238,7 @@ export default function GraphMainNode({
   
   const { glossHeight, lemmasHeight, examplesHeight, rolesHeight } = nodeHeights;
   
-  let sectionY = centerY + 55 + (node.vendler_class ? 20 : 0) + 22 + (node.frame ? 22 : 0) + glossHeight + lemmasHeight + examplesHeight + rolesHeight;
+  let sectionY = centerY + 55 + (node.vendler_class ? 20 : 0) + 22 + (hasFrameSenseRow ? 22 : 0) + glossHeight + lemmasHeight + examplesHeight + rolesHeight;
   
   const causesY = sectionY;
   let causesHeight = 0;
@@ -394,7 +407,7 @@ export default function GraphMainNode({
       </foreignObject>
       
       {/* Frame Badge */}
-      {node.frame && (
+      {hasFrameSenseRow && (
         <foreignObject
           x={centerX + 12}
           y={centerY + (node.vendler_class ? 90 : 70)}
@@ -411,20 +424,25 @@ export default function GraphMainNode({
               alignItems: 'center',
               gap: '4px',
             }}
-            title={node.frame.short_definition ?? undefined}
+            title={node.frame?.short_definition ?? undefined}
           >
-            <span style={{ 
-              backgroundColor: '#8b5cf6', 
-              padding: '2px 6px', 
-              borderRadius: '3px',
-              fontWeight: '600',
-              fontSize: '10px',
-            }}>
-              FRAME
-            </span>
-            <span style={{ fontWeight: '500', fontSize: '10px' }}>
-              {node.frame.label}
-            </span>
+            {node.frame && (
+              <>
+                <span style={{ 
+                  backgroundColor: '#8b5cf6', 
+                  padding: '2px 6px', 
+                  borderRadius: '3px',
+                  fontWeight: '600',
+                  fontSize: '10px',
+                }}>
+                  FRAME
+                </span>
+                <span style={{ fontWeight: '500', fontSize: '10px' }}>
+                  {node.frame.label}
+                </span>
+              </>
+            )}
+            <FrameSenseTypeBadges sense={frameSenseTypeBadgeSource} />
           </div>
         </foreignObject>
       )}
@@ -432,7 +450,7 @@ export default function GraphMainNode({
       {/* Definition/gloss */}
       <foreignObject
         x={centerX + 12}
-        y={centerY + 55 + (node.vendler_class ? 20 : 0) + 22 + (node.frame ? 22 : 0)}
+        y={centerY + 55 + (node.vendler_class ? 20 : 0) + 22 + (hasFrameSenseRow ? 22 : 0)}
         width={nodeWidth - 24}
         height={glossHeight}
       >
@@ -466,7 +484,7 @@ export default function GraphMainNode({
           <>
             <foreignObject
               x={centerX + 12}
-              y={centerY + 55 + (node.vendler_class ? 20 : 0) + 22 + (node.frame ? 22 : 0) + glossHeight}
+              y={centerY + 55 + (node.vendler_class ? 20 : 0) + 22 + (hasFrameSenseRow ? 22 : 0) + glossHeight}
               width={nodeWidth - 24}
               height={20}
             >
@@ -491,7 +509,7 @@ export default function GraphMainNode({
             {lemmasExpanded && (
               <foreignObject
                 x={centerX + 12}
-                y={centerY + 55 + (node.vendler_class ? 20 : 0) + 22 + (node.frame ? 22 : 0) + glossHeight + 20}
+                y={centerY + 55 + (node.vendler_class ? 20 : 0) + 22 + (hasFrameSenseRow ? 22 : 0) + glossHeight + 20}
                 width={nodeWidth - 24}
                 height={lemmasHeight - 20}
               >
@@ -542,7 +560,7 @@ export default function GraphMainNode({
         <>
           <foreignObject
             x={centerX + 12}
-            y={centerY + 55 + (node.vendler_class ? 20 : 0) + 22 + (node.frame ? 22 : 0) + glossHeight + lemmasHeight}
+            y={centerY + 55 + (node.vendler_class ? 20 : 0) + 22 + (hasFrameSenseRow ? 22 : 0) + glossHeight + lemmasHeight}
             width={nodeWidth - 24}
             height={20}
           >
@@ -567,7 +585,7 @@ export default function GraphMainNode({
           {examplesExpanded && (
             <foreignObject
               x={centerX + 12}
-              y={centerY + 55 + (node.vendler_class ? 20 : 0) + 22 + (node.frame ? 22 : 0) + glossHeight + lemmasHeight + 20}
+              y={centerY + 55 + (node.vendler_class ? 20 : 0) + 22 + (hasFrameSenseRow ? 22 : 0) + glossHeight + lemmasHeight + 20}
               width={nodeWidth - 24}
               height={examplesHeight - 20}
             >
@@ -594,7 +612,7 @@ export default function GraphMainNode({
       
       {/* Roles */}
       {(() => {
-        const rolesStartY = centerY + 55 + (node.vendler_class ? 20 : 0) + 22 + (node.frame ? 22 : 0) + glossHeight + lemmasHeight + examplesHeight;
+        const rolesStartY = centerY + 55 + (node.vendler_class ? 20 : 0) + 22 + (hasFrameSenseRow ? 22 : 0) + glossHeight + lemmasHeight + examplesHeight;
         let currentRoleY = rolesStartY + 20;
         const roleElements: JSX.Element[] = [];
         
@@ -1093,7 +1111,9 @@ export function calculateMainNodeHeight(
   height += 25; // Title
   if (node.vendler_class) height += 20;
   height += 22; // Category
-  if (node.frame) height += 22;
+  if (node.frame || node.senses?.some(sense => sense.inchoative || sense.causative || sense.perspectival)) {
+    height += 22;
+  }
   
   const glossText = node.gloss || '';
   const glossHeight = glossText ? Math.max(40, estimateTextHeight(glossText, contentWidth, 14, 1.3) + 10) : 40;

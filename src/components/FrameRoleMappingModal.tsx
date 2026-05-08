@@ -60,24 +60,6 @@ const FATE_ORDER: Record<RowFate, number> = {
   dropped: 5,
 };
 
-const FATE_LABEL: Record<RowFate, string> = {
-  identical: 'Identical',
-  renamed: 'Renamed / Specialised',
-  merged: 'Merged',
-  incorporated: 'Incorporated',
-  absorbed: 'Absorbed',
-  dropped: 'Dropped',
-};
-
-const FATE_BADGE_CLASSES: Record<RowFate, string> = {
-  identical: 'bg-gray-100 text-gray-700',
-  renamed: 'bg-blue-100 text-blue-700',
-  merged: 'bg-purple-100 text-purple-700',
-  incorporated: 'bg-amber-100 text-amber-800',
-  absorbed: 'bg-gray-200 text-gray-600',
-  dropped: 'bg-red-100 text-red-700',
-};
-
 export default function FrameRoleMappingModal({
   parents,
   childId,
@@ -201,10 +183,10 @@ export default function FrameRoleMappingModal({
       />
 
       <div
-        className="bg-white rounded-xl w-[95vw] max-w-5xl mx-4 h-[85vh] overflow-hidden relative z-10 flex flex-col shadow-xl"
+        className="bg-white rounded-xl w-[90vw] max-w-2xl mx-4 max-h-[72vh] overflow-hidden relative z-10 flex flex-col shadow-xl"
         onClick={e => e.stopPropagation()}
       >
-        <div className="px-5 py-4 border-b border-gray-200 bg-gray-50 shrink-0 flex items-center justify-between">
+        <div className="px-4 py-3 border-b border-gray-200 bg-gray-50 shrink-0 flex items-center justify-between">
           <div>
             <h2 className="text-base font-semibold text-gray-900">
               Role Mapping
@@ -236,7 +218,7 @@ export default function FrameRoleMappingModal({
           </button>
         </div>
 
-        <main className="flex-1 overflow-y-auto p-6">
+        <main className="flex-1 overflow-y-auto p-4">
           {loading ? (
             <div className="flex items-center justify-center h-full">
               <LoadingSpinner />
@@ -252,8 +234,8 @@ export default function FrameRoleMappingModal({
               </p>
             </div>
           ) : (
-            <div className="max-w-4xl mx-auto">
-              <div className="grid grid-cols-[1fr_auto_1fr] gap-x-4 mb-3 px-2">
+            <div className="max-w-2xl mx-auto">
+              <div className="grid grid-cols-[1fr_44px_1fr] gap-x-3 mb-3 px-2">
                 <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 text-right">
                   {resolvedParentLabel}
                 </div>
@@ -262,7 +244,7 @@ export default function FrameRoleMappingModal({
                   {resolvedChildLabel}
                 </div>
               </div>
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-1">
                 {rows.map(row => (
                   <MappingRow key={row.key} row={row} />
                 ))}
@@ -315,7 +297,7 @@ function MappingRow({ row }: { row: DisplayRow }) {
   })();
 
   return (
-    <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-x-4 px-3 py-2 rounded-lg hover:bg-gray-50 border border-transparent hover:border-gray-200 transition-colors">
+    <div className="grid grid-cols-[1fr_44px_1fr] items-center gap-x-3 px-2 py-1.5 rounded-lg hover:bg-gray-50 border border-transparent hover:border-gray-200 transition-colors">
       <div className="flex flex-col items-end gap-1">
         {parentRoles.map(r => (
           <span
@@ -327,33 +309,51 @@ function MappingRow({ row }: { row: DisplayRow }) {
         ))}
       </div>
 
-      <div className="flex items-center gap-2">
-        <svg width={28} height={14} viewBox="0 0 28 14" className="text-gray-400">
+      <MappingArrows count={parentRoles.length} />
+
+      <div className="flex items-center">{right}</div>
+    </div>
+  );
+}
+
+function MappingArrows({ count }: { count: number }) {
+  const roleCount = Math.max(1, count);
+  const rowHeight = 24;
+  const height = Math.max(18, roleCount * rowHeight);
+  const targetY = height / 2;
+  const sourceYs = Array.from(
+    { length: roleCount },
+    (_, index) => rowHeight / 2 + index * rowHeight
+  );
+
+  return (
+    <svg
+      width={44}
+      height={height}
+      viewBox={`0 0 44 ${height}`}
+      className="text-gray-400"
+      aria-hidden="true"
+    >
+      {sourceYs.map((sourceY, index) => (
+        <g key={index}>
           <line
-            x1={0}
-            y1={7}
-            x2={22}
-            y2={7}
+            x1={2}
+            y1={sourceY}
+            x2={34}
+            y2={targetY}
             stroke="currentColor"
             strokeWidth={1.5}
           />
           <polyline
-            points="18,3 22,7 18,11"
+            points={`${30},${targetY - 4} ${34},${targetY} ${30},${targetY + 4}`}
             fill="none"
             stroke="currentColor"
             strokeWidth={1.5}
             strokeLinecap="round"
             strokeLinejoin="round"
           />
-        </svg>
-        <span
-          className={`text-[10px] uppercase tracking-wide font-semibold px-1.5 py-0.5 rounded ${FATE_BADGE_CLASSES[fate]}`}
-        >
-          {FATE_LABEL[fate]}
-        </span>
-      </div>
-
-      <div className="flex items-center">{right}</div>
-    </div>
+        </g>
+      ))}
+    </svg>
   );
 }
