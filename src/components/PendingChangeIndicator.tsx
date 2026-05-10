@@ -18,6 +18,12 @@ export function getPendingRowClasses(operation: PendingChangeOperation): string 
       return 'bg-green-100 hover:bg-green-200';
     case 'delete':
       return 'bg-red-100 hover:bg-red-200 opacity-75';
+    case 'merge':
+      // Merge collapses two rows into one; treat the row visually
+      // like a delete (the current row is the survivor's pre-merge
+      // state) but in purple so reviewers don't confuse it with a
+      // straight deletion.
+      return 'bg-purple-100 hover:bg-purple-200';
     case 'update':
     default:
       return 'bg-orange-100 hover:bg-orange-200';
@@ -33,6 +39,8 @@ export function getPendingCellClasses(operation: PendingChangeOperation): string
       return 'ring-2 ring-green-400 ring-inset bg-green-200';
     case 'delete':
       return 'ring-2 ring-red-400 ring-inset bg-red-200 line-through';
+    case 'merge':
+      return 'ring-2 ring-purple-400 ring-inset bg-purple-200';
     case 'update':
     default:
       // Use yellow for per-field update highlighting (distinct from the orange row-level highlight)
@@ -195,6 +203,8 @@ export function getPendingNodeStroke(operation: PendingChangeOperation): string 
       return '#22c55e'; // green-500
     case 'delete':
       return '#ef4444'; // red-500
+    case 'merge':
+      return '#a855f7'; // purple-500
     case 'update':
     default:
       return '#f97316'; // orange-500
@@ -210,6 +220,8 @@ export function getPendingNodeFill(operation: PendingChangeOperation): string {
       return '#bbf7d0'; // green-200
     case 'delete':
       return '#fecaca'; // red-200
+    case 'merge':
+      return '#e9d5ff'; // purple-200
     case 'update':
     default:
       return '#fed7aa'; // orange-200
@@ -394,26 +406,29 @@ export function PendingEntityBadge({
 
   const sizeClasses = size === 'sm' ? 'text-xs px-1.5 py-0.5' : 'text-sm px-2 py-1';
   
-  const badgeClasses = {
+  const badgeClasses: Record<PendingChangeOperation, string> = {
     create: 'bg-green-100 text-green-700 border-green-300',
     update: 'bg-orange-100 text-orange-700 border-orange-300',
     delete: 'bg-red-100 text-red-700 border-red-300',
-  }[pending.operation];
+    merge: 'bg-purple-100 text-purple-700 border-purple-300',
+  };
 
-  const label = {
+  const label: Record<PendingChangeOperation, string> = {
     create: 'New',
     update: 'Modified',
     delete: 'Deleted',
-  }[pending.operation];
+    merge: 'Merged',
+  };
 
   return (
-    <span className={`${sizeClasses} ${badgeClasses} font-medium rounded border inline-flex items-center gap-1`}>
+    <span className={`${sizeClasses} ${badgeClasses[pending.operation]} font-medium rounded border inline-flex items-center gap-1`}>
       <span className={`w-1.5 h-1.5 rounded-full ${
         pending.operation === 'create' ? 'bg-green-500' :
         pending.operation === 'delete' ? 'bg-red-500' :
+        pending.operation === 'merge' ? 'bg-purple-500' :
         'bg-orange-500'
       }`} />
-      {label}
+      {label[pending.operation]}
     </span>
   );
 }

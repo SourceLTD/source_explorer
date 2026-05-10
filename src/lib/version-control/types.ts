@@ -18,9 +18,10 @@ export type EntityType =
   | 'frame_role'
   | 'frame_sense'            // Intermediate sense entity between LUs and frames
   | 'recipe'
-  | 'frame_relation';
+  | 'frame_relation'
+  | 'frame_role_mapping';    // Inheritance role mapping (Phase 2 cascading remediations)
 
-export type ChangeOperation = 'create' | 'update' | 'delete';
+export type ChangeOperation = 'create' | 'update' | 'delete' | 'merge';
 
 export type ChangesetStatus = 'pending' | 'committed' | 'discarded';
 
@@ -263,6 +264,7 @@ export const ENTITY_TYPE_TO_TABLE: Record<EntityType, string> = {
   frame_sense: 'frame_senses',
   recipe: 'recipes',
   frame_relation: 'frame_relations',
+  frame_role_mapping: 'frame_role_mappings',
 };
 
 /**
@@ -275,6 +277,7 @@ export const TABLE_TO_ENTITY_TYPE: Record<string, EntityType> = {
   frame_senses: 'frame_sense',
   recipes: 'recipe',
   frame_relations: 'frame_relation',
+  frame_role_mappings: 'frame_role_mapping',
 };
 
 /**

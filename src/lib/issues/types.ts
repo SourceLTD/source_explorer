@@ -35,6 +35,17 @@ export interface Issue {
    * issues with no linked findings will be 0.
    */
   open_findings_count?: number;
+  /**
+   * Phase 3 of the cascading-remediations rebuild: when set, the
+   * planner uses this strategy instead of the diagnosis-code default
+   * (`COALESCE(strategy_override, remediation_strategy)`). The
+   * create-issues sweep auto-promotes certain codes (e.g.
+   * `detach_parent_relation` -> `reparent_frame` when the child has
+   * only one parent); reviewers can also flip it manually via the
+   * issue PATCH endpoint. NULL means "use the diagnosis-code
+   * default".
+   */
+  strategy_override?: string | null;
 }
 
 export interface IssueChangesetSummary {
@@ -57,12 +68,21 @@ export interface IssueChangesetSummary {
 
 /**
  * v2: known plan kinds. Strings match the runner-side enum (see
- * `change_plans.plan_kind` in the runner schema). UI renderers fall
- * back to `composite` for unknown values to stay forward-compatible.
+ * `change_plans.plan_kind` in the runner schema). The previous
+ * `composite` escape hatch was removed in the cascading-remediations
+ * rewrite; the remaining kinds are exhaustive.
  */
 export type ChangePlanKind =
   | 'split_frame'
   | 'merge_frame'
+  /**
+   * v2 Phase 1: collapse two `frame_senses` rows on the same frame
+   * into one. Lowers to a single changeset with `operation='merge'`
+   * (added by `add_merge_to_change_operation.sql`); the explorer's
+   * `commitMergeInTx` runs the link-table repointing + winner-defn
+   * UPDATE + loser DELETE inside the outer plan transaction.
+   */
+  | 'merge_sense'
   | 'move_frame_sense'
   /**
    * v2: a frame reparent in the inheritance DAG. Lowers to one
@@ -74,7 +94,16 @@ export type ChangePlanKind =
   | 'move_frame_parent'
   | 'attach_relation'
   | 'detach_relation'
-  | 'composite';
+  /**
+   * v2 Phase 2 (cascading remediations, eventual-consistency model):
+   * regenerate `frame_role_mappings` rows for one (parent, child)
+   * inheritance edge. Lowers to N `frame_role_mapping` CREATE
+   * changesets, one per parent role with a non-null child_role_label.
+   * Picked up by the `regenerate_role_mappings` strategy in response
+   * to findings of the new
+   * `FRAME_INHERITANCE_MISSING_ROLE_MAPPINGS` programmatic check.
+   */
+  | 'regenerate_role_mappings';
 
 /** v2: lifecycle status mirrored from runner schema. */
 export type ChangePlanStatus = 'pending' | 'committed' | 'discarded' | 'failed';
@@ -96,7 +125,7 @@ export interface IssueChangePlanChangesetSummary {
  * v2: a `change_plans` row attached to an issue. The runner writes one
  * of these whenever a structural remediation strategy proposes more
  * than one changeset that must be approved/rejected as a unit (split,
- * merge, move, multi-edge attach/detach, composite).
+ * merge, move, multi-edge attach/detach).
  *
  * `conflict_report` is populated when a commit attempt failed
  * partway through; it lists which sub-changeset failed and why so the

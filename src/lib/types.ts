@@ -603,7 +603,7 @@ export const RELATION_LABELS: Record<string, string> = {
 // Pending Change Types
 // ============================================
 
-export type PendingChangeOperation = 'create' | 'update' | 'delete';
+export type PendingChangeOperation = 'create' | 'update' | 'delete' | 'merge';
 
 export interface PendingFieldChange {
   field_change_id: string;

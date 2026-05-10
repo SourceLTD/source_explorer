@@ -11,6 +11,7 @@ import {
   PencilSquareIcon,
   TrashIcon,
   ArrowsRightLeftIcon,
+  ArrowsPointingInIcon,
 } from '@heroicons/react/24/outline';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import FrameInfoCard from '@/components/pending/context/FrameInfoCard';
@@ -470,6 +471,8 @@ function operationIcon(op: string) {
       return <PlusCircleIcon className="w-4 h-4" />;
     case 'delete':
       return <TrashIcon className="w-4 h-4" />;
+    case 'merge':
+      return <ArrowsPointingInIcon className="w-4 h-4" />;
     case 'move':
       return <ArrowsRightLeftIcon className="w-4 h-4" />;
     case 'update':

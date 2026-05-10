@@ -51,12 +51,15 @@ model frames {
   recipe_graph                                                    Json?
   subtype                                                         frame_subtype_enum?
   disable_healthcheck                                             Boolean                @default(false)
+  merged_into                                                     BigInt?
   frame_relations_frame_relations_source_idToframes               frame_relations[]      @relation("frame_relations_source_idToframes")
   frame_relations_frame_relations_target_idToframes               frame_relations[]      @relation("frame_relations_target_idToframes")
   frame_role_mappings_frame_role_mappings_child_frame_idToframes  frame_role_mappings[]  @relation("frame_role_mappings_child_frame_idToframes")
   frame_role_mappings_frame_role_mappings_parent_frame_idToframes frame_role_mappings[]  @relation("frame_role_mappings_parent_frame_idToframes")
   frame_roles                                                     frame_roles[]
   frame_sense_frames                                              frame_sense_frames[]
+  merged_into_frame                                               frames?                @relation("frames_merged_into", fields: [merged_into], references: [id], onUpdate: NoAction, map: "fk_frames_merged_into")
+  merged_from_frames                                              frames[]               @relation("frames_merged_into")
   llm_job_items                                                   llm_job_items[]
   role_groups                                                     role_groups[]
 
@@ -249,19 +252,19 @@ model entity_row_history {
 }
 
 model changesets {
-  id                    BigInt                  @id @default(autoincrement())
+  id                    BigInt                         @id @default(autoincrement())
   entity_type           entity_type
   entity_id             BigInt?
   operation             change_operation
   entity_version        Int?
   before_snapshot       Json?
   after_snapshot        Json?
-  status                changeset_status        @default(pending)
+  status                changeset_status               @default(pending)
   created_by            String
-  created_at            DateTime                @default(now()) @db.Timestamptz(6)
+  created_at            DateTime                       @default(now()) @db.Timestamptz(6)
   reviewed_by           String?
-  reviewed_at           DateTime?               @db.Timestamptz(6)
-  committed_at          DateTime?               @db.Timestamptz(6)
+  reviewed_at           DateTime?                      @db.Timestamptz(6)
+  committed_at          DateTime?                      @db.Timestamptz(6)
   llm_job_id            BigInt?
   issue_id              BigInt?
   /// v2: when set, this changeset is part of an N>=2 atomic plan. v1
@@ -272,9 +275,9 @@ model changesets {
   ai_revisions          ai_revisions[]
   audit_log             audit_log[]
   change_comments       change_comments[]
-  issues                issues?                 @relation(fields: [issue_id], references: [id], onUpdate: NoAction, map: "fk_changesets_issue")
-  llm_jobs              llm_jobs?               @relation(fields: [llm_job_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_changesets_llm_job")
-  change_plan           change_plans?           @relation(fields: [change_plan_id], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_changesets_change_plan")
+  change_plan           change_plans?                  @relation(fields: [change_plan_id], references: [id], onUpdate: NoAction, map: "fk_changesets_change_plan")
+  issues                issues?                        @relation(fields: [issue_id], references: [id], onUpdate: NoAction, map: "fk_changesets_issue")
+  llm_jobs              llm_jobs?                      @relation(fields: [llm_job_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_changesets_llm_job")
   comment_reads         comment_reads[]
   field_changes         field_changes[]
   health_check_findings health_check_findings[]
@@ -286,30 +289,29 @@ model changesets {
   @@index([status], map: "idx_changesets_status")
   @@index([llm_job_id], map: "idx_changesets_llm_job")
   @@index([issue_id], map: "idx_changesets_issue")
-  @@index([change_plan_id], map: "idx_changesets_change_plan")
 }
 
 model change_plans {
-  id              BigInt              @id @default(autoincrement())
+  id                    BigInt                         @id @default(autoincrement())
   /// Free-form strategy / kind tag mirroring `health_diagnosis_codes.remediation_strategy`.
   /// The UI selects a per-kind renderer (split, merge, move, attach, composite) on this value.
-  plan_kind       String
+  plan_kind             String
   /// Optional one-line summary for list views.
-  summary         String?
-  issue_id        BigInt?
-  created_by      String
-  status          change_plan_status  @default(pending)
-  reviewed_by     String?
-  reviewed_at     DateTime?           @db.Timestamptz(6)
-  committed_at    DateTime?           @db.Timestamptz(6)
+  summary               String?
+  issue_id              BigInt?
+  created_by            String
+  status                change_plan_status             @default(pending)
+  reviewed_by           String?
+  reviewed_at           DateTime?                      @db.Timestamptz(6)
+  committed_at          DateTime?                      @db.Timestamptz(6)
   /// Populated by `commitPlan` when an attempt is rejected; consumed by the UI
   /// to surface "X conflicts with Y" messages without a follow-up round trip.
-  conflict_report Json?
-  metadata        Json                @default("{}")
-  created_at      DateTime            @default(now()) @db.Timestamptz(6)
-  updated_at      DateTime            @default(now()) @updatedAt @db.Timestamptz(6)
-  changesets      changesets[]
-  issue           issues?             @relation(fields: [issue_id], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_change_plans_issue")
+  conflict_report       Json?
+  metadata              Json                           @default("{}")
+  created_at            DateTime                       @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime                       @default(now()) @updatedAt @db.Timestamptz(6)
+  issue                 issues?                        @relation(fields: [issue_id], references: [id], onUpdate: NoAction, map: "fk_change_plans_issue")
+  changesets            changesets[]
   remediation_proposals health_remediation_proposals[] @relation("ChangePlanRemediationProposals")
 
   @@index([status], map: "idx_change_plans_status")
@@ -319,31 +321,33 @@ model change_plans {
 }
 
 model issues {
-  id                          BigInt                            @id @default(autoincrement())
-  title                       String
-  description                 String?
-  status                      issue_status                      @default(open)
-  priority                    issue_priority                    @default(medium)
-  labels                      String[]                          @default([])
-  created_by                  String
-  assignee                    String?
-  created_at                  DateTime                          @default(now()) @db.Timestamptz(6)
-  updated_at                  DateTime                          @default(now()) @updatedAt @db.Timestamptz(6)
-  closed_at                   DateTime?                         @db.Timestamptz(6)
-  diagnosis_code_id           BigInt?
+  id                           BigInt                          @id @default(autoincrement())
+  title                        String
+  description                  String?
+  status                       issue_status                    @default(open)
+  priority                     issue_priority                  @default(medium)
+  labels                       String[]                        @default([])
+  created_by                   String
+  assignee                     String?
+  created_at                   DateTime                        @default(now()) @db.Timestamptz(6)
+  updated_at                   DateTime                        @default(now()) @updatedAt @db.Timestamptz(6)
+  closed_at                    DateTime?                       @db.Timestamptz(6)
+  diagnosis_code_id            BigInt?
   /// When set, the most recent remediation proposal for this issue was rejected
   /// by a human reviewer. The runner refuses to auto-propose again until this is
   /// cleared (e.g. via the issue PATCH endpoint exposed in the UI as
   /// "Allow remediation again").
-  remediation_rejected_at     DateTime?                         @db.Timestamptz(6)
-  changesets                  changesets[]
-  change_plans                change_plans[]
-  health_check_findings       health_check_findings[]
-  issue_comments              issue_comments[]
-  issue_events                issue_events[]
-  remediation_targets         health_remediation_targets[]
-  remediation_issue_locks     health_remediation_issue_locks[]
-  diagnosis_code              health_diagnosis_codes?           @relation(fields: [diagnosis_code_id], references: [id], onUpdate: NoAction, map: "fk_issues_diagnosis_code")
+  remediation_rejected_at      DateTime?                       @db.Timestamptz(6)
+  strategy_override            String?
+  change_plans                 change_plans[]
+  changesets                   changesets[]
+  health_check_findings        health_check_findings[]
+  remediation_issue_locks      health_remediation_issue_locks?
+  health_remediation_proposals health_remediation_proposals[]
+  remediation_targets          health_remediation_targets[]
+  issue_comments               issue_comments[]
+  issue_events                 issue_events[]
+  diagnosis_code               health_diagnosis_codes?         @relation(fields: [diagnosis_code_id], references: [id], onUpdate: NoAction, map: "fk_issues_diagnosis_code")
 
   @@index([status], map: "idx_issues_status")
   @@index([priority], map: "idx_issues_priority")
@@ -351,7 +355,6 @@ model issues {
   @@index([created_by], map: "idx_issues_created_by")
   @@index([created_at], map: "idx_issues_created_at")
   @@index([diagnosis_code_id], map: "idx_issues_diagnosis_code")
-  @@index([diagnosis_code_id, status, created_at(sort: Desc)], map: "idx_issues_diag_status_created")
 }
 
 model issue_comments {
@@ -413,7 +416,6 @@ model health_diagnosis_codes {
   check_definition_id          BigInt?
   code                         String                        @unique
   label                        String
-  quick_summary                String?
   description                  String?
   examples                     String[]                      @default([])
   severity                     issue_priority                @default(medium)
@@ -423,17 +425,18 @@ model health_diagnosis_codes {
   applies_to_frame_types       frame_type_enum[]             @default([])
   applies_to_frame_subtypes    frame_subtype_enum[]          @default([])
   match_null_subtype           Boolean                       @default(false)
+  group_id                     BigInt?
   /// Stable machine key describing the intended remediation category.
   /// Uses DB-entity language, e.g. `update_frame_role_description`.
   remediation_strategy         String?
   /// Optional human guidance for local nuance. Not executable by itself.
   remediation_notes            String?
-  group_id                     BigInt?
+  quick_summary                String?
   findings                     health_check_findings[]
   health_check_definition      health_check_definitions?     @relation(fields: [check_definition_id], references: [id], onUpdate: NoAction, map: "fk_health_diagnosis_codes_check")
   health_diagnosis_code_groups health_diagnosis_code_groups? @relation(fields: [group_id], references: [id], onUpdate: NoAction)
-  issues                       issues[]
   remediation_targets          health_remediation_targets[]
+  issues                       issues[]
 
   @@index([check_definition_id], map: "idx_health_diagnosis_codes_check")
   @@index([severity], map: "idx_health_diagnosis_codes_severity")
@@ -444,33 +447,33 @@ model health_diagnosis_codes {
 }
 
 model health_check_runs {
-  id                      BigInt                    @id @default(autoincrement())
+  id                      BigInt                         @id @default(autoincrement())
   check_definition_id     BigInt?
   label                   String?
-  status                  health_check_run_status   @default(queued)
+  status                  health_check_run_status        @default(queued)
   scope                   Json?
   config                  Json?
   worker_id               String?
   model                   String?
   llm_job_id              BigInt?
-  total_items             Int                       @default(0)
-  processed_items         Int                       @default(0)
-  passed_items            Int                       @default(0)
-  warning_items           Int                       @default(0)
-  failed_items            Int                       @default(0)
-  error_items             Int                       @default(0)
-  input_tokens            Int                       @default(0)
-  output_tokens           Int                       @default(0)
+  total_items             Int                            @default(0)
+  processed_items         Int                            @default(0)
+  passed_items            Int                            @default(0)
+  warning_items           Int                            @default(0)
+  failed_items            Int                            @default(0)
+  error_items             Int                            @default(0)
+  input_tokens            Int                            @default(0)
+  output_tokens           Int                            @default(0)
   cost_microunits         BigInt?
   error                   String?
-  created_at              DateTime                  @default(now()) @db.Timestamptz(6)
-  started_at              DateTime?                 @db.Timestamptz(6)
-  completed_at            DateTime?                 @db.Timestamptz(6)
-  updated_at              DateTime                  @default(now()) @updatedAt @db.Timestamptz(6)
+  created_at              DateTime                       @default(now()) @db.Timestamptz(6)
+  started_at              DateTime?                      @db.Timestamptz(6)
+  completed_at            DateTime?                      @db.Timestamptz(6)
+  updated_at              DateTime                       @default(now()) @updatedAt @db.Timestamptz(6)
   health_check_batch_jobs health_check_batch_jobs[]
-  issue_sweep             health_check_run_issue_sweeps?
   results                 health_check_results[]
-  check_definition        health_check_definitions? @relation(fields: [check_definition_id], references: [id], onUpdate: NoAction, map: "fk_health_check_runs_check")
+  issue_sweep             health_check_run_issue_sweeps?
+  check_definition        health_check_definitions?      @relation(fields: [check_definition_id], references: [id], onUpdate: NoAction, map: "fk_health_check_runs_check")
 
   @@index([check_definition_id], map: "idx_health_check_runs_check")
   @@index([status], map: "idx_health_check_runs_status")
@@ -556,7 +559,6 @@ model health_check_findings {
   @@index([status], map: "idx_health_check_findings_status")
   @@index([issue_id], map: "idx_health_check_findings_issue")
   @@index([changeset_id], map: "idx_health_check_findings_changeset")
-  @@index([diagnosis_code_id, status], map: "idx_findings_diag_status_unlinked")
 }
 
 model health_check_run_issue_sweeps {
@@ -572,27 +574,27 @@ model health_check_run_issue_sweeps {
 /// Remediation pipeline (runner-owned tables; Explorer reads them for UI).
 /// Mirrors source-health-check-runner/migrations/0045_*.sql.
 model health_remediation_runs {
-  id           BigInt                            @id @default(autoincrement())
-  kind         health_remediation_run_kind       @default(manual)
-  status       health_remediation_run_status     @default(queued)
-  scope        Json                              @default("{}")
-  config       Json                              @default("{}")
+  id           BigInt                           @id @default(autoincrement())
+  kind         health_remediation_run_kind      @default(manual)
+  status       health_remediation_run_status    @default(queued)
+  scope        Json                             @default("{}")
+  config       Json                             @default("{}")
   summary      Json?
   worker_id    String?
-  started_at   DateTime?                         @db.Timestamptz(6)
-  completed_at DateTime?                         @db.Timestamptz(6)
+  started_at   DateTime?                        @db.Timestamptz(6)
+  completed_at DateTime?                        @db.Timestamptz(6)
   error        String?
-  created_at   DateTime                          @default(now()) @db.Timestamptz(6)
-  updated_at   DateTime                          @default(now()) @updatedAt @db.Timestamptz(6)
-  targets      health_remediation_targets[]
+  created_at   DateTime                         @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime                         @default(now()) @updatedAt @db.Timestamptz(6)
   batch_jobs   health_remediation_batch_jobs[]
   issue_locks  health_remediation_issue_locks[]
+  targets      health_remediation_targets[]
 
   @@index([status], map: "idx_health_remediation_runs_status")
 }
 
 model health_remediation_targets {
-  id                 BigInt                                @id @default(autoincrement())
+  id                 BigInt                            @id @default(autoincrement())
   run_id             BigInt
   issue_id           BigInt
   diagnosis_code_id  BigInt
@@ -600,18 +602,18 @@ model health_remediation_targets {
   execution_kind     health_remediation_execution_kind
   entity_type        String
   entity_id          BigInt
-  finding_ids        BigInt[]                              @default([])
+  finding_ids        BigInt[]                          @default([])
   target_fingerprint String
   source_fingerprint String?
-  context            Json                                  @default("{}")
-  status             health_remediation_target_status      @default(pending)
+  context            Json                              @default("{}")
+  status             health_remediation_target_status  @default(pending)
   status_reason      String?
-  created_at         DateTime                              @default(now()) @db.Timestamptz(6)
-  updated_at         DateTime                              @default(now()) @updatedAt @db.Timestamptz(6)
-  run                health_remediation_runs               @relation(fields: [run_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  diagnosis_code     health_diagnosis_codes                @relation(fields: [diagnosis_code_id], references: [id], onUpdate: NoAction)
-  issue              issues                                @relation(fields: [issue_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  created_at         DateTime                          @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime                          @default(now()) @updatedAt @db.Timestamptz(6)
   proposals          health_remediation_proposals[]
+  diagnosis_code     health_diagnosis_codes            @relation(fields: [diagnosis_code_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_health_remediation_targets_diag")
+  issue              issues                            @relation(fields: [issue_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_health_remediation_targets_issue")
+  run                health_remediation_runs           @relation(fields: [run_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_health_remediation_targets_run")
 
   @@unique([run_id, issue_id, strategy], map: "uq_health_remediation_targets_run_issue_strategy")
   @@index([run_id], map: "idx_health_remediation_targets_run")
@@ -645,7 +647,7 @@ model health_remediation_batch_jobs {
   imported_items     Int                           @default(0)
   created_at         DateTime                      @default(now()) @db.Timestamptz(6)
   updated_at         DateTime                      @default(now()) @updatedAt @db.Timestamptz(6)
-  run                health_remediation_runs       @relation(fields: [run_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  run                health_remediation_runs       @relation(fields: [run_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_health_remediation_batch_jobs_run")
 
   @@unique([run_id, strategy, shard_index], map: "uq_health_remediation_batch_jobs_shard")
   @@index([run_id], map: "idx_health_remediation_batch_jobs_run")
@@ -654,7 +656,7 @@ model health_remediation_batch_jobs {
 }
 
 model health_remediation_proposals {
-  id                    BigInt                                          @id @default(autoincrement())
+  id                    BigInt                                         @id @default(autoincrement())
   target_id             BigInt
   issue_id              BigInt
   target_fingerprint    String
@@ -663,23 +665,22 @@ model health_remediation_proposals {
   parsed_payload        Json?
   validation_status     health_remediation_proposal_validation_status?
   validation_errors     Json?
-  confidence            Decimal?                                        @db.Decimal
+  confidence            Decimal?                                       @db.Decimal
   source_fingerprint    String?
   staged_changeset_id   BigInt?
+  created_at            DateTime                                       @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime                                       @default(now()) @updatedAt @db.Timestamptz(6)
   /// v2: when set, this proposal staged an N-step `change_plan` instead of a
   /// single changeset. Mutually exclusive with `staged_changeset_id`
   /// (enforced by `health_remediation_proposals_one_staged_target` CHECK).
   staged_change_plan_id BigInt?
-  created_at            DateTime                                        @default(now()) @db.Timestamptz(6)
-  updated_at            DateTime                                        @default(now()) @updatedAt @db.Timestamptz(6)
-  target                health_remediation_targets                      @relation(fields: [target_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  staged_changeset      changesets?                                     @relation("ChangesetRemediationProposals", fields: [staged_changeset_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
-  staged_change_plan    change_plans?                                   @relation("ChangePlanRemediationProposals", fields: [staged_change_plan_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  staged_change_plan    change_plans?                                  @relation("ChangePlanRemediationProposals", fields: [staged_change_plan_id], references: [id], onUpdate: NoAction, map: "fk_health_remediation_proposals_change_plan")
+  staged_changeset      changesets?                                    @relation("ChangesetRemediationProposals", fields: [staged_changeset_id], references: [id], onUpdate: NoAction, map: "fk_health_remediation_proposals_changeset")
+  issues                issues                                         @relation(fields: [issue_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_health_remediation_proposals_issue")
+  target                health_remediation_targets                     @relation(fields: [target_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_health_remediation_proposals_target")
 
   @@unique([issue_id, target_fingerprint], map: "uq_health_remediation_proposals_dedup")
   @@index([target_id], map: "idx_health_remediation_proposals_target")
-  @@index([staged_changeset_id], map: "idx_health_remediation_proposals_changeset")
-  @@index([staged_change_plan_id], map: "idx_health_remediation_proposals_change_plan")
   @@index([validation_status], map: "idx_health_remediation_proposals_validation")
 }
 
@@ -701,8 +702,8 @@ model health_remediation_issue_locks {
   run_id     BigInt
   locked_at  DateTime                @default(now()) @db.Timestamptz(6)
   expires_at DateTime                @db.Timestamptz(6)
-  issue      issues                  @relation(fields: [issue_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  run        health_remediation_runs @relation(fields: [run_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  issue      issues                  @relation(fields: [issue_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_health_remediation_issue_locks_issue")
+  run        health_remediation_runs @relation(fields: [run_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_health_remediation_issue_locks_run")
 
   @@index([expires_at], map: "idx_health_remediation_issue_locks_expiry")
 }
@@ -1140,6 +1141,7 @@ enum change_operation {
   create
   update
   delete
+  merge
 }
 
 enum changeset_status {

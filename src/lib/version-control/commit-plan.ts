@@ -1,44 +1,53 @@
 /**
  * Plan-level commit (v2): commit every changeset that belongs to a
- * `change_plans` row in dependency order, treating the whole plan as one
- * unit of work.
+ * `change_plans` row in dependency order, treating the whole plan as
+ * one atomic unit of work.
  *
- * Atomicity (read carefully):
+ * Atomicity:
  *
- * v1 of `commitPlan` is sequential, NOT a single SQL transaction. Each
- * underlying `commitChangeset` opens its own `prisma.$transaction`, so a
- * failure on changeset #3 does not roll back changeset #1 or #2. The
- * plan's `conflict_report` records exactly which child succeeded so
- * operators can re-run the remaining children with `commitChangeset`
- * directly.
+ * The whole plan executes inside a single `prisma.$transaction`. If any
+ * child changeset fails (validation error, version conflict, FK
+ * violation, etc.), the transaction rolls back and NO partial state is
+ * left behind on `frames`, `frame_relations`, `frame_senses`, etc. The
+ * `change_plans` row is then updated OUTSIDE the rolled-back tx with a
+ * `conflict_report` JSON column so the UI can render the failure
+ * without a follow-up round trip.
  *
- * The "true atomic" implementation (single outer `prisma.$transaction`
- * with tx-aware variants of every per-operation commit helper) is
- * tracked as a follow-up in the architecture plan. Until then, plans
- * are only safe for kinds that are individually idempotent at the row
- * level (`split_frame` first writes the new frame, then attaches roles -
- * a partial commit is recoverable). v2 structural strategies must
- * declare themselves `singletx_required: false` to opt in.
+ * On success the plan, every child changeset, and every audit-log row
+ * commit together. The `change_plans` row's `committed_at` is set in
+ * the same transaction so observers always see "all-or-nothing".
  *
- * Conflict reporting:
+ * Limitations:
  *
- * Every failure produces a structured `conflict_report` JSON column on
- * `change_plans` so the API can render it without a follow-up round trip.
- * Shape:
+ *   - lexical_unit DELETE is not allowed inside a plan (it stages
+ *     hyponym-reassignment changesets that must outlive any rollback).
+ *     `commitChangesetInTx` throws if it sees one.
+ *   - The version-conflict pre-check inside the tx uses `findUnique`,
+ *     not `SELECT ... FOR UPDATE`. The actual UPDATE statements still
+ *     guard with `WHERE version=N` (optimistic locking), so a stale
+ *     read between the check and the write surfaces as a 0-row update,
+ *     which we surface as a conflict and roll back.
+ *
+ * Conflict report shape (mirrors v1 exactly so the UI doesn't need
+ * branching):
  *
  *   {
- *     status: 'partial' | 'failed',
+ *     status: 'failed',
  *     attempted: 5,
- *     committed: 2,
+ *     committed: 0,           // always 0 now (atomic)
  *     failed_at_changeset: "<changeset_id>",
  *     errors: CommitError[]
  *   }
+ *
+ * `status: 'partial'` is no longer reachable in normal operation. We
+ * preserve the type for backward compatibility with rows written
+ * before this refactor.
  */
 
 import { prisma } from '@/lib/prisma';
 
-import { commitChangeset } from './commit';
-import type { CommitError, CommitResult } from './types';
+import { commitChangesetInTx } from './commit';
+import type { CommitError } from './types';
 
 export type ChangePlanStatus = 'pending' | 'committed' | 'discarded';
 
@@ -82,8 +91,11 @@ export class PlanNotPendingError extends Error {
 
 /**
  * Commits every pending changeset in `planId` in `(entity_type, id)`
- * order, marks the plan committed when all succeed, and writes a
- * structured `conflict_report` when any fail.
+ * order inside a single `prisma.$transaction`. On success, every child
+ * changeset, every audit-log row, and the parent `change_plans` row
+ * commit together. On any failure, the entire transaction rolls back
+ * and a `conflict_report` is written to the (still pending) plan row
+ * in a follow-up write.
  *
  * Calling on a plan that's already `committed` or `discarded` throws
  * `PlanNotPendingError`. Calling on a plan that does not exist throws
@@ -93,6 +105,11 @@ export async function commitPlan(
   planId: bigint,
   committedBy: string,
 ): Promise<CommitPlanResult> {
+  // Pre-fetch the plan + its changesets OUTSIDE the tx. Prisma's
+  // interactive transactions can't read+write from the same client at
+  // the same row count without acquiring locks too eagerly; this
+  // pre-read is cheap and only used to validate the plan exists and is
+  // in the right state. The actual writes re-fetch inside the tx.
   const plan = await prisma.change_plans.findUnique({
     where: { id: planId },
     include: {
@@ -122,85 +139,189 @@ export async function commitPlan(
     throw new PlanNotPendingError(planId, plan.status as ChangePlanStatus);
   }
   const orderedChangesets = plan.changesets;
+  const attempted = orderedChangesets.length;
 
-  const errors: CommitError[] = [];
-  let committed = 0;
-  let failedAt: bigint | null = null;
+  // Atomic path: open ONE transaction and commit every child plus the
+  // plan itself inside it. Any throw rolls everything back.
+  //
+  // Timeout: Prisma's default interactive-tx timeout is 5s. A
+  // merge_sense plan touching a wide LU/contrast graph can already
+  // exceed that on a busy DB; split/merge plans with N>5 children
+  // routinely will. 30s covers realistic remediation plans without
+  // letting a runaway hold locks for an unbounded duration. maxWait
+  // (time to acquire the connection) is bumped proportionally so
+  // transactions don't spuriously time out under contention.
+  let txError: { failedAt: bigint | null; errors: CommitError[] } | null = null;
 
-  for (const cs of orderedChangesets) {
-    if (cs.status !== 'pending') {
-      // Treat already-committed members as success-no-op; the order is
-      // deterministic so re-runs converge.
-      if (cs.status === 'committed') {
-        committed += 1;
-        continue;
+  try {
+    await prisma.$transaction(async (tx) => {
+      for (const cs of orderedChangesets) {
+        if (cs.status === 'committed') {
+          // Idempotent re-run: a previously-committed child is fine,
+          // but it must not have been committed by an earlier partial
+          // commit attempt — which can no longer happen with this
+          // function, but legacy data may exist.
+          continue;
+        }
+        if (cs.status !== 'pending') {
+          // discarded inside a plan is a refusal: the plan is no longer
+          // coherent. Throw to roll back any prior writes in the tx.
+          throw new PlanChildNotPendingError(cs.id, cs.status, cs.entity_type);
+        }
+
+        // commitChangesetInTx contractually throws on failure. Wrap the
+        // call so the thrown error is attributed back to THIS specific
+        // child changeset (otherwise the outer catch sees a bare Error
+        // with no changeset context).
+        try {
+          const result = await commitChangesetInTx(tx, cs.id, committedBy);
+          if (!result.success) {
+            throw new PlanChildCommitError(cs.id, result.errors);
+          }
+        } catch (err) {
+          if (
+            err instanceof PlanChildCommitError ||
+            err instanceof PlanChildNotPendingError
+          ) {
+            throw err;
+          }
+          throw new PlanChildCommitError(cs.id, [
+            {
+              changeset_id: cs.id,
+              entity_type: cs.entity_type as CommitError['entity_type'],
+              entity_id: null,
+              error: err instanceof Error ? err.message : String(err),
+            },
+          ]);
+        }
       }
-      // discarded inside a plan is a refusal: the plan is no longer coherent.
-      errors.push({
-        changeset_id: cs.id,
-        entity_type: cs.entity_type as CommitError['entity_type'],
-        entity_id: null,
-        error: `linked changeset ${cs.id.toString()} is ${cs.status}`,
+
+      // Mark the plan committed inside the same tx so observers see
+      // all-or-nothing.
+      await tx.change_plans.update({
+        where: { id: planId },
+        data: {
+          status: 'committed',
+          reviewed_by: committedBy,
+          reviewed_at: new Date(),
+          committed_at: new Date(),
+          conflict_report: undefined,
+        },
       });
-      failedAt = cs.id;
-      break;
-    }
-
-    const result: CommitResult = await commitChangeset(cs.id, committedBy);
-    if (!result.success) {
-      errors.push(...result.errors);
-      failedAt = cs.id;
-      break;
-    }
-    committed += 1;
-  }
-
-  const success = errors.length === 0 && committed === orderedChangesets.length;
-  const conflictReport: PlanConflictReport | null = success
-    ? null
-    : {
-        status: committed > 0 ? 'partial' : 'failed',
-        attempted: orderedChangesets.length,
-        committed,
-        failed_at_changeset: failedAt === null ? null : failedAt.toString(),
-        errors: errors.map((e) => ({
-          changeset_id: e.changeset_id.toString(),
-          entity_type: e.entity_type,
-          entity_id: e.entity_id === null ? null : e.entity_id.toString(),
-          error: e.error,
-        })),
+    }, {
+      timeout: 30_000,
+      maxWait: 10_000,
+    });
+  } catch (err) {
+    // Convert into the same shape as the old per-changeset failure mode
+    // so callers / UI don't have to learn a new shape.
+    if (err instanceof PlanChildCommitError) {
+      txError = { failedAt: err.changesetId, errors: err.errors };
+    } else if (err instanceof PlanChildNotPendingError) {
+      txError = {
+        failedAt: err.changesetId,
+        errors: [
+          {
+            changeset_id: err.changesetId,
+            entity_type: err.entityType as CommitError['entity_type'],
+            entity_id: null,
+            error: `linked changeset ${err.changesetId.toString()} is ${err.childStatus}`,
+          },
+        ],
       };
-
-  if (success) {
-    await prisma.change_plans.update({
-      where: { id: planId },
-      data: {
-        status: 'committed',
-        reviewed_by: committedBy,
-        reviewed_at: new Date(),
-        committed_at: new Date(),
-        conflict_report: undefined,
-      },
-    });
-  } else {
-    await prisma.change_plans.update({
-      where: { id: planId },
-      data: {
-        // Plan stays `pending` so reviewers can decide whether to retry
-        // or discard. Only the `conflict_report` is written.
-        conflict_report: conflictReport === null ? undefined : (conflictReport as unknown as object),
-      },
-    });
+    } else {
+      txError = {
+        failedAt: null,
+        errors: [
+          {
+            changeset_id: 0n,
+            entity_type: 'frame',
+            entity_id: null,
+            error: err instanceof Error ? err.message : 'Unknown plan-commit error',
+          },
+        ],
+      };
+    }
   }
+
+  if (txError === null) {
+    return {
+      planId,
+      success: true,
+      attempted,
+      committed: attempted,
+      errors: [],
+      conflictReport: null,
+    };
+  }
+
+  // Failure path: write the conflict report on the still-pending plan
+  // in a fresh transaction so the UI can render it. The plan's child
+  // changesets are still pending (the tx rolled back the
+  // status='committed' updates inside commitChangesetInTx).
+  const conflictReport: PlanConflictReport = {
+    status: 'failed',
+    attempted,
+    // Always 0 now: atomic rollback means no child stayed committed.
+    committed: 0,
+    failed_at_changeset: txError.failedAt === null ? null : txError.failedAt.toString(),
+    errors: txError.errors.map((e) => ({
+      changeset_id: e.changeset_id.toString(),
+      entity_type: e.entity_type,
+      entity_id: e.entity_id === null ? null : e.entity_id.toString(),
+      error: e.error,
+    })),
+  };
+
+  await prisma.change_plans.update({
+    where: { id: planId },
+    data: {
+      conflict_report: conflictReport as unknown as object,
+    },
+  });
 
   return {
     planId,
-    success,
-    attempted: orderedChangesets.length,
-    committed,
-    errors,
+    success: false,
+    attempted,
+    committed: 0,
+    errors: txError.errors,
     conflictReport,
   };
+}
+
+/**
+ * Internal sentinel: thrown when `commitChangesetInTx` returns a
+ * non-success `CommitResult` so we can roll back the outer transaction
+ * with the original error context preserved.
+ */
+class PlanChildCommitError extends Error {
+  readonly changesetId: bigint;
+  readonly errors: CommitError[];
+  constructor(changesetId: bigint, errors: CommitError[]) {
+    super(`plan child changeset ${changesetId.toString()} failed to commit`);
+    this.name = 'PlanChildCommitError';
+    this.changesetId = changesetId;
+    this.errors = errors;
+  }
+}
+
+/**
+ * Internal sentinel: thrown when a plan's child changeset is in a
+ * non-pending non-committed state (e.g. discarded), which makes the
+ * plan no longer coherent.
+ */
+class PlanChildNotPendingError extends Error {
+  readonly changesetId: bigint;
+  readonly childStatus: string;
+  readonly entityType: string;
+  constructor(changesetId: bigint, childStatus: string, entityType: string) {
+    super(`plan child changeset ${changesetId.toString()} is ${childStatus}`);
+    this.name = 'PlanChildNotPendingError';
+    this.changesetId = changesetId;
+    this.childStatus = childStatus;
+    this.entityType = entityType;
+  }
 }
 
 /**

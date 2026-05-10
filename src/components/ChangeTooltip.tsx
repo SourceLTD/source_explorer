@@ -62,6 +62,14 @@ function getOperationStyles(operation: PendingChangeOperation) {
         label: 'Will be Deleted',
         labelColor: 'text-red-700',
       };
+    case 'merge':
+      return {
+        borderColor: 'border-purple-400',
+        bgColor: 'bg-purple-50',
+        headerBg: 'bg-purple-100',
+        label: 'Will be Merged',
+        labelColor: 'text-purple-700',
+      };
     case 'update':
     default:
       return {

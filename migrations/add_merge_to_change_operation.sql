@@ -1,0 +1,26 @@
+-- Phase 1 (sophisticated cascading remediations): add `merge` value to
+-- the `change_operation` enum so a `change_plans` row's children can
+-- represent merge-sense / merge-frame operations as a single, atomic,
+-- self-documenting changeset rather than a disguised `delete` + side
+-- effects.
+--
+-- Idempotent: ADD VALUE IF NOT EXISTS is supported on Postgres 12+.
+--
+-- Why the new value rather than overloading `delete`:
+--   - `delete` already has a clear contract: cascade per FK, no
+--     repointing, no winner-side updates. Encoding merge as
+--     "delete-plus-side-effects" makes downstream readers (audit log,
+--     debug queries, Hasura/Prisma generated types) silently wrong.
+--   - The merge operation needs to repoint frame_sense_frames,
+--     lexical_unit_senses, frame_sense_contrasts from loser->winner
+--     with dedup, then update the winner's definition, then drop the
+--     loser. None of these are "delete" semantics.
+--
+-- After applying, the runner emits changesets with operation='merge'
+-- carrying { __merge_target_id, merged_definition, ... } in the
+-- before_snapshot for the merge handler in source-explorer to consume.
+--
+-- The new operation is enum-extension only; no existing rows are
+-- affected, no constraints change, and no rewrite is required.
+
+ALTER TYPE change_operation ADD VALUE IF NOT EXISTS 'merge';

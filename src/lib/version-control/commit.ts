@@ -46,19 +46,87 @@ function toBigIntSafe(v: unknown): bigint | null {
   return null;
 }
 
+/**
+ * Resolve a v2 plan placeholder id (negative bigint encoded as a
+ * string like "-1", "-2", ...) to the real entity id of the
+ * matching CREATE changeset. The convention is:
+ *
+ *   placeholder_id  =  -create_changeset_id
+ *
+ * The runner's plan-writer emits CREATE changesets in insertion
+ * order, then references them in subsequent ops via
+ * `negative_id = -changeset.id`. At commit time we look the
+ * changeset up and substitute its real `entity_id` (which is set
+ * by `commitCreateInTx` when the row is INSERTed).
+ *
+ * Used by:
+ *   - Phase 5 `merge_frame`     (frame_sense.frame_id, frame.merged_into)
+ *   - Phase 6 `split_frame`     (frame_sense.frame_id, frame_relation.{source_id,target_id})
+ *   - Future plan kinds with cross-changeset FK references.
+ *
+ * Returns the resolved bigint, OR throws if the referenced CREATE
+ * isn't committed yet (which means the plan ordering is wrong, or
+ * the create failed).
+ */
+async function resolveVirtualOrBigInt(
+  tx: Prisma.TransactionClient,
+  raw: unknown,
+  contextLabel: string,
+): Promise<bigint | null> {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw === 'bigint') return raw;
+  if (typeof raw === 'number' && Number.isInteger(raw)) {
+    if (raw < 0) {
+      return resolveVirtualOrBigInt(tx, raw.toString(), contextLabel);
+    }
+    return BigInt(raw);
+  }
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (trimmed === '') return null;
+
+  if (/^-\d+$/.test(trimmed)) {
+    const virtualId = BigInt(trimmed);
+    const createChangesetId = -virtualId;
+    const createChangeset = await tx.changesets.findUnique({
+      where: { id: createChangesetId },
+      select: { id: true, entity_id: true, operation: true, status: true },
+    });
+    if (
+      !createChangeset ||
+      createChangeset.operation !== 'create' ||
+      createChangeset.status !== 'committed' ||
+      createChangeset.entity_id === null
+    ) {
+      throw new Error(
+        `Unable to resolve virtual ID ${trimmed} on ${contextLabel} ` +
+          `(create changeset ${createChangesetId.toString()} not committed)`,
+      );
+    }
+    return createChangeset.entity_id;
+  }
+
+  if (/^\d+$/.test(trimmed)) return BigInt(trimmed);
+  return null;
+}
+
 // ============================================
 // Commit Single Changeset
 // ============================================
 
 /**
  * Commit a single changeset, applying approved field changes to the main table.
- * 
+ *
  * This function:
  * 1. Validates that the entity version hasn't changed (conflict detection)
  * 2. Applies all approved field changes
  * 3. Creates audit log entries
  * 4. Marks the changeset as committed
- * 
+ *
+ * Wraps `commitChangesetInTx` in its own `prisma.$transaction` so the
+ * caller doesn't need an outer one. For plan-level atomic commits use
+ * `commitChangesetInTx` directly inside `prisma.$transaction(...)`.
+ *
  * @param changesetId - The ID of the changeset to commit
  * @param committedBy - The user committing the changes
  * @returns The result of the commit operation
@@ -67,75 +135,41 @@ export async function commitChangeset(
   changesetId: bigint,
   committedBy: string
 ): Promise<CommitResult> {
-  const changeset = await getChangeset(changesetId);
-  
-  if (!changeset) {
-    return {
-      success: false,
-      committed_count: 0,
-      skipped_count: 0,
-      errors: [{
-        changeset_id: changesetId,
-        entity_type: 'lexical_unit',
-        entity_id: null,
-        error: 'Changeset not found',
-      }],
-    };
-  }
-
-  if (changeset.status !== 'pending') {
-    return {
-      success: false,
-      committed_count: 0,
-      skipped_count: 0,
-      errors: [{
-        changeset_id: changesetId,
-        entity_type: changeset.entity_type,
-        entity_id: changeset.entity_id,
-        error: `Changeset is already ${changeset.status}`,
-      }],
-    };
-  }
-
-  // Get approved field changes
-  const approvedChanges = changeset.field_changes.filter(fc => fc.status === 'approved');
-  
-  if (approvedChanges.length === 0 && changeset.operation === 'update') {
-    return {
-      success: false,
-      committed_count: 0,
-      skipped_count: changeset.field_changes.length,
-      errors: [{
-        changeset_id: changesetId,
-        entity_type: changeset.entity_type,
-        entity_id: changeset.entity_id,
-        error: 'No approved field changes to commit',
-      }],
-    };
+  // For lexical_unit DELETE we still need the pre-flight hyponym
+  // reassignment, which historically ran outside the transaction. Keep
+  // that behaviour for the standalone path.
+  const preCheck = await prisma.changesets.findUnique({
+    where: { id: changesetId },
+    select: { entity_type: true, operation: true, entity_id: true, status: true },
+  });
+  if (
+    preCheck &&
+    preCheck.status === 'pending' &&
+    preCheck.operation === 'delete' &&
+    isLexicalUnitType(preCheck.entity_type) &&
+    preCheck.entity_id !== null
+  ) {
+    // Build the synthetic changeset shape needed by the helper.
+    await handleLexicalUnitDeletionHyponymReassignment(
+      {
+        id: changesetId,
+        entity_type: preCheck.entity_type,
+        entity_id: preCheck.entity_id,
+      } as ChangesetWithFieldChanges,
+      committedBy,
+    );
   }
 
   try {
-    // Handle based on operation type
-    switch (changeset.operation) {
-      case 'create':
-        return await commitCreate(changeset, committedBy);
-      case 'update':
-        return await commitUpdate(changeset, approvedChanges, committedBy);
-      case 'delete':
-        return await commitDelete(changeset, committedBy);
-      default:
-        return {
-          success: false,
-          committed_count: 0,
-          skipped_count: 0,
-          errors: [{
-            changeset_id: changesetId,
-            entity_type: changeset.entity_type,
-            entity_id: changeset.entity_id,
-            error: `Unknown operation: ${changeset.operation}`,
-          }],
-        };
-    }
+    return await prisma.$transaction(
+      async (tx) => commitChangesetInTx(tx, changesetId, committedBy),
+      // 30s mirrors `commitPlan`'s budget so a standalone merge
+      // changeset (which can touch many link rows) doesn't exhaust
+      // the default 5s window. maxWait keeps connection-acquisition
+      // generous enough that contention doesn't cause spurious
+      // ConnectorError.
+      { timeout: 30_000, maxWait: 10_000 },
+    );
   } catch (error) {
     return {
       success: false,
@@ -143,12 +177,120 @@ export async function commitChangeset(
       skipped_count: 0,
       errors: [{
         changeset_id: changesetId,
-        entity_type: changeset.entity_type,
-        entity_id: changeset.entity_id,
+        entity_type: (preCheck?.entity_type ?? 'lexical_unit') as CommitError['entity_type'],
+        entity_id: preCheck?.entity_id ?? null,
         error: error instanceof Error ? error.message : 'Unknown error',
       }],
     };
   }
+}
+
+/**
+ * Tx-aware variant of `commitChangeset`. Use this from inside an outer
+ * `prisma.$transaction` (e.g. `commitPlan`) so that all per-changeset
+ * writes share one atomic unit-of-work.
+ *
+ * Errors thrown here propagate out of the outer transaction, rolling
+ * back every prior write. Callers convert thrown errors into the
+ * `CommitResult` shape themselves; this function NEVER catches a thrown
+ * error and returns a failure result, because doing so would silently
+ * commit the outer transaction.
+ *
+ * Limitation: this path does not run the lexical_unit pre-deletion
+ * hyponym reassignment. Plans containing a lexical_unit DELETE must
+ * either (a) be flagged for serial commit via the standalone
+ * `commitChangeset`, or (b) extend this function to perform the
+ * reassignment inside `tx` (currently unused - none of the v2 plan
+ * kinds delete lexical_units).
+ */
+export async function commitChangesetInTx(
+  tx: Prisma.TransactionClient,
+  changesetId: bigint,
+  committedBy: string,
+): Promise<CommitResult> {
+  const changeset = await getChangesetInTx(tx, changesetId);
+
+  if (!changeset) {
+    throw new Error(`Changeset not found: ${changesetId.toString()}`);
+  }
+
+  if (changeset.status !== 'pending') {
+    throw new Error(`Changeset is already ${changeset.status}`);
+  }
+
+  const approvedChanges = changeset.field_changes.filter(fc => fc.status === 'approved');
+
+  if (approvedChanges.length === 0 && changeset.operation === 'update') {
+    throw new Error(
+      `No approved field changes to commit on changeset ${changesetId.toString()}`,
+    );
+  }
+
+  if (
+    changeset.operation === 'delete' &&
+    isLexicalUnitType(changeset.entity_type)
+  ) {
+    // The hyponym reassignment helper writes new pending changesets,
+    // which must happen outside this transaction (otherwise the new
+    // changesets and their comments roll back if the plan fails). For
+    // the planner-driven path we deliberately reject this case rather
+    // than silently dropping reassignment.
+    throw new Error(
+      `commitChangesetInTx does not support lexical_unit DELETE (changeset ${changesetId.toString()}); use commitChangeset standalone or extend to handle hyponym reassignment.`,
+    );
+  }
+
+  switch (changeset.operation) {
+    case 'create':
+      return await commitCreateInTx(tx, changeset, committedBy);
+    case 'update':
+      return await commitUpdateInTx(tx, changeset, approvedChanges, committedBy);
+    case 'delete':
+      return await commitDeleteInTx(tx, changeset, committedBy);
+    case 'merge':
+      return await commitMergeInTx(tx, changeset, committedBy);
+    default:
+      throw new Error(`Unknown operation: ${changeset.operation}`);
+  }
+}
+
+async function getChangesetInTx(
+  tx: Prisma.TransactionClient,
+  id: bigint,
+): Promise<ChangesetWithFieldChanges | null> {
+  const result = await tx.changesets.findUnique({
+    where: { id },
+    include: { field_changes: true },
+  });
+  if (!result) return null;
+  return {
+    id: result.id,
+    entity_type: result.entity_type as ChangesetWithFieldChanges['entity_type'],
+    entity_id: result.entity_id,
+    operation: result.operation as ChangesetWithFieldChanges['operation'],
+    entity_version: result.entity_version,
+    before_snapshot: result.before_snapshot as Record<string, unknown> | null,
+    after_snapshot: result.after_snapshot as Record<string, unknown> | null,
+    status: result.status,
+    created_by: result.created_by,
+    created_at: result.created_at,
+    reviewed_by: result.reviewed_by,
+    reviewed_at: result.reviewed_at,
+    committed_at: result.committed_at,
+    llm_job_id: result.llm_job_id,
+    field_changes: result.field_changes.map((fc) => ({
+      id: fc.id,
+      changeset_id: fc.changeset_id,
+      field_name: fc.field_name,
+      old_value: fc.old_value as ChangesetWithFieldChanges['field_changes'][number]['old_value'],
+      new_value: fc.new_value as ChangesetWithFieldChanges['field_changes'][number]['new_value'],
+      status: fc.status,
+      approved_by: fc.approved_by,
+      approved_at: fc.approved_at,
+      rejected_by: fc.rejected_by,
+      rejected_at: fc.rejected_at,
+    })),
+  };
 }
 
 // ============================================
@@ -159,28 +301,28 @@ async function commitCreate(
   changeset: ChangesetWithFieldChanges,
   committedBy: string
 ): Promise<CommitResult> {
+  return await prisma.$transaction(async (tx) =>
+    commitCreateInTx(tx, changeset, committedBy),
+  );
+}
+
+async function commitCreateInTx(
+  tx: Prisma.TransactionClient,
+  changeset: ChangesetWithFieldChanges,
+  committedBy: string,
+): Promise<CommitResult> {
   if (!changeset.after_snapshot) {
-    return {
-      success: false,
-      committed_count: 0,
-      skipped_count: 0,
-      errors: [{
-        changeset_id: changeset.id,
-        entity_type: changeset.entity_type,
-        entity_id: null,
-        error: 'No after_snapshot for CREATE operation',
-      }],
-    };
+    throw new Error(
+      `No after_snapshot for CREATE operation on changeset ${changeset.id.toString()}`,
+    );
   }
 
-  // Use a transaction to create the entity and update the changeset
-  await prisma.$transaction(async (tx) => {
-    await setRowHistoryContext(tx, {
-      userId: committedBy,
-      changesetId: changeset.id,
-    });
+  await setRowHistoryContext(tx, {
+    userId: committedBy,
+    changesetId: changeset.id,
+  });
 
-    const entityData = changeset.after_snapshot!;
+  const entityData = changeset.after_snapshot!;
     let newEntityId: bigint;
     
     if (isLexicalUnitType(changeset.entity_type)) {
@@ -292,8 +434,21 @@ async function commitCreate(
       newEntityId = BigInt(sense.id);
     } else if (changeset.entity_type === 'frame_relation') {
       const relData = entityData as Record<string, unknown>;
-      const sourceId = toBigIntSafe(relData.source_id);
-      const targetId = toBigIntSafe(relData.target_id);
+      // V2 plan source_id / target_id may be placeholder strings
+      // (e.g. "-3") referencing a sibling CREATE-frame changeset
+      // staged earlier in the same plan. Phase 6 split_frame uses
+      // this when the new parent_of edges originate from brand-new
+      // child frames.
+      const sourceId = await resolveVirtualOrBigInt(
+        tx,
+        relData.source_id,
+        `frame_relation.source_id (changeset ${changeset.id.toString()})`,
+      );
+      const targetId = await resolveVirtualOrBigInt(
+        tx,
+        relData.target_id,
+        `frame_relation.target_id (changeset ${changeset.id.toString()})`,
+      );
       const relType = relData.type as string;
 
       if (!sourceId || !targetId || !relType) {
@@ -328,6 +483,80 @@ async function commitCreate(
           update: {},
         });
       }
+    } else if (changeset.entity_type === 'frame_role_mapping') {
+      // CREATE frame_role_mapping (Phase 2 cascading remediations).
+      //
+      // Used by the v2 `regenerate_role_mappings` plan kind. The
+      // strategy LLM emits one entry per parent role; the runner
+      // lowers each into a CREATE on `frame_role_mappings` with a
+      // negative placeholder entity_id so the writer treats it as
+      // a create. We accept either direct columns
+      // (parent_frame_id / child_frame_id / parent_role_label /
+      // child_role_label) or denormalised aliases for forward
+      // compatibility.
+      const mappingData = entityData as Record<string, unknown>;
+      const parentFrameId = toBigIntSafe(mappingData.parent_frame_id);
+      const childFrameId = toBigIntSafe(mappingData.child_frame_id);
+      const parentRoleLabel =
+        typeof mappingData.parent_role_label === 'string'
+          ? mappingData.parent_role_label
+          : null;
+      const childRoleLabel =
+        typeof mappingData.child_role_label === 'string'
+          ? mappingData.child_role_label
+          : mappingData.child_role_label === null
+            ? null
+            : undefined;
+      const runId =
+        typeof mappingData.run_id === 'string' ? mappingData.run_id : '';
+      const model =
+        typeof mappingData.model === 'string' ? mappingData.model : null;
+
+      if (!parentFrameId || !childFrameId) {
+        throw new Error(
+          'CREATE frame_role_mapping requires parent_frame_id and child_frame_id',
+        );
+      }
+      if (!parentRoleLabel) {
+        throw new Error(
+          'CREATE frame_role_mapping requires parent_role_label (non-empty string)',
+        );
+      }
+      if (childRoleLabel === undefined) {
+        throw new Error(
+          'CREATE frame_role_mapping requires child_role_label (string or explicit null)',
+        );
+      }
+
+      // The (parent_frame_id, child_frame_id, parent_role_label,
+      // child_role_label, run_id) tuple is unique. Use upsert-by-
+      // composite-key to make the commit idempotent on retry: if a
+      // sibling changeset (or a concurrent run) already inserted
+      // the row, we no-op rather than blowing the plan tx up. The
+      // plan-writer's per-changeset ordering keeps the audit trail
+      // intact even when the underlying INSERT becomes a no-op.
+      const existing = await tx.frame_role_mappings.findFirst({
+        where: {
+          parent_frame_id: parentFrameId,
+          child_frame_id: childFrameId,
+          parent_role_label: parentRoleLabel,
+          child_role_label: childRoleLabel,
+          run_id: runId,
+        },
+      });
+      const mapping = existing
+        ? existing
+        : await tx.frame_role_mappings.create({
+            data: {
+              parent_frame_id: parentFrameId,
+              child_frame_id: childFrameId,
+              parent_role_label: parentRoleLabel,
+              child_role_label: childRoleLabel,
+              run_id: runId,
+              model,
+            },
+          });
+      newEntityId = mapping.id;
     } else {
       throw new Error(`CREATE not implemented for entity type: ${changeset.entity_type}`);
     }
@@ -342,21 +571,18 @@ async function commitCreate(
       },
     });
 
-    // Create audit log entry
-    await tx.audit_log.create({
-      data: {
-        entity_type: changeset.entity_type,
-        entity_id: newEntityId,
-        field_name: '*',
-        operation: 'create',
-        old_value: Prisma.DbNull,
-        new_value: entityData as Prisma.InputJsonValue,
-        changed_by: committedBy,
-        changesets: changeset.id ? { connect: { id: changeset.id } } : undefined,
-      },
-    });
-
-    return newEntityId;
+  // Create audit log entry
+  await tx.audit_log.create({
+    data: {
+      entity_type: changeset.entity_type,
+      entity_id: newEntityId,
+      field_name: '*',
+      operation: 'create',
+      old_value: Prisma.DbNull,
+      new_value: entityData as Prisma.InputJsonValue,
+      changed_by: committedBy,
+      changesets: changeset.id ? { connect: { id: changeset.id } } : undefined,
+    },
   });
 
   return {
@@ -438,29 +664,26 @@ async function commitUpdate(
   approvedChanges: ChangesetWithFieldChanges['field_changes'],
   committedBy: string
 ): Promise<CommitResult> {
+  return await prisma.$transaction(async (tx) =>
+    commitUpdateInTx(tx, changeset, approvedChanges, committedBy),
+  );
+}
+
+async function commitUpdateInTx(
+  tx: Prisma.TransactionClient,
+  changeset: ChangesetWithFieldChanges,
+  approvedChanges: ChangesetWithFieldChanges['field_changes'],
+  committedBy: string,
+): Promise<CommitResult> {
   if (!changeset.entity_id) {
-    return {
-      success: false,
-      committed_count: 0,
-      skipped_count: 0,
-      errors: [{
-        changeset_id: changeset.id,
-        entity_type: changeset.entity_type,
-        entity_id: null,
-        error: 'No entity_id for UPDATE operation',
-      }],
-    };
+    throw new Error(
+      `No entity_id for UPDATE operation on changeset ${changeset.id.toString()}`,
+    );
   }
 
-  // Check for version conflict
-  const conflictResult = await checkVersionConflict(changeset);
+  const conflictResult = await checkVersionConflictInTx(tx, changeset);
   if (conflictResult) {
-    return {
-      success: false,
-      committed_count: 0,
-      skipped_count: approvedChanges.length,
-      errors: [conflictResult],
-    };
+    throw new Error(conflictResult.error);
   }
 
   // Separate complex fields from simple fields
@@ -488,13 +711,12 @@ async function commitUpdate(
       ? simpleChanges.filter(fc => fc.field_name !== 'frame_id')
       : simpleChanges;
 
-  // Use a transaction
-  await prisma.$transaction(async (tx) => {
-    await setRowHistoryContext(tx, {
-      userId: committedBy,
-      changesetId: changeset.id,
-    });
+  await setRowHistoryContext(tx, {
+    userId: committedBy,
+    changesetId: changeset.id,
+  });
 
+  {
     for (const fc of senseSimpleChanges) {
       let nextValue: unknown = fc.new_value;
 
@@ -510,8 +732,30 @@ async function commitUpdate(
         continue;
       }
 
-      // Virtual-ID resolution (used by AI SPLIT jobs to reference pending CREATEs)
-      if (fc.field_name === 'frame_id') {
+      // Virtual-ID resolution (used by AI SPLIT jobs and Phase 5
+      // merge_frame plans to reference pending CREATEs). The same
+      // resolution path applies to ANY FK column that may carry a
+      // negative placeholder id pointing at an in-flight CREATE
+      // changeset.
+      //
+      // Known FK fields that may need virtual-id resolution + bigint
+      // coercion when staged from the runner:
+      //
+      //   - `frame_id`     on `frame_sense`  (move_frame_sense /
+      //                                       merge_frame sense
+      //                                       repoints; can target a
+      //                                       newly-created merge
+      //                                       target frame)
+      //   - `merged_into`  on `frame`        (Phase 5 merge_frame
+      //                                       per-source finalisation;
+      //                                       may point at a brand-
+      //                                       new target frame when
+      //                                       `target.kind === 'new'`)
+      const isFkField =
+        fc.field_name === 'frame_id' ||
+        (changeset.entity_type === 'frame' && fc.field_name === 'merged_into');
+
+      if (isFkField) {
         const asString = typeof nextValue === 'string' ? nextValue.trim() : null;
         if (asString && /^-\d+$/.test(asString)) {
           const virtualId = BigInt(asString); // negative
@@ -522,7 +766,7 @@ async function commitUpdate(
           });
 
           if (!createChangeset || createChangeset.operation !== 'create' || createChangeset.status !== 'committed' || createChangeset.entity_id === null) {
-            throw new Error(`Unable to resolve virtual ID ${asString} (create changeset ${createChangesetId.toString()} not committed)`);
+            throw new Error(`Unable to resolve virtual ID ${asString} on ${changeset.entity_type}.${fc.field_name} (create changeset ${createChangesetId.toString()} not committed)`);
           }
 
           nextValue = createChangeset.entity_id;
@@ -554,26 +798,55 @@ async function commitUpdate(
 
     if (hasSimpleChanges || hasComplexChanges) {
       const versionedData = { ...updateData, version: { increment: 1 } };
+      // V2 plan-driven changesets (Phase 5 merge_frame, Phase 6
+      // split_frame, etc.) don't thread entity_version through the
+      // plan-writer because the issue lock + drift fingerprint
+      // already guarantee no concurrent writer for the focal
+      // entity. Older v1 single-entity changesets DO carry
+      // entity_version for true optimistic concurrency. We branch on
+      // whether entity_version is present:
+      //   - present  -> updateMany with version filter (fail if changed)
+      //   - missing  -> update by id (no concurrency check)
+      // Without this branch, `version: null` reaches Prisma and
+      // throws an opaque "Argument `version` must not be null"
+      // error inside the plan transaction.
+      const useOptimisticLock = changeset.entity_version != null;
       let updateCount: number;
 
       if (isLexicalUnitType(changeset.entity_type)) {
-        const result = await tx.lexical_units.updateMany({
-          where: {
-            id: changeset.entity_id!,
-            version: changeset.entity_version!,
-          },
-          data: versionedData,
-        });
-        updateCount = result.count;
+        if (useOptimisticLock) {
+          const result = await tx.lexical_units.updateMany({
+            where: {
+              id: changeset.entity_id!,
+              version: changeset.entity_version!,
+            },
+            data: versionedData,
+          });
+          updateCount = result.count;
+        } else {
+          await tx.lexical_units.update({
+            where: { id: changeset.entity_id! },
+            data: versionedData,
+          });
+          updateCount = 1;
+        }
       } else if (changeset.entity_type === 'frame') {
-        const result = await tx.frames.updateMany({
-          where: {
-            id: changeset.entity_id!,
-            version: changeset.entity_version!,
-          },
-          data: versionedData,
-        });
-        updateCount = result.count;
+        if (useOptimisticLock) {
+          const result = await tx.frames.updateMany({
+            where: {
+              id: changeset.entity_id!,
+              version: changeset.entity_version!,
+            },
+            data: versionedData,
+          });
+          updateCount = result.count;
+        } else {
+          await tx.frames.update({
+            where: { id: changeset.entity_id! },
+            data: versionedData,
+          });
+          updateCount = 1;
+        }
       } else if (changeset.entity_type === 'frame_sense') {
         // frame_senses has no `version` column — skip optimistic locking here.
         if (hasSimpleChanges) {
@@ -602,7 +875,17 @@ async function commitUpdate(
     if (senseFrameIdChange) {
       const senseId = Number(changeset.entity_id!);
       const raw = senseFrameIdChange.new_value;
-      const newFrameId = toBigIntSafe(raw);
+      // V2 plan paths can pass a placeholder string (e.g. "-711")
+      // that references a sibling CREATE-frame changeset staged
+      // earlier in the same plan (e.g. Phase 6 split_frame: each
+      // result frame is brand-new, and senses repoint at it via
+      // its placeholder). Resolve via the shared helper so we
+      // get the same semantics as the simple-field code path.
+      const newFrameId = await resolveVirtualOrBigInt(
+        tx,
+        raw,
+        `frame_sense.frame_id (changeset ${changeset.id.toString()})`,
+      );
       if (!newFrameId) {
         throw new Error(
           `Invalid frame_id for frame_sense update: ${String(raw)} (must resolve to a BigInt)`
@@ -709,7 +992,7 @@ async function commitUpdate(
         },
       });
     }
-  });
+  }
 
   const skippedCount = changeset.field_changes.length - approvedChanges.length;
   
@@ -828,41 +1111,42 @@ async function commitDelete(
   changeset: ChangesetWithFieldChanges,
   committedBy: string
 ): Promise<CommitResult> {
-  if (!changeset.entity_id) {
-    return {
-      success: false,
-      committed_count: 0,
-      skipped_count: 0,
-      errors: [{
-        changeset_id: changeset.id,
-        entity_type: changeset.entity_type,
-        entity_id: null,
-        error: 'No entity_id for DELETE operation',
-      }],
-    };
-  }
-
-  // Check for version conflict
-  const conflictResult = await checkVersionConflict(changeset);
-  if (conflictResult) {
-    return {
-      success: false,
-      committed_count: 0,
-      skipped_count: 0,
-      errors: [conflictResult],
-    };
-  }
-
-  // For lexical unit deletions, handle hyponym reassignment first
+  // For lexical unit deletions, handle hyponym reassignment first.
+  // This stages new pending changesets and intentionally happens
+  // outside the delete transaction; if the delete fails the staged
+  // changesets stay (they are independently reviewable). This branch
+  // is only hit for the standalone-commit path - `commitChangesetInTx`
+  // throws on lexical_unit DELETE.
   if (changeset.entity_type === 'lexical_unit') {
     await handleLexicalUnitDeletionHyponymReassignment(changeset, committedBy);
   }
+  return await prisma.$transaction(async (tx) =>
+    commitDeleteInTx(tx, changeset, committedBy),
+  );
+}
 
-  await prisma.$transaction(async (tx) => {
-    await setRowHistoryContext(tx, {
-      userId: committedBy,
-      changesetId: changeset.id,
-    });
+async function commitDeleteInTx(
+  tx: Prisma.TransactionClient,
+  changeset: ChangesetWithFieldChanges,
+  committedBy: string,
+): Promise<CommitResult> {
+  if (!changeset.entity_id) {
+    throw new Error(
+      `No entity_id for DELETE operation on changeset ${changeset.id.toString()}`,
+    );
+  }
+
+  const conflictResult = await checkVersionConflictInTx(tx, changeset);
+  if (conflictResult) {
+    throw new Error(conflictResult.error);
+  }
+
+  await setRowHistoryContext(tx, {
+    userId: committedBy,
+    changesetId: changeset.id,
+  });
+
+  {
 
     if (isLexicalUnitType(changeset.entity_type)) {
       await tx.lexical_units.update({
@@ -930,6 +1214,29 @@ async function commitDelete(
           });
         }
       }
+    } else if (changeset.entity_type === 'frame_role_mapping') {
+      // Hard-delete (frame_role_mappings has no soft-delete column).
+      //
+      // Used by Phase 2 of the cascading-remediations plan: when a
+      // reparent (`move_frame_parent`) commits, the runner appends
+      // DELETE ops for every mapping row touching the old parent->
+      // child edge AND the new parent->child edge so the next health
+      // run's `FRAME_INHERITANCE_MISSING_ROLE_MAPPINGS` check picks
+      // them up cleanly via the `regenerate_role_mappings` strategy.
+      //
+      // `findUnique`+conditional-delete keeps this idempotent: if a
+      // sibling changeset (or the FK cascade from a parent frame
+      // delete elsewhere in the same plan) already removed the row,
+      // we no-op rather than blowing the whole transaction up.
+      const mappingId = changeset.entity_id!;
+      const existing = await tx.frame_role_mappings.findUnique({
+        where: { id: mappingId },
+      });
+      if (existing) {
+        await tx.frame_role_mappings.delete({
+          where: { id: mappingId },
+        });
+      }
     } else {
       throw new Error(`DELETE not implemented for entity type: ${changeset.entity_type}`);
     }
@@ -956,6 +1263,280 @@ async function commitDelete(
         changesets: changeset.id ? { connect: { id: changeset.id } } : undefined,
       },
     });
+  }
+
+  return {
+    success: true,
+    committed_count: 1,
+    skipped_count: 0,
+    errors: [],
+  };
+}
+
+// ============================================
+// Commit MERGE
+// ============================================
+
+/**
+ * Commits a `merge` operation. Currently only `entity_type='frame_sense'`
+ * is supported (Phase 1 - merge_sense plan kind). Phase 5 will add the
+ * `frame` case for merge_frame.
+ *
+ * Contract for `merge` on `frame_sense`:
+ *
+ *   - `entity_id` points at the LOSER sense (the row that gets DELETEd
+ *     at the tail of the merge).
+ *   - `before_snapshot.__merge_target_id` is the WINNER sense id.
+ *   - `before_snapshot.__merge_context.frame_id` is the frame both
+ *     senses currently belong to (drift-detection: if either sense
+ *     moved away, the merge aborts).
+ *   - `before_snapshot.__merge_payload.merged_definition` is the
+ *     LLM-baked text the winner ends up with.
+ *
+ * Sequence (all under the outer plan tx):
+ *
+ *   1. DRIFT CHECK: re-read both senses + their `frame_sense_frames`
+ *      links; abort if either sense is gone, the winner's frame_id
+ *      no longer matches, or the loser doesn't link to the same
+ *      frame anymore.
+ *   2. B3 (relink lexical_unit_senses): UPDATE rows where
+ *      frame_sense_id=loser to use winner; deduplicate by deleting
+ *      collisions on (lexical_unit_id, winner) before the move.
+ *   3. B4 (relink frame_sense_frames): same pattern keyed on frame_id.
+ *   4. B5 (relink frame_sense_contrasts): same pattern keyed on
+ *      (frame_sense_id, contrasted_sense_id) and on the inverse
+ *      column. Self-contrasts (contrasted_sense_id == winner) are
+ *      dropped.
+ *   5. UPDATE `frame_senses.definition = merged_definition` on winner.
+ *   6. DELETE loser. Cascades automatically clean any link rows we
+ *      didn't repoint (e.g. residuals after dedup).
+ *   7. AUDIT: write one audit_log row keyed on the loser id with
+ *      `operation='delete'` (closest existing semantic) plus the
+ *      merge metadata in `new_value`. Mark the changeset committed.
+ */
+async function commitMergeInTx(
+  tx: Prisma.TransactionClient,
+  changeset: ChangesetWithFieldChanges,
+  committedBy: string,
+): Promise<CommitResult> {
+  if (changeset.entity_type !== 'frame_sense') {
+    throw new Error(
+      `MERGE not implemented for entity type: ${changeset.entity_type} (changeset ${changeset.id.toString()})`,
+    );
+  }
+  if (!changeset.entity_id) {
+    throw new Error(
+      `MERGE on frame_sense requires entity_id (loser sense) on changeset ${changeset.id.toString()}`,
+    );
+  }
+  const before = changeset.before_snapshot as Record<string, unknown> | null;
+  if (!before) {
+    throw new Error(
+      `MERGE on frame_sense requires before_snapshot (changeset ${changeset.id.toString()})`,
+    );
+  }
+
+  const targetIdRaw = before.__merge_target_id;
+  const winnerSenseId = toBigIntSafe(targetIdRaw);
+  if (!winnerSenseId) {
+    throw new Error(
+      `MERGE before_snapshot missing __merge_target_id on changeset ${changeset.id.toString()}`,
+    );
+  }
+  const loserSenseId = changeset.entity_id;
+  if (winnerSenseId === loserSenseId) {
+    throw new Error(
+      `MERGE refuses self-merge: winner=loser=${winnerSenseId.toString()} (changeset ${changeset.id.toString()})`,
+    );
+  }
+
+  const ctx = (before.__merge_context ?? {}) as Record<string, unknown>;
+  const expectedFrameIdRaw = ctx.frame_id;
+  const expectedFrameId = toBigIntSafe(expectedFrameIdRaw);
+  if (!expectedFrameId) {
+    throw new Error(
+      `MERGE before_snapshot missing __merge_context.frame_id on changeset ${changeset.id.toString()}`,
+    );
+  }
+
+  const payload = (before.__merge_payload ?? {}) as Record<string, unknown>;
+  const mergedDefinition = payload.merged_definition;
+  if (typeof mergedDefinition !== 'string' || mergedDefinition.length === 0) {
+    throw new Error(
+      `MERGE before_snapshot missing __merge_payload.merged_definition on changeset ${changeset.id.toString()}`,
+    );
+  }
+
+  await setRowHistoryContext(tx, {
+    userId: committedBy,
+    changesetId: changeset.id,
+  });
+
+  // 1) DRIFT CHECK: reload winner + loser rows. frame_senses uses Int
+  //    PKs, BigInt in the changeset.
+  const winnerIdInt = Number(winnerSenseId);
+  const loserIdInt = Number(loserSenseId);
+
+  const [winnerRow, loserRow] = await Promise.all([
+    tx.frame_senses.findUnique({ where: { id: winnerIdInt } }),
+    tx.frame_senses.findUnique({ where: { id: loserIdInt } }),
+  ]);
+  if (!winnerRow) {
+    throw new Error(
+      `MERGE drift: winner frame_sense ${winnerIdInt} no longer exists`,
+    );
+  }
+  if (!loserRow) {
+    throw new Error(
+      `MERGE drift: loser frame_sense ${loserIdInt} no longer exists`,
+    );
+  }
+
+  // Both senses must currently link to the expected frame_id.
+  const [winnerLink, loserLink] = await Promise.all([
+    tx.frame_sense_frames.findFirst({
+      where: { frame_sense_id: winnerIdInt, frame_id: expectedFrameId },
+    }),
+    tx.frame_sense_frames.findFirst({
+      where: { frame_sense_id: loserIdInt, frame_id: expectedFrameId },
+    }),
+  ]);
+  if (!winnerLink) {
+    throw new Error(
+      `MERGE drift: winner frame_sense ${winnerIdInt} no longer linked to frame ${expectedFrameId.toString()}`,
+    );
+  }
+  if (!loserLink) {
+    throw new Error(
+      `MERGE drift: loser frame_sense ${loserIdInt} no longer linked to frame ${expectedFrameId.toString()}`,
+    );
+  }
+
+  // 2) B3 relink lexical_unit_senses with dedup.
+  await tx.$executeRaw(Prisma.sql`
+    DELETE FROM lexical_unit_senses
+    WHERE frame_sense_id = ${loserIdInt}
+      AND lexical_unit_id IN (
+        SELECT lexical_unit_id FROM lexical_unit_senses
+        WHERE frame_sense_id = ${winnerIdInt}
+      )
+  `);
+  await tx.$executeRaw(Prisma.sql`
+    UPDATE lexical_unit_senses
+    SET frame_sense_id = ${winnerIdInt}
+    WHERE frame_sense_id = ${loserIdInt}
+  `);
+
+  // 3) B4 relink frame_sense_frames with dedup.
+  await tx.$executeRaw(Prisma.sql`
+    DELETE FROM frame_sense_frames
+    WHERE frame_sense_id = ${loserIdInt}
+      AND frame_id IN (
+        SELECT frame_id FROM frame_sense_frames
+        WHERE frame_sense_id = ${winnerIdInt}
+      )
+  `);
+  await tx.$executeRaw(Prisma.sql`
+    UPDATE frame_sense_frames
+    SET frame_sense_id = ${winnerIdInt}
+    WHERE frame_sense_id = ${loserIdInt}
+  `);
+
+  // 4) B5 relink frame_sense_contrasts.
+  //
+  // The table has TWO non-trivial integrity rules we must respect:
+  //
+  //   (a) CHECK (frame_sense_id < contrasted_sense_id) — rows are
+  //       always stored with the lower id in the first column. A
+  //       naïve UPDATE that swaps one column to the winner can flip
+  //       the inequality and abort the whole merge.
+  //   (b) UNIQUE (frame_sense_id, contrasted_sense_id) — repointing a
+  //       loser-referencing row to the winner can collide with an
+  //       existing winner row.
+  //
+  // Strategy: collect every distinct "other" sense the loser
+  // contrasts with (from EITHER column position), insert canonical
+  // (min(winner, other), max(winner, other)) rows where they do not
+  // already exist, then bulk-delete every loser-referencing row.
+  // This naturally drops:
+  //   - self-contrasts (other == winner -> filtered out by WHERE)
+  //   - duplicates (handled by ON CONFLICT DO NOTHING)
+  //
+  // We pick one `contrast_text` per `other` to seed the new row when
+  // it doesn't already exist; the COALESCE / MIN combination keeps
+  // the choice deterministic but does prefer the loser's text over
+  // the winner's (the winner's text would already be on the existing
+  // row, so this is the only way to surface loser-side annotations).
+  await tx.$executeRaw(Prisma.sql`
+    INSERT INTO frame_sense_contrasts (frame_sense_id, contrasted_sense_id, contrast_text)
+    SELECT
+      LEAST(${winnerIdInt}, other_id) AS lo,
+      GREATEST(${winnerIdInt}, other_id) AS hi,
+      MIN(contrast_text) AS contrast_text
+    FROM (
+      SELECT contrasted_sense_id AS other_id, contrast_text
+      FROM frame_sense_contrasts
+      WHERE frame_sense_id = ${loserIdInt}
+      UNION ALL
+      SELECT frame_sense_id AS other_id, contrast_text
+      FROM frame_sense_contrasts
+      WHERE contrasted_sense_id = ${loserIdInt}
+    ) loser_rows
+    WHERE other_id <> ${winnerIdInt}
+      AND other_id <> ${loserIdInt}
+    GROUP BY other_id
+    ON CONFLICT (frame_sense_id, contrasted_sense_id) DO NOTHING
+  `);
+  await tx.$executeRaw(Prisma.sql`
+    DELETE FROM frame_sense_contrasts
+    WHERE frame_sense_id = ${loserIdInt}
+       OR contrasted_sense_id = ${loserIdInt}
+  `);
+
+  // 5) UPDATE winner.definition.
+  await tx.frame_senses.update({
+    where: { id: winnerIdInt },
+    data: {
+      definition: mergedDefinition,
+      updated_at: new Date(),
+    },
+  });
+
+  // 6) DELETE loser. Refuse if revision history blocks it (mirrors
+  //    `commitDeleteInTx`'s frame_sense behaviour).
+  const revisionCount = await tx.frame_sense_definition_revisions.count({
+    where: { frame_sense_id: loserIdInt },
+  });
+  if (revisionCount > 0) {
+    throw new Error(
+      `MERGE refuses to delete loser frame_sense ${loserIdInt}: ${revisionCount} definition revision(s) still reference it. Archive or remove the revision history first.`,
+    );
+  }
+  await tx.frame_senses.delete({ where: { id: loserIdInt } });
+
+  // 7) AUDIT + mark changeset committed.
+  await tx.changesets.update({
+    where: { id: changeset.id },
+    data: {
+      status: 'committed',
+      committed_at: new Date(),
+    },
+  });
+  await tx.audit_log.create({
+    data: {
+      entity_type: 'frame_sense',
+      entity_id: loserSenseId,
+      field_name: '*',
+      operation: 'merge',
+      old_value: before as Prisma.InputJsonValue,
+      new_value: {
+        merged_into: winnerSenseId.toString(),
+        frame_id: expectedFrameId.toString(),
+        merged_definition: mergedDefinition,
+      } as Prisma.InputJsonValue,
+      changed_by: committedBy,
+      changesets: { connect: { id: changeset.id } },
+    },
   });
 
   return {
@@ -1072,6 +1653,13 @@ async function handleLexicalUnitDeletionHyponymReassignment(
 async function checkVersionConflict(
   changeset: ChangesetWithFieldChanges
 ): Promise<CommitError | null> {
+  return await checkVersionConflictInTx(prisma, changeset);
+}
+
+async function checkVersionConflictInTx(
+  client: Prisma.TransactionClient | typeof prisma,
+  changeset: ChangesetWithFieldChanges,
+): Promise<CommitError | null> {
   if (!changeset.entity_id || changeset.entity_version === null) {
     return null;
   }
@@ -1082,21 +1670,21 @@ async function checkVersionConflict(
   }
 
   let currentVersion: number | null = null;
-  
+
   if (changeset.entity_type === 'lexical_unit') {
-    const lu = await prisma.lexical_units.findUnique({
+    const lu = await client.lexical_units.findUnique({
       where: { id: changeset.entity_id },
       select: { version: true },
     });
     currentVersion = lu?.version ?? null;
   } else if (changeset.entity_type === 'frame') {
-    const frame = await prisma.frames.findUnique({
+    const frame = await client.frames.findUnique({
       where: { id: changeset.entity_id },
       select: { version: true },
     });
     currentVersion = frame?.version ?? null;
   } else if (changeset.entity_type === 'frame_relation') {
-    const rel = await prisma.frame_relations.findUnique({
+    const rel = await client.frame_relations.findUnique({
       where: { id: changeset.entity_id },
       select: { version: true },
     });

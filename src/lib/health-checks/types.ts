@@ -152,14 +152,18 @@ export type HealthRemediationStrategy =
   | 'create_frame_role_mapping'
   | 'update_frame_role_mapping'
   | 'delete_frame_role_mapping'
+  | 'regenerate_role_mappings'
   | 'create_frame_relation'
   | 'update_frame_relation_type'
   | 'delete_frame_relation'
+  | 'detach_non_parent_relation'
+  | 'detach_parent_relation'
   | 'reparent_frame'
   | 'create_frame_sense'
   | 'update_frame_sense'
   | 'delete_frame_sense'
   | 'move_frame_sense'
+  | 'merge_sense'
   | 'create_lexical_unit'
   | 'update_lexical_unit'
   | 'delete_lexical_unit'
@@ -190,14 +194,18 @@ export const HEALTH_REMEDIATION_STRATEGIES: HealthRemediationStrategy[] = [
   'create_frame_role_mapping',
   'update_frame_role_mapping',
   'delete_frame_role_mapping',
+  'regenerate_role_mappings',
   'create_frame_relation',
   'update_frame_relation_type',
   'delete_frame_relation',
+  'detach_non_parent_relation',
+  'detach_parent_relation',
   'reparent_frame',
   'create_frame_sense',
   'update_frame_sense',
   'delete_frame_sense',
   'move_frame_sense',
+  'merge_sense',
   'create_lexical_unit',
   'update_lexical_unit',
   'delete_lexical_unit',
@@ -229,14 +237,18 @@ export const HEALTH_REMEDIATION_STRATEGY_LABELS: Record<HealthRemediationStrateg
   create_frame_role_mapping: 'Create frame role mapping',
   update_frame_role_mapping: 'Update frame role mapping',
   delete_frame_role_mapping: 'Delete frame role mapping',
+  regenerate_role_mappings: 'Regenerate role mappings',
   create_frame_relation: 'Create frame relation',
   update_frame_relation_type: 'Update frame relation type',
   delete_frame_relation: 'Delete frame relation',
+  detach_non_parent_relation: 'Detach non-parent relations',
+  detach_parent_relation: 'Detach parent relation',
   reparent_frame: 'Reparent frame',
   create_frame_sense: 'Create frame sense',
   update_frame_sense: 'Update frame sense',
   delete_frame_sense: 'Delete frame sense',
   move_frame_sense: 'Move frame sense',
+  merge_sense: 'Merge frame senses',
   create_lexical_unit: 'Create lexical unit',
   update_lexical_unit: 'Update lexical unit',
   delete_lexical_unit: 'Delete lexical unit',

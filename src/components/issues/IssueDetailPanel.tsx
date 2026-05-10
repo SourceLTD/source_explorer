@@ -22,6 +22,10 @@ import {
   ISSUE_STATUS_STYLES,
   ISSUE_PRIORITY_STYLES,
 } from '@/lib/issues/types';
+import {
+  HEALTH_REMEDIATION_STRATEGY_LABELS,
+  type HealthRemediationStrategy,
+} from '@/lib/health-checks/types';
 import LoadingSpinner from '../LoadingSpinner';
 import IssueFormModal from './IssueFormModal';
 import IssueTimeline from './IssueTimeline';
@@ -46,10 +50,19 @@ interface IssueDetailPanelProps {
   onDeleted?: (id: string) => void;
 }
 
-function Badge({ className, children }: { className: string; children: React.ReactNode }) {
+function Badge({
+  className,
+  children,
+  title,
+}: {
+  className: string;
+  children: React.ReactNode;
+  title?: string;
+}) {
   return (
     <span
       className={`inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-medium ${className}`}
+      title={title}
     >
       {children}
     </span>
@@ -487,6 +500,27 @@ export default function IssueDetailPanel({
               </Badge>
             )}
 
+            {issue.strategy_override && (
+              <Badge
+                className="bg-amber-100 text-amber-900 border-amber-300"
+                title={
+                  `Planner will route this issue through "${
+                    HEALTH_REMEDIATION_STRATEGY_LABELS[
+                      issue.strategy_override as HealthRemediationStrategy
+                    ] ?? issue.strategy_override
+                  }" instead of the diagnosis-code default. ` +
+                  `Set by the auto-promotion rule in create-issues-for-run.ts ` +
+                  `(see issue comments for the reasoning), or by a manual ` +
+                  `PATCH on the issue.`
+                }
+              >
+                Strategy override:{' '}
+                {HEALTH_REMEDIATION_STRATEGY_LABELS[
+                  issue.strategy_override as HealthRemediationStrategy
+                ] ?? issue.strategy_override}
+              </Badge>
+            )}
+
             {issue.labels.length > 0 && (
               <div className="flex flex-wrap items-center gap-1.5 ml-auto">
                 {issue.labels.map((label) => (
@@ -602,10 +636,10 @@ export default function IssueDetailPanel({
             </section>
           )}
 
-          {/* v2: structural change plans (split, merge, move, attach/detach,
-              composite). Each renders as its own card with a commit/discard
-              CTA so reviewers approve the whole N-step plan as a unit
-              rather than approving children individually. */}
+          {/* v2: structural change plans (split, merge, move,
+              attach/detach). Each renders as its own card with a
+              commit/discard CTA so reviewers approve the whole N-step
+              plan as a unit rather than approving children individually. */}
           {pendingPlans.length > 0 && (
             <section className="space-y-3">
               <h3 className="text-sm font-medium text-gray-700 flex items-center gap-2">

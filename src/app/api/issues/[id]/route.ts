@@ -240,6 +240,7 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
       updated_at: issue.updated_at.toISOString(),
       closed_at: issue.closed_at ? issue.closed_at.toISOString() : null,
       diagnosis_code_id: issue.diagnosis_code_id ? issue.diagnosis_code_id.toString() : null,
+      strategy_override: issue.strategy_override ?? null,
       diagnosis_code: issue.diagnosis_code
         ? {
             id: issue.diagnosis_code.id.toString(),
@@ -408,6 +409,35 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       }
     }
 
+    if ('strategy_override' in body) {
+      // NULL / empty string clears the override and reverts the
+      // planner to the diagnosis-code default. Any non-null value
+      // must be one of the catalogued remediation strategies; the DB
+      // CHECK constraint catches the rest at INSERT time, but we
+      // surface a 400 instead of a 500 for known typos.
+      if (body.strategy_override === null || body.strategy_override === '') {
+        updates.strategy_override = null;
+      } else if (typeof body.strategy_override === 'string') {
+        const allowed = (
+          await import('@/lib/health-checks/types')
+        ).HEALTH_REMEDIATION_STRATEGIES as readonly string[];
+        if (!allowed.includes(body.strategy_override)) {
+          return NextResponse.json(
+            {
+              error: `Invalid strategy_override; must be one of ${allowed.join(', ')} or null`,
+            },
+            { status: 400 },
+          );
+        }
+        updates.strategy_override = body.strategy_override;
+      } else {
+        return NextResponse.json(
+          { error: 'strategy_override must be a string or null' },
+          { status: 400 },
+        );
+      }
+    }
+
     if (Object.keys(updates).length === 0) {
       return NextResponse.json(
         { error: 'No valid fields to update' },
@@ -499,6 +529,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       updated_at: issue.updated_at.toISOString(),
       closed_at: issue.closed_at ? issue.closed_at.toISOString() : null,
       diagnosis_code_id: issue.diagnosis_code_id ? issue.diagnosis_code_id.toString() : null,
+      strategy_override: issue.strategy_override ?? null,
       diagnosis_code: issue.diagnosis_code
         ? {
             id: issue.diagnosis_code.id.toString(),

@@ -58,6 +58,8 @@ export function operationBadgeClass(op: string): string {
       return 'bg-blue-100 text-blue-700';
     case 'delete':
       return 'bg-red-100 text-red-800';
+    case 'merge':
+      return 'bg-purple-100 text-purple-800';
     case 'move':
       return 'bg-purple-100 text-purple-800';
     default:
