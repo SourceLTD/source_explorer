@@ -1,11 +1,20 @@
 /**
- * End-to-end smoke test for the `split_frame` plan kind (Phase 6).
+ * End-to-end smoke test for the `split_frame` plan kind.
  *
  * Mirrors what the runner stages via `enrichSplitFramePayload` +
  * `normaliseSplitFrame` + `writeRemediationPlan`, then drives the
  * staged plan through `commitPlan` and asserts the post-state
  * matches what we'd expect after splitting one source frame into
  * two new frames with senses partitioned across them.
+ *
+ * Phase 8 contract: new frames produced by a split are ALWAYS
+ * orphans (no `parent_of` edges). Parent attachment is a separate,
+ * reviewable step driven by hierarchy health checks on a later
+ * run via `reparent_frame` / `attach_relation`. This test no
+ * longer exercises the virtual-id resolution path for
+ * `frame_relation.source_id`-against-a-placeholder; that path
+ * stays covered by `test-commit-plan-atomicity.ts` (move-kind
+ * DELETE+CREATE on existing frame ids).
  *
  * Fixture topology (all rows tagged with `${TEST_TAG}` for safe
  * teardown):
@@ -27,29 +36,24 @@
  *                          run)
  *
  * Plan staged: split_frame source=source, results=[
- *   { label: A, sense_ids: [senseA, senseB], inherits_from: [parent] },
- *   { label: B, sense_ids: [senseC],         inherits_from: [parent] },
+ *   { label: A, sense_ids: [senseA, senseB] },
+ *   { label: B, sense_ids: [senseC] },
  * ], source_disposition='delete'
  *
  * Expected post-commit state:
  *   - source frame is soft-deleted (deleted=true).
  *   - 2 brand-new frames exist with labels A, B; both NOT
- *     deleted.
+ *     deleted; both with NO `parent_of` outgoing edges (orphans
+ *     by design).
  *   - senseA, senseB now link to new frame A (via
  *     frame_sense_frames; old link to source is gone).
  *   - senseC now links to new frame B.
  *   - senseD still links to source (intentional: it wasn't in
  *     the partition; this leaves a stranded link, picked up by
  *     a future health-check sweep).
- *   - 2 brand-new parent_of relations exist (A -> parent,
- *     B -> parent), with the source's pre-existing parent_of
- *     edge still intact (we don't touch the source's outgoing
- *     edges; the soft-delete cascades semantically).
- *
- * Validates the v2 virtual-id resolution extension in commit.ts
- * (Phase 6): `frame_relation.{source_id,target_id}` must accept
- * negative placeholder ids and resolve them to the new frames'
- * real ids.
+ *   - The pre-existing source -> parent edge is still intact
+ *     (the soft-delete cascades semantically; the edge is
+ *     cleaned up by a follow-up sweep).
  *
  * Cleans up its own fixtures (and the staged plan/changeset rows)
  * regardless of pass/fail. Re-runs are idempotent.
@@ -152,20 +156,19 @@ interface StagedPlan {
 
 /**
  * Build the changeset graph the runner's plan-writer would emit
- * for a split_frame plan with two results and one parent each.
+ * for a split_frame plan with two results.
  *
  * Op order (mirrors `normaliseSplitFrame`):
  *   1. update frame  (source soft-delete; field_changes [deleted])
  *   2. create frame  (result A; placeholder=-1)
- *   3. update frame_sense (senseA -> -1)
- *   4. update frame_sense (senseB -> -1)
- *   5. create frame_relation (source=-1, target=parent, type=parent_of)
- *   6. create frame  (result B; placeholder=-2 ... wait, actually
- *      after the relation create the placeholder counter has
- *      decremented. The runner uses the same monotonically-
- *      decreasing counter for ALL placeholders in the plan
- *      regardless of entity type, so the test must mirror that
- *      order exactly to keep virtual-id resolution working.)
+ *   3. update frame_sense (senseA -> result A placeholder)
+ *   4. update frame_sense (senseB -> result A placeholder)
+ *   5. create frame  (result B; placeholder=-N for next changeset)
+ *   6. update frame_sense (senseC -> result B placeholder)
+ *
+ * Phase 8: NO `frame_relation` CREATEs are staged. New frames are
+ * orphans by design; parent attachment is a separate step driven
+ * by hierarchy checks on a later run.
  *
  * After CREATE changesets land, their `entity_id` is the real
  * row id; the explorer's virtual-id resolver maps `-N` to
@@ -237,7 +240,7 @@ async function stageSplitFramePlan(fx: Fixture): Promise<StagedPlan> {
         return cs.id;
       };
       const stageCreate = async (
-        entityType: 'frame' | 'frame_relation',
+        entityType: 'frame',
         afterSnapshot: Record<string, unknown>,
       ) => {
         const cs = await tx.changesets.create({
@@ -300,23 +303,15 @@ async function stageSplitFramePlan(fx: Fixture): Promise<StagedPlan> {
         ],
       );
 
-      // 5. parent_of edge: result A -> parent. source_id is the
-      //    placeholder string; commit.ts resolves it via the
-      //    virtual-id resolver.
-      await stageCreate('frame_relation', {
-        source_id: resultAPlaceholder,
-        target_id: fx.parentFrameId.toString(),
-        type: 'parent_of',
-      });
-
-      // 6. Result B frame CREATE.
+      // 5. Result B frame CREATE. (Phase 8: no parent_of edge
+      //    between steps 4 and 5; new frames are orphans.)
       const resultBCreateId = await stageCreate('frame', {
         label: `${TEST_TAG}-resultB`,
         definition: `${TEST_TAG} result B (split from source)`,
       });
       const resultBPlaceholder = `-${resultBCreateId.toString()}`;
 
-      // 7. Sense flip to result B.
+      // 6. Sense flip to result B.
       await stageUpdate(
         'frame_sense',
         BigInt(fx.senseCId),
@@ -329,13 +324,6 @@ async function stageSplitFramePlan(fx: Fixture): Promise<StagedPlan> {
           },
         ],
       );
-
-      // 8. parent_of edge: result B -> parent.
-      await stageCreate('frame_relation', {
-        source_id: resultBPlaceholder,
-        target_id: fx.parentFrameId.toString(),
-        type: 'parent_of',
-      });
 
       return {
         planId,
@@ -469,28 +457,27 @@ async function assertPostState(
     );
   }
 
-  // 6) Two new parent_of edges to the parent frame; one from
-  //    each new result frame.
+  // 6) Phase 8: new frames are orphans. Neither result A nor
+  //    result B may have any outgoing `parent_of` (or any other
+  //    type) frame_relations. Parent attachment is a separate
+  //    review step driven by hierarchy health checks on a later
+  //    run.
   if (resultAFrameId !== null && resultBFrameId !== null) {
     const newEdges = await prisma.frame_relations.findMany({
       where: {
-        type: 'parent_of',
-        source_id: { in: [resultAFrameId, resultBFrameId] },
-        target_id: fx.parentFrameId,
+        OR: [
+          { source_id: { in: [resultAFrameId, resultBFrameId] } },
+          { target_id: { in: [resultAFrameId, resultBFrameId] } },
+        ],
       },
     });
-    if (newEdges.length !== 2) {
+    if (newEdges.length !== 0) {
+      const detail = newEdges
+        .map((e) => `#${e.id}(${e.source_id}->${e.target_id} ${e.type})`)
+        .join(', ');
       ctx.failures.push(
-        `expected 2 new parent_of edges (A->parent, B->parent); found ${newEdges.length}`,
-      );
-    }
-    const sourceIds = new Set(newEdges.map((e) => e.source_id.toString()));
-    if (
-      !sourceIds.has(resultAFrameId.toString()) ||
-      !sourceIds.has(resultBFrameId.toString())
-    ) {
-      ctx.failures.push(
-        `new parent_of edges missing one of the result frames as source: ${JSON.stringify(Array.from(sourceIds))}`,
+        `Phase 8: expected 0 frame_relations touching the new result frames ` +
+          `(orphan by design); found ${newEdges.length}: ${detail}`,
       );
     }
   }
@@ -645,7 +632,8 @@ async function main(): Promise<void> {
       testPassed = true;
       console.log(
         '\n>>> ALL ASSERTIONS PASSED. split_frame commit pipeline works end-to-end ' +
-          '(virtual-id resolution on frame_relation.source_id verified).',
+          '(source soft-delete + 2 frame CREATEs + sense flips with ' +
+          'virtual-id resolution; Phase 8: NO parent_of CREATEs).',
       );
     } else {
       console.log('\n!!! FAILURES:');

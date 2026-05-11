@@ -139,6 +139,7 @@ export type HealthRemediationStrategy =
   | 'update_frame_type'
   | 'update_frame_subtype'
   | 'split_frame'
+  | 'split_pos_alternation'
   | 'merge_frame'
   | 'delete_frame'
   | 'create_frame_role'
@@ -181,6 +182,7 @@ export const HEALTH_REMEDIATION_STRATEGIES: HealthRemediationStrategy[] = [
   'update_frame_type',
   'update_frame_subtype',
   'split_frame',
+  'split_pos_alternation',
   'merge_frame',
   'delete_frame',
   'create_frame_role',
@@ -224,6 +226,7 @@ export const HEALTH_REMEDIATION_STRATEGY_LABELS: Record<HealthRemediationStrateg
   update_frame_type: 'Update frame type',
   update_frame_subtype: 'Update frame subtype',
   split_frame: 'Split frame',
+  split_pos_alternation: 'Split frame by POS alternation',
   merge_frame: 'Merge frame',
   delete_frame: 'Delete frame',
   create_frame_role: 'Create frame role',

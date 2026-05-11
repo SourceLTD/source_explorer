@@ -436,9 +436,12 @@ async function commitCreateInTx(
       const relData = entityData as Record<string, unknown>;
       // V2 plan source_id / target_id may be placeholder strings
       // (e.g. "-3") referencing a sibling CREATE-frame changeset
-      // staged earlier in the same plan. Phase 6 split_frame uses
-      // this when the new parent_of edges originate from brand-new
-      // child frames.
+      // staged earlier in the same plan. (Phase 8: `split_frame`
+      // no longer emits parent_of edges for brand-new frames -
+      // new frames are orphans by design - so this path is now
+      // exercised primarily by `attach_relation` /
+      // `reparent_frame` plans where one or both endpoints can
+      // legitimately be a placeholder.)
       const sourceId = await resolveVirtualOrBigInt(
         tx,
         relData.source_id,
@@ -557,6 +560,52 @@ async function commitCreateInTx(
             },
           });
       newEntityId = mapping.id;
+    } else if (changeset.entity_type === 'frame_role') {
+      // Standalone CREATE frame_role (Phase 10 - 100% remediation
+      // coverage). Frame-create already supports inlined roles via
+      // the `frame_roles` array on the frame's after_snapshot; this
+      // branch handles the case where the runner emits a single
+      // role-create against an *existing* frame (the
+      // `create_frame_role` strategy for DR-018, DR-029 family,
+      // DR-033 family, DR-035 family - "Missing core/peripheral/
+      // scalar role" diagnoses on an already-created frame).
+      const roleData = entityData as Record<string, unknown>;
+      const frameId = toBigIntSafe(roleData.frame_id);
+      const label = typeof roleData.label === 'string' ? roleData.label : null;
+      if (!frameId) {
+        throw new Error('CREATE frame_role requires frame_id');
+      }
+      if (!label) {
+        throw new Error('CREATE frame_role requires a non-empty label');
+      }
+      // Sibling-label uniqueness pre-check. The schema does not
+      // enforce label uniqueness per frame, but every health check
+      // that consumes role labels assumes it - and the LLM
+      // validator on the runner side enforces it too. Guard here
+      // so a stale plan doesn't slip a duplicate through.
+      const dup = await tx.frame_roles.findFirst({
+        where: { frame_id: frameId, label },
+        select: { id: true },
+      });
+      if (dup) {
+        throw new Error(
+          `CREATE frame_role: label "${label}" already exists on frame ${frameId.toString()}`,
+        );
+      }
+      const role = await tx.frame_roles.create({
+        data: {
+          frame_id: frameId,
+          label,
+          description:
+            typeof roleData.description === 'string' ? roleData.description : null,
+          notes: typeof roleData.notes === 'string' ? roleData.notes : null,
+          main: typeof roleData.main === 'boolean' ? roleData.main : false,
+          examples: Array.isArray(roleData.examples)
+            ? (roleData.examples as string[])
+            : [],
+        },
+      });
+      newEntityId = role.id;
     } else {
       throw new Error(`CREATE not implemented for entity type: ${changeset.entity_type}`);
     }
@@ -1236,6 +1285,28 @@ async function commitDeleteInTx(
         await tx.frame_role_mappings.delete({
           where: { id: mappingId },
         });
+      }
+    } else if (changeset.entity_type === 'frame_role') {
+      // Hard-delete (frame_roles has no soft-delete column).
+      //
+      // FK cascade map (see prisma/schema.prisma):
+      //   role_group_members.role_id -> ON DELETE CASCADE
+      //                                 (cleaned up automatically)
+      //
+      // Used by the `delete_frame_role` strategy (DR-030 family,
+      // DR-034 family, DR-041 - "Spurious / Duplicate / Scalar role
+      // duplication" diagnoses). We do NOT cascade clean
+      // frame_role_mappings rows that reference the role's label by
+      // string here: that responsibility belongs to the
+      // `delete_frame_role_mapping` strategy on the next health
+      // pass (eventual-consistency model). `findUnique` keeps the
+      // delete idempotent on retry.
+      const roleId = changeset.entity_id!;
+      const existing = await tx.frame_roles.findUnique({
+        where: { id: roleId },
+      });
+      if (existing) {
+        await tx.frame_roles.delete({ where: { id: roleId } });
       }
     } else {
       throw new Error(`DELETE not implemented for entity type: ${changeset.entity_type}`);
