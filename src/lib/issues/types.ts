@@ -164,6 +164,8 @@ export interface IssueFindingFrameRef {
  * The shape is discriminated on `kind`:
  *   - `frame_relation`: a parent_of edge, surfaced as parent → child
  *   - `frame`: a single frame, surfaced as a one-line label
+ *   - `frame_role`: a role row, surfaced as "frame · role_label"
+ *   - `frame_sense`: a sense row, surfaced as "frame · pos: snippet"
  * `null` means we couldn't resolve the entity (e.g. it was deleted, or
  * the entity_type isn't one we know how to summarise yet).
  */
@@ -176,6 +178,20 @@ export type IssueFindingEntityContext =
     }
   | {
       kind: 'frame';
+      frame: IssueFindingFrameRef;
+    }
+  | {
+      kind: 'frame_role';
+      role: { id: string; label: string };
+      frame: IssueFindingFrameRef;
+    }
+  | {
+      kind: 'frame_sense';
+      sense: {
+        id: string;
+        pos: string | null;
+        definition_snippet: string | null;
+      };
       frame: IssueFindingFrameRef;
     };
 

@@ -307,8 +307,51 @@ function getEntityDisplayName(changeset: Changeset): string {
       } else if (label) {
         return `${String(label).substring(0, 30)}${String(label).length > 30 ? '...' : ''}`;
       }
-    } else {
-      // verbs, nouns, adjectives, adverbs - use code
+    }
+    // v1 CRUD strategies for senses populate `pos` + `definition` —
+    // build a "<pos>: <snippet>" header so the flat-table row matches
+    // what the by-issue inbox renders. Kept in lockstep with
+    // `getEntityDisplayName` in components/pending/byIssue/changesetDisplay.ts.
+    if (changeset.entity_type === 'frame_sense') {
+      const pos = snapshot.pos ? String(snapshot.pos) : null;
+      const def = snapshot.definition ? String(snapshot.definition) : null;
+      if (pos && def) {
+        const snippet =
+          def.length > 40 ? `${def.substring(0, 40)}...` : def;
+        return `${pos}: ${snippet}`;
+      }
+      if (def) {
+        return def.length > 50 ? `${def.substring(0, 50)}...` : def;
+      }
+      if (pos) {
+        return `${pos} sense${changeset.entity_id ? ` #${changeset.entity_id}` : ''}`;
+      }
+    }
+    // Role snapshots carry `label` directly (the Capitalised_Underscore name).
+    if (changeset.entity_type === 'frame_role') {
+      const label = snapshot.label;
+      if (label) {
+        const str = String(label);
+        return str.length > 40 ? `${str.substring(0, 40)}...` : str;
+      }
+    }
+    // Mapping snapshots carry parent + child role labels; surface the
+    // "Parent_Role → Child_Role" form (or "(absorbed)" when applicable).
+    if (changeset.entity_type === 'frame_role_mapping') {
+      const parentRole = snapshot.parent_role_label
+        ? String(snapshot.parent_role_label)
+        : null;
+      const childRole = snapshot.child_role_label
+        ? String(snapshot.child_role_label)
+        : null;
+      const absorbed = snapshot.absorbed === true;
+      if (parentRole && (childRole || absorbed)) {
+        return `${parentRole} → ${absorbed ? '(absorbed)' : childRole}`;
+      }
+      if (parentRole) return `${parentRole} → ?`;
+    }
+    // Generic fallback: verbs, nouns, adjectives, adverbs, lexical_units → code
+    if (changeset.entity_type !== 'frame') {
       const code = snapshot.code;
       if (code) return `${String(code).substring(0, 30)}${String(code).length > 30 ? '...' : ''}`;
     }

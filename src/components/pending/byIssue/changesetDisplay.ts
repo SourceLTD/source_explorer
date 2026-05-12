@@ -38,7 +38,54 @@ export function getEntityDisplayName(cs: ByIssueChangeset): string {
           String(label).length > 30 ? '...' : ''
         }`;
       }
-    } else {
+    }
+    // v1 CRUD strategies for senses populate `pos` + `definition`
+    // (see commit.ts `CREATE frame_sense`). Build a "<pos>: <snippet>"
+    // header so reviewers see what kind of sense is being touched
+    // without expanding the field diff.
+    if (cs.entity_type === 'frame_sense') {
+      const pos = snapshot.pos ? String(snapshot.pos) : null;
+      const def = snapshot.definition ? String(snapshot.definition) : null;
+      if (pos && def) {
+        const snippet =
+          def.length > 40 ? `${def.substring(0, 40)}...` : def;
+        return `${pos}: ${snippet}`;
+      }
+      if (def) {
+        return def.length > 50 ? `${def.substring(0, 50)}...` : def;
+      }
+      if (pos) return `${pos} sense${cs.entity_id ? ` #${cs.entity_id}` : ''}`;
+    }
+    // Frame role snapshots always carry `label` (the Capitalised_Underscore
+    // role name); fall back to that — the subject strip's truncation
+    // takes care of long values.
+    if (cs.entity_type === 'frame_role') {
+      const label = snapshot.label;
+      if (label) {
+        const str = String(label);
+        return str.length > 40 ? `${str.substring(0, 40)}...` : str;
+      }
+    }
+    // Role-mapping snapshots carry parent / child role labels (see
+    // commit.ts `CREATE frame_role_mapping`). The most readable handle
+    // is "Parent_Role → Child_Role" — mirrors the visual diff that the
+    // ChangesetEntityContext renderer surfaces underneath.
+    if (cs.entity_type === 'frame_role_mapping') {
+      const parentRole = snapshot.parent_role_label
+        ? String(snapshot.parent_role_label)
+        : null;
+      const childRole = snapshot.child_role_label
+        ? String(snapshot.child_role_label)
+        : null;
+      const absorbed = snapshot.absorbed === true;
+      if (parentRole && (childRole || absorbed)) {
+        return `${parentRole} → ${absorbed ? '(absorbed)' : childRole}`;
+      }
+      if (parentRole) return `${parentRole} → ?`;
+    }
+    // Generic fallback for types we haven't customised yet: use the
+    // snapshot's `code` mnemonic if present (lexical_units, etc.).
+    if (cs.entity_type !== 'frame') {
       const code = snapshot.code;
       if (code) {
         return `${String(code).substring(0, 30)}${

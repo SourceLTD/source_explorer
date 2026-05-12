@@ -30,10 +30,12 @@ interface RouteParams {
 
 /**
  * Build a per-finding `entity_context` summary so the UI can show
- * "parent → child" for `frame_relation` findings and a frame label for
- * `frame` findings without N+1 round-trips. Findings whose entity has
- * been deleted (or whose entity_type we don't know how to summarise)
- * simply resolve to `null` and the UI falls back to the raw
+ * "parent → child" for `frame_relation` findings, a frame label for
+ * `frame` findings, "frame · role_label" for `frame_role` findings,
+ * and "frame · pos: definition snippet" for `frame_sense` findings —
+ * all without N+1 round-trips. Findings whose entity has been deleted
+ * (or whose entity_type we don't know how to summarise) simply
+ * resolve to `null` and the UI falls back to the raw
  * `entity_type:entity_id` reference.
  *
  * Defined ABOVE the route handlers so Turbopack-compiled bundles
@@ -49,11 +51,20 @@ async function loadFindingEntityContexts(
 
   const relationIds = new Set<bigint>();
   const frameIds = new Set<bigint>();
+  const roleIds = new Set<bigint>();
+  // frame_senses.id is Int (not BigInt) — track as numbers for the
+  // Prisma where-clause, but key the output map by the original
+  // BigInt entityId so the per-finding join below still works.
+  const senseIds = new Set<number>();
   for (const f of findings) {
     if (f.entityType === 'frame_relation') {
       relationIds.add(f.entityId);
     } else if (f.entityType === 'frame') {
       frameIds.add(f.entityId);
+    } else if (f.entityType === 'frame_role') {
+      roleIds.add(f.entityId);
+    } else if (f.entityType === 'frame_sense') {
+      senseIds.add(Number(f.entityId));
     }
   }
 
@@ -95,12 +106,78 @@ async function loadFindingEntityContexts(
     }
   }
 
+  // frame_role findings: include the parent frame so the UI can render
+  // "Frame_label · Role_Label" without an extra lookup.
+  const roleCtx = new Map<bigint, IssueFindingEntityContext>();
+  if (roleIds.size > 0) {
+    const roles = await prisma.frame_roles.findMany({
+      where: { id: { in: Array.from(roleIds) } },
+      select: {
+        id: true,
+        label: true,
+        frames: { select: { id: true, label: true, code: true } },
+      },
+    });
+    for (const role of roles) {
+      roleCtx.set(role.id, {
+        kind: 'frame_role',
+        role: {
+          id: role.id.toString(),
+          label: role.label ?? '(unnamed role)',
+        },
+        frame: toFrameRef(role.frames),
+      });
+    }
+  }
+
+  // frame_sense findings: senses anchor to a frame via the
+  // frame_sense_frames join table. A sense is expected to belong to
+  // exactly one frame in practice (anchored by the CREATE path in
+  // commit.ts), but we still pick the first row defensively so we
+  // never crash on a multi-frame edge case.
+  const senseCtx = new Map<number, IssueFindingEntityContext>();
+  if (senseIds.size > 0) {
+    const senses = await prisma.frame_senses.findMany({
+      where: { id: { in: Array.from(senseIds) } },
+      select: {
+        id: true,
+        pos: true,
+        definition: true,
+        frame_sense_frames: {
+          select: {
+            frames: { select: { id: true, label: true, code: true } },
+          },
+          take: 1,
+        },
+      },
+    });
+    for (const s of senses) {
+      const parent = s.frame_sense_frames[0]?.frames ?? null;
+      if (!parent) continue;
+      senseCtx.set(s.id, {
+        kind: 'frame_sense',
+        sense: {
+          id: String(s.id),
+          pos: s.pos ?? null,
+          definition_snippet: snippet(s.definition, 80),
+        },
+        frame: toFrameRef(parent),
+      });
+    }
+  }
+
   for (const f of findings) {
     if (f.entityType === 'frame_relation') {
       const ctx = relationCtx.get(f.entityId);
       if (ctx) out.set(f.findingId, ctx);
     } else if (f.entityType === 'frame') {
       const ctx = frameCtx.get(f.entityId);
+      if (ctx) out.set(f.findingId, ctx);
+    } else if (f.entityType === 'frame_role') {
+      const ctx = roleCtx.get(f.entityId);
+      if (ctx) out.set(f.findingId, ctx);
+    } else if (f.entityType === 'frame_sense') {
+      const ctx = senseCtx.get(Number(f.entityId));
       if (ctx) out.set(f.findingId, ctx);
     }
   }
@@ -117,6 +194,14 @@ function toFrameRef(frame: {
     label: frame.label,
     code: frame.code,
   };
+}
+
+function snippet(value: string | null | undefined, max: number): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (trimmed.length <= max) return trimmed;
+  return `${trimmed.substring(0, max)}…`;
 }
 
 export async function GET(_request: NextRequest, { params }: RouteParams) {

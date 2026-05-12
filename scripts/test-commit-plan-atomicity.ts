@@ -44,6 +44,8 @@ async function findCandidateRelation(): Promise<TestRelation> {
   // edge without leaving the child orphaned (in case the rollback
   // unexpectedly fails to roll back, the child still has another
   // parent and we don't break the production graph).
+  //
+  // Convention: parent_of source_id = parent, target_id = child.
   const candidates = await prisma.$queryRaw<
     Array<{
       id: bigint;
@@ -54,14 +56,14 @@ async function findCandidateRelation(): Promise<TestRelation> {
   >(Prisma.sql`
     SELECT fr.id, fr.source_id, fr.target_id, fr.type::text AS type
     FROM frame_relations fr
-    JOIN frames child ON child.id = fr.source_id
-    JOIN frames parent ON parent.id = fr.target_id
+    JOIN frames parent ON parent.id = fr.source_id
+    JOIN frames child ON child.id = fr.target_id
     WHERE fr.type = 'parent_of'
       AND child.deleted = false
       AND parent.deleted = false
       AND (
         SELECT COUNT(*) FROM frame_relations fr2
-        WHERE fr2.source_id = fr.source_id AND fr2.type = 'parent_of'
+        WHERE fr2.target_id = fr.target_id AND fr2.type = 'parent_of'
       ) >= 2
     ORDER BY fr.id ASC
     LIMIT 1

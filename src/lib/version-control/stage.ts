@@ -673,16 +673,18 @@ export async function stageFrameRelationReparent(
   // Cycle detection: walk up from newParentFrameId following parent_of edges
   await assertNoCycle(frameId, newParentFrameId);
 
-  // Find the current parent_of relation for this frame (if any)
+  // Convention: parent_of source_id = parent, target_id = child.
+  // Find the current parent_of relation for this frame (where the
+  // frame is the child).
   const existingRelation = await prisma.frame_relations.findFirst({
     where: {
-      source_id: frameId,
+      target_id: frameId,
       type: 'parent_of',
     },
   });
 
   // If already pointing at the requested parent, no-op
-  if (existingRelation && existingRelation.target_id === newParentFrameId) {
+  if (existingRelation && existingRelation.source_id === newParentFrameId) {
     return {
       staged: true,
       deleteChangesetId: null,
@@ -698,9 +700,10 @@ export async function stageFrameRelationReparent(
 
   // Stage DELETE for the old relation
   if (existingRelation) {
-    // Resolve old parent label for richer snapshots
+    // Resolve old parent label for richer snapshots (parent is at
+    // source_id under the source=parent / target=child convention).
     const oldParent = await prisma.frames.findUnique({
-      where: { id: existingRelation.target_id },
+      where: { id: existingRelation.source_id },
       select: { label: true },
     });
 
@@ -711,8 +714,8 @@ export async function stageFrameRelationReparent(
       type: existingRelation.type,
       version: existingRelation.version,
       move_group_id: moveGroupId,
-      source_label: frame.label,
-      target_label: oldParent?.label ?? null,
+      source_label: oldParent?.label ?? null,
+      target_label: frame.label,
     } as unknown as Record<string, unknown>;
 
     const deleteChangeset = await createChangesetFromDelete(
@@ -725,16 +728,17 @@ export async function stageFrameRelationReparent(
     deleteChangesetId = deleteChangeset.id.toString();
   }
 
-  // Stage CREATE for the new relation
+  // Stage CREATE for the new relation. Convention: source_id = parent,
+  // target_id = child.
   const createChangeset = await createChangesetFromCreate(
     'frame_relation',
     {
-      source_id: frameId,
-      target_id: newParentFrameId,
+      source_id: newParentFrameId,
+      target_id: frameId,
       type: 'parent_of',
       move_group_id: moveGroupId,
-      source_label: frame.label,
-      target_label: newParent.label,
+      source_label: newParent.label,
+      target_label: frame.label,
     } as unknown as Record<string, unknown>,
     userId,
     llmJobId,
@@ -753,6 +757,10 @@ export async function stageFrameRelationReparent(
 /**
  * Walk up the parent_of chain from `startFrameId` and throw if `targetFrameId` is encountered,
  * which would indicate a cycle.
+ *
+ * Convention: parent_of source_id = parent, target_id = child. To
+ * walk UP from a node X (find its parent), look for the row where
+ * `target_id = X` and follow `source_id`.
  */
 async function assertNoCycle(targetFrameId: bigint, startFrameId: bigint): Promise<void> {
   const visited = new Set<string>();
@@ -771,13 +779,13 @@ async function assertNoCycle(targetFrameId: bigint, startFrameId: bigint): Promi
 
     const parentRel = await prisma.frame_relations.findFirst({
       where: {
-        source_id: current,
+        target_id: current,
         type: 'parent_of',
       },
-      select: { target_id: true },
+      select: { source_id: true },
     });
 
     if (!parentRel) break;
-    current = parentRel.target_id;
+    current = parentRel.source_id;
   }
 }

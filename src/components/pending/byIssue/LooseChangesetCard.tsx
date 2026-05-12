@@ -232,7 +232,7 @@ export default function LooseChangesetCard({
 // =====================================================================
 // Entity context: most entity types are already named by the chip +
 // popover in the subject strip and (for updates) by the field diff
-// below, so rendering an extra identity card would be redundant. Two
+// below, so rendering an extra identity card would be redundant. Four
 // types need richer chrome here:
 //   - `frame_relation` has two ends (source / target) the strip can't
 //     show, so we render a pair of frame cards with the relation type
@@ -241,6 +241,13 @@ export default function LooseChangesetCard({
 //     makes sense in the context of its sibling roles, so we render a
 //     dedicated `FrameRolePanel` (parent identity + Before/After role
 //     diff) and `ChangesetBody` short-circuits the generic field diff.
+//   - `frame_sense` is anchored to a single frame via `frame_id`; the
+//     subject strip names the sense but not the frame, so we surface
+//     a slim parent FrameInfoCard above the field diff.
+//   - `frame_role_mapping` ties a parent_of edge to a (parent_role,
+//     child_role) pair. We render the parent and child frames at the
+//     ends of an inheritance arrow with the role labels stacked on
+//     top — same visual language the relation branch uses.
 // =====================================================================
 function ChangesetEntityContext({ cs }: { cs: ByIssueChangeset }) {
   if (cs.entity_type === 'frame_relation') {
@@ -305,6 +312,85 @@ function ChangesetEntityContext({ cs }: { cs: ByIssueChangeset }) {
         after={after}
         roleId={roleId}
       />
+    );
+  }
+
+  // Senses anchor to a single frame via `frame_id` (see commit.ts
+  // CREATE/UPDATE frame_sense). The subject strip already shows the
+  // POS + definition snippet; surface the parent frame here so the
+  // reviewer can see at a glance "this sense lives in <frame>".
+  if (cs.entity_type === 'frame_sense') {
+    const snapshot = cs.before_snapshot ?? cs.after_snapshot ?? {};
+    const frameId =
+      pickIdLike(snapshot.frame_id) ??
+      pickIdLike(cs.before_snapshot?.frame_id) ??
+      pickIdLike(cs.after_snapshot?.frame_id);
+    if (!frameId) return null;
+    const frameLabel =
+      pickStringLike(snapshot.frame_label) ?? `Frame #${frameId}`;
+    return (
+      <FrameInfoCard
+        frameId={frameId}
+        fallbackLabel={frameLabel}
+        emphasis="focus"
+        hideSenses
+      />
+    );
+  }
+
+  // Role mappings tie one parent_of edge to a (parent_role, child_role)
+  // pair. Render the parent + child frames at the ends with the role
+  // labels stacked above an arrow, so a reviewer immediately sees
+  // which inheritance edge is being touched.
+  if (cs.entity_type === 'frame_role_mapping') {
+    const snapshot = cs.before_snapshot ?? cs.after_snapshot ?? {};
+    const parentId = pickIdLike(snapshot.parent_frame_id);
+    const childId = pickIdLike(snapshot.child_frame_id);
+    const parentRole = pickStringLike(snapshot.parent_role_label);
+    const childRole = pickStringLike(snapshot.child_role_label);
+    const absorbed = snapshot.absorbed === true;
+    if (!parentId && !childId) return null;
+    const parentLabel =
+      pickStringLike(snapshot.parent_frame_label) ??
+      (parentId ? `Frame #${parentId}` : 'Parent frame');
+    const childLabel =
+      pickStringLike(snapshot.child_frame_label) ??
+      (childId ? `Frame #${childId}` : 'Child frame');
+    return (
+      <div className="grid grid-cols-[1fr_auto_1fr] items-stretch gap-3">
+        <FrameInfoCard
+          frameId={parentId}
+          fallbackLabel={parentLabel}
+          emphasis="origin"
+          hideSenses
+        />
+        <div className="flex flex-col items-center justify-center gap-1 px-2 min-w-[8rem] text-center">
+          <span
+            className="text-[10px] font-mono text-gray-700 px-1.5 py-0.5 rounded bg-white border border-gray-300 truncate max-w-full"
+            title={parentRole ?? 'parent role'}
+          >
+            {parentRole ?? '(parent role)'}
+          </span>
+          <span className="text-2xl leading-none text-gray-400">↓</span>
+          <span
+            className={
+              'text-[10px] font-mono px-1.5 py-0.5 rounded border truncate max-w-full ' +
+              (absorbed
+                ? 'text-amber-800 bg-amber-50 border-amber-200'
+                : 'text-gray-700 bg-white border-gray-300')
+            }
+            title={absorbed ? 'absorbed into parent' : childRole ?? 'child role'}
+          >
+            {absorbed ? '(absorbed)' : childRole ?? '(child role)'}
+          </span>
+        </div>
+        <FrameInfoCard
+          frameId={childId}
+          fallbackLabel={childLabel}
+          emphasis="destination"
+          hideSenses
+        />
+      </div>
     );
   }
 
@@ -485,8 +571,10 @@ const ENTITY_LABELS: Record<string, string> = {
   frame: 'frame',
   frame_relation: 'relation',
   frame_role: 'frame role',
+  frame_role_mapping: 'role mapping',
   frame_sense: 'sense',
   lexical_unit: 'lexical unit',
+  lexical_unit_sense: 'lexical unit sense',
 };
 
 const OPERATION_VERB: Record<string, string> = {

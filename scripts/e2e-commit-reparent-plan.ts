@@ -57,36 +57,38 @@ async function main() {
   }
 
   // Snapshot the affected frame_relations BEFORE commit so we can
-  // diff. We pull every parent_of edge for the source frame so the
-  // multi-parent topology is visible.
+  // diff. We pull every parent_of edge involving the child frame so
+  // the multi-parent topology is visible.
+  //
+  // Convention: parent_of source_id = parent, target_id = child.
   const childIdRaw = (() => {
     const del = pre.changesets.find((c) => c.operation === 'delete');
     if (!del?.before_snapshot) return null;
     const snap = del.before_snapshot as Record<string, unknown>;
-    return snap.source_id ? BigInt(String(snap.source_id)) : null;
+    return snap.target_id ? BigInt(String(snap.target_id)) : null;
   })();
   const newParentIdRaw = (() => {
     const cre = pre.changesets.find((c) => c.operation === 'create');
     if (!cre?.after_snapshot) return null;
     const snap = cre.after_snapshot as Record<string, unknown>;
-    return snap.target_id ? BigInt(String(snap.target_id)) : null;
+    return snap.source_id ? BigInt(String(snap.source_id)) : null;
   })();
   const oldParentIdRaw = (() => {
     const del = pre.changesets.find((c) => c.operation === 'delete');
     if (!del?.before_snapshot) return null;
     const snap = del.before_snapshot as Record<string, unknown>;
-    return snap.target_id ? BigInt(String(snap.target_id)) : null;
+    return snap.source_id ? BigInt(String(snap.source_id)) : null;
   })();
 
   if (childIdRaw && oldParentIdRaw && newParentIdRaw) {
     const before = await prisma.frame_relations.findMany({
-      where: { source_id: childIdRaw, type: 'parent_of' },
+      where: { target_id: childIdRaw, type: 'parent_of' },
       select: { id: true, source_id: true, target_id: true, type: true },
       orderBy: { id: 'asc' },
     });
     console.log(`\n=== parent_of rows for frame ${childIdRaw} (BEFORE) ===`);
     for (const r of before) {
-      const flag = r.target_id === oldParentIdRaw ? '  <- DELETING' : '';
+      const flag = r.source_id === oldParentIdRaw ? '  <- DELETING' : '';
       console.log(`  rel#${r.id}: ${r.source_id} -> ${r.target_id}${flag}`);
     }
   }
@@ -132,14 +134,14 @@ async function main() {
   // 4. Frame_relation diff
   if (childIdRaw) {
     const after = await prisma.frame_relations.findMany({
-      where: { source_id: childIdRaw, type: 'parent_of' },
+      where: { target_id: childIdRaw, type: 'parent_of' },
       select: { id: true, source_id: true, target_id: true, type: true },
       orderBy: { id: 'asc' },
     });
     console.log(`\n=== parent_of rows for frame ${childIdRaw} (AFTER) ===`);
     for (const r of after) {
       const flag =
-        newParentIdRaw && r.target_id === newParentIdRaw ? '  <- NEW' : '';
+        newParentIdRaw && r.source_id === newParentIdRaw ? '  <- NEW' : '';
       console.log(`  rel#${r.id}: ${r.source_id} -> ${r.target_id}${flag}`);
     }
 
@@ -155,17 +157,19 @@ async function main() {
       );
     }
 
-    // Find the new row by its (source, target, type) triple.
+    // Find the new row by its (source, target, type) triple. Under
+    // the source=parent / target=child convention, the new row is
+    // (newParent --[parent_of]--> child).
     if (newParentIdRaw) {
       const newRel = await prisma.frame_relations.findFirst({
         where: {
-          source_id: childIdRaw,
-          target_id: newParentIdRaw,
+          source_id: newParentIdRaw,
+          target_id: childIdRaw,
           type: 'parent_of',
         },
       });
       console.log(
-        `  NEW relation source=${childIdRaw} target=${newParentIdRaw}: ` +
+        `  NEW relation source=${newParentIdRaw} target=${childIdRaw}: ` +
           (newRel ? `present as rel#${newRel.id}` : 'MISSING (BUG)'),
       );
     }

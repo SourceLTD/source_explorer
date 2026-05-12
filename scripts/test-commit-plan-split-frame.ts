@@ -20,9 +20,9 @@
  * teardown):
  *
  *           parent
- *             ^
- *             | parent_of (PRE-EXISTING; survives commit)
  *             |
+ *             | parent_of (PRE-EXISTING; survives commit)
+ *             v        (source_id = parent, target_id = source)
  *           source
  *             |
  *             |- senseA (will go to result A)
@@ -81,8 +81,9 @@ interface Fixture {
   senseBId: number;
   senseCId: number;
   senseDId: number;
-  // Pre-existing source->parent edge (stays intact post-commit).
-  relSourceParentId: bigint;
+  // Pre-existing parent --[parent_of]--> source edge (stays intact
+  // post-commit). Convention: source_id = parent, target_id = child.
+  relParentSourceId: bigint;
 }
 
 async function setupFixture(): Promise<Fixture> {
@@ -119,10 +120,11 @@ async function setupFixture(): Promise<Fixture> {
       const senseCId = await insSense(source.id, 'senseC');
       const senseDId = await insSense(source.id, 'senseD');
 
+      // Convention: parent_of source_id = parent, target_id = child.
       const rel = await tx.frame_relations.create({
         data: {
-          source_id: source.id,
-          target_id: parent.id,
+          source_id: parent.id,
+          target_id: source.id,
           type: 'parent_of',
         },
       });
@@ -134,7 +136,7 @@ async function setupFixture(): Promise<Fixture> {
         senseBId,
         senseCId,
         senseDId,
-        relSourceParentId: rel.id,
+        relParentSourceId: rel.id,
       };
     },
     { timeout: 30_000, maxWait: 10_000 },
@@ -482,16 +484,16 @@ async function assertPostState(
     }
   }
 
-  // 7) Pre-existing source -> parent relation still exists (we
+  // 7) Pre-existing parent -> source relation still exists (we
   //    don't repoint or delete it; the source's soft-delete just
   //    leaves the edge pointing at a tombstone, which subsequent
   //    health-check sweeps will clean up).
   const oldEdge = await prisma.frame_relations.findUnique({
-    where: { id: fx.relSourceParentId },
+    where: { id: fx.relParentSourceId },
   });
   if (!oldEdge) {
     ctx.failures.push(
-      `pre-existing source->parent relation #${fx.relSourceParentId} disappeared`,
+      `pre-existing parent->source relation #${fx.relParentSourceId} disappeared`,
     );
   }
 
@@ -578,7 +580,7 @@ async function main(): Promise<void> {
         `  senseA=${fixture.senseAId} senseB=${fixture.senseBId} ` +
         `senseC=${fixture.senseCId} senseD=${fixture.senseDId} (intentionally orphaned)\n` +
         `relation:\n` +
-        `  source->parent (#${fixture.relSourceParentId}) -- pre-existing, must survive`,
+        `  parent->source (#${fixture.relParentSourceId}) -- pre-existing, must survive`,
     );
 
     staged = await stageSplitFramePlan(fixture);

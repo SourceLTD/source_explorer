@@ -1360,6 +1360,7 @@ enum health_remediation_proposal_validation_status {
   valid
   invalid
   stale
+  refused
 }
 
 enum health_remediation_execution_kind {

@@ -23,6 +23,7 @@ import {
   ISSUE_PRIORITY_STYLES,
 } from '@/lib/issues/types';
 import {
+  HEALTH_REMEDIATION_STRATEGIES,
   HEALTH_REMEDIATION_STRATEGY_LABELS,
   type HealthRemediationStrategy,
 } from '@/lib/health-checks/types';
@@ -157,6 +158,51 @@ function FindingEntitySummary({
     return (
       <div className="flex items-center gap-1.5 text-sm text-gray-700 min-w-0">
         <FrameChip frame={ctx.frame} />
+      </div>
+    );
+  }
+
+  // Programmatic checks targeting frame_role rows surface as
+  // "Frame_label · Role_Label" so the reviewer can see at a glance
+  // which role on which frame the finding pertains to.
+  if (ctx?.kind === 'frame_role') {
+    return (
+      <div className="flex items-center gap-1.5 text-sm text-gray-700 min-w-0 flex-wrap">
+        <FrameChip frame={ctx.frame} />
+        <span aria-hidden className="text-gray-400 shrink-0">
+          ·
+        </span>
+        <span
+          className="font-mono text-[12px] text-gray-800 truncate"
+          title={ctx.role.label}
+        >
+          {ctx.role.label}
+        </span>
+      </div>
+    );
+  }
+
+  // frame_sense findings surface as "Frame_label · pos: definition…".
+  // The POS + short definition is usually enough to disambiguate among
+  // a frame's senses without forcing the reviewer to click through.
+  if (ctx?.kind === 'frame_sense') {
+    const snippet = ctx.sense.definition_snippet;
+    return (
+      <div className="flex items-center gap-1.5 text-sm text-gray-700 min-w-0 flex-wrap">
+        <FrameChip frame={ctx.frame} />
+        <span aria-hidden className="text-gray-400 shrink-0">
+          ·
+        </span>
+        {ctx.sense.pos && (
+          <span className="font-mono text-[10px] uppercase text-gray-500 px-1 py-px rounded bg-gray-100 border border-gray-200 shrink-0">
+            {ctx.sense.pos}
+          </span>
+        )}
+        {snippet && (
+          <span className="text-gray-700 truncate" title={snippet}>
+            {snippet}
+          </span>
+        )}
       </div>
     );
   }
@@ -298,7 +344,18 @@ export default function IssueDetailPanel({
   const pokeTimeline = useCallback(() => setTimelineKey((k) => k + 1), []);
 
   const updateField = async (
-    updates: Partial<{ status: IssueStatus; priority: IssuePriority }>,
+    updates: Partial<{
+      status: IssueStatus;
+      priority: IssuePriority;
+      /**
+       * Per-issue override of the planner's strategy choice. `null`
+       * clears the override and reverts to the diagnosis-code default.
+       * Accepted values are validated against `HEALTH_REMEDIATION_STRATEGIES`
+       * by the PATCH endpoint, so the client-side string type here is
+       * intentionally loose.
+       */
+      strategy_override: string | null;
+    }>,
   ) => {
     try {
       const res = await fetch(`/api/issues/${issueId}`, {
@@ -500,25 +557,58 @@ export default function IssueDetailPanel({
               </Badge>
             )}
 
-            {issue.strategy_override && (
-              <Badge
-                className="bg-amber-100 text-amber-900 border-amber-300"
-                title={
-                  `Planner will route this issue through "${
-                    HEALTH_REMEDIATION_STRATEGY_LABELS[
-                      issue.strategy_override as HealthRemediationStrategy
-                    ] ?? issue.strategy_override
-                  }" instead of the diagnosis-code default. ` +
-                  `Set by the auto-promotion rule in create-issues-for-run.ts ` +
-                  `(see issue comments for the reasoning), or by a manual ` +
-                  `PATCH on the issue.`
-                }
-              >
-                Strategy override:{' '}
-                {HEALTH_REMEDIATION_STRATEGY_LABELS[
-                  issue.strategy_override as HealthRemediationStrategy
-                ] ?? issue.strategy_override}
-              </Badge>
+            {/*
+              * Strategy-override editor. Always rendered when the
+              * issue is anchored to a diagnosis code (i.e. it actually
+              * goes through the remediation pipeline). The default
+              * option clears the override and restores the
+              * diagnosis-code default. When an override is set the
+              * select keeps the amber chrome it used to have as a
+              * read-only badge so the override is still spottable
+              * at a glance.
+              *
+              * Auto-promotion (`create-issues-for-run.ts`) and manual
+              * overrides hit the same `strategy_override` column, so
+              * a reviewer can flip an auto-promoted issue back to the
+              * default from here without having to PATCH the API
+              * directly.
+              */}
+            {issue.diagnosis_code_id && (
+              <label className="text-xs text-gray-500 ml-4 flex items-center gap-1.5">
+                Strategy
+                <select
+                  value={issue.strategy_override ?? ''}
+                  onChange={(e) =>
+                    updateField({
+                      strategy_override: e.target.value || null,
+                    })
+                  }
+                  title={
+                    issue.strategy_override
+                      ? `Planner will route this issue through "${
+                          HEALTH_REMEDIATION_STRATEGY_LABELS[
+                            issue.strategy_override as HealthRemediationStrategy
+                          ] ?? issue.strategy_override
+                        }" instead of the diagnosis-code default. ` +
+                        `Set by the auto-promotion rule in create-issues-for-run.ts ` +
+                        `(see issue comments for the reasoning), or by a manual edit here.`
+                      : 'Override which remediation strategy the planner uses for this issue. ' +
+                        'Leave on "diagnosis-code default" to inherit the catalogue-routed strategy.'
+                  }
+                  className={`text-xs rounded-full border px-2 py-0.5 font-medium ${
+                    issue.strategy_override
+                      ? 'bg-amber-100 text-amber-900 border-amber-300'
+                      : 'bg-white text-gray-700 border-gray-300'
+                  }`}
+                >
+                  <option value="">— diagnosis-code default —</option>
+                  {HEALTH_REMEDIATION_STRATEGIES.map((s) => (
+                    <option key={s} value={s}>
+                      {HEALTH_REMEDIATION_STRATEGY_LABELS[s]}
+                    </option>
+                  ))}
+                </select>
+              </label>
             )}
 
             {issue.labels.length > 0 && (

@@ -8,18 +8,22 @@
  * pre-existing target.
  *
  * Fixture topology (all rows tagged with `${TEST_TAG}` for safe
- * teardown):
+ * teardown). Convention: in `frame_relations`, `source_id = parent`,
+ * `target_id = child` for `parent_of` rows. Arrows below point from
+ * parent (source_id) down to child (target_id):
  *
- *   sharedParent
- *      ^                            ^                    ^
- *      |                            |                    |
- *      | parent_of (pre-existing)   | parent_of (DUP)    | parent_of (DUP)
- *      |                            |                    |
- *   target                       sourceA              sourceB
- *                                   |
- *                                   | parent_of (NON-dup)
- *                                   v
- *                                  aux
+ *               sharedParent
+ *                /    |    \
+ *               v     v     v
+ *           target  sourceA  sourceB
+ *                       |
+ *                       v
+ *                      aux
+ *
+ *   sharedParent --[parent_of]--> target       (pre-existing; survives)
+ *   sharedParent --[parent_of]--> sourceA      (DUP of pre-existing)
+ *   sharedParent --[parent_of]--> sourceB      (DUP of pre-existing)
+ *   sourceA      --[parent_of]--> aux          (NON-dup)
  *
  *   senseA -- on sourceA
  *   senseB -- on sourceB
@@ -28,8 +32,8 @@
  * source_frame_ids=[sourceA, sourceB], with runner-injected:
  *   - sense_repoints:        [(senseA, sourceA), (senseB, sourceB)]
  *   - relation_repoints:
- *       (sourceA->sharedParent)  delete-only (target already has it)
- *       (sourceB->sharedParent)  delete-only (same reason)
+ *       (sharedParent->sourceA)  delete-only (target already has it)
+ *       (sharedParent->sourceB)  delete-only (same reason)
  *       (sourceA->aux)           repoint -> (target->aux)
  *   - stale_role_mapping_ids: [] (none in fixture)
  *   - per-source finalisation: deleted=true, merged_into=target
@@ -39,9 +43,10 @@
  *   - senseA, senseB are linked to target via frame_sense_frames
  *     (and NOT to their old source frames).
  *   - Three frame_relations rows are gone:
- *     sourceA->sharedParent, sourceB->sharedParent, sourceA->aux.
- *   - One brand-new frame_relations row exists: target->aux.
- *   - Pre-existing target->sharedParent row is unchanged.
+ *     sharedParent->sourceA, sharedParent->sourceB, sourceA->aux.
+ *   - One brand-new frame_relations row exists: target->aux
+ *     (source_id=target, target_id=aux).
+ *   - Pre-existing sharedParent->target row is unchanged.
  *
  * Cleans up its own fixtures (and the staged plan/changeset rows)
  * regardless of pass/fail. Re-runs are idempotent.
@@ -71,10 +76,11 @@ interface Fixture {
   senseAId: number;
   senseBId: number;
   // Pre-existing relation that must SURVIVE the commit unchanged.
-  relTargetSharedId: bigint;
+  // (sharedParent --[parent_of]--> target).
+  relSharedToTargetId: bigint;
   // Three relations that must be GONE post-commit.
-  relAToSharedId: bigint;
-  relBToSharedId: bigint;
+  relSharedToAId: bigint;
+  relSharedToBId: bigint;
   relAToAuxId: bigint;
 }
 
@@ -123,9 +129,10 @@ async function setupFixture(): Promise<Fixture> {
         });
         return r.id;
       };
-      const relTargetSharedId = await insRel(target.id, sharedParent.id, 'parent_of');
-      const relAToSharedId = await insRel(sourceA.id, sharedParent.id, 'parent_of');
-      const relBToSharedId = await insRel(sourceB.id, sharedParent.id, 'parent_of');
+      // parent_of convention: source_id = parent, target_id = child.
+      const relSharedToTargetId = await insRel(sharedParent.id, target.id, 'parent_of');
+      const relSharedToAId = await insRel(sharedParent.id, sourceA.id, 'parent_of');
+      const relSharedToBId = await insRel(sharedParent.id, sourceB.id, 'parent_of');
       const relAToAuxId = await insRel(sourceA.id, aux.id, 'parent_of');
 
       return {
@@ -136,9 +143,9 @@ async function setupFixture(): Promise<Fixture> {
         auxFrameId: aux.id,
         senseAId,
         senseBId,
-        relTargetSharedId,
-        relAToSharedId,
-        relBToSharedId,
+        relSharedToTargetId,
+        relSharedToAId,
+        relSharedToBId,
         relAToAuxId,
       };
     },
@@ -160,14 +167,14 @@ interface StagedPlan {
  * Operation breakdown (see header docstring for the topology):
  *   - update frame_sense (senseA): field_changes [frame_id null -> target]
  *   - update frame_sense (senseB): field_changes [frame_id null -> target]
- *   - delete frame_relation (relAToShared): no field_changes (the
+ *   - delete frame_relation (relSharedToA): no field_changes (the
  *     plan-writer's `detectDelete` upgrades a single deleted-flip
  *     to operation='delete' without emitting field_changes; we
  *     mirror that here by writing operation='delete' directly).
- *   - delete frame_relation (relBToShared): same shape
+ *   - delete frame_relation (relSharedToB): same shape
  *   - delete frame_relation (relAToAux):    same shape
  *   - create frame_relation: after_snapshot {source_id=target,
- *     target_id=aux, type='parent_of'}
+ *     target_id=aux, type='parent_of'}  (target becomes parent of aux)
  *   - update frame (sourceA): field_changes
  *     [deleted false -> true, merged_into null -> target]
  *   - update frame (sourceB): field_changes [same shape]
@@ -310,16 +317,17 @@ async function stageMergeFramePlan(fx: Fixture): Promise<StagedPlan> {
 
       // 3,4,5. Relation deletes (3 of them: 2 duplicates that
       //        collapsed to delete-only + 1 non-duplicate's old row).
-      await stageDelete('frame_relation', fx.relAToSharedId, {
-        id: fx.relAToSharedId.toString(),
-        source_id: fx.sourceAFrameId.toString(),
-        target_id: fx.sharedParentId.toString(),
+      // Convention: parent_of source_id = parent, target_id = child.
+      await stageDelete('frame_relation', fx.relSharedToAId, {
+        id: fx.relSharedToAId.toString(),
+        source_id: fx.sharedParentId.toString(),
+        target_id: fx.sourceAFrameId.toString(),
         type: 'parent_of',
       });
-      await stageDelete('frame_relation', fx.relBToSharedId, {
-        id: fx.relBToSharedId.toString(),
-        source_id: fx.sourceBFrameId.toString(),
-        target_id: fx.sharedParentId.toString(),
+      await stageDelete('frame_relation', fx.relSharedToBId, {
+        id: fx.relSharedToBId.toString(),
+        source_id: fx.sharedParentId.toString(),
+        target_id: fx.sourceBFrameId.toString(),
         type: 'parent_of',
       });
       await stageDelete('frame_relation', fx.relAToAuxId, {
@@ -330,6 +338,7 @@ async function stageMergeFramePlan(fx: Fixture): Promise<StagedPlan> {
       });
 
       // 6. Relation create (the rewritten edge: target -> aux).
+      //    target becomes the parent of aux after the merge.
       await stageCreate('frame_relation', {
         source_id: fx.targetFrameId.toString(),
         target_id: fx.auxFrameId.toString(),
@@ -454,8 +463,8 @@ async function assertPostState(fx: Fixture, ctx: AssertContext): Promise<void> {
 
   // 4) The three "expected gone" relations are gone.
   for (const [label, relId] of [
-    ['sourceA->sharedParent', fx.relAToSharedId],
-    ['sourceB->sharedParent', fx.relBToSharedId],
+    ['sharedParent->sourceA', fx.relSharedToAId],
+    ['sharedParent->sourceB', fx.relSharedToBId],
     ['sourceA->aux',          fx.relAToAuxId],
   ] as const) {
     const row = await prisma.frame_relations.findUnique({
@@ -469,24 +478,25 @@ async function assertPostState(fx: Fixture, ctx: AssertContext): Promise<void> {
     }
   }
 
-  // 5) Pre-existing target->sharedParent relation is unchanged
-  //    (same id, same fields).
-  const preExistingTargetShared = await prisma.frame_relations.findUnique({
-    where: { id: fx.relTargetSharedId },
+  // 5) Pre-existing sharedParent->target relation is unchanged
+  //    (same id, same fields). Convention: source_id = parent
+  //    (sharedParent), target_id = child (target).
+  const preExistingSharedTarget = await prisma.frame_relations.findUnique({
+    where: { id: fx.relSharedToTargetId },
   });
-  if (!preExistingTargetShared) {
+  if (!preExistingSharedTarget) {
     ctx.failures.push(
-      `pre-existing target->sharedParent relation #${fx.relTargetSharedId.toString()} disappeared (must survive merge)`,
+      `pre-existing sharedParent->target relation #${fx.relSharedToTargetId.toString()} disappeared (must survive merge)`,
     );
   } else {
-    if (preExistingTargetShared.source_id !== fx.targetFrameId) {
+    if (preExistingSharedTarget.source_id !== fx.sharedParentId) {
       ctx.failures.push(
-        `target->sharedParent.source_id changed from ${fx.targetFrameId.toString()} to ${preExistingTargetShared.source_id.toString()}`,
+        `sharedParent->target.source_id changed from ${fx.sharedParentId.toString()} to ${preExistingSharedTarget.source_id.toString()}`,
       );
     }
-    if (preExistingTargetShared.target_id !== fx.sharedParentId) {
+    if (preExistingSharedTarget.target_id !== fx.targetFrameId) {
       ctx.failures.push(
-        `target->sharedParent.target_id changed from ${fx.sharedParentId.toString()} to ${preExistingTargetShared.target_id.toString()}`,
+        `sharedParent->target.target_id changed from ${fx.targetFrameId.toString()} to ${preExistingSharedTarget.target_id.toString()}`,
       );
     }
   }
@@ -575,7 +585,7 @@ async function teardownStagedRows(plan: StagedPlan, fx: Fixture): Promise<void> 
         OR: [
           { entity_type: 'frame', entity_id: { in: [fx.sourceAFrameId, fx.sourceBFrameId] } },
           { entity_type: 'frame_sense', entity_id: { in: [BigInt(fx.senseAId), BigInt(fx.senseBId)] } },
-          { entity_type: 'frame_relation', entity_id: { in: [fx.relAToSharedId, fx.relBToSharedId, fx.relAToAuxId] } },
+          { entity_type: 'frame_relation', entity_id: { in: [fx.relSharedToAId, fx.relSharedToBId, fx.relAToAuxId] } },
         ],
       },
     });
@@ -612,9 +622,9 @@ async function main(): Promise<void> {
         `  aux=${fixture.auxFrameId}\n` +
         `  senseA=${fixture.senseAId}  senseB=${fixture.senseBId}\n` +
         `relations:\n` +
-        `  target->shared (#${fixture.relTargetSharedId})  -- pre-existing, must survive\n` +
-        `  sourceA->shared (#${fixture.relAToSharedId})    -- DUP, delete-only\n` +
-        `  sourceB->shared (#${fixture.relBToSharedId})    -- DUP, delete-only\n` +
+        `  shared->target  (#${fixture.relSharedToTargetId})  -- pre-existing, must survive\n` +
+        `  shared->sourceA (#${fixture.relSharedToAId})    -- DUP, delete-only\n` +
+        `  shared->sourceB (#${fixture.relSharedToBId})    -- DUP, delete-only\n` +
         `  sourceA->aux   (#${fixture.relAToAuxId})       -- non-dup, repoint to target->aux`,
     );
 

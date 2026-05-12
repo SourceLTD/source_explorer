@@ -11,13 +11,36 @@ import {
   ISSUE_STATUS_LABELS,
   ISSUE_PRIORITY_LABELS,
 } from '@/lib/issues/types';
-import type { HealthDiagnosisCode } from '@/lib/health-checks/types';
+import {
+  HEALTH_REMEDIATION_STRATEGY_LABELS,
+  type HealthDiagnosisCode,
+  type HealthRemediationStrategy,
+} from '@/lib/health-checks/types';
 
 interface IssueFormModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSaved: (issue: Issue) => void;
   issue?: Issue | null;
+}
+
+/**
+ * Render one diagnosis-code dropdown option as
+ * `<code> · <label> → <strategy>`. The arrow + strategy suffix is
+ * dropped when the code has no `remediation_strategy` set (rare —
+ * catalogued codes almost always route somewhere, even if it's the
+ * `manual_review` sentinel). Keeps the dropdown browsable without
+ * forcing the reviewer to open each code to see how it'll be
+ * remediated.
+ */
+function formatDiagnosisCodeOption(c: HealthDiagnosisCode): string {
+  const head = `${c.code} · ${c.label}`;
+  if (!c.remediation_strategy) return head;
+  const label =
+    HEALTH_REMEDIATION_STRATEGY_LABELS[
+      c.remediation_strategy as HealthRemediationStrategy
+    ] ?? c.remediation_strategy;
+  return `${head} → ${label}`;
 }
 
 export default function IssueFormModal({
@@ -228,10 +251,52 @@ export default function IssueFormModal({
             <option value="">— None —</option>
             {diagnosisCodes.map((c) => (
               <option key={c.id} value={c.id}>
-                {c.code} · {c.label}
+                {formatDiagnosisCodeOption(c)}
               </option>
             ))}
           </select>
+          {/*
+            * Help block. When the reviewer picks a diagnosis code we
+            * surface the routed remediation strategy and any
+            * catalogue-supplied notes so they know what the planner
+            * will attempt before the issue lands. Mirrors the
+            * "Strategy" select on IssueDetailPanel, but read-only —
+            * after creation the per-issue strategy_override can be
+            * flipped from there if needed.
+            */}
+          {diagnosisCodeId &&
+            (() => {
+              const selected = diagnosisCodes.find(
+                (c) => c.id === diagnosisCodeId,
+              );
+              if (!selected) return null;
+              const strategy = selected.remediation_strategy;
+              const strategyLabel = strategy
+                ? HEALTH_REMEDIATION_STRATEGY_LABELS[
+                    strategy as HealthRemediationStrategy
+                  ] ?? strategy
+                : null;
+              const notes = selected.remediation_notes?.trim() ?? '';
+              return (
+                <div className="mt-2 rounded-md border border-blue-100 bg-blue-50/60 px-3 py-2 text-xs text-blue-900 space-y-1">
+                  <div>
+                    <span className="font-semibold">Planner will route to:</span>{' '}
+                    {strategyLabel ? (
+                      <span className="font-mono">{strategyLabel}</span>
+                    ) : (
+                      <span className="italic text-blue-700">
+                        no automated strategy (manual triage only)
+                      </span>
+                    )}
+                  </div>
+                  {notes && (
+                    <div className="text-blue-800">
+                      <span className="font-semibold">Notes:</span> {notes}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
         </div>
       </div>
     </Modal>
