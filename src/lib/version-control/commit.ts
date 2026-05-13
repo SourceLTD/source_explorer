@@ -1280,7 +1280,7 @@ async function commitDeleteInTx(
       // reparent (`move_frame_parent`) commits, the runner appends
       // DELETE ops for every mapping row touching the old parent->
       // child edge AND the new parent->child edge so the next health
-      // run's `FRAME_INHERITANCE_MISSING_ROLE_MAPPINGS` check picks
+      // run's `INHERITANCE_ROLE_MAPPING_RULES` check picks
       // them up cleanly via the `upsert_role_mappings` strategy.
       //
       // `findUnique`+conditional-delete keeps this idempotent: if a

@@ -108,7 +108,7 @@ export type ChangePlanKind =
    * to a concrete `child_role_label` or `is_absorbed: true` (a
    * `child_role_label: null` entry writes no row). Picked up by the
    * `upsert_role_mappings` strategy in response to findings of the
-   * `FRAME_INHERITANCE_MISSING_ROLE_MAPPINGS` programmatic check
+   * `INHERITANCE_ROLE_MAPPING_RULES` programmatic check
    * (edge-level) and the legacy DR-049/DR-052 and DR-067 family
    * diagnoses (per-row; absorbed by the merge that subsumed the
    * `create_frame_role_mapping` v1 strategy).
