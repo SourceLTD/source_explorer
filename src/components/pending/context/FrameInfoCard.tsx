@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import NodeCard from './NodeCard';
 import FrameRefPopover from './FrameRefPopover';
+import { posShortLabel } from '@/lib/types';
 import {
   fetchFrameSummary,
   getCachedFrameSummary,
@@ -259,7 +260,7 @@ function SensesList({
             <div className="flex items-center gap-1.5 flex-wrap">
               {entry.sense.pos && (
                 <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white border border-emerald-200 text-emerald-700 uppercase">
-                  {entry.sense.pos}
+                  {posShortLabel(entry.sense.pos)}
                 </span>
               )}
               {(entry.sense.lemmas?.length ?? 0) > 0 ? (

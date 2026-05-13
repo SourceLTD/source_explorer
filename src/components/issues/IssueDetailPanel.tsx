@@ -10,6 +10,7 @@ import {
   ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline';
 import type { IssueHealthCheckFindingSummary } from '@/lib/issues/types';
+import { posShortLabel } from '@/lib/types';
 import {
   Issue,
   IssueStatus,
@@ -195,7 +196,7 @@ function FindingEntitySummary({
         </span>
         {ctx.sense.pos && (
           <span className="font-mono text-[10px] uppercase text-gray-500 px-1 py-px rounded bg-gray-100 border border-gray-200 shrink-0">
-            {ctx.sense.pos}
+            {posShortLabel(ctx.sense.pos)}
           </span>
         )}
         {snippet && (

@@ -5,8 +5,8 @@
  *   npx tsx scripts/commit-plan-by-id.ts <planId>
  *
  * Useful for end-to-end testing of new plan kinds without going
- * through the API/auth layer (e.g. `regenerate_role_mappings` after
- * the `e2e-regenerate-role-mappings-drive.ts` script in
+ * through the API/auth layer (e.g. `upsert_role_mappings` after
+ * the `e2e-upsert-role-mappings-drive.ts` script in
  * source-health-check-runner).
  */
 

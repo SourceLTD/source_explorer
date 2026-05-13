@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { TableEntry, Frame, FrameSenseTableRow, POS_LABELS, PendingChangeInfo, getRoleTypeAcronym } from '@/lib/types';
+import { TableEntry, Frame, FrameSenseTableRow, POS_LABELS, PendingChangeInfo, getRoleTypeAcronym, posShortLabel } from '@/lib/types';
 import { ColumnConfig } from '@/components/ColumnVisibilityPanel';
 import { CheckCircleIcon, XCircleIcon, ClipboardDocumentIcon } from '@heroicons/react/24/outline';
 import {
@@ -581,7 +581,7 @@ export function CellContent({
                 }`}
               >
                 <span className="shrink-0 font-semibold uppercase text-[9px] text-blue-700 bg-blue-100 px-1 py-0.5 rounded">
-                  {sense.pos}
+                  {posShortLabel(sense.pos)}
                 </span>
                 <span className="min-w-0 flex-1 text-gray-800">
                   {sense.definition?.slice(0, 80) || '(no definition)'}

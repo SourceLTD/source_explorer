@@ -92,18 +92,28 @@ export type ChangePlanKind =
    * promoted in runner migration `0048`.
    */
   | 'move_frame_parent'
-  | 'attach_relation'
-  | 'detach_relation'
+  /**
+   * v2 Phase 3 (cascading remediations, eventual-consistency model):
+   * detach a `parent_of` edge. Lowers to a single `frame_relation`
+   * DELETE plus runner-injected `frame_role_mapping` DELETEs for
+   * each row touching the (parent, child) endpoints, all inside the
+   * same atomic plan transaction.
+   */
+  | 'detach_parent_relation'
   /**
    * v2 Phase 2 (cascading remediations, eventual-consistency model):
-   * regenerate `frame_role_mappings` rows for one (parent, child)
-   * inheritance edge. Lowers to N `frame_role_mapping` CREATE
-   * changesets, one per parent role with a non-null child_role_label.
-   * Picked up by the `regenerate_role_mappings` strategy in response
-   * to findings of the new
-   * `FRAME_INHERITANCE_MISSING_ROLE_MAPPINGS` programmatic check.
+   * upsert `frame_role_mappings` rows for one (parent, child)
+   * inheritance edge. Lowers to 1..N `frame_role_mapping` CREATE
+   * changesets, one per parent role whose per-entry shape resolves
+   * to a concrete `child_role_label` or `is_absorbed: true` (a
+   * `child_role_label: null` entry writes no row). Picked up by the
+   * `upsert_role_mappings` strategy in response to findings of the
+   * `FRAME_INHERITANCE_MISSING_ROLE_MAPPINGS` programmatic check
+   * (edge-level) and the legacy DR-049/DR-052 and DR-067 family
+   * diagnoses (per-row; absorbed by the merge that subsumed the
+   * `create_frame_role_mapping` v1 strategy).
    */
-  | 'regenerate_role_mappings';
+  | 'upsert_role_mappings';
 
 /** v2: lifecycle status mirrored from runner schema. */
 export type ChangePlanStatus = 'pending' | 'committed' | 'discarded' | 'failed';

@@ -10,8 +10,8 @@
  * Phase 8 contract: new frames produced by a split are ALWAYS
  * orphans (no `parent_of` edges). Parent attachment is a separate,
  * reviewable step driven by hierarchy health checks on a later
- * run via `reparent_frame` / `attach_relation`. This test no
- * longer exercises the virtual-id resolution path for
+ * run via `reparent_frame`. This test no longer exercises the
+ * virtual-id resolution path for
  * `frame_relation.source_id`-against-a-placeholder; that path
  * stays covered by `test-commit-plan-atomicity.ts` (move-kind
  * DELETE+CREATE on existing frame ids).

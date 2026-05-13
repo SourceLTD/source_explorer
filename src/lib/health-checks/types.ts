@@ -150,14 +150,12 @@ export type HealthRemediationStrategy =
   | 'update_role_group'
   | 'create_role_group_member'
   | 'delete_role_group_member'
-  | 'create_frame_role_mapping'
   | 'update_frame_role_mapping'
   | 'delete_frame_role_mapping'
-  | 'regenerate_role_mappings'
+  | 'upsert_role_mappings'
   | 'create_frame_relation'
   | 'update_frame_relation_type'
   | 'delete_frame_relation'
-  | 'detach_non_parent_relation'
   | 'detach_parent_relation'
   | 'reparent_frame'
   | 'create_frame_sense'
@@ -193,14 +191,12 @@ export const HEALTH_REMEDIATION_STRATEGIES: HealthRemediationStrategy[] = [
   'update_role_group',
   'create_role_group_member',
   'delete_role_group_member',
-  'create_frame_role_mapping',
   'update_frame_role_mapping',
   'delete_frame_role_mapping',
-  'regenerate_role_mappings',
+  'upsert_role_mappings',
   'create_frame_relation',
   'update_frame_relation_type',
   'delete_frame_relation',
-  'detach_non_parent_relation',
   'detach_parent_relation',
   'reparent_frame',
   'create_frame_sense',
@@ -237,14 +233,12 @@ export const HEALTH_REMEDIATION_STRATEGY_LABELS: Record<HealthRemediationStrateg
   update_role_group: 'Update role group',
   create_role_group_member: 'Create role group member',
   delete_role_group_member: 'Delete role group member',
-  create_frame_role_mapping: 'Create frame role mapping',
   update_frame_role_mapping: 'Update frame role mapping',
   delete_frame_role_mapping: 'Delete frame role mapping',
-  regenerate_role_mappings: 'Regenerate role mappings',
+  upsert_role_mappings: 'Upsert role mappings',
   create_frame_relation: 'Create frame relation',
   update_frame_relation_type: 'Update frame relation type',
   delete_frame_relation: 'Delete frame relation',
-  detach_non_parent_relation: 'Detach non-parent relations',
   detach_parent_relation: 'Detach parent relation',
   reparent_frame: 'Reparent frame',
   create_frame_sense: 'Create frame sense',

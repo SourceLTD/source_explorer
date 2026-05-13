@@ -970,7 +970,7 @@ model frame_sense_frames {
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model frame_senses {
   id                                                                            Int                                @id @default(autoincrement())
-  pos                                                                           String
+  pos                                                                           part_of_speech
   definition                                                                    String
   created_at                                                                    DateTime?                          @default(now()) @db.Timestamp(6)
   updated_at                                                                    DateTime?                          @default(now()) @db.Timestamp(6)

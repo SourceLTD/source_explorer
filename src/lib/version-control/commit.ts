@@ -6,7 +6,9 @@
  */
 
 import { prisma } from '@/lib/prisma';
-import { Prisma } from '@prisma/client';
+import { Prisma, part_of_speech } from '@prisma/client';
+
+const PART_OF_SPEECH_VALUES = new Set<string>(Object.values(part_of_speech));
 import {
   ChangesetWithFieldChanges,
   CommitResult,
@@ -395,6 +397,15 @@ async function commitCreateInTx(
       if (!pos || !definition || !frameType) {
         throw new Error('CREATE frame_sense requires pos, definition, frame_type');
       }
+      if (!PART_OF_SPEECH_VALUES.has(pos)) {
+        // `frame_senses.pos` is the `part_of_speech` enum
+        // (`verb | noun | adjective | adverb`) after the standardization
+        // migration. Reject anything else loudly so a stale runner /
+        // upstream producer can't silently corrupt the column.
+        throw new Error(
+          `CREATE frame_sense: pos must be one of ${Object.values(part_of_speech).join(', ')}; got "${pos}"`,
+        );
+      }
       if (frameIdRaw === undefined || frameIdRaw === null) {
         throw new Error('CREATE frame_sense requires frame_id (senses anchor to exactly one frame)');
       }
@@ -411,7 +422,7 @@ async function commitCreateInTx(
 
       const sense = await tx.frame_senses.create({
         data: {
-          pos,
+          pos: pos as part_of_speech,
           definition,
           frame_type: frameType,
           confidence: (senseData.confidence as string | null | undefined) ?? null,
@@ -439,9 +450,8 @@ async function commitCreateInTx(
       // staged earlier in the same plan. (Phase 8: `split_frame`
       // no longer emits parent_of edges for brand-new frames -
       // new frames are orphans by design - so this path is now
-      // exercised primarily by `attach_relation` /
-      // `reparent_frame` plans where one or both endpoints can
-      // legitimately be a placeholder.)
+      // exercised primarily by `reparent_frame` plans where one
+      // or both endpoints can legitimately be a placeholder.)
       const sourceId = await resolveVirtualOrBigInt(
         tx,
         relData.source_id,
@@ -489,7 +499,7 @@ async function commitCreateInTx(
     } else if (changeset.entity_type === 'frame_role_mapping') {
       // CREATE frame_role_mapping (Phase 2 cascading remediations).
       //
-      // Used by the v2 `regenerate_role_mappings` plan kind. The
+      // Used by the v2 `upsert_role_mappings` plan kind. The
       // strategy LLM emits one entry per parent role; the runner
       // lowers each into a CREATE on `frame_role_mappings` with a
       // negative placeholder entity_id so the writer treats it as
@@ -1271,7 +1281,7 @@ async function commitDeleteInTx(
       // DELETE ops for every mapping row touching the old parent->
       // child edge AND the new parent->child edge so the next health
       // run's `FRAME_INHERITANCE_MISSING_ROLE_MAPPINGS` check picks
-      // them up cleanly via the `regenerate_role_mappings` strategy.
+      // them up cleanly via the `upsert_role_mappings` strategy.
       //
       // `findUnique`+conditional-delete keeps this idempotent: if a
       // sibling changeset (or the FK cascade from a parent frame

@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import LoadingSpinner from '@/components/LoadingSpinner';
+import { posShortLabel } from '@/lib/types';
 import {
   fetchFrameSummary,
   getCachedFrameSummary,
@@ -339,7 +340,7 @@ function FrameSummaryBody({ summary }: { summary: FrameSummary }) {
               >
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white border border-gray-200 text-gray-600 uppercase">
-                    {s.pos}
+                    {posShortLabel(s.pos)}
                   </span>
                   {s.lemmas.length > 0 && (
                     <span className="text-[11px] text-gray-700">

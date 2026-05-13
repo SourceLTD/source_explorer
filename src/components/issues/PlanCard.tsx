@@ -11,7 +11,6 @@ import {
   ArrowsPointingOutIcon,
   ArrowRightCircleIcon,
   ArrowPathIcon,
-  LinkIcon,
   XMarkIcon,
   Squares2X2Icon,
   TableCellsIcon,
@@ -60,9 +59,8 @@ const PLAN_KIND_LABELS: Record<string, string> = {
   merge_sense: 'Merge frame senses',
   move_frame_sense: 'Move frame sense',
   move_frame_parent: 'Reparent frame',
-  attach_relation: 'Attach relation',
-  detach_relation: 'Detach relation',
-  regenerate_role_mappings: 'Regenerate role mappings',
+  detach_parent_relation: 'Detach parent relation',
+  upsert_role_mappings: 'Upsert role mappings',
 };
 
 const PLAN_STATUS_BADGE: Record<string, string> = {
@@ -86,11 +84,9 @@ function planKindIcon(kind: string): React.ReactNode {
     case 'move_frame_sense':
     case 'move_frame_parent':
       return <ArrowRightCircleIcon className="w-4 h-4" />;
-    case 'attach_relation':
-      return <LinkIcon className="w-4 h-4" />;
-    case 'detach_relation':
+    case 'detach_parent_relation':
       return <XMarkIcon className="w-4 h-4" />;
-    case 'regenerate_role_mappings':
+    case 'upsert_role_mappings':
       return <ArrowPathIcon className="w-4 h-4" />;
     default:
       return <Squares2X2Icon className="w-4 h-4" />;
@@ -807,30 +803,23 @@ function PlanKindRenderer({ plan }: { plan: IssueChangePlanSummary }) {
         </div>
       );
     }
-    case 'attach_relation':
-    case 'detach_relation': {
-      // metadata: { edges: [{ source, target, type, source_id?, target_id?, source_label?, target_label? }, ...] }
+    case 'detach_parent_relation': {
+      // metadata (from `normaliseDetachParentRelation` in the runner):
+      //   edges: [{ source, source_label, target, target_label, type:'parent_of', relation_id }, ...]
+      // `source` is the parent frame id and `target` is the child
+      // frame id (the runner picks the parent_of direction).
       const edges = Array.isArray(md.edges)
         ? (md.edges as Array<Record<string, unknown>>)
         : null;
-      const isAttach = plan.plan_kind === 'attach_relation';
-      const verb = isAttach ? 'Attach' : 'Detach';
-      const verbLower = isAttach ? 'attach' : 'detach';
-      const accent = isAttach
-        ? {
-            border: 'border-emerald-200',
-            bg: 'bg-emerald-50/30',
-            label: 'text-emerald-600',
-            arrow: 'text-emerald-500',
-            arrowGlyph: '→',
-          }
-        : {
-            border: 'border-red-200',
-            bg: 'bg-red-50/30',
-            label: 'text-red-600',
-            arrow: 'text-red-500',
-            arrowGlyph: '↛',
-          };
+      const verb = 'Detach';
+      const verbLower = 'detach';
+      const accent = {
+        border: 'border-red-200',
+        bg: 'bg-red-50/30',
+        label: 'text-red-600',
+        arrow: 'text-red-500',
+        arrowGlyph: '↛',
+      };
       const edgeCount = edges?.length ?? plan.changesets.length;
       const visible = edges?.slice(0, 5) ?? [];
       const hidden = edges ? Math.max(edges.length - visible.length, 0) : 0;
@@ -920,14 +909,15 @@ function PlanKindRenderer({ plan }: { plan: IssueChangePlanSummary }) {
         </div>
       );
     }
-    case 'regenerate_role_mappings': {
-      // metadata (from `normaliseRegenerateRoleMappings` in the runner):
-      //   relation_id:   string
+    case 'upsert_role_mappings': {
+      // metadata (from `normaliseUpsertRoleMappings` in the runner):
+      //   relation_id:   string | null
       //   parent:        { id, label | null }
       //   child:         { id, label | null }
       //   plan_run_id:   string
       //   model:         string | null
       //   mappings_inserted: Array<{ parent_role_label, child_role_label }>
+      //   mappings_absorbed: string[]   (parent roles folded into the child LU)
       //   mappings_skipped_no_child_equivalent: string[]
       const parent = (md.parent as Record<string, unknown> | undefined) ?? null;
       const child = (md.child as Record<string, unknown> | undefined) ?? null;
@@ -941,9 +931,13 @@ function PlanKindRenderer({ plan }: { plan: IssueChangePlanSummary }) {
             child_role_label?: unknown;
           }>)
         : [];
+      const absorbed = Array.isArray(md.mappings_absorbed)
+        ? (md.mappings_absorbed as unknown[]).map((s) => String(s))
+        : [];
       const skipped = Array.isArray(md.mappings_skipped_no_child_equivalent)
         ? (md.mappings_skipped_no_child_equivalent as unknown[]).map((s) => String(s))
         : [];
+      const totalRows = inserted.length + absorbed.length;
       return (
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-2 text-sm text-gray-700">
@@ -959,8 +953,14 @@ function PlanKindRenderer({ plan }: { plan: IssueChangePlanSummary }) {
               className="font-mono px-2 py-0.5 rounded bg-blue-50 border border-blue-200 text-blue-800"
             />
             <span className="ml-2 text-xs text-gray-500">
-              {inserted.length} mapping
-              {inserted.length === 1 ? '' : 's'} to insert
+              {totalRows} mapping
+              {totalRows === 1 ? '' : 's'} to insert
+              {absorbed.length > 0 && (
+                <>
+                  {' '}
+                  ({absorbed.length} absorbed)
+                </>
+              )}
               {skipped.length > 0 && (
                 <>
                   {' '}
@@ -996,6 +996,19 @@ function PlanKindRenderer({ plan }: { plan: IssueChangePlanSummary }) {
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {absorbed.length > 0 && (
+            <div className="rounded-xl border border-indigo-200 bg-indigo-50/30 p-3">
+              <header className="flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-indigo-700 mb-2">
+                Absorbed into child LU
+              </header>
+              <ul className="list-disc list-inside text-xs text-indigo-900 space-y-0.5 font-mono">
+                {absorbed.map((s, i) => (
+                  <li key={i}>{s}</li>
+                ))}
+              </ul>
             </div>
           )}
 

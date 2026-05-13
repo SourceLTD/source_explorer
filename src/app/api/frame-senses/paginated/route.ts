@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Prisma } from '@prisma/client';
+import { Prisma, part_of_speech } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { attachPendingInfoToEntities } from '@/lib/version-control';
 import { computeFrameWarning } from '@/lib/db/senses';
@@ -37,6 +37,45 @@ const VALID_SORT_FIELDS: Record<string, string> = {
 };
 
 const LU_SNIPPET_LIMIT = 10;
+
+const PART_OF_SPEECH_VALUES = Object.values(part_of_speech);
+
+/** Legacy short tokens still passed from older URLs / bookmarks. */
+const LEGACY_POS_FILTER: Record<string, part_of_speech> = {
+  n: part_of_speech.noun,
+  v: part_of_speech.verb,
+  adj: part_of_speech.adjective,
+  adv: part_of_speech.adverb,
+};
+
+function normalizePosFilterTokens(tokens: string[]): part_of_speech[] {
+  const out = new Set<part_of_speech>();
+  for (const raw of tokens) {
+    const t = raw.trim().toLowerCase();
+    if (!t) continue;
+    const fromLegacy = LEGACY_POS_FILTER[t];
+    if (fromLegacy !== undefined) {
+      out.add(fromLegacy);
+      continue;
+    }
+    if (PART_OF_SPEECH_VALUES.includes(t as part_of_speech)) {
+      out.add(t as part_of_speech);
+    }
+  }
+  return [...out];
+}
+
+/** Substring matches on enum labels (`verb`, `nou`, adj→adjective aliases). */
+function partOfSpeechValuesMatchingFreeText(search: string): part_of_speech[] {
+  const q = search.trim().toLowerCase();
+  if (!q) return [];
+  const matched = new Set<part_of_speech>();
+  if (LEGACY_POS_FILTER[q] !== undefined) matched.add(LEGACY_POS_FILTER[q]);
+  for (const v of PART_OF_SPEECH_VALUES) {
+    if (v.includes(q)) matched.add(v);
+  }
+  return [...matched];
+}
 
 function toEndOfDay(value: string): Date {
   return new Date(`${value}T23:59:59.999Z`);
@@ -81,9 +120,10 @@ export async function GET(request: NextRequest) {
     const and: Prisma.frame_sensesWhereInput[] = [];
 
     if (search) {
+      const matchingPosEnums = partOfSpeechValuesMatchingFreeText(search);
       const or: Prisma.frame_sensesWhereInput[] = [
         { definition: { contains: search, mode: 'insensitive' } },
-        { pos: { contains: search, mode: 'insensitive' } },
+        ...(matchingPosEnums.length > 0 ? [{ pos: { in: matchingPosEnums } }] : []),
         { frame_type: { contains: search, mode: 'insensitive' } },
         { lemmas: { has: search } },
         {
@@ -133,7 +173,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (pos && pos !== 'none') {
-      const selectedPos = pos.split(',').map(p => p.trim()).filter(Boolean);
+      const selectedPos = normalizePosFilterTokens(pos.split(','));
       if (selectedPos.length > 0) {
         and.push({ pos: { in: selectedPos } });
       }

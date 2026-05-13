@@ -5,7 +5,8 @@ import { Group } from '@visx/group';
 import { 
   FrameGraphNode, 
   RecipeGraph,
-  sortRolesByPrecedence, 
+  sortRolesByPrecedence,
+  posShortLabel,
 } from '@/lib/types';
 import FrameSenseTypeBadges from './FrameSenseTypeBadges';
 import { getPendingNodeStroke, getPendingNodeFill } from './PendingChangeIndicator';
@@ -486,7 +487,7 @@ export default function FrameMainNode({
                               flexShrink: 0,
                             }}
                           >
-                            {sense.pos}
+                            {posShortLabel(sense.pos)}
                           </span>
                           <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, gap: 1 }}>
                             {sense.lemmas && sense.lemmas.length > 0 ? (

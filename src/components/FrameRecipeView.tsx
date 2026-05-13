@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { FrameGraphNode, FrameRecipeData, FrameRelationType } from '@/lib/types';
+import { FrameGraphNode, FrameRecipeData, FrameRelationType, posShortLabel } from '@/lib/types';
 
 interface FrameRecipeViewProps {
   currentFrame: FrameGraphNode;
@@ -269,7 +269,7 @@ export default function FrameRecipeView({
                               <div className="min-w-0">
                                 <div className="flex items-center gap-2">
                                   <span className="text-[10px] font-semibold uppercase bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">
-                                    {sense.pos}
+                                    {posShortLabel(sense.pos)}
                                   </span>
                                   <span className="text-[10px] font-medium uppercase bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">
                                     {sense.frame_type}

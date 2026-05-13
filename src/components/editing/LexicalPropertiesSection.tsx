@@ -1,5 +1,5 @@
 import React from 'react';
-import { GraphNode, PendingChangeInfo } from '@/lib/types';
+import { GraphNode, PendingChangeInfo, posShortLabel } from '@/lib/types';
 import { Mode, EditableField, FrameOption } from './types';
 import { OverlaySection } from './OverlaySection';
 import { VendlerClassSelector } from './VendlerClassSelector';
@@ -146,7 +146,7 @@ export function LexicalPropertiesSection({
                   >
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-[10px] font-semibold uppercase bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">
-                        {sense.pos}
+                        {posShortLabel(sense.pos)}
                       </span>
                       <span className="text-[10px] font-medium uppercase bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">
                         {sense.frame_type}

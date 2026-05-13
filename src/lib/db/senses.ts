@@ -9,6 +9,7 @@
  */
 
 import { prisma } from '../prisma';
+import type { part_of_speech } from '@prisma/client';
 import type {
   FrameSense,
   FrameSenseFrameRef,
@@ -222,7 +223,7 @@ export async function getFrameSenseById(id: number): Promise<FrameSenseWithFrame
 // ============================================
 
 export interface CreateFrameSenseInput {
-  pos: string;
+  pos: part_of_speech;
   definition: string;
   frame_type: string;
   /** Required frame_id — senses must anchor to exactly one frame. */
@@ -280,7 +281,7 @@ export async function createFrameSense(
 }
 
 export interface UpdateFrameSenseInput {
-  pos?: string;
+  pos?: part_of_speech;
   definition?: string;
   frame_type?: string;
   confidence?: string | null;

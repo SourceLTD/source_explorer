@@ -582,6 +582,27 @@ export const POS_LABELS: Record<string, string> = {
   'f': 'Frame'
 };
 
+/**
+ * Compact POS chip labels for tight UI surfaces (sense list rows, graph
+ * nodes, tag pills). The DB stores the long form (`part_of_speech` enum:
+ * `verb / noun / adjective / adverb`); these abbreviations are display-
+ * only and intentionally mirror the legacy `n / v / adj / adv` values
+ * that frame_sense chips rendered prior to the standardization
+ * migration, so visual real estate and reviewer recognition are
+ * preserved. Fall back to `pos.toUpperCase()` for any unknown value.
+ */
+export const POS_SHORT_LABEL: Record<string, string> = {
+  verb: 'V',
+  noun: 'N',
+  adjective: 'ADJ',
+  adverb: 'ADV',
+};
+
+export function posShortLabel(pos: string | null | undefined): string {
+  if (!pos) return '';
+  return POS_SHORT_LABEL[pos] ?? pos.toUpperCase();
+}
+
 export const RELATION_LABELS: Record<string, string> = {
   [LexicalUnitRelationType.HYPERNYM]: 'Hypernym',
   [LexicalUnitRelationType.HYPONYM]: 'Hyponym',

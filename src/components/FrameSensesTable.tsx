@@ -7,6 +7,7 @@ import type {
   FrameSenseWarning,
   PendingChangeInfo,
 } from '@/lib/types';
+import { posShortLabel } from '@/lib/types';
 import { getPendingRowClasses } from '@/components/PendingChangeIndicator';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import Pagination from '@/components/Pagination';
@@ -256,7 +257,7 @@ export default function FrameSensesTable({ searchQuery, refreshTrigger }: FrameS
                   </td>
                   <td className="px-4 py-3 align-top">
                     <span className="inline-flex items-center rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-800 uppercase">
-                      {row.pos}
+                      {posShortLabel(row.pos)}
                     </span>
                   </td>
                   <td className="px-4 py-3 align-top">
