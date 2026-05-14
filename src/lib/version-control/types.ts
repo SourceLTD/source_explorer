@@ -227,6 +227,61 @@ export interface PendingFieldInfo {
 }
 
 // ============================================
+// Revision Types
+// ============================================
+
+export interface ChangesetRevisionMeta {
+  revision_parent_id: bigint | null;
+  revision_number: number;
+  revision_prompt: string | null;
+  superseded_by_id: bigint | null;
+}
+
+export interface ChangesetWithRevision extends Changeset, ChangesetRevisionMeta {}
+
+export interface ChangesetWithRevisionAndFieldChanges extends ChangesetWithRevision {
+  field_changes: FieldChange[];
+}
+
+/**
+ * A single entry in a revision history chain, used by the history API.
+ */
+export interface RevisionHistoryEntry {
+  id: string;
+  revision_number: number;
+  revision_prompt: string | null;
+  created_by: string;
+  created_at: string;
+  status: ChangesetStatus;
+  field_changes: Array<{
+    field_name: string;
+    old_value: unknown;
+    new_value: unknown;
+    status: FieldChangeStatus;
+  }>;
+}
+
+export interface RevisionChain {
+  current_id: string;
+  total_revisions: number;
+  entries: RevisionHistoryEntry[];
+}
+
+export interface ReviseChangesetInput {
+  user_prompt: string;
+}
+
+export interface ReviseChangesetResult {
+  new_changeset_id: string;
+  revision_number: number;
+  field_changes: Array<{
+    field_name: string;
+    old_value: unknown;
+    new_value: unknown;
+  }>;
+}
+
+// ============================================
 // API Response Types
 // ============================================
 

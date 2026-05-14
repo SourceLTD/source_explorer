@@ -46,6 +46,24 @@ interface PositionedFrameNode {
   y: number;
   width: number;
   height: number;
+  descendant_count?: number;
+}
+
+const NODE_HEIGHT = 36;
+const NODE_HEIGHT_WITH_COUNT = 48;
+const LOG_CEIL = Math.log(1 + 150);
+
+/**
+ * Returns a fill/stroke color pair that gets darker blue with more descendants.
+ * 0 descendants → lightest (#bfdbfe), 150+ → darkest (#1e40af).
+ */
+function descendantColorIntensity(count: number | undefined): { fill: string; stroke: string } {
+  const s = count ? Math.min(1, Math.log(1 + count) / LOG_CEIL) : 0;
+  // Interpolate between light blue and dark blue
+  const fills = ['#bfdbfe', '#93c5fd', '#60a5fa', '#3b82f6', '#2563eb', '#1d4ed8', '#1e40af'];
+  const strokes = ['#93c5fd', '#60a5fa', '#3b82f6', '#2563eb', '#1d4ed8', '#1e40af', '#1e3a8a'];
+  const idx = Math.min(fills.length - 1, Math.floor(s * (fills.length - 1)));
+  return { fill: fills[idx], stroke: strokes[idx] };
 }
 
 // Relation type display labels - only parent_of is supported
@@ -69,6 +87,7 @@ function getPositionedNodeKey(node: PositionedFrameNode) {
 
 export interface FrameGraphHandle {
   openReparentModal: () => void;
+  isParentRelationLocked: () => boolean;
 }
 
 function FrameGraphInner({ currentFrame, onFrameClick, onEditClick, onReparentComplete, onVisualizeRecipeGraph, pendingRelationChanges }: FrameGraphProps, ref: React.Ref<FrameGraphHandle>) {
@@ -85,13 +104,6 @@ function FrameGraphInner({ currentFrame, onFrameClick, onEditClick, onReparentCo
   const [reparentError, setReparentError] = useState<string | null>(null);
   const reparentInputRef = useRef<HTMLInputElement>(null);
   const [roleMappingModalOpen, setRoleMappingModalOpen] = useState(false);
-
-  useImperativeHandle(ref, () => ({
-    openReparentModal: () => {
-      setReparentModalOpen(true);
-      setReparentError(null);
-    },
-  }), []);
 
   useEffect(() => {
     if (reparentModalOpen && reparentInputRef.current) {
@@ -189,13 +201,45 @@ function FrameGraphInner({ currentFrame, onFrameClick, onEditClick, onReparentCo
     r => r.source?.id
   ), [currentFrame.id, currentFrame.relations]);
 
+  const parentRelationLocked = useMemo(
+    () => parentRels.some(r => r.locked),
+    [parentRels],
+  );
+
+  const lockedRelationFrameIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const r of currentFrame.relations) {
+      if (!r.locked) continue;
+      if (r.direction === 'incoming' && r.source) ids.add(r.source.id);
+      if (r.direction === 'outgoing' && r.target) ids.add(r.target.id);
+    }
+    return ids;
+  }, [currentFrame.relations]);
+
+  useImperativeHandle(ref, () => ({
+    openReparentModal: () => {
+      if (parentRelationLocked) {
+        return;
+      }
+      setReparentModalOpen(true);
+      setReparentError(null);
+    },
+    isParentRelationLocked: () => parentRelationLocked,
+  }), [parentRelationLocked]);
+
   // Outgoing parent_of = this frame is the source (parent) pointing at children
-  const childRels = useMemo(() => dedupeRelationsByRelatedFrame(
-    currentFrame.relations.filter(r =>
-      r.direction === 'outgoing' && r.type === 'parent_of' && r.target && r.target.id !== currentFrame.id
-    ),
-    r => r.target?.id
-  ), [currentFrame.id, currentFrame.relations]);
+  const childRels = useMemo(() => {
+    const deduped = dedupeRelationsByRelatedFrame(
+      currentFrame.relations.filter(r =>
+        r.direction === 'outgoing' && r.type === 'parent_of' && r.target && r.target.id !== currentFrame.id
+      ),
+      r => r.target?.id
+    );
+    // Sort children by descendant_count descending (most descendants first)
+    return deduped.sort((a, b) =>
+      (b.target?.descendant_count ?? 0) - (a.target?.descendant_count ?? 0)
+    );
+  }, [currentFrame.id, currentFrame.relations]);
 
   // Layout calculation
   const layout = useMemo(() => {
@@ -206,7 +250,7 @@ function FrameGraphInner({ currentFrame, onFrameClick, onEditClick, onReparentCo
     const rowSpacing = 60;
     const spacingFromCenter = 60;
     const margin = 10;
-    const relatedNodeHeight = 36;
+    const relatedNodeHeight = NODE_HEIGHT_WITH_COUNT;
 
     const mainNodeWidth = 1000;
     const mainNodeLayoutHeight = FRAME_MAIN_NODE_FIXED_HEIGHT;
@@ -261,6 +305,7 @@ function FrameGraphInner({ currentFrame, onFrameClick, onEditClick, onReparentCo
         row.nodes.forEach((rel) => {
           const source = rel.source!;
           const nodeWidth = calculateNodeWidth(source.label);
+          const nodeH = (source.descendant_count ?? 0) > 0 ? NODE_HEIGHT_WITH_COUNT : NODE_HEIGHT;
           nodes.push({
             id: source.id,
             type: 'parent',
@@ -268,7 +313,8 @@ function FrameGraphInner({ currentFrame, onFrameClick, onEditClick, onReparentCo
             x: currentX + nodeWidth / 2,
             y: rowY,
             width: nodeWidth,
-            height: relatedNodeHeight,
+            height: nodeH,
+            descendant_count: source.descendant_count,
           });
           currentX += nodeWidth + nodeSpacing;
         });
@@ -285,6 +331,7 @@ function FrameGraphInner({ currentFrame, onFrameClick, onEditClick, onReparentCo
         row.nodes.forEach((rel) => {
           const target = rel.target!;
           const nodeWidth = calculateNodeWidth(target.label);
+          const nodeH = (target.descendant_count ?? 0) > 0 ? NODE_HEIGHT_WITH_COUNT : NODE_HEIGHT;
           nodes.push({
             id: target.id,
             type: 'child',
@@ -292,7 +339,8 @@ function FrameGraphInner({ currentFrame, onFrameClick, onEditClick, onReparentCo
             x: currentX + nodeWidth / 2,
             y: rowY,
             width: nodeWidth,
-            height: relatedNodeHeight,
+            height: nodeH,
+            descendant_count: target.descendant_count,
           });
           currentX += nodeWidth + nodeSpacing;
         });
@@ -324,12 +372,17 @@ function FrameGraphInner({ currentFrame, onFrameClick, onEditClick, onReparentCo
     const nodeKey = getPositionedNodeKey(node);
     const isHovered = hoveredNodeId === nodeKey;
     const isPendingDelete = pendingDeletes.has(node.id);
+    const isLocked = lockedRelationFrameIds.has(node.id);
+    const descColors = descendantColorIntensity(node.descendant_count);
     const fillColor = isPendingDelete
       ? pendingDeleteColor
-      : node.type === 'parent' ? parentFrameColor : childFrameColor;
+      : descColors.fill;
     const strokeColor = isPendingDelete
       ? pendingDeleteStroke
-      : node.type === 'parent' ? parentFrameStroke : childFrameStroke;
+      : descColors.stroke;
+    const hasDescendants = (node.descendant_count ?? 0) > 0;
+    const nodeLeft = node.x - node.width / 2;
+    const nodeTop = node.y - node.height / 2;
     
     return (
       <g 
@@ -343,8 +396,8 @@ function FrameGraphInner({ currentFrame, onFrameClick, onEditClick, onReparentCo
         }}
       >
         <rect
-          x={node.x - node.width / 2}
-          y={node.y - node.height / 2}
+          x={nodeLeft}
+          y={nodeTop}
           width={node.width}
           height={node.height}
           rx={8}
@@ -357,9 +410,10 @@ function FrameGraphInner({ currentFrame, onFrameClick, onEditClick, onReparentCo
             transition: 'all 0.2s ease',
           }}
         />
+        {/* Label — vertically centered if no descendants, shifted up if there are */}
         <text
           x={node.x}
-          y={node.sublabel ? node.y - 5 : node.y}
+          y={hasDescendants ? nodeTop + 16 : node.y}
           fontSize={11}
           fontWeight="bold"
           fill="white"
@@ -368,17 +422,41 @@ function FrameGraphInner({ currentFrame, onFrameClick, onEditClick, onReparentCo
         >
           {node.label}
         </text>
-        {node.sublabel && (
-          <text
-            x={node.x}
-            y={node.y + 10}
-            fontSize={9}
-            fill="rgba(255,255,255,0.8)"
-            textAnchor="middle"
-            dominantBaseline="central"
-          >
-            {node.sublabel}
-          </text>
+        {/* Descendant count with tree icon in bottom-left */}
+        {hasDescendants && (
+          <g>
+            {/* Same 3-arrow graph icon as the view toggle, scaled down */}
+            <g transform={`translate(${nodeLeft + 4}, ${nodeTop + node.height - 9}) scale(0.26)`}>
+              <path d="m11.99 16.5-3.75 3.75m0 0L4.49 16.5m3.75 3.75V3.75h11.25" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
+            </g>
+            <g transform={`translate(${nodeLeft + 7}, ${nodeTop + node.height - 9}) scale(0.26)`}>
+              <path d="M19.5 13.5 12 21m0 0-7.5-7.5M12 21V3" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
+            </g>
+            <g transform={`translate(${nodeLeft + 10}, ${nodeTop + node.height - 9}) scale(0.26)`}>
+              <path d="m11.99 16.5 3.75 3.75m0 0 3.75-3.75m-3.75 3.75V3.75H4.49" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
+            </g>
+            <text
+              x={nodeLeft + 20}
+              y={nodeTop + node.height - 6}
+              fontSize={10}
+              fill="rgba(255,255,255,0.7)"
+              textAnchor="start"
+              dominantBaseline="central"
+            >
+              {node.descendant_count}
+            </text>
+          </g>
+        )}
+        {/* Lock icon for locked relations */}
+        {isLocked && (
+          <g transform={`translate(${nodeLeft + node.width - 16}, ${nodeTop + 2})`}>
+            <title>Relation locked</title>
+            <path
+              d="M6 8V6a3 3 0 1 1 6 0v2h1a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1h1Zm2-2v2h2V6a1 1 0 1 0-2 0Z"
+              fill="rgba(255,255,255,0.85)"
+              transform="scale(0.85)"
+            />
+          </g>
         )}
       </g>
     );
@@ -434,18 +512,18 @@ function FrameGraphInner({ currentFrame, onFrameClick, onEditClick, onReparentCo
         {pendingCreates.map((pc) => {
           const mainNode = layout.nodes.find(n => n.type === 'current');
           if (!mainNode) return null;
-          const mainTop = mainNode.y - mainNode.height / 2;
+          const mainBottom = mainNode.y + mainNode.height / 2 + (layout.renderOverflow || 0);
           const labelText = pc.target_label || `Frame #${pc.target_id}`;
           const nodeWidth = Math.max(80, labelText.length * 7.5 + 24);
           const pendingNodeX = mainNode.x;
-          const pendingNodeY = mainTop - 30;
+          const pendingNodeY = mainBottom + 30;
           return (
             <g key={`pending-create-${pc.changeset_id}`}>
               <line
-                x1={pendingNodeX}
-                y1={pendingNodeY + 18}
-                x2={mainNode.x}
-                y2={mainTop}
+                x1={mainNode.x}
+                y1={mainBottom}
+                x2={pendingNodeX}
+                y2={pendingNodeY - 18}
                 stroke={pendingCreateStroke}
                 strokeWidth={2}
                 strokeDasharray="6 4"

@@ -1,19 +1,10 @@
-/**
- * Small display helpers shared by the by-issue Cards / Inbox views.
- *
- * Mirrors the same helpers that live inline in
- * `src/components/PendingChangesList.tsx` so a single changeset reads
- * the same in every surface. The flat-table view keeps its own copies
- * for now (it has additional context the by-issue views don't need);
- * any visible drift between the two should be reconciled here.
- */
-import type { ByIssueChangeset } from './types';
+import type { ByRemediationChangeset } from './types';
 import {
   SYSTEM_USER_ID,
   SYSTEM_USER_DISPLAY_NAME,
 } from '@/lib/users/displayName';
 
-export function getEntityDisplayName(cs: ByIssueChangeset): string {
+export function getEntityDisplayName(cs: ByRemediationChangeset): string {
   const snapshot = cs.before_snapshot || cs.after_snapshot;
   if (snapshot) {
     if (cs.entity_type === 'frame_relation') {
@@ -39,10 +30,6 @@ export function getEntityDisplayName(cs: ByIssueChangeset): string {
         }`;
       }
     }
-    // v1 CRUD strategies for senses populate `pos` + `definition`
-    // (see commit.ts `CREATE frame_sense`). Build a "<pos>: <snippet>"
-    // header so reviewers see what kind of sense is being touched
-    // without expanding the field diff.
     if (cs.entity_type === 'frame_sense') {
       const pos = snapshot.pos ? String(snapshot.pos) : null;
       const def = snapshot.definition ? String(snapshot.definition) : null;
@@ -56,9 +43,6 @@ export function getEntityDisplayName(cs: ByIssueChangeset): string {
       }
       if (pos) return `${pos} sense${cs.entity_id ? ` #${cs.entity_id}` : ''}`;
     }
-    // Frame role snapshots always carry `label` (the Capitalised_Underscore
-    // role name); fall back to that — the subject strip's truncation
-    // takes care of long values.
     if (cs.entity_type === 'frame_role') {
       const label = snapshot.label;
       if (label) {
@@ -66,10 +50,6 @@ export function getEntityDisplayName(cs: ByIssueChangeset): string {
         return str.length > 40 ? `${str.substring(0, 40)}...` : str;
       }
     }
-    // Role-mapping snapshots carry parent / child role labels (see
-    // commit.ts `CREATE frame_role_mapping`). The most readable handle
-    // is "Parent_Role → Child_Role" — mirrors the visual diff that the
-    // ChangesetEntityContext renderer surfaces underneath.
     if (cs.entity_type === 'frame_role_mapping') {
       const parentRole = snapshot.parent_role_label
         ? String(snapshot.parent_role_label)
@@ -83,8 +63,6 @@ export function getEntityDisplayName(cs: ByIssueChangeset): string {
       }
       if (parentRole) return `${parentRole} → ?`;
     }
-    // Generic fallback for types we haven't customised yet: use the
-    // snapshot's `code` mnemonic if present (lexical_units, etc.).
     if (cs.entity_type !== 'frame') {
       const code = snapshot.code;
       if (code) {
@@ -127,12 +105,7 @@ export function formatUserName(user: string | null): string {
   return capitalizeFirst(user);
 }
 
-/**
- * Short summary of what a changeset will do, suitable for a single
- * line in a compact list. Avoids the heavy field-by-field diff so the
- * by-issue cards stay scannable.
- */
-export function summarizeChangeset(cs: ByIssueChangeset): string {
+export function summarizeChangeset(cs: ByRemediationChangeset): string {
   if (cs.operation === 'delete') return 'Entity will be deleted';
   if (cs.operation === 'create') return 'New entity will be created';
   if (cs.operation === 'move') return 'Entity will be moved';

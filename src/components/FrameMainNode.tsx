@@ -7,6 +7,7 @@ import {
   RecipeGraph,
   sortRolesByPrecedence,
   posShortLabel,
+  compareSensesByPos,
 } from '@/lib/types';
 import FrameSenseTypeBadges from './FrameSenseTypeBadges';
 import { getPendingNodeStroke, getPendingNodeFill } from './PendingChangeIndicator';
@@ -184,7 +185,7 @@ export default function FrameMainNode({
       {hasPendingChanges && pendingOperation && (
         <g>
           <rect
-            x={centerX + nodeWidth - 80}
+            x={centerX + 8}
             y={topY + 5}
             width={75}
             height={20}
@@ -192,7 +193,7 @@ export default function FrameMainNode({
             fill={getPendingNodeStroke(pendingOperation)}
           />
           <text
-            x={centerX + nodeWidth - 42}
+            x={centerX + 46}
             y={topY + 18}
             fontSize={10}
             fontFamily="Arial"
@@ -430,7 +431,7 @@ export default function FrameMainNode({
                 const luRowGap = 4;
                   const senseHeaderHeight = 46;
                 const senseGap = 0;
-                const visibleSenses = node.senses.slice(0, 15);
+                const visibleSenses = node.senses.slice().sort(compareSensesByPos).slice(0, 15);
 
                 let senseY = 0;
                 return visibleSenses.map((sense, senseIdx) => {

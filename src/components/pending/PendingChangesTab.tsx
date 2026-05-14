@@ -4,34 +4,26 @@ import { useMemo } from 'react';
 import { ArrowPathIcon } from '@heroicons/react/24/outline';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import { ConfirmDialog, ConflictDialog } from '@/components/ui';
-import { usePendingByIssue } from './byIssue/usePendingByIssue';
-import { useBucketActions } from './byIssue/useBucketActions';
-import PendingByIssueInbox from './byIssue/PendingByIssueInbox';
-
-interface PendingChangesTabProps {
-  /**
-   * Called when the user clicks "Open issue" on a bucket. Lets the
-   * parent modal switch to the Issues tab and preselect the row.
-   * Optional — when omitted the affordance is hidden.
-   */
-  onOpenIssue?: (issueId: string) => void;
-}
+import { usePendingByRemediation } from './byRemediation/usePendingByRemediation';
+import { useBucketActions } from './byRemediation/useBucketActions';
+import PendingByRemediationInbox from './byRemediation/PendingByRemediationInbox';
+import type { ActionBucket } from './byRemediation/types';
 
 /**
- * Wrapper around the by-issue Inbox view for the Pending Changes tab.
+ * Wrapper around the by-remediation Inbox view for the Pending Changes tab.
  *
- * Owns the data fetch, the per-bucket / per-row action handlers, and
- * the conflict + confirm dialogs so the underlying view component
- * stays focused on layout. Today there's only one view (Inbox); a
- * future view could drop in alongside without touching the modal.
+ * Organises pending changesets first by the LLM remediation job that
+ * produced them, with health-check diagnosis codes as collapsible sub-
+ * rows inside each remediation bucket.
  */
-export default function PendingChangesTab({ onOpenIssue }: PendingChangesTabProps) {
-  const { data, isLoading, error, refetch } = usePendingByIssue();
+export default function PendingChangesTab() {
+  const { data, isLoading, error, refetch } = usePendingByRemediation();
   const buckets = useMemo(() => data?.buckets ?? [], [data]);
+
   const actions = useBucketActions({ refetch });
 
-  const issueBucketCount = useMemo(
-    () => buckets.filter((b) => b.issue !== null).length,
+  const remediationCount = useMemo(
+    () => buckets.filter((b) => !b.action_key.includes('/')).length,
     [buckets],
   );
 
@@ -40,8 +32,8 @@ export default function PendingChangesTab({ onOpenIssue }: PendingChangesTabProp
       <div className="px-4 py-2 border-b border-gray-200 bg-gray-50 flex items-center gap-3 shrink-0">
         {data && (
           <span className="text-xs text-gray-500 tabular-nums">
-            {data.total_pending_changesets} pending · {issueBucketCount} issue
-            {issueBucketCount === 1 ? '' : 's'}
+            {data.total_pending_changesets} pending · {remediationCount} action type
+            {remediationCount === 1 ? '' : 's'}
           </span>
         )}
         <div className="ml-auto flex items-center gap-2">
@@ -63,17 +55,20 @@ export default function PendingChangesTab({ onOpenIssue }: PendingChangesTabProp
       </div>
 
       <div className="flex-1 min-h-0 overflow-hidden">
-        <PendingByIssueInbox
+        <PendingByRemediationInbox
           buckets={buckets}
           isLoading={isLoading}
           error={error}
           busy={actions.busy}
-          onCommitBucket={actions.commitBucket}
-          onRejectBucket={actions.requestRejectBucket}
+          onCommitBucket={(bucket, key) =>
+            actions.commitBucket(bucket, key)
+          }
+          onRejectBucket={(bucket, key) =>
+            actions.requestRejectBucket(bucket, key)
+          }
           onCommitRow={actions.commitRow}
           onRejectRow={actions.rejectRow}
           onPlanChanged={() => void refetch()}
-          onOpenIssue={onOpenIssue}
         />
       </div>
 
@@ -91,10 +86,11 @@ export default function PendingChangesTab({ onOpenIssue }: PendingChangesTabProp
         onCancel={actions.cancelConfirmReject}
         onConfirm={actions.acceptConfirmReject}
         title="Reject loose changes?"
-        message={`Reject ${actions.confirmReject.count} loose change${actions.confirmReject.count === 1 ? '' : 's'} in this bucket? Plan-bound changesets are unaffected.`}
+        message={`Reject ${actions.confirmReject.count} loose change${actions.confirmReject.count === 1 ? '' : 's'} in this remediation? Plan-bound changesets are unaffected.`}
         confirmLabel="Reject"
         variant="danger"
       />
     </div>
   );
 }
+

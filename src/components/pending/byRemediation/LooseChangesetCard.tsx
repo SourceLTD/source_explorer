@@ -26,10 +26,10 @@ import {
   operationBadgeClass,
   summarizeChangeset,
 } from './changesetDisplay';
-import type { ByIssueChangeset } from './types';
+import type { ByRemediationChangeset } from './types';
 
 export interface LooseChangesetCardProps {
-  cs: ByIssueChangeset;
+  cs: ByRemediationChangeset;
   isBusy: boolean;
   busyAction: 'commit' | 'reject' | null;
   /** Disable buttons when another row in this bucket is busy. */
@@ -249,7 +249,7 @@ export default function LooseChangesetCard({
 //     ends of an inheritance arrow with the role labels stacked on
 //     top — same visual language the relation branch uses.
 // =====================================================================
-function ChangesetEntityContext({ cs }: { cs: ByIssueChangeset }) {
+function ChangesetEntityContext({ cs }: { cs: ByRemediationChangeset }) {
   if (cs.entity_type === 'frame_relation') {
     const snapshot = cs.before_snapshot ?? cs.after_snapshot ?? {};
     const sourceId = pickIdLike(snapshot.source_id);
@@ -444,8 +444,8 @@ function pickStringLike(value: unknown): string | null {
 // operation, so no extra warning chrome is rendered here.
 // =====================================================================
 interface ChangesetBodyProps {
-  cs: ByIssueChangeset;
-  pendingFieldChanges: ByIssueChangeset['field_changes'];
+  cs: ByRemediationChangeset;
+  pendingFieldChanges: ByRemediationChangeset['field_changes'];
 }
 
 function ChangesetBody({ cs, pendingFieldChanges }: ChangesetBodyProps) {
@@ -503,7 +503,7 @@ function ChangesetBody({ cs, pendingFieldChanges }: ChangesetBodyProps) {
 }
 
 interface FieldValueListProps {
-  fields: ByIssueChangeset['field_changes'];
+  fields: ByRemediationChangeset['field_changes'];
   side: 'old' | 'new';
 }
 
@@ -589,7 +589,7 @@ const OPERATION_VERB: Record<string, string> = {
  * / `Split frame` titles that `PlanCard` shows for plan-bound rows so
  * loose updates read as the same kind of object.
  */
-function changesetKindLabel(cs: ByIssueChangeset): string {
+function changesetKindLabel(cs: ByRemediationChangeset): string {
   const verb = OPERATION_VERB[cs.operation] ?? capitalize(cs.operation);
   const noun = ENTITY_LABELS[cs.entity_type] ?? cs.entity_type.replace(/_/g, ' ');
   return `${verb} ${noun}`;

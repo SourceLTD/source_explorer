@@ -1,0 +1,2 @@
+ALTER TABLE frame_relations
+  ADD COLUMN locked BOOLEAN NOT NULL DEFAULT FALSE;

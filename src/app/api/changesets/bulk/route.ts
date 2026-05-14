@@ -14,7 +14,6 @@ import {
   bulkDiscard,
 } from '@/lib/version-control';
 import { getCurrentUserName } from '@/utils/supabase/server';
-import { emitChangesetStatusEvents } from '@/lib/issues/events';
 
 export async function POST(request: NextRequest) {
   try {
@@ -54,28 +53,6 @@ export async function POST(request: NextRequest) {
     // Return 409 Conflict if there was a conflict
     if (result?.conflict) {
       return NextResponse.json(result, { status: 409 });
-    }
-
-    // Emit timeline events for any changesets that were linked to issues.
-    // For `reject` and `discard` we treat both as "discarded" from the
-    // issue's perspective; the underlying changeset row is kept but moved
-    // out of `pending`.
-    //
-    // NOTE: emitChangesetStatusEvents reads the changesets' current
-    // `issue_id`, which is still set after commit/discard (we never null
-    // the link), so it correctly surfaces the event on the issue.
-    if (action === 'approve_and_commit') {
-      void emitChangesetStatusEvents({
-        actor: userId,
-        changesetIds,
-        eventType: 'changeset_committed',
-      });
-    } else if (action === 'reject' || action === 'discard') {
-      void emitChangesetStatusEvents({
-        actor: userId,
-        changesetIds,
-        eventType: 'changeset_discarded',
-      });
     }
 
     return NextResponse.json(result);

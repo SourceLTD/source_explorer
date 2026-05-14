@@ -3,7 +3,7 @@
 import { useState, useCallback } from 'react';
 import type { ConflictError } from '@/components/ui';
 import { refreshPendingChangesCount } from '@/hooks/usePendingChangesCount';
-import type { ByIssueBucket, ByIssueChangeset } from './types';
+import type { ActionBucket, ByRemediationChangeset } from './types';
 import { getEntityDisplayName } from './changesetDisplay';
 
 export interface ConflictDialogState {
@@ -20,28 +20,21 @@ export interface ConfirmDialogState {
 }
 
 export interface BucketBusyState {
-  /** Bucket key currently running a per-bucket commit/reject. */
   bucketKey: string | null;
   action: 'commit' | 'reject' | null;
 }
 
 interface UseBucketActionsResult {
-  /** Bulk-approve every loose changeset in `bucket`. */
-  commitBucket: (bucket: ByIssueBucket, bucketKey: string) => Promise<void>;
-  /** Show the confirm dialog before rejecting an entire bucket. */
-  requestRejectBucket: (bucket: ByIssueBucket, bucketKey: string) => void;
-  /** Single-row commit. Catches 409s into the conflict dialog. */
-  commitRow: (cs: ByIssueChangeset) => Promise<void>;
-  /** Single-row reject. */
-  rejectRow: (cs: ByIssueChangeset) => Promise<void>;
+  commitBucket: (bucket: ActionBucket, bucketKey: string) => Promise<void>;
+  requestRejectBucket: (bucket: ActionBucket, bucketKey: string) => void;
+  commitRow: (cs: ByRemediationChangeset) => Promise<void>;
+  rejectRow: (cs: ByRemediationChangeset) => Promise<void>;
 
-  /** Conflict dialog state and handlers. */
   conflictDialog: ConflictDialogState;
   closeConflictDialog: () => void;
   discardConflictedChangeset: () => Promise<void>;
   isDiscardingConflicted: boolean;
 
-  /** Confirm dialog state for "reject all in bucket". */
   confirmReject: ConfirmDialogState;
   cancelConfirmReject: () => void;
   acceptConfirmReject: () => Promise<void>;
@@ -49,15 +42,6 @@ interface UseBucketActionsResult {
   busy: BucketBusyState;
 }
 
-/**
- * Encapsulates every per-bucket and per-row action used by the by-issue
- * Cards / Inbox views. Owns the conflict + confirm dialog state so
- * either view can render the dialogs from the wrapper.
- *
- * The hook calls `refetch()` itself after every successful action, and
- * also pings the global `refreshPendingChangesCount()` so the modal
- * tab badge stays in sync.
- */
 export function useBucketActions({
   refetch,
 }: {
@@ -79,15 +63,12 @@ export function useBucketActions({
     bucketKey: null,
     action: null,
   });
-  // Pending bucket payload captured when the user opens the confirm
-  // dialog — re-read on accept so we always reject the same set the
-  // user saw.
   const [pendingRejectBucket, setPendingRejectBucket] = useState<{
-    bucket: ByIssueBucket;
+    bucket: ActionBucket;
     bucketKey: string;
   } | null>(null);
 
-  const looseIds = (bucket: ByIssueBucket): string[] =>
+  const looseIds = (bucket: ActionBucket): string[] =>
     bucket.changesets.filter((c) => !c.change_plan_id).map((c) => c.id);
 
   const runBulk = useCallback(

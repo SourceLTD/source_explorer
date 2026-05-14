@@ -12,10 +12,13 @@ import { RelationsSection } from './RelationsSection';
 import { FramePropertiesSection } from './FramePropertiesSection';
 import { FrameRolesSection } from './FrameRolesSection';
 import { FrameRelationsSection } from './FrameRelationsSection';
+import { AIRemediationPanel } from './AIRemediationPanel';
 import { useEntryEditor } from '@/hooks/useEntryEditor';
 import { useEntryMutations } from '@/hooks/useEntryMutations';
 import { PendingEntityBadge } from '@/components/PendingChangeIndicator';
 import LoadingSpinner from '@/components/LoadingSpinner';
+
+type EditTab = 'ai' | 'manual';
 
 interface EditOverlayProps {
   node: GraphNode | Frame | null;
@@ -31,6 +34,7 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
   const [isDeleting, setIsDeleting] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [availableFrames, setAvailableFrames] = useState<FrameOption[]>([]);
+  const [activeTab, setActiveTab] = useState<EditTab>('ai');
   
   // Overlay section expansion state
   const [overlaySections, setOverlaySections] = useState<OverlaySectionsState>({
@@ -359,8 +363,53 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
             </div>
           )}
 
-          {/* Flagging Section */}
-          <FlagButtons
+          {/* Tab Bar (frames mode only) */}
+          {mode === 'frames' && (
+            <div className="flex border-b border-gray-200 mb-5 mt-1 mx-1">
+              <button
+                onClick={() => setActiveTab('ai')}
+                className={`px-5 py-3 text-sm font-medium transition-colors relative ${
+                  activeTab === 'ai'
+                    ? 'text-blue-600'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                AI Mode
+                {activeTab === 'ai' && (
+                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 rounded-full" />
+                )}
+              </button>
+              <button
+                onClick={() => setActiveTab('manual')}
+                className={`px-5 py-3 text-sm font-medium transition-colors relative ${
+                  activeTab === 'manual'
+                    ? 'text-blue-600'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Manual Mode
+                {activeTab === 'manual' && (
+                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 rounded-full" />
+                )}
+              </button>
+            </div>
+          )}
+
+          {/* AI Remediation Panel (frames mode, AI tab) */}
+          {mode === 'frames' && activeTab === 'ai' && 'label' in node && (
+            <div className="px-2 pb-4">
+              <AIRemediationPanel
+                frame={node as Frame}
+                onUpdate={onUpdate}
+              />
+            </div>
+          )}
+
+          {/* Manual editing content (non-frames always show; frames only on manual tab) */}
+          {(mode !== 'frames' || activeTab === 'manual') && (
+            <>
+              {/* Flagging Section */}
+              <FlagButtons
             flagged={node.flagged ?? false}
             verifiable={node.verifiable ?? true}
             onFlagToggle={handleFlagToggle}
@@ -476,6 +525,8 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
               onCancel={editor.cancelEditing}
               isSaving={editor.isSaving}
             />
+          )}
+            </>
           )}
 
           {/* Delete Confirmation Dialog */}

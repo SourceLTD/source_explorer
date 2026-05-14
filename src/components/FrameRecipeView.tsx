@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { FrameGraphNode, FrameRecipeData, FrameRelationType, posShortLabel } from '@/lib/types';
+import { FrameGraphNode, FrameRecipeData, FrameRelationType, posShortLabel, compareSensesByPos } from '@/lib/types';
 
 interface FrameRecipeViewProps {
   currentFrame: FrameGraphNode;
@@ -240,7 +240,7 @@ export default function FrameRecipeView({
           {/* Senses Section — each sense lists its lexical units */}
           <div className="mb-6">
             {(() => {
-              const senses = recipeData?.senses || currentFrame.senses || [];
+              const senses = (recipeData?.senses || currentFrame.senses || []).slice().sort(compareSensesByPos);
 
               return (
                 <>

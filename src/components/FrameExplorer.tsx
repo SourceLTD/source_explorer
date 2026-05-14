@@ -371,7 +371,9 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
                   </button>
                   <button
                     onClick={() => frameGraphRef.current?.openReparentModal()}
-                    className="px-3 py-1 text-sm font-medium bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
+                    disabled={frameGraphRef.current?.isParentRelationLocked()}
+                    title={frameGraphRef.current?.isParentRelationLocked() ? 'Parent relation is locked' : undefined}
+                    className="px-3 py-1 text-sm font-medium bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Reparent Frame
                   </button>

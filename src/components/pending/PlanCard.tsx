@@ -19,7 +19,7 @@ import type {
   IssueChangePlanSummary,
   IssueChangePlanChangesetSummary,
 } from '@/lib/issues/types';
-import LoadingSpinner from '../LoadingSpinner';
+import LoadingSpinner from '@/components/LoadingSpinner';
 import DAGMoveVisualization from '@/components/pending/context/DAGMoveVisualization';
 import FrameRefPopover from '@/components/pending/context/FrameRefPopover';
 import FrameInfoCard, {

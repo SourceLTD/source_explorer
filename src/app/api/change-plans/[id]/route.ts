@@ -35,7 +35,6 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
             field_changes: { orderBy: { id: 'asc' } },
           },
         },
-        issue: { select: { id: true, title: true, status: true } },
       },
     });
     if (!plan) {
@@ -47,10 +46,6 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
         id: plan.id.toString(),
         plan_kind: plan.plan_kind,
         summary: plan.summary,
-        issue_id: plan.issue_id?.toString() ?? null,
-        issue: plan.issue
-          ? { id: plan.issue.id.toString(), title: plan.issue.title, status: plan.issue.status }
-          : null,
         created_by: plan.created_by,
         status: plan.status,
         reviewed_by: plan.reviewed_by,

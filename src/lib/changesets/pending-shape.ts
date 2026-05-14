@@ -33,13 +33,6 @@ export interface ShapedFieldChange {
   rejected_at: string | null;
 }
 
-export interface ShapedChangesetIssue {
-  id: string;
-  title: string;
-  status: string;
-  priority: string;
-}
-
 export interface ShapedChangeset {
   id: string;
   entity_type: string;
@@ -55,16 +48,11 @@ export interface ShapedChangeset {
   reviewed_at: string | null;
   committed_at: string | null;
   llm_job_id: string | null;
-  issue_id: string | null;
-  /**
-   * v2: when set, this changeset belongs to an N-step `change_plans` row
-   * and the UI should render it inside the parent plan card. v1 single-
-   * entity remediation strategies leave this null.
-   */
+  llm_job_label: string | null;
   change_plan_id: string | null;
-  /** Plan kind hint duplicated here so the list view can colour-code rows. */
   change_plan_kind: string | null;
-  issue: ShapedChangesetIssue | null;
+  revision_number: number;
+  revision_prompt: string | null;
   field_changes: ShapedFieldChange[];
 }
 
@@ -81,14 +69,6 @@ export const PENDING_CHANGESET_INCLUDE = {
       label: true,
       status: true,
       submitted_by: true,
-    },
-  },
-  issues: {
-    select: {
-      id: true,
-      title: true,
-      status: true,
-      priority: true,
     },
   },
   change_plan: {
@@ -225,10 +205,11 @@ interface PendingChangesetRow {
   reviewed_at: Date | null;
   committed_at: Date | null;
   llm_job_id: bigint | null;
-  issue_id: bigint | null;
   change_plan_id: bigint | null;
+  revision_number?: number;
+  revision_prompt?: string | null;
   change_plan: { id: bigint; plan_kind: string; status: string } | null;
-  issues: { id: bigint; title: string; status: string; priority: string } | null;
+  llm_jobs: { id: bigint; label: string | null; status: string; submitted_by: string | null } | null;
   field_changes: Array<{
     id: bigint;
     changeset_id: bigint;
@@ -266,17 +247,11 @@ export function shapePendingChangeset(
     reviewed_at: row.reviewed_at?.toISOString() ?? null,
     committed_at: row.committed_at?.toISOString() ?? null,
     llm_job_id: row.llm_job_id?.toString() ?? null,
-    issue_id: row.issue_id?.toString() ?? null,
+    llm_job_label: row.llm_jobs?.label ?? null,
     change_plan_id: row.change_plan_id?.toString() ?? null,
     change_plan_kind: row.change_plan?.plan_kind ?? null,
-    issue: row.issues
-      ? {
-          id: row.issues.id.toString(),
-          title: row.issues.title,
-          status: row.issues.status,
-          priority: row.issues.priority,
-        }
-      : null,
+    revision_number: row.revision_number ?? 1,
+    revision_prompt: row.revision_prompt ?? null,
     field_changes: row.field_changes.map((fc) => {
       const shouldDecorate = FRAME_REF_FIELDS.has(fc.field_name);
       const oldRaw = shouldDecorate ? normalizeIntLike(fc.old_value) : null;

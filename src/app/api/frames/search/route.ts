@@ -15,58 +15,154 @@ type ScoredFrame = {
   matchPosition: number;
 };
 
+const SELECT_FIELDS = {
+  id: true,
+  label: true,
+  definition: true,
+  short_definition: true,
+  frame_type: true,
+} as const;
+
 /**
- * Score a frame's relevance against the normalized lowercase query.
- *
- * Higher scores rank first. Buckets are spaced so that a better bucket
- * always beats a worse one regardless of the tie-breakers below. Ties
- * are then broken by `matchPosition` (earlier match wins) and by
- * shorter label length.
+ * Compute a simple character-level overlap ratio between two strings.
+ * Used as a fuzzy fallback when no substring match exists.
  */
-function scoreFrame(frame: FrameCandidate, q: string): ScoredFrame | null {
+function fuzzyScore(a: string, b: string): number {
+  if (!a || !b) return 0;
+  const shorter = a.length <= b.length ? a : b;
+  const longer = a.length <= b.length ? b : a;
+  let matches = 0;
+  let searchFrom = 0;
+  for (const ch of shorter) {
+    const idx = longer.indexOf(ch, searchFrom);
+    if (idx !== -1) {
+      matches++;
+      searchFrom = idx + 1;
+    }
+  }
+  return matches / longer.length;
+}
+
+/**
+ * Score a frame's relevance against the normalized lowercase query tokens.
+ *
+ * Score tiers (higher = ranked first):
+ *   1000 – exact label match
+ *    800 – all query tokens matched exactly as label tokens
+ *    500 – label starts with full query
+ *    400 – label tokens start with all query tokens (prefix)
+ *    300 – label contains full query as a substring
+ *    200 – label contains all query tokens (any order)
+ *    150 – label contains full query on a word boundary
+ *     50 – label contains full query as arbitrary substring
+ *     30 – fuzzy token overlap on label (score proportional, max 29)
+ *     10 – full query found in definition / short_definition
+ *      5 – query tokens found in definition / short_definition
+ *
+ * Ties broken by matchPosition → label length → alphabetical.
+ */
+function scoreFrame(frame: FrameCandidate, q: string, qTokens: string[]): ScoredFrame | null {
   const label = frame.label ?? '';
   const labelLower = label.toLowerCase();
   const definition = (frame.definition ?? '').toLowerCase();
   const shortDefinition = (frame.short_definition ?? '').toLowerCase();
 
-  // Split on anything non-alphanumeric so "controlled-anger" and
-  // "controlled_anger" both yield ["controlled", "anger"].
-  const tokens = labelLower.split(/[^a-z0-9]+/i).filter(Boolean);
+  // Tokenise label on non-alphanumeric boundaries.
+  const labelTokens = labelLower.split(/[^a-z0-9]+/i).filter(Boolean);
 
   let score = 0;
   let matchPosition = Number.MAX_SAFE_INTEGER;
 
+  // ── Tier 1: exact label match ──────────────────────────────────────────────
   if (labelLower === q) {
     score = 1000;
     matchPosition = 0;
+
+  // ── Tier 2: all query tokens match label tokens exactly (full-word match) ──
+  } else if (
+    qTokens.length > 0 &&
+    qTokens.every(qt => labelTokens.includes(qt))
+  ) {
+    score = 800;
+    // matchPosition = index of first matched token in the label
+    for (let i = 0; i < labelTokens.length; i++) {
+      if (qTokens.includes(labelTokens[i])) {
+        matchPosition = i;
+        break;
+      }
+    }
+
+  // ── Tier 3: label starts with full query ───────────────────────────────────
   } else if (labelLower.startsWith(q)) {
     score = 500;
     matchPosition = 0;
-  } else if (tokens.some(token => token.startsWith(q))) {
-    score = 300;
-    // Position of the first token that starts with q.
-    let idx = 0;
-    for (const token of tokens) {
-      if (token.startsWith(q)) {
-        matchPosition = idx;
+
+  // ── Tier 4: each query token is a prefix of some label token ───────────────
+  } else if (
+    qTokens.length > 0 &&
+    qTokens.every(qt => labelTokens.some(lt => lt.startsWith(qt)))
+  ) {
+    score = 400;
+    for (let i = 0; i < labelTokens.length; i++) {
+      if (qTokens.some(qt => labelTokens[i].startsWith(qt))) {
+        matchPosition = i;
         break;
       }
-      idx += token.length + 1;
     }
-  } else {
-    const substringIdx = labelLower.indexOf(q);
-    if (substringIdx >= 0) {
-      // Prefer matches that sit on a word boundary, e.g. "controlled anger"
-      // should still beat "ranger" even though neither starts with q.
-      const prevChar = substringIdx > 0 ? labelLower[substringIdx - 1] : '';
-      const onWordBoundary = substringIdx === 0 || /[^a-z0-9]/i.test(prevChar);
-      score = onWordBoundary ? 150 : 50;
-      matchPosition = substringIdx;
-    } else if (definition.includes(q) || shortDefinition.includes(q)) {
+
+  // ── Tier 5 / 6: label contains the full query string ──────────────────────
+  } else if (labelLower.includes(q)) {
+    const idx = labelLower.indexOf(q);
+    const prevChar = idx > 0 ? labelLower[idx - 1] : '';
+    const onWordBoundary = idx === 0 || /[^a-z0-9]/i.test(prevChar);
+    score = onWordBoundary ? 150 : 50;
+    matchPosition = idx;
+
+  // ── Tier 7: label contains all individual query tokens (any order) ─────────
+  } else if (
+    qTokens.length > 1 &&
+    qTokens.every(qt => labelLower.includes(qt))
+  ) {
+    score = 200;
+    matchPosition = Math.min(...qTokens.map(qt => labelLower.indexOf(qt)));
+
+  // ── Tier 8: fuzzy character overlap on label ───────────────────────────────
+  } else if (labelTokens.length > 0) {
+    // Try each query token against each label token; take the best pairing.
+    let bestFuzzy = 0;
+    for (const qt of qTokens) {
+      for (const lt of labelTokens) {
+        const f = fuzzyScore(qt, lt);
+        if (f > bestFuzzy) bestFuzzy = f;
+      }
+    }
+    if (bestFuzzy >= 0.5) {
+      // Map [0.5, 1.0] → [1, 29] so it stays below definition matches.
+      score = Math.round((bestFuzzy - 0.5) * 2 * 28) + 1;
+      matchPosition = 0;
+    }
+  }
+
+  // ── Tier 9 / 10: definition fallback ──────────────────────────────────────
+  if (score === 0) {
+    if (definition.includes(q) || shortDefinition.includes(q)) {
       score = 10;
       matchPosition = Math.min(
-        definition.indexOf(q) >= 0 ? definition.indexOf(q) : Number.MAX_SAFE_INTEGER,
-        shortDefinition.indexOf(q) >= 0 ? shortDefinition.indexOf(q) : Number.MAX_SAFE_INTEGER,
+        definition.includes(q) ? definition.indexOf(q) : Number.MAX_SAFE_INTEGER,
+        shortDefinition.includes(q) ? shortDefinition.indexOf(q) : Number.MAX_SAFE_INTEGER,
+      );
+    } else if (
+      qTokens.length > 0 &&
+      qTokens.every(qt => definition.includes(qt) || shortDefinition.includes(qt))
+    ) {
+      score = 5;
+      matchPosition = Math.min(
+        ...qTokens.map(qt =>
+          Math.min(
+            definition.includes(qt) ? definition.indexOf(qt) : Number.MAX_SAFE_INTEGER,
+            shortDefinition.includes(qt) ? shortDefinition.indexOf(qt) : Number.MAX_SAFE_INTEGER,
+          )
+        ),
       );
     } else {
       return null;
@@ -87,32 +183,55 @@ export async function GET(request: NextRequest) {
     }
 
     const q = query.trim().toLowerCase();
+    const qTokens = q.split(/[^a-z0-9]+/i).filter(Boolean);
 
     // Fetch a larger candidate pool so ranking has meaningful choices.
-    // Cap at a reasonable ceiling to protect the DB.
     const candidatePoolSize = Math.min(Math.max(limit * 4, 100), 300);
 
-    const frames = await prisma.frames.findMany({
-      where: {
-        deleted: false,
-        OR: [
-          { label: { contains: q, mode: 'insensitive' } },
-          { definition: { contains: q, mode: 'insensitive' } },
-          { short_definition: { contains: q, mode: 'insensitive' } },
-        ],
-      },
-      select: {
-        id: true,
-        label: true,
-        definition: true,
-        short_definition: true,
-        frame_type: true,
-      },
-      take: candidatePoolSize,
-    });
+    // Run two queries in parallel:
+    //   1. A broad pool based on substring/definition matches (may miss exact
+    //      label hits if the pool fills up with definition matches first).
+    //   2. A guaranteed exact-label-match query so a frame named exactly what
+    //      the user typed is always present in the candidate set.
+    const [poolFrames, exactFrames] = await Promise.all([
+      prisma.frames.findMany({
+        where: {
+          deleted: false,
+          OR: [
+            { label: { contains: q, mode: 'insensitive' } },
+            { definition: { contains: q, mode: 'insensitive' } },
+            { short_definition: { contains: q, mode: 'insensitive' } },
+            // Also search by each individual token so multi-word queries work.
+            ...qTokens.length > 1
+              ? qTokens.map(token => ({ label: { contains: token, mode: 'insensitive' as const } }))
+              : [],
+          ],
+        },
+        select: SELECT_FIELDS,
+        take: candidatePoolSize,
+      }),
+      // Guaranteed exact-label pin — runs even when the pool is saturated.
+      prisma.frames.findMany({
+        where: {
+          deleted: false,
+          label: { equals: q, mode: 'insensitive' },
+        },
+        select: SELECT_FIELDS,
+      }),
+    ]);
 
-    const scored = frames
-      .map(frame => scoreFrame(frame, q))
+    // Merge, deduplicating by id (exact matches take precedence).
+    const seenIds = new Set<bigint>();
+    const merged: FrameCandidate[] = [];
+    for (const frame of [...exactFrames, ...poolFrames]) {
+      if (!seenIds.has(frame.id)) {
+        seenIds.add(frame.id);
+        merged.push(frame);
+      }
+    }
+
+    const scored = merged
+      .map(frame => scoreFrame(frame, q, qTokens))
       .filter((item): item is ScoredFrame => item !== null);
 
     scored.sort((a, b) => {

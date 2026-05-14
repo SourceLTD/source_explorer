@@ -65,6 +65,7 @@ export async function GET(
                 id: true,
                 label: true,
                 short_definition: true,
+                descendant_count: true,
               },
             },
           },
@@ -81,6 +82,7 @@ export async function GET(
                 id: true,
                 label: true,
                 short_definition: true,
+                descendant_count: true,
               },
             },
           },
@@ -198,21 +200,27 @@ export async function GET(
       })),
       relations: [
         ...frame.frame_relations_frame_relations_source_idToframes.map(rel => ({
+          id: rel.id.toString(),
           type: rel.type,
+          locked: rel.locked,
           direction: 'outgoing' as const,
           target: {
             id: rel.frames_frame_relations_target_idToframes.id.toString(),
             label: rel.frames_frame_relations_target_idToframes.label,
             short_definition: rel.frames_frame_relations_target_idToframes.short_definition,
+            descendant_count: rel.frames_frame_relations_target_idToframes.descendant_count,
           },
         })),
         ...frame.frame_relations_frame_relations_target_idToframes.map(rel => ({
+          id: rel.id.toString(),
           type: rel.type,
+          locked: rel.locked,
           direction: 'incoming' as const,
           source: {
             id: rel.frames_frame_relations_source_idToframes.id.toString(),
             label: rel.frames_frame_relations_source_idToframes.label,
             short_definition: rel.frames_frame_relations_source_idToframes.short_definition,
+            descendant_count: rel.frames_frame_relations_source_idToframes.descendant_count,
           },
         })),
       ],

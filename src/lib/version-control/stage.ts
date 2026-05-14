@@ -693,6 +693,10 @@ export async function stageFrameRelationReparent(
     };
   }
 
+  if (existingRelation?.locked) {
+    throw new Error('This relation is locked and cannot be reparented');
+  }
+
   let deleteChangesetId: string | null = null;
 
   // Generate a shared ID so the UI can group the DELETE + CREATE as a single logical move

@@ -603,6 +603,21 @@ export function posShortLabel(pos: string | null | undefined): string {
   return POS_SHORT_LABEL[pos] ?? pos.toUpperCase();
 }
 
+/** Canonical display order for POS when listing frame senses. */
+export const POS_ORDER: Record<string, number> = {
+  verb: 0,
+  noun: 1,
+  adjective: 2,
+  adverb: 3,
+};
+
+/** Sort comparator: verb → noun → adjective → adverb, unknowns last. */
+export function compareSensesByPos<T extends { pos?: string | null }>(a: T, b: T): number {
+  const aRank = a.pos != null ? (POS_ORDER[a.pos] ?? 99) : 99;
+  const bRank = b.pos != null ? (POS_ORDER[b.pos] ?? 99) : 99;
+  return aRank - bRank;
+}
+
 export const RELATION_LABELS: Record<string, string> = {
   [LexicalUnitRelationType.HYPERNYM]: 'Hypernym',
   [LexicalUnitRelationType.HYPONYM]: 'Hyponym',
@@ -696,17 +711,21 @@ export interface FrameGraphSense {
 }
 
 export interface FrameGraphRelation {
+  id?: string;
   type: FrameRelationType;
+  locked?: boolean;
   direction: 'incoming' | 'outgoing';
   target?: {
     id: string;
     label: string;
     short_definition?: string | null;
+    descendant_count?: number;
   };
   source?: {
     id: string;
     label: string;
     short_definition?: string | null;
+    descendant_count?: number;
   };
 }
 

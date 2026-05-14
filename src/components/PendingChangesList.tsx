@@ -26,13 +26,10 @@ import DAGMoveVisualization from '@/components/pending/context/DAGMoveVisualizat
 import EntityHoverPopup from '@/components/pending/EntityHoverPopup';
 import ReferenceHoverPopup from '@/components/pending/ReferenceHoverPopup';
 import { buildVirtualIndex, type VirtualIndex } from '@/components/pending/virtualIndex';
-import LinkIssueDialog from '@/components/issues/LinkIssueDialog';
-import { ISSUE_STATUS_STYLES, type IssueStatus } from '@/lib/issues/types';
 import {
   SYSTEM_USER_ID,
   SYSTEM_USER_DISPLAY_NAME,
 } from '@/lib/users/displayName';
-import { LinkIcon } from '@heroicons/react/24/outline';
 
 // --- Types ---
 
@@ -51,13 +48,6 @@ interface FieldChange {
   rejected_at: string | null;
 }
 
-interface ChangesetIssue {
-  id: string;
-  title: string;
-  status: string;
-  priority: string;
-}
-
 interface Changeset {
   id: string;
   entity_type: string;
@@ -72,8 +62,6 @@ interface Changeset {
   reviewed_by: string | null;
   reviewed_at: string | null;
   comment: string | null;
-  issue_id?: string | null;
-  issue?: ChangesetIssue | null;
   /**
    * v2: when set, this changeset belongs to a `change_plans` row.
    * Takes precedence over the snapshot-based `plan_id` marker so the
@@ -83,6 +71,8 @@ interface Changeset {
   change_plan_id?: string | null;
   /** v2: plan kind hint mirrored from `change_plans.plan_kind`. */
   change_plan_kind?: string | null;
+  /** Revision chain: which revision number this changeset is (1 = original). */
+  revision_number?: number;
   field_changes: FieldChange[];
 }
 
@@ -438,7 +428,6 @@ const COLUMNS: ColumnConfig[] = [
   { key: 'op', label: 'Op', visible: true },
   { key: 'changes', label: 'Changes', visible: true },
   { key: 'source', label: 'Source / Job', visible: true },
-  { key: 'issue', label: 'Issue', visible: true },
   { key: 'author', label: 'Author', visible: true },
   { key: 'date', label: 'Date', visible: true },
 ];
@@ -450,7 +439,6 @@ const DEFAULT_COLUMN_WIDTHS: Record<string, number> = {
   op: 70,
   changes: 500,
   source: 150,
-  issue: 160,
   author: 50,
   date: 100,
 };
@@ -529,13 +517,6 @@ export default function PendingChangesList({ onRefresh, embedded }: PendingChang
   // Track field change statuses in the detail modal (for optimistic updates)
   const [detailFieldChanges, setDetailFieldChanges] = useState<FieldChange[]>([]);
   const [isUpdatingField, setIsUpdatingField] = useState<string | null>(null);
-
-  // Link-to-issue dialog state
-  const [linkIssueDialog, setLinkIssueDialog] = useState<{
-    isOpen: boolean;
-    changesetIds: string[];
-    currentIssueId: string | null;
-  }>({ isOpen: false, changesetIds: [], currentIssueId: null });
 
   const fetchData = useCallback(async () => {
     setIsLoading(true);
@@ -1084,53 +1065,6 @@ export default function PendingChangesList({ onRefresh, embedded }: PendingChang
             )}
           </div>
         );
-      case 'issue': {
-        const issue = cs.issue;
-        if (issue) {
-          const statusStyle = ISSUE_STATUS_STYLES[issue.status as IssueStatus] ??
-            'bg-gray-100 text-gray-700 border-gray-200';
-          return (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setLinkIssueDialog({
-                  isOpen: true,
-                  changesetIds: [cs.id],
-                  currentIssueId: issue.id,
-                });
-              }}
-              className="flex flex-col items-start gap-0.5 text-left hover:underline"
-              title="Change linked issue"
-            >
-              <span className="text-sm text-gray-800 truncate max-w-full">
-                #{issue.id} {issue.title}
-              </span>
-              <span
-                className={`inline-flex px-1.5 py-0.5 rounded-full border text-[10px] font-medium ${statusStyle}`}
-              >
-                {issue.status}
-              </span>
-            </button>
-          );
-        }
-        return (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setLinkIssueDialog({
-                isOpen: true,
-                changesetIds: [cs.id],
-                currentIssueId: null,
-              });
-            }}
-            className="inline-flex items-center gap-1 px-2 py-1 text-xs text-gray-500 border border-dashed border-gray-300 rounded-md hover:bg-gray-50 hover:text-gray-700"
-            title="Link to issue"
-          >
-            <LinkIcon className="w-3 h-3" />
-            Link issue
-          </button>
-        );
-      }
       case 'author':
         return (
           <div className="flex justify-start">
@@ -2068,20 +2002,6 @@ export default function PendingChangesList({ onRefresh, embedded }: PendingChang
                     Reject
                   </button>
                   <button
-                    onClick={() =>
-                      setLinkIssueDialog({
-                        isOpen: true,
-                        changesetIds: Array.from(selection.selectedIds),
-                        currentIssueId: null,
-                      })
-                    }
-                    disabled={isCommitting}
-                    className="flex items-center gap-1 px-3 py-1 text-sm font-medium text-blue-700 bg-blue-100 border border-blue-200 rounded-xl hover:bg-blue-200 transition-colors cursor-pointer disabled:opacity-50"
-                  >
-                    <LinkIcon className="w-4 h-4" />
-                    Link to Issue
-                  </button>
-                  <button
                     onClick={() => selection.clearSelection()}
                     disabled={isCommitting}
                     className="text-sm text-gray-500 hover:text-gray-700 transition-colors cursor-pointer disabled:opacity-50"
@@ -2275,16 +2195,6 @@ export default function PendingChangesList({ onRefresh, embedded }: PendingChang
         loading={isDiscarding}
       />
 
-      {/* Link Issue Dialog */}
-      <LinkIssueDialog
-        isOpen={linkIssueDialog.isOpen}
-        onClose={() => setLinkIssueDialog({ isOpen: false, changesetIds: [], currentIssueId: null })}
-        changesetIds={linkIssueDialog.changesetIds}
-        currentIssueId={linkIssueDialog.currentIssueId}
-        onLinked={() => {
-          void fetchData();
-        }}
-      />
     </div>
   );
 }

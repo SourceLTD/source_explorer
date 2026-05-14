@@ -10,7 +10,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { commitChangeset } from '@/lib/version-control';
 import { getCurrentUserName } from '@/utils/supabase/server';
-import { emitChangesetStatusEvents } from '@/lib/issues/events';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -47,12 +46,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         })),
       }, { status: 409 }); // Conflict
     }
-
-    void emitChangesetStatusEvents({
-      actor: userId,
-      changesetIds: [changesetId],
-      eventType: 'changeset_committed',
-    });
 
     return NextResponse.json({
       success: true,

@@ -105,7 +105,7 @@ export default function HealthChecksBoard() {
   const handleDelete = async (def: HealthCheckDefinition) => {
     if (
       !confirm(
-        `Delete health check "${def.code}"? This will also delete its runs and state.`,
+        `Delete health check "${def.label}"? This will also delete its runs and state.`,
       )
     )
       return;
@@ -252,7 +252,6 @@ function DefinitionsSection({
           <thead className="bg-gray-50 text-xs text-gray-600 uppercase">
             <tr>
               <th className="px-4 py-2 text-left w-16">ID</th>
-              <th className="px-4 py-2 text-left">Code</th>
               <th className="px-4 py-2 text-left">Label</th>
               <th className="px-4 py-2 text-left w-28">Kind</th>
               <th className="px-4 py-2 text-left w-40">Targets</th>
@@ -270,9 +269,6 @@ function DefinitionsSection({
               >
                 <td className="px-4 py-2 font-mono text-xs text-gray-500">
                   #{def.id}
-                </td>
-                <td className="px-4 py-2 font-mono text-xs text-gray-900">
-                  {def.code}
                 </td>
                 <td className="px-4 py-2 text-gray-900">{def.label}</td>
                 <td className="px-4 py-2">

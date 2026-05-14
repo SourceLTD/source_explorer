@@ -1,81 +1,28 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import { usePendingChangesContext } from './PendingChangesProvider';
 import PendingChangesTab from './PendingChangesTab';
-import IssuesBoard from '@/components/issues/IssuesBoard';
 import HealthChecksBoard from '@/components/health-checks/HealthChecksBoard';
 import { usePendingChangesCount } from '@/hooks/usePendingChangesCount';
-import type { Issue } from '@/lib/issues/types';
 
-type Tab = 'pending' | 'issues' | 'health_checks';
-
-// "Open" mirrors GitHub semantics: anything not yet closed/resolved.
-// The /api/issues handler treats `resolved` like `closed` (sets
-// closed_at), so we exclude both here.
-function countOpenIssues(issues: Pick<Issue, 'status'>[]): number {
-  return issues.filter(
-    (i) => i.status === 'open' || i.status === 'in_progress',
-  ).length;
-}
+type Tab = 'pending' | 'health_checks';
 
 export default function PendingChangesModal() {
   const { isOpen, setIsOpen } = usePendingChangesContext();
   const [activeTab, setActiveTab] = useState<Tab>('pending');
-  const [openIssuesCount, setOpenIssuesCount] = useState<number | null>(null);
-  /**
-   * When the user clicks "Open issue" on a bucket inside the Pending
-   * Changes tab, we hop to the Issues tab and preselect the row. We
-   * remember the id once and clear it after the IssuesBoard mounts so
-   * a second click on the same id still re-opens the detail.
-   */
-  const [issuesInitialId, setIssuesInitialId] = useState<string | null>(null);
-  // Pending changes share a global subscriber set so any commit /
-  // reject anywhere in the app refreshes this badge automatically.
   const {
     pendingCount,
     isLoading: pendingCountLoading,
   } = usePendingChangesCount();
 
-  const refreshOpenIssuesCount = useCallback(async () => {
-    try {
-      const res = await fetch('/api/issues');
-      if (!res.ok) return;
-      const data = (await res.json()) as { issues: Issue[] };
-      setOpenIssuesCount(countOpenIssues(data.issues));
-    } catch {
-      // Best-effort: the badge is purely informational, so swallow errors.
-    }
-  }, []);
-
-  // Fetch once each time the modal opens, so the Issues tab badge is
-  // populated even before the user clicks into the tab. IssuesBoard
-  // also notifies us via onIssuesChanged after CRUD operations.
-  useEffect(() => {
-    if (!isOpen) return;
-    void refreshOpenIssuesCount();
-  }, [isOpen, refreshOpenIssuesCount]);
-
-  const handleIssuesChanged = useCallback((issues: Issue[]) => {
-    setOpenIssuesCount(countOpenIssues(issues));
-  }, []);
-
-  const handleOpenIssue = useCallback((issueId: string) => {
-    setIssuesInitialId(issueId);
-    setActiveTab('issues');
-  }, []);
-
   if (!isOpen) return null;
 
-  // `usePendingChangesCount` starts in `isLoading=true` with `pendingCount=0`;
-  // suppress the badge during that first fetch so the tab doesn't
-  // briefly read "0" before the real number arrives.
   const pendingTabCount = pendingCountLoading ? null : pendingCount;
 
   const tabs: Array<{ id: Tab; label: string; count?: number | null }> = [
     { id: 'health_checks', label: 'Health Checks' },
-    { id: 'issues', label: 'Issues', count: openIssuesCount },
     { id: 'pending', label: 'Pending Changes', count: pendingTabCount },
   ];
 
@@ -112,11 +59,9 @@ export default function PendingChangesModal() {
                     {showCount && (
                       <span
                         title={
-                          tab.id === 'issues'
-                            ? `${tab.count} open issue${tab.count === 1 ? '' : 's'}`
-                            : tab.id === 'pending'
-                              ? `${tab.count} pending change${tab.count === 1 ? '' : 's'}`
-                              : undefined
+                          tab.id === 'pending'
+                            ? `${tab.count} pending change${tab.count === 1 ? '' : 's'}`
+                            : undefined
                         }
                         className={`inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-xs font-medium tabular-nums ${
                           isActive
@@ -143,12 +88,7 @@ export default function PendingChangesModal() {
 
         <main className="flex-1 overflow-hidden min-h-0">
           {activeTab === 'pending' ? (
-            <PendingChangesTab onOpenIssue={handleOpenIssue} />
-          ) : activeTab === 'issues' ? (
-            <IssuesBoard
-              initialIssueId={issuesInitialId}
-              onIssuesChanged={handleIssuesChanged}
-            />
+            <PendingChangesTab />
           ) : (
             <HealthChecksBoard />
           )}

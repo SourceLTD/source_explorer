@@ -164,7 +164,13 @@ export async function commitChangeset(
 
   try {
     return await prisma.$transaction(
-      async (tx) => commitChangesetInTx(tx, changesetId, committedBy),
+      async (tx) => {
+        const result = await commitChangesetInTx(tx, changesetId, committedBy);
+        if (result.success) {
+          await discardRevisionAncestorsInTx(tx, changesetId);
+        }
+        return result;
+      },
       // 30s mirrors `commitPlan`'s budget so a standalone merge
       // changeset (which can touch many link rows) doesn't exhaust
       // the default 5s window. maxWait keeps connection-acquisition
@@ -184,6 +190,38 @@ export async function commitChangeset(
         error: error instanceof Error ? error.message : 'Unknown error',
       }],
     };
+  }
+}
+
+/**
+ * Walk the revision chain backwards from `changesetId` and mark all ancestor
+ * revisions as discarded. This ensures that when the latest revision is
+ * committed, earlier superseded versions don't linger as pending.
+ */
+async function discardRevisionAncestorsInTx(
+  tx: Prisma.TransactionClient,
+  changesetId: bigint,
+): Promise<void> {
+  const cs = await tx.changesets.findUnique({
+    where: { id: changesetId },
+  }) as any;
+  if (!cs?.revision_parent_id) return;
+
+  const ancestorIds: bigint[] = [];
+  let currentParentId: bigint | null = cs.revision_parent_id;
+  while (currentParentId) {
+    ancestorIds.push(currentParentId);
+    const parent = await tx.changesets.findUnique({
+      where: { id: currentParentId },
+    }) as any;
+    currentParentId = parent?.revision_parent_id ?? null;
+  }
+
+  if (ancestorIds.length > 0) {
+    await tx.changesets.updateMany({
+      where: { id: { in: ancestorIds }, status: 'pending' },
+      data: { status: 'discarded' },
+    });
   }
 }
 
@@ -473,6 +511,7 @@ async function commitCreateInTx(
           source_id: sourceId,
           target_id: targetId,
           type: relType as any,
+          locked: relData.locked === true,
         },
       });
       newEntityId = rel.id;
@@ -1257,6 +1296,12 @@ async function commitDeleteInTx(
       });
 
       if (rel) {
+        if (rel.locked) {
+          throw new Error(
+            `Cannot delete frame_relation ${changeset.entity_id}: relation is locked`,
+          );
+        }
+
         await tx.frame_relations.delete({
           where: { id: changeset.entity_id! },
         });

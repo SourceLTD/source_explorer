@@ -24,7 +24,6 @@ import {
   PlanNotPendingError,
 } from '@/lib/version-control';
 import { getCurrentUserName } from '@/utils/supabase/server';
-import { emitChangesetStatusEvents } from '@/lib/issues/events';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -69,20 +68,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         { status: 409 },
       );
     }
-
-    // Walk the linked changeset ids in the success path so issue events
-    // render correctly. We re-fetch lazily because commitPlan already
-    // serialised them and we don't want to plumb that through its return.
-    const { prisma } = await import('@/lib/prisma');
-    const linked = await prisma.changesets.findMany({
-      where: { change_plan_id: planId },
-      select: { id: true },
-    });
-    void emitChangesetStatusEvents({
-      actor: userId,
-      changesetIds: linked.map((c) => c.id),
-      eventType: 'changeset_committed',
-    });
 
     return NextResponse.json({
       success: true,
