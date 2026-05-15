@@ -9,7 +9,10 @@ interface RevisionModalProps {
   entitySummary: string;
   isOpen: boolean;
   onClose: () => void;
-  onRevisionComplete: (newChangesetId: string) => void;
+  /** Legacy: modal handles the API call internally and shows result. */
+  onRevisionComplete?: (newChangesetId: string) => void;
+  /** Fire-and-forget: modal passes the prompt back and closes immediately. Parent handles the API call. */
+  onSubmit?: (prompt: string) => void;
 }
 
 interface RevisionResponse {
@@ -29,6 +32,7 @@ export function RevisionModal({
   isOpen,
   onClose,
   onRevisionComplete,
+  onSubmit,
 }: RevisionModalProps) {
   const [prompt, setPrompt] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -37,6 +41,15 @@ export function RevisionModal({
 
   const handleSubmit = useCallback(async () => {
     if (!prompt.trim() || submitting) return;
+
+    // Fire-and-forget mode: pass prompt to parent immediately
+    if (onSubmit) {
+      onSubmit(prompt.trim());
+      setPrompt('');
+      return;
+    }
+
+    // Legacy mode: handle API call within the modal
     setSubmitting(true);
     setError(null);
     setResult(null);
@@ -55,13 +68,13 @@ export function RevisionModal({
 
       const data: RevisionResponse = await response.json();
       setResult(data);
-      onRevisionComplete(data.new_changeset_id);
+      onRevisionComplete?.(data.new_changeset_id);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create revision');
     } finally {
       setSubmitting(false);
     }
-  }, [changesetId, prompt, submitting, onRevisionComplete]);
+  }, [changesetId, prompt, submitting, onRevisionComplete, onSubmit]);
 
   const handleReset = () => {
     setPrompt('');

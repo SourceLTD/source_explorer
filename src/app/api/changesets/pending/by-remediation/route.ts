@@ -138,6 +138,7 @@ export async function GET(_request: NextRequest) {
                 entity_id: true,
                 operation: true,
                 status: true,
+                revision_number: true,
               },
               orderBy: [{ entity_type: 'asc' }, { id: 'asc' }],
             },
@@ -166,6 +167,7 @@ export async function GET(_request: NextRequest) {
           entity_id: cs.entity_id?.toString() ?? null,
           operation: cs.operation,
           status: cs.status,
+          revision_number: cs.revision_number ?? 1,
         })),
       };
       planById.set(summary.id, summary);

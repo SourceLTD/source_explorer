@@ -181,34 +181,9 @@ export default function FrameMainNode({
       />
       
       <g>
-      {/* Pending changes indicator badge */}
-      {hasPendingChanges && pendingOperation && (
-        <g>
-          <rect
-            x={centerX + 8}
-            y={topY + 5}
-            width={75}
-            height={20}
-            rx={10}
-            fill={getPendingNodeStroke(pendingOperation)}
-          />
-          <text
-            x={centerX + 46}
-            y={topY + 18}
-            fontSize={10}
-            fontFamily="Arial"
-            textAnchor="middle"
-            fill="white"
-            fontWeight="600"
-          >
-            {pendingOperation === 'create' ? 'NEW' : pendingOperation === 'delete' ? 'DELETED' : 'MODIFIED'}
-          </text>
-        </g>
-      )}
-      
       {/* Title */}
       <text
-        x={centerX + 12}
+        x={hasPendingChanges && pendingOperation ? centerX + 92 : centerX + 12}
         y={topY + 35}
         fontSize={24}
         fontFamily="Arial"
@@ -219,6 +194,32 @@ export default function FrameMainNode({
         <tspan fontWeight="bold">{node.label}</tspan>
         <tspan fontWeight="normal" fontSize={16}> ({node.id})</tspan>
       </text>
+
+      {/* Pending changes indicator badge — rendered after title so it sits on top */}
+      {hasPendingChanges && pendingOperation && (
+        <g>
+          <rect
+            x={centerX + 8}
+            y={topY + 16}
+            width={75}
+            height={22}
+            rx={11}
+            fill={getPendingNodeStroke(pendingOperation)}
+          />
+          <text
+            x={centerX + 46}
+            y={topY + 27}
+            fontSize={10}
+            fontFamily="Arial"
+            textAnchor="middle"
+            dominantBaseline="central"
+            fill="white"
+            fontWeight="600"
+          >
+            {pendingOperation === 'create' ? 'NEW' : pendingOperation === 'delete' ? 'DELETED' : 'MODIFIED'}
+          </text>
+        </g>
+      )}
       
       {/* Category Badge - Not in screenshot, removing */}
       

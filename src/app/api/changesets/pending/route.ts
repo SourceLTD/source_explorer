@@ -43,7 +43,13 @@ interface ManualGroup {
   total_changesets: number;
 }
 
-type ChangeGroup = LlmJobGroup | ManualGroup;
+interface RemediationGroup {
+  type: 'remediation';
+  changesets_by_type: ChangesetsByType[];
+  total_changesets: number;
+}
+
+type ChangeGroup = LlmJobGroup | ManualGroup | RemediationGroup;
 
 export async function GET(_request: NextRequest) {
   try {
@@ -63,6 +69,7 @@ export async function GET(_request: NextRequest) {
       }
     >();
     const manualGroups = new Map<string, typeof changesets>();
+    const remediationChangesets: typeof changesets = [];
 
     for (const cs of changesets) {
       if (cs.llm_job_id) {
@@ -71,6 +78,8 @@ export async function GET(_request: NextRequest) {
           llmJobGroups.set(jobIdStr, { llm_job: cs.llm_jobs, changesets: [] });
         }
         llmJobGroups.get(jobIdStr)!.changesets.push(cs);
+      } else if (cs.change_plan_id) {
+        remediationChangesets.push(cs);
       } else {
         if (!manualGroups.has(cs.created_by)) {
           manualGroups.set(cs.created_by, []);
@@ -121,13 +130,17 @@ export async function GET(_request: NextRequest) {
       });
     }
 
-    // Sort groups: LLM jobs first, then manual groups
-    groups.sort((a, b) => {
-      if (a.type !== b.type) {
-        return a.type === 'llm_job' ? -1 : 1;
-      }
-      return 0;
-    });
+    if (remediationChangesets.length > 0) {
+      groups.push({
+        type: 'remediation',
+        changesets_by_type: groupByEntityType(remediationChangesets),
+        total_changesets: remediationChangesets.length,
+      });
+    }
+
+    // Sort groups: LLM jobs first, then remediation, then manual
+    const sortOrder = { llm_job: 0, remediation: 1, manual: 2 };
+    groups.sort((a, b) => (sortOrder[a.type] ?? 2) - (sortOrder[b.type] ?? 2));
 
     return NextResponse.json({
       groups,

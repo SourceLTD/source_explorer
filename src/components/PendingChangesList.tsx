@@ -11,6 +11,8 @@ import {
   MagnifyingGlassIcon,
 } from '@heroicons/react/24/outline';
 import LoadingSpinner from './LoadingSpinner';
+import { RevisionButton } from './editing/RevisionButton';
+import { RevisionModal } from './editing/RevisionModal';
 import UnreadCommentsPanel from './comments/UnreadCommentsPanel';
 import ChangeCommentsBoard from './comments/ChangeCommentsBoard';
 import PageSizeSelector from './PageSizeSelector';
@@ -101,7 +103,13 @@ interface ManualGroup {
   total_changesets: number;
 }
 
-type ChangeGroup = LlmJobGroup | ManualGroup;
+interface RemediationGroup {
+  type: 'remediation';
+  changesets_by_type: ChangesetsByType[];
+  total_changesets: number;
+}
+
+type ChangeGroup = LlmJobGroup | ManualGroup | RemediationGroup;
 
 interface PendingChangesData {
   groups: ChangeGroup[];
@@ -234,27 +242,37 @@ function formatValue(value: unknown): string {
 }
 
 function parseFrameRolesFieldName(fieldName: string): { roleType: string; field: string } | null {
-  if (!fieldName.startsWith('frame_roles.')) return null;
+  if (!fieldName.toLowerCase().startsWith('frame_roles.')) return null;
   const parts = fieldName.split('.');
   if (parts.length < 3) return null;
   const roleType = parts[1];
-  const field = parts.slice(2).join('.');
+  const field = parts.slice(2).join('.').toLowerCase();
   if (!roleType || !field) return null;
   return { roleType, field };
 }
 
+const ROLE_SUBFIELD_LABELS: Record<string, string> = {
+  __exists: 'role',
+  label: 'label',
+  description: 'description',
+  notes: 'notes',
+  main: 'main',
+  examples: 'examples',
+};
+
 function formatFieldName(fieldName: string, opts?: { short?: boolean }): string {
-  if (fieldName === 'frame_id') return 'Frame';
+  if (fieldName.toLowerCase() === 'frame_id') return 'Frame';
 
   const parsed = parseFrameRolesFieldName(fieldName);
   if (!parsed) return fieldName;
+  const subfieldLabel = ROLE_SUBFIELD_LABELS[parsed.field] ?? parsed.field;
   if (opts?.short) {
-    return parsed.field === '__exists' ? 'role' : parsed.field;
+    return parsed.field === '__exists' ? 'role' : subfieldLabel;
   }
   if (parsed.field === '__exists') {
     return `frame_roles ▸ ${parsed.roleType} ▸ role`;
   }
-  return `frame_roles ▸ ${parsed.roleType} ▸ ${parsed.field}`;
+  return `frame_roles ▸ ${parsed.roleType} ▸ ${subfieldLabel}`;
 }
 
 function formatFieldChangeValue(fc: FieldChange, which: 'old' | 'new'): string {
@@ -463,6 +481,7 @@ export default function PendingChangesList({ onRefresh, embedded }: PendingChang
   const [unreadChangesetIds, setUnreadChangesetIds] = useState<Set<string>>(new Set());
   const [unreadKey, setUnreadKey] = useState(0);
   const [selectedDetail, setSelectedDetail] = useState<FlatChangeset | null>(null);
+  const [revisionTarget, setRevisionTarget] = useState<FlatChangeset | null>(null);
   const [detailTab, setDetailTab] = useState<'review' | 'discussion'>('review');
   const [filter, setFilter] = useState<PendingChangesFilter>(defaultFilter);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
@@ -649,6 +668,10 @@ export default function PendingChangesList({ onRefresh, embedded }: PendingChang
           groupLabel = group.llm_job?.label || `LLM Job ${group.llm_job_id}`;
           groupSource = 'llm_job';
           groupId = group.llm_job_id;
+        } else if (group.type === 'remediation') {
+          groupLabel = 'AI Remediation';
+          groupSource = 'remediation';
+          groupId = 'remediation';
         } else {
           groupLabel = `${formatUserName(group.created_by)}'s manual work`;
           groupSource = 'manual';
@@ -1061,7 +1084,9 @@ export default function PendingChangesList({ onRefresh, embedded }: PendingChang
           <div className="flex flex-col">
             <span className="text-sm text-gray-700">{cs.group_label}</span>
             {cs.group_source && (
-              <span className="text-[10px] text-gray-400 uppercase">{cs.group_source}</span>
+              <span className="text-[10px] text-gray-400 uppercase">
+                {cs.group_source === 'llm_job' ? 'LLM Job' : cs.group_source === 'remediation' ? 'AI Remediation' : cs.group_source === 'manual' ? 'Manual' : cs.group_source}
+              </span>
             )}
           </div>
         );
@@ -1381,6 +1406,15 @@ export default function PendingChangesList({ onRefresh, embedded }: PendingChang
                 {formatUserName(selectedDetail.created_by)} · {new Date(selectedDetail.created_at).toLocaleDateString()}
               </span>
               <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setRevisionTarget(selectedDetail);
+                  }}
+                  disabled={isCommitting}
+                  className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 cursor-pointer"
+                >
+                  Revise
+                </button>
                 {(selectedDetail.operation === 'update' || selectedDetail.operation === 'move') && (
                   <button
                     onClick={async () => {
@@ -1877,7 +1911,7 @@ export default function PendingChangesList({ onRefresh, embedded }: PendingChang
                                   : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
                               }`}
                             >
-                              {src}
+                              {src === 'llm_job' ? 'LLM Job' : src === 'remediation' ? 'AI Remediation' : src === 'manual' ? 'Manual' : src}
                             </button>
                           ))}
                         </div>
@@ -2148,6 +2182,14 @@ export default function PendingChangesList({ onRefresh, embedded }: PendingChang
                             )}
                           </button>
                           <button
+                            onClick={() => setRevisionTarget(item)}
+                            disabled={isCommitting}
+                            className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors disabled:opacity-50"
+                            title="Revise with AI"
+                          >
+                            <ArrowPathIcon className="w-5 h-5" />
+                          </button>
+                          <button
                             onClick={() => handleSingleCommit(item.id)}
                             disabled={isCommitting}
                             className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-50"
@@ -2193,6 +2235,20 @@ export default function PendingChangesList({ onRefresh, embedded }: PendingChang
         errors={conflictDialog.errors}
         entityDisplay={conflictDialog.entityDisplay || undefined}
         loading={isDiscarding}
+      />
+
+      {/* Revision Modal */}
+      <RevisionModal
+        changesetId={revisionTarget?.id ?? ''}
+        entitySummary={revisionTarget ? `${revisionTarget.operation} ${revisionTarget.entity_type}: ${revisionTarget.entity_display}` : ''}
+        isOpen={revisionTarget !== null}
+        onClose={() => setRevisionTarget(null)}
+        onRevisionComplete={() => {
+          setRevisionTarget(null);
+          setSelectedDetail(null);
+          fetchData();
+          refreshPendingChangesCount();
+        }}
       />
 
     </div>

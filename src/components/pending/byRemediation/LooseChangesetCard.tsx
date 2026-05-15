@@ -14,6 +14,9 @@ import {
   ArrowsPointingInIcon,
 } from '@heroicons/react/24/outline';
 import LoadingSpinner from '@/components/LoadingSpinner';
+import { RevisionButton } from '@/components/editing/RevisionButton';
+import { RevisionModal } from '@/components/editing/RevisionModal';
+import { RevisionNavigator } from '@/components/editing/RevisionNavigator';
 import FrameInfoCard from '@/components/pending/context/FrameInfoCard';
 import FrameRefPopover from '@/components/pending/context/FrameRefPopover';
 import FrameRolePanel, {
@@ -25,6 +28,7 @@ import {
   getEntityDisplayName,
   operationBadgeClass,
   summarizeChangeset,
+  formatFieldNameShort,
 } from './changesetDisplay';
 import type { ByRemediationChangeset } from './types';
 
@@ -38,6 +42,8 @@ export interface LooseChangesetCardProps {
   onReject: () => void;
   /** Optional deep-link to the legacy detail modal. */
   onOpen?: () => void;
+  /** Called when a revision produces a new changeset (refreshes the list). */
+  onRevisionComplete?: (newChangesetId: string) => void;
 }
 
 /**
@@ -64,8 +70,10 @@ export default function LooseChangesetCard({
   onCommit,
   onReject,
   onOpen,
+  onRevisionComplete,
 }: LooseChangesetCardProps) {
   const [showRaw, setShowRaw] = useState(false);
+  const [revisionModalOpen, setRevisionModalOpen] = useState(false);
   const entityDisplay = getEntityDisplayName(cs);
   const summary = summarizeChangeset(cs);
 
@@ -110,6 +118,11 @@ export default function LooseChangesetCard({
               <ArrowTopRightOnSquareIcon className="w-3.5 h-3.5" />
             </button>
           )}
+          <RevisionButton
+            onClick={() => setRevisionModalOpen(true)}
+            disabled={isBusy || disabled}
+            revisionCount={cs.revision_number}
+          />
           <button
             type="button"
             onClick={onReject}
@@ -186,6 +199,14 @@ export default function LooseChangesetCard({
         <ChangesetEntityContext cs={cs} />
         <ChangesetBody cs={cs} pendingFieldChanges={pendingFieldChanges} />
 
+        {(cs.revision_number ?? 1) > 1 && (
+          <RevisionNavigator
+            changesetId={cs.id}
+            revisionNumber={cs.revision_number}
+            onRequestRevision={() => setRevisionModalOpen(true)}
+          />
+        )}
+
         {pendingFieldChanges.length > 0 && (
           <div>
             <button
@@ -209,7 +230,7 @@ export default function LooseChangesetCard({
                     className="px-3 py-2 text-xs flex items-baseline gap-2"
                   >
                     <span className="font-mono text-blue-600 shrink-0">
-                      {fc.field_name}
+                      {formatFieldNameShort(fc.field_name)}
                     </span>
                     <span className="text-gray-400 line-through truncate flex-1">
                       {fc.old_display ?? formatLooseValue(fc.old_value)}
@@ -225,6 +246,17 @@ export default function LooseChangesetCard({
           </div>
         )}
       </div>
+
+      <RevisionModal
+        changesetId={cs.id}
+        entitySummary={`${changesetKindLabel(cs)}: ${entityDisplay}`}
+        isOpen={revisionModalOpen}
+        onClose={() => setRevisionModalOpen(false)}
+        onRevisionComplete={(newId) => {
+          setRevisionModalOpen(false);
+          onRevisionComplete?.(newId);
+        }}
+      />
     </article>
   );
 }
@@ -437,6 +469,107 @@ function pickStringLike(value: unknown): string | null {
 }
 
 // =====================================================================
+// Rich role-grouped panel for `frame` UPDATE changesets whose field
+// changes are all `frame_roles.<roleType>.*` subfields (i.e. from the
+// manual editor). Renders one `FrameRolePanel` per changed role type
+// so the reviewer sees the same rich Before/After role cards they get
+// from the LLM remediation path.
+// =====================================================================
+
+interface RoleFieldGroup {
+  roleType: string;
+  operation: 'create' | 'update' | 'delete';
+  before: RoleSnapshot | null;
+  after: RoleSnapshot | null;
+}
+
+function groupRoleFieldChanges(
+  fieldChanges: ByRemediationChangeset['field_changes'],
+): RoleFieldGroup[] {
+  const byRole = new Map<string, Map<string, { old_value: unknown; new_value: unknown }>>();
+
+  for (const fc of fieldChanges) {
+    const lower = fc.field_name.toLowerCase();
+    if (!lower.startsWith('frame_roles.')) continue;
+    const parts = fc.field_name.split('.');
+    if (parts.length < 3) continue;
+    const roleType = parts[1];
+    const subfield = parts.slice(2).join('.').toLowerCase();
+    if (!byRole.has(roleType)) byRole.set(roleType, new Map());
+    byRole.get(roleType)!.set(subfield, { old_value: fc.old_value, new_value: fc.new_value });
+  }
+
+  const result: RoleFieldGroup[] = [];
+
+  for (const [roleType, fields] of byRole) {
+    const existsChange = fields.get('__exists');
+    const oldExists = existsChange ? Boolean(existsChange.old_value) : true;
+    const newExists = existsChange ? Boolean(existsChange.new_value) : true;
+
+    const readSnap = (side: 'old' | 'new'): RoleSnapshot | null => {
+      const exists = side === 'old' ? oldExists : newExists;
+      if (!exists) return null;
+      const get = (f: string) =>
+        fields.get(f)?.[side === 'old' ? 'old_value' : 'new_value'];
+      return {
+        label: pickStringLike(get('label')) ?? roleType,
+        description: pickStringLike(get('description')),
+        notes: pickStringLike(get('notes')),
+        main: get('main') !== undefined ? Boolean(get('main')) : null,
+        examples: Array.isArray(get('examples'))
+          ? (get('examples') as unknown[]).filter((x): x is string => typeof x === 'string')
+          : null,
+      };
+    };
+
+    let operation: 'create' | 'update' | 'delete' = 'update';
+    if (existsChange) {
+      if (!oldExists && newExists) operation = 'create';
+      else if (oldExists && !newExists) operation = 'delete';
+    }
+
+    result.push({
+      roleType,
+      operation,
+      before: readSnap('old'),
+      after: readSnap('new'),
+    });
+  }
+
+  return result.sort((a, b) => a.roleType.localeCompare(b.roleType));
+}
+
+interface FrameRolesChangePanelProps {
+  frameId: string | null;
+  frameLabelFallback?: string;
+  fieldChanges: ByRemediationChangeset['field_changes'];
+}
+
+function FrameRolesChangePanel({
+  frameId,
+  frameLabelFallback,
+  fieldChanges,
+}: FrameRolesChangePanelProps) {
+  const groups = groupRoleFieldChanges(fieldChanges);
+  if (groups.length === 0) return null;
+  return (
+    <div className="space-y-3">
+      {groups.map((g) => (
+        <FrameRolePanel
+          key={g.roleType}
+          frameId={frameId}
+          frameLabelFallback={frameLabelFallback}
+          operation={g.operation}
+          before={g.before}
+          after={g.after}
+          roleId={null}
+        />
+      ))}
+    </div>
+  );
+}
+
+// =====================================================================
 // Body: per-operation rich rendering. Update gets a Before/After field
 // diff in the same shell as the reparent panel; create surfaces the
 // snapshot of the new row; delete surfaces the snapshot of the row
@@ -454,6 +587,28 @@ function ChangesetBody({ cs, pendingFieldChanges }: ChangesetBodyProps) {
   // generic create/update/delete chrome here. The reviewer can still
   // expand the raw field-change list via the toggle below.
   if (cs.entity_type === 'frame_role') return null;
+
+  // `frame` UPDATE changesets where every pending field change is a
+  // `frame_roles.*` subfield get a rich grouped role panel instead of
+  // the flat field-by-field list.
+  if (
+    cs.entity_type === 'frame' &&
+    cs.operation === 'update' &&
+    pendingFieldChanges.length > 0 &&
+    pendingFieldChanges.every((fc) => fc.field_name.toLowerCase().startsWith('frame_roles.'))
+  ) {
+    return (
+      <FrameRolesChangePanel
+        frameId={cs.entity_id}
+        frameLabelFallback={
+          pickStringLike(cs.before_snapshot?.label) ??
+          pickStringLike(cs.after_snapshot?.label) ??
+          (cs.entity_id ? `Frame #${cs.entity_id}` : undefined)
+        }
+        fieldChanges={pendingFieldChanges}
+      />
+    );
+  }
 
   if (cs.operation === 'create') {
     if (!cs.after_snapshot || Object.keys(cs.after_snapshot).length === 0) {
@@ -523,7 +678,7 @@ function FieldValueList({ fields, side }: FieldValueListProps) {
           >
             <div className="flex items-center gap-2">
               <span className="text-[10px] font-mono uppercase tracking-wide text-blue-600">
-                {fc.field_name}
+                {formatFieldNameShort(fc.field_name)}
               </span>
             </div>
             <div

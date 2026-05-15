@@ -273,6 +273,8 @@ model changesets {
   /// strategies (split_frame, merge_frame, move_frame_sense, etc.) populate
   /// it so the commit endpoint can apply every member in one transaction.
   change_plan_id        BigInt?
+  /// Health check finding that triggered this changeset (set for AI-remediated changesets).
+  finding_id            BigInt?
   /// Revision chain: points to the changeset this revision was derived from.
   revision_parent_id    BigInt?
   /// Monotonically increasing revision number within a chain (1 = original).
@@ -311,6 +313,8 @@ model change_plans {
   plan_kind             String
   /// Optional one-line summary for list views.
   summary               String?
+  /// Health check finding that triggered this plan (set for AI-remediated plans).
+  finding_id            BigInt?
   created_by            String
   status                change_plan_status             @default(pending)
   reviewed_by           String?

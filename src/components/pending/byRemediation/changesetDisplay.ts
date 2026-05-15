@@ -124,13 +124,27 @@ export function summarizeChangeset(cs: ByRemediationChangeset): string {
   return `${names}${extra}`;
 }
 
-function formatFieldNameShort(fieldName: string): string {
-  if (fieldName === 'frame_id') return 'frame';
-  if (fieldName.startsWith('frame_roles.')) {
-    const parts = fieldName.split('.');
+const ROLE_SUBFIELD_LABELS: Record<string, string> = {
+  __exists: 'exists',
+  label: 'label',
+  description: 'description',
+  notes: 'notes',
+  main: 'main',
+  examples: 'examples',
+};
+
+export function formatFieldNameShort(fieldName: string): string {
+  const lower = fieldName.toLowerCase();
+  if (lower === 'frame_id') return 'frame';
+  if (lower.startsWith('frame_roles.')) {
+    const parts = lower.split('.');
     if (parts.length >= 3) {
-      const last = parts[parts.length - 1];
-      return last === '__exists' ? `role/${parts[1]}` : `${parts[1]}.${last}`;
+      // Preserve original casing for the role type (e.g. "Doer", "Done_to")
+      const originalParts = fieldName.split('.');
+      const roleType = originalParts[1];
+      const subfield = parts[parts.length - 1];
+      const subfieldLabel = ROLE_SUBFIELD_LABELS[subfield] ?? subfield;
+      return subfield === '__exists' ? `role/${roleType}` : `${roleType}.${subfieldLabel}`;
     }
   }
   return fieldName;

@@ -117,6 +117,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const revision = await reviseChangeset(context, user_prompt.trim());
 
     if (!revision.field_changes || revision.field_changes.length === 0) {
+      console.warn('[API /revise] Agent returned 0 field_changes for changeset', id);
+      console.warn('[API /revise] Context:', JSON.stringify(context, null, 2).slice(0, 1000));
+      console.warn('[API /revise] Reasoning:', revision.reasoning);
       return NextResponse.json(
         { error: 'The AI agent could not determine how to revise this changeset. Please try a more specific prompt.' },
         { status: 422 },

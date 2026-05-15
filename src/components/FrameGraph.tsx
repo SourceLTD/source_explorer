@@ -241,6 +241,31 @@ function FrameGraphInner({ currentFrame, onFrameClick, onEditClick, onReparentCo
     );
   }, [currentFrame.id, currentFrame.relations]);
 
+  const pendingCreates = useMemo(() => {
+    if (!pendingRelationChanges) return [];
+    const seen = new Set<string>();
+    return pendingRelationChanges.filter(c => {
+      if (!(c.operation === 'create' && c.type === 'parent_of' && c.source_id === currentFrame.id)) return false;
+      const key = `${c.source_id}:${c.target_id}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [pendingRelationChanges, currentFrame.id]);
+
+  // Pending creates where this frame is the target (being placed under a new parent)
+  const pendingParentCreates = useMemo(() => {
+    if (!pendingRelationChanges) return [];
+    const seen = new Set<string>();
+    return pendingRelationChanges.filter(c => {
+      if (!(c.operation === 'create' && c.type === 'parent_of' && c.target_id === currentFrame.id)) return false;
+      const key = `${c.source_id}:${c.target_id}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [pendingRelationChanges, currentFrame.id]);
+
   // Layout calculation
   const layout = useMemo(() => {
     const width = 1400;
@@ -260,24 +285,58 @@ function FrameGraphInner({ currentFrame, onFrameClick, onEditClick, onReparentCo
     
     const nodes: PositionedFrameNode[] = [];
 
+    // Build synthetic row items for pending child creates so they can be row-packed
+    const pendingCreateItems = (pendingCreates ?? []).map(pc => ({
+      _isPendingCreate: true as const,
+      changeset_id: pc.changeset_id,
+      target_id: pc.target_id,
+      target_label: pc.target_label || `Frame #${pc.target_id}`,
+      target_descendant_count: pc.target_descendant_count,
+      direction: 'outgoing' as const,
+      target: { label: pc.target_label || `Frame #${pc.target_id}` },
+    })).sort((a, b) => (b.target_descendant_count ?? 0) - (a.target_descendant_count ?? 0));
+
+    // Build combined parent items: real parents + pending new parents, row-packed together
+    // so old (red) and new (green) appear side-by-side in the same row.
+    const combinedParentItems = [
+      ...parentRels.map(r => ({
+        _kind: 'real' as const,
+        rel: r,
+        direction: 'incoming' as const,
+        source: r.source,
+      })),
+      ...(pendingParentCreates ?? []).map(pc => ({
+        _kind: 'pendingCreate' as const,
+        changeset_id: pc.changeset_id,
+        source_id: pc.source_id,
+        label: pc.target_label || `Frame #${pc.source_id}`,
+        descendant_count: pc.target_descendant_count,
+        direction: 'incoming' as const,
+        source: { label: pc.target_label || `Frame #${pc.source_id}` },
+      })),
+    ];
+
     // Arrange rows
-    const parentRows = arrangeNodesInRows(parentRels, maxRowWidth, nodeSpacing);
+    const combinedParentRows = arrangeNodesInRows(combinedParentItems, maxRowWidth, nodeSpacing);
+    const pendingChildRows = arrangeNodesInRows(pendingCreateItems, maxRowWidth, nodeSpacing);
     const childRows = arrangeNodesInRows(childRels, maxRowWidth, nodeSpacing);
+    const totalChildRowCount = pendingChildRows.length + childRows.length;
+    const totalParentRowCount = combinedParentRows.length;
 
     // Fixed vertical position for main node: enough room for 1 parent row above
     const fixedMainY = margin + relatedNodeHeight + spacingFromCenter + mainNodeLayoutHeight / 2;
     
     // Only shift down if parents need more space than reserved
     let topShift = 0;
-    if (parentRows.length > 1) {
+    if (totalParentRowCount > 1) {
       const bottomParentY = fixedMainY - mainNodeLayoutHeight / 2 - spacingFromCenter - relatedNodeHeight / 2;
-      const topMostParentY = bottomParentY - (parentRows.length - 1) * (relatedNodeHeight + rowSpacing);
+      const topMostParentY = bottomParentY - (totalParentRowCount - 1) * (relatedNodeHeight + rowSpacing);
       topShift = Math.max(0, margin - topMostParentY);
     }
     const centerY = fixedMainY + topShift;
 
-    const spaceBelow = childRows.length > 0 ? 
-      childRows.length * relatedNodeHeight + (childRows.length - 1) * rowSpacing + spacingFromCenter : 
+    const spaceBelow = totalChildRowCount > 0 ? 
+      totalChildRowCount * relatedNodeHeight + (totalChildRowCount - 1) * rowSpacing + spacingFromCenter : 
       spacingFromCenter;
 
     const totalHeight = centerY + mainNodeLayoutHeight / 2 + renderOverflow + spaceBelow + margin;
@@ -294,38 +353,82 @@ function FrameGraphInner({ currentFrame, onFrameClick, onEditClick, onReparentCo
       height: mainNodeLayoutHeight,
     });
     
-    // Position parents ABOVE (positioned relative to main node, going upward)
-    if (parentRows.length > 0) {
+    // Position combined parent row (real + pending creates) ABOVE the main node
+    const pendingParentNodePositions: { changeset_id: string; x: number; y: number; width: number; height: number; lineY2: number; lineX2: number; descendant_count?: number }[] = [];
+    if (combinedParentRows.length > 0) {
       const firstParentRowY = centerY - mainNodeLayoutHeight / 2 - spacingFromCenter - relatedNodeHeight / 2;
-      for (let rowIndex = parentRows.length - 1; rowIndex >= 0; rowIndex--) {
-        const row = parentRows[rowIndex];
-        const rowY = firstParentRowY - (parentRows.length - 1 - rowIndex) * (relatedNodeHeight + rowSpacing);
+      for (let rowIndex = combinedParentRows.length - 1; rowIndex >= 0; rowIndex--) {
+        const row = combinedParentRows[rowIndex];
+        const rowY = firstParentRowY - (combinedParentRows.length - 1 - rowIndex) * (relatedNodeHeight + rowSpacing);
         let currentX = centerX - row.totalWidth / 2;
-        
-        row.nodes.forEach((rel) => {
-          const source = rel.source!;
-          const nodeWidth = calculateNodeWidth(source.label);
-          const nodeH = (source.descendant_count ?? 0) > 0 ? NODE_HEIGHT_WITH_COUNT : NODE_HEIGHT;
-          nodes.push({
-            id: source.id,
-            type: 'parent',
-            label: source.label,
-            x: currentX + nodeWidth / 2,
-            y: rowY,
-            width: nodeWidth,
-            height: nodeH,
-            descendant_count: source.descendant_count,
-          });
+
+        row.nodes.forEach((item) => {
+          const nodeWidth = calculateNodeWidth(item.source?.label ?? '');
+          if (item._kind === 'real') {
+            const source = item.rel.source!;
+            const nodeH = (source.descendant_count ?? 0) > 0 ? NODE_HEIGHT_WITH_COUNT : NODE_HEIGHT;
+            nodes.push({
+              id: source.id,
+              type: 'parent',
+              label: source.label,
+              x: currentX + nodeWidth / 2,
+              y: rowY,
+              width: nodeWidth,
+              height: nodeH,
+              descendant_count: source.descendant_count,
+            });
+          } else {
+            // pendingCreate — record position for separate SVG rendering
+            const descCount = item.descendant_count as number | undefined;
+            const nodeH = (descCount ?? 0) > 0 ? NODE_HEIGHT_WITH_COUNT : NODE_HEIGHT;
+            pendingParentNodePositions.push({
+              changeset_id: item.changeset_id as string,
+              x: currentX + nodeWidth / 2,
+              y: rowY,
+              width: nodeWidth,
+              height: nodeH,
+              lineY2: centerY - mainNodeLayoutHeight / 2,
+              lineX2: centerX,
+              descendant_count: descCount,
+            });
+          }
           currentX += nodeWidth + nodeSpacing;
         });
       }
     }
 
-    // Position children BELOW
+    const childStartY = centerY + mainNodeLayoutHeight / 2 + renderOverflow + spacingFromCenter + relatedNodeHeight / 2;
+
+    // Position pending creates FIRST (before real children)
+    const pendingNodePositions: { changeset_id: string; x: number; y: number; width: number; height: number; lineY1: number; lineX2: number; descendant_count?: number }[] = [];
+    if (pendingChildRows.length > 0) {
+      pendingChildRows.forEach((row, rowIndex) => {
+        const rowY = childStartY + rowIndex * (relatedNodeHeight + rowSpacing);
+        let currentX = centerX - row.totalWidth / 2;
+        row.nodes.forEach((item) => {
+          const labelText = item.target_label as string;
+          const descCount = item.target_descendant_count as number | undefined;
+          const nodeWidth = calculateNodeWidth(labelText);
+          const nodeH = (descCount ?? 0) > 0 ? NODE_HEIGHT_WITH_COUNT : NODE_HEIGHT;
+          pendingNodePositions.push({
+            changeset_id: item.changeset_id as string,
+            x: currentX + nodeWidth / 2,
+            y: rowY,
+            width: nodeWidth,
+            height: nodeH,
+            lineY1: centerY + mainNodeLayoutHeight / 2 + renderOverflow,
+            lineX2: centerX,
+            descendant_count: descCount,
+          });
+          currentX += nodeWidth + nodeSpacing;
+        });
+      });
+    }
+
+    // Position real children BELOW pending rows
     if (childRows.length > 0) {
-      const childStartY = centerY + mainNodeLayoutHeight / 2 + renderOverflow + spacingFromCenter + relatedNodeHeight / 2;
       childRows.forEach((row, rowIndex) => {
-        const rowY = childStartY + (rowIndex * (relatedNodeHeight + rowSpacing));
+        const rowY = childStartY + (pendingChildRows.length + rowIndex) * (relatedNodeHeight + rowSpacing);
         let currentX = centerX - row.totalWidth / 2;
         
         row.nodes.forEach((rel) => {
@@ -347,8 +450,8 @@ function FrameGraphInner({ currentFrame, onFrameClick, onEditClick, onReparentCo
       });
     }
     
-    return { nodes, width, height: totalHeight, renderOverflow };
-  }, [currentFrame, parentRels, childRels, arrangeNodesInRows, calculateNodeWidth, rolesExpanded, lexicalUnitsExpanded, recipeGraphExpanded, expandedSenses]);
+    return { nodes, width, height: totalHeight, renderOverflow, pendingNodePositions, pendingParentNodePositions };
+  }, [currentFrame, parentRels, childRels, pendingCreates, pendingParentCreates, arrangeNodesInRows, calculateNodeWidth, rolesExpanded, lexicalUnitsExpanded, recipeGraphExpanded, expandedSenses]);
 
   // Identify pending relation changes for visualization
   const pendingDeletes = useMemo(() => {
@@ -357,13 +460,6 @@ function FrameGraphInner({ currentFrame, onFrameClick, onEditClick, onReparentCo
       pendingRelationChanges
         .filter(c => c.operation === 'delete' && c.type === 'parent_of')
         .map(c => c.source_id === currentFrame.id ? c.target_id : c.source_id)
-    );
-  }, [pendingRelationChanges, currentFrame.id]);
-
-  const pendingCreates = useMemo(() => {
-    if (!pendingRelationChanges) return [];
-    return pendingRelationChanges.filter(
-      c => c.operation === 'create' && c.type === 'parent_of' && c.source_id === currentFrame.id
     );
   }, [pendingRelationChanges, currentFrame.id]);
 
@@ -508,41 +604,86 @@ function FrameGraphInner({ currentFrame, onFrameClick, onEditClick, onReparentCo
         {/* Connections */}
         {renderConnections()}
         
-        {/* Pending create connection (dashed green line to new parent) */}
+        {/* Pending create connection lines (rendered before nodes so nodes sit on top) */}
         {pendingCreates.map((pc) => {
-          const mainNode = layout.nodes.find(n => n.type === 'current');
-          if (!mainNode) return null;
-          const mainBottom = mainNode.y + mainNode.height / 2 + (layout.renderOverflow || 0);
-          const labelText = pc.target_label || `Frame #${pc.target_id}`;
-          const nodeWidth = Math.max(80, labelText.length * 7.5 + 24);
-          const pendingNodeX = mainNode.x;
-          const pendingNodeY = mainBottom + 30;
+          const pos = layout.pendingNodePositions.find(p => p.changeset_id === pc.changeset_id);
+          if (!pos) return null;
           return (
-            <g key={`pending-create-${pc.changeset_id}`}>
-              <line
-                x1={mainNode.x}
-                y1={mainBottom}
-                x2={pendingNodeX}
-                y2={pendingNodeY - 18}
-                stroke={pendingCreateStroke}
-                strokeWidth={2}
-                strokeDasharray="6 4"
-                strokeOpacity={0.8}
-              />
+            <line
+              key={`pending-line-${pc.changeset_id}`}
+              x1={pos.x}
+              y1={pos.y - pos.height / 2}
+              x2={pos.lineX2}
+              y2={pos.lineY1}
+              stroke={pendingCreateStroke}
+              strokeWidth={2}
+              strokeDasharray="6 4"
+              strokeOpacity={0.8}
+            />
+          );
+        })}
+
+        {/* Pending parent create connection lines */}
+        {pendingParentCreates.map((pc) => {
+          const pos = layout.pendingParentNodePositions.find(p => p.changeset_id === pc.changeset_id);
+          if (!pos) return null;
+          return (
+            <line
+              key={`pending-parent-line-${pc.changeset_id}`}
+              x1={pos.x}
+              y1={pos.y + pos.height / 2}
+              x2={pos.lineX2}
+              y2={pos.lineY2}
+              stroke={pendingCreateStroke}
+              strokeWidth={2}
+              strokeDasharray="6 4"
+              strokeOpacity={0.8}
+            />
+          );
+        })}
+        
+        {/* Related nodes first (behind main node) */}
+        {layout.nodes
+          .filter(n => n.type !== 'current')
+          .map(node => renderRelatedNode(node))}
+
+        {/* Pending create node boxes (rendered after lines so they appear on top) */}
+        {pendingCreates.map((pc) => {
+          const pos = layout.pendingNodePositions.find(p => p.changeset_id === pc.changeset_id);
+          if (!pos) return null;
+          const labelText = pc.target_label || `Frame #${pc.target_id}`;
+          const nodeHeight = pos.height;
+          const nodeLeft = pos.x - pos.width / 2;
+          const nodeTop = pos.y - nodeHeight / 2;
+          const hasDescendants = (pos.descendant_count ?? 0) > 0;
+          const hoverKey = `pending-child-${pc.changeset_id}`;
+          const isHovered = hoveredNodeId === hoverKey;
+          return (
+            <g
+              key={`pending-create-${pc.changeset_id}`}
+              style={{ cursor: 'pointer' }}
+              onMouseEnter={() => setHoveredNodeId(hoverKey)}
+              onMouseLeave={() => setHoveredNodeId(null)}
+              onClick={(e) => {
+                const rect = (e.currentTarget as SVGGElement).getBoundingClientRect();
+                onFrameClick(pc.target_id, { rect: { top: rect.top, left: rect.left, width: rect.width, height: rect.height }, label: labelText, color: pendingCreateColor, direction: 'down' });
+              }}
+            >
               <rect
-                x={pendingNodeX - nodeWidth / 2}
-                y={pendingNodeY - 18}
-                width={nodeWidth}
-                height={36}
+                x={nodeLeft}
+                y={nodeTop}
+                width={pos.width}
+                height={nodeHeight}
                 rx={8}
                 fill={pendingCreateColor}
                 stroke={pendingCreateStroke}
-                strokeWidth={2}
+                strokeWidth={isHovered ? 3 : 2}
                 strokeDasharray="4 2"
+                style={{ cursor: 'pointer', filter: isHovered ? 'brightness(1.08)' : 'none', transition: 'all 0.2s ease' }}
               />
               <text
-                x={pendingNodeX}
-                y={pendingNodeY}
+                x={pos.x}
+                y={hasDescendants ? nodeTop + 16 : pos.y}
                 fontSize={11}
                 fontWeight="bold"
                 fill="#166534"
@@ -551,14 +692,90 @@ function FrameGraphInner({ currentFrame, onFrameClick, onEditClick, onReparentCo
               >
                 {labelText}
               </text>
+              {hasDescendants && (
+                <g>
+                  <g transform={`translate(${nodeLeft + 4}, ${nodeTop + nodeHeight - 9}) scale(0.26)`}>
+                    <path d="m11.99 16.5-3.75 3.75m0 0L4.49 16.5m3.75 3.75V3.75h11.25" fill="none" stroke="rgba(22,101,52,0.7)" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </g>
+                  <g transform={`translate(${nodeLeft + 7}, ${nodeTop + nodeHeight - 9}) scale(0.26)`}>
+                    <path d="M19.5 13.5 12 21m0 0-7.5-7.5M12 21V3" fill="none" stroke="rgba(22,101,52,0.7)" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </g>
+                  <g transform={`translate(${nodeLeft + 10}, ${nodeTop + nodeHeight - 9}) scale(0.26)`}>
+                    <path d="m11.99 16.5 3.75 3.75m0 0 3.75-3.75m-3.75 3.75V3.75H4.49" fill="none" stroke="rgba(22,101,52,0.7)" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </g>
+                  <text x={nodeLeft + 20} y={nodeTop + nodeHeight - 6} fontSize={10} fill="rgba(22,101,52,0.7)" textAnchor="start" dominantBaseline="central">
+                    {pos.descendant_count}
+                  </text>
+                </g>
+              )}
             </g>
           );
         })}
-        
-        {/* Related nodes first (behind main node) */}
-        {layout.nodes
-          .filter(n => n.type !== 'current')
-          .map(node => renderRelatedNode(node))}
+
+        {/* Pending parent create node boxes */}
+        {pendingParentCreates.map((pc) => {
+          const pos = layout.pendingParentNodePositions.find(p => p.changeset_id === pc.changeset_id);
+          if (!pos) return null;
+          const labelText = pc.target_label || `Frame #${pc.source_id}`;
+          const nodeHeight = pos.height;
+          const nodeLeft = pos.x - pos.width / 2;
+          const nodeTop = pos.y - nodeHeight / 2;
+          const hasDescendants = (pos.descendant_count ?? 0) > 0;
+          const hoverKey = `pending-parent-${pc.changeset_id}`;
+          const isHovered = hoveredNodeId === hoverKey;
+          return (
+            <g
+              key={`pending-parent-create-${pc.changeset_id}`}
+              style={{ cursor: 'pointer' }}
+              onMouseEnter={() => setHoveredNodeId(hoverKey)}
+              onMouseLeave={() => setHoveredNodeId(null)}
+              onClick={(e) => {
+                const rect = (e.currentTarget as SVGGElement).getBoundingClientRect();
+                onFrameClick(pc.source_id, { rect: { top: rect.top, left: rect.left, width: rect.width, height: rect.height }, label: labelText, color: pendingCreateColor, direction: 'up' });
+              }}
+            >
+              <rect
+                x={nodeLeft}
+                y={nodeTop}
+                width={pos.width}
+                height={nodeHeight}
+                rx={8}
+                fill={pendingCreateColor}
+                stroke={pendingCreateStroke}
+                strokeWidth={isHovered ? 3 : 2}
+                strokeDasharray="4 2"
+                style={{ cursor: 'pointer', filter: isHovered ? 'brightness(1.08)' : 'none', transition: 'all 0.2s ease' }}
+              />
+              <text
+                x={pos.x}
+                y={hasDescendants ? nodeTop + 16 : pos.y}
+                fontSize={11}
+                fontWeight="bold"
+                fill="#166534"
+                textAnchor="middle"
+                dominantBaseline="central"
+              >
+                {labelText}
+              </text>
+              {hasDescendants && (
+                <g>
+                  <g transform={`translate(${nodeLeft + 4}, ${nodeTop + nodeHeight - 9}) scale(0.26)`}>
+                    <path d="m11.99 16.5-3.75 3.75m0 0L4.49 16.5m3.75 3.75V3.75h11.25" fill="none" stroke="rgba(22,101,52,0.7)" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </g>
+                  <g transform={`translate(${nodeLeft + 7}, ${nodeTop + nodeHeight - 9}) scale(0.26)`}>
+                    <path d="M19.5 13.5 12 21m0 0-7.5-7.5M12 21V3" fill="none" stroke="rgba(22,101,52,0.7)" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </g>
+                  <g transform={`translate(${nodeLeft + 10}, ${nodeTop + nodeHeight - 9}) scale(0.26)`}>
+                    <path d="m11.99 16.5 3.75 3.75m0 0 3.75-3.75m-3.75 3.75V3.75H4.49" fill="none" stroke="rgba(22,101,52,0.7)" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </g>
+                  <text x={nodeLeft + 20} y={nodeTop + nodeHeight - 6} fontSize={10} fill="rgba(22,101,52,0.7)" textAnchor="start" dominantBaseline="central">
+                    {pos.descendant_count}
+                  </text>
+                </g>
+              )}
+            </g>
+          );
+        })}
         
         {/* Main node */}
         {layout.nodes

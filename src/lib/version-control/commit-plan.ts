@@ -130,7 +130,7 @@ export async function commitPlan(
         //      handles fine, but the DAG visualisation expects the
         //      DELETE to land first.
         orderBy: [{ entity_type: 'asc' }, { id: 'asc' }],
-        select: { id: true, status: true, entity_type: true },
+        select: { id: true, status: true, entity_type: true, superseded_by_id: true },
       },
     },
   });
@@ -161,6 +161,11 @@ export async function commitPlan(
           // but it must not have been committed by an earlier partial
           // commit attempt — which can no longer happen with this
           // function, but legacy data may exist.
+          continue;
+        }
+        if (cs.status === 'discarded' && cs.superseded_by_id != null) {
+          // This changeset was superseded by a revision — skip it;
+          // its successor (also in this plan) will be committed instead.
           continue;
         }
         if (cs.status !== 'pending') {

@@ -627,7 +627,7 @@ function HealthCheckGroupSection({
         <div className="space-y-3">
           {uniquePlans.map((plan) => (
             <LazyMount key={plan.id} placeholderHeight={PLAN_CARD_PLACEHOLDER_HEIGHT}>
-              <PlanCard plan={plan} onCommitted={onPlanChanged} onDiscarded={onPlanChanged} />
+              <PlanCard plan={plan} onCommitted={onPlanChanged} onDiscarded={onPlanChanged} onRevised={onPlanChanged} />
             </LazyMount>
           ))}
         </div>
@@ -652,6 +652,7 @@ function HealthCheckGroupSection({
                     onCommit={() => void onCommit(cs)}
                     onReject={() => void onReject(cs)}
                     onOpen={onOpen ? () => onOpen(cs) : undefined}
+                    onRevisionComplete={() => onPlanChanged()}
                   />
                 </LazyMount>
               </li>

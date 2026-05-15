@@ -840,6 +840,7 @@ export interface PendingRelationChange {
   /** Label of the related frame (resolved from snapshot or DB) */
   target_label?: string;
   target_short_definition?: string | null;
+  target_descendant_count?: number;
 }
 
 /**
@@ -890,15 +891,17 @@ export async function getPendingRelationChanges(
         const otherFrameId = srcId === frameIdStr ? tgtId : srcId;
         let targetLabel: string | undefined;
         let targetShortDef: string | null | undefined;
+        let targetDescendantCount: number | undefined;
 
         try {
           const otherFrame = await prisma.frames.findUnique({
             where: { id: BigInt(otherFrameId) },
-            select: { label: true, short_definition: true },
+            select: { label: true, short_definition: true, descendant_count: true },
           });
           if (otherFrame) {
             targetLabel = otherFrame.label;
             targetShortDef = otherFrame.short_definition;
+            targetDescendantCount = otherFrame.descendant_count ?? undefined;
           }
         } catch {
           // Non-critical: label resolution failure
@@ -912,6 +915,7 @@ export async function getPendingRelationChanges(
           type: String(snap.type ?? ''),
           target_label: targetLabel,
           target_short_definition: targetShortDef,
+          target_descendant_count: targetDescendantCount,
         });
       }
     }

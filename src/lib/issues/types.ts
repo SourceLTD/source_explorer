@@ -129,6 +129,7 @@ export interface IssueChangePlanChangesetSummary {
   entity_id: string | null;
   operation: string;
   status: string;
+  revision_number: number;
 }
 
 /**

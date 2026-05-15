@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import {
   CheckCircleIcon,
   XCircleIcon,
@@ -20,6 +20,9 @@ import type {
   IssueChangePlanChangesetSummary,
 } from '@/lib/issues/types';
 import LoadingSpinner from '@/components/LoadingSpinner';
+import { RevisionModal } from '@/components/editing/RevisionModal';
+import { RevisionNavigator } from '@/components/editing/RevisionNavigator';
+import type { RevisionHistoryEntry } from '@/lib/version-control/types';
 import DAGMoveVisualization from '@/components/pending/context/DAGMoveVisualization';
 import FrameRefPopover from '@/components/pending/context/FrameRefPopover';
 import FrameInfoCard, {
@@ -51,6 +54,8 @@ export interface PlanCardProps {
   onCommitted?: () => void;
   /** Called after a successful discard so the parent can refetch. */
   onDiscarded?: () => void;
+  /** Called after a successful revision so the parent can refetch. */
+  onRevised?: () => void;
 }
 
 const PLAN_KIND_LABELS: Record<string, string> = {
@@ -277,8 +282,8 @@ function findSense(
  * fall back to a generic per-changeset list when the runner didn't
  * populate the structured metadata yet.
  */
-function PlanKindRenderer({ plan }: { plan: IssueChangePlanSummary }) {
-  const md = plan.metadata ?? {};
+function PlanKindRenderer({ plan, metadataOverride }: { plan: IssueChangePlanSummary; metadataOverride?: Record<string, unknown> }) {
+  const md = metadataOverride ?? plan.metadata ?? {};
 
   switch (plan.plan_kind) {
     case 'split_frame': {
@@ -1082,14 +1087,49 @@ function readConflictReport(
   return { status, attempted, committed, failed_at_changeset, errors };
 }
 
-export default function PlanCard({ plan, onCommitted, onDiscarded }: PlanCardProps) {
+export default function PlanCard({ plan, onCommitted, onDiscarded, onRevised }: PlanCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [busy, setBusy] = useState<'commit' | 'discard' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [revisionModalOpen, setRevisionModalOpen] = useState(false);
+  const [revising, setRevising] = useState(false);
+  const [activeRevision, setActiveRevision] = useState<RevisionHistoryEntry | null>(null);
 
   const conflict = useMemo(() => readConflictReport(plan.conflict_report), [plan.conflict_report]);
   const isPending = plan.status === 'pending';
   const statusClass = PLAN_STATUS_BADGE[plan.status] ?? PLAN_STATUS_BADGE.pending;
+
+  // Find the primary changeset for revision purposes.
+  // For reparent plans, prefer the CREATE changeset (defines the new parent).
+  // Otherwise fall back to the one with the highest revision_number.
+  const primaryChangeset = useMemo(() => {
+    if (!plan.changesets.length) return null;
+    if (plan.plan_kind === 'move_frame_parent') {
+      const createCs = plan.changesets.find(cs => cs.operation === 'create');
+      if (createCs) return createCs;
+    }
+    return plan.changesets.reduce((best, cs) =>
+      (cs.revision_number ?? 1) > (best.revision_number ?? 1) ? cs : best
+    , plan.changesets[0]);
+  }, [plan.changesets, plan.plan_kind]);
+
+  const effectiveMetadata = useMemo(() => {
+    if (!activeRevision || !activeRevision.field_changes.length) return plan.metadata;
+    let newParentId: string | null = null;
+    for (const fc of activeRevision.field_changes) {
+      // In frame_relations, source_id = parent, target_id = child.
+      // The DAG's "new parent" corresponds to the source_id field.
+      if (fc.field_name === 'source_id' && fc.new_value != null) {
+        newParentId = String(fc.new_value);
+      }
+    }
+    if (!newParentId) return plan.metadata;
+    const existingNewParent = (plan.metadata?.new_parent as Record<string, unknown>) ?? {};
+    return {
+      ...plan.metadata,
+      new_parent: { ...existingNewParent, id: newParentId, label: null },
+    };
+  }, [plan.metadata, activeRevision]);
 
   const handleCommit = async () => {
     if (!isPending) return;
@@ -1135,6 +1175,29 @@ export default function PlanCard({ plan, onCommitted, onDiscarded }: PlanCardPro
     }
   };
 
+  const handleBackgroundRevision = useCallback(async (prompt: string) => {
+    if (!primaryChangeset) return;
+    setRevisionModalOpen(false);
+    setRevising(true);
+    try {
+      const response = await fetch(`/api/changesets/${primaryChangeset.id}/revise`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_prompt: prompt }),
+      });
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        setError(errData.error || `Revision failed (${response.status})`);
+      } else {
+        onRevised?.();
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Revision failed');
+    } finally {
+      setRevising(false);
+    }
+  }, [primaryChangeset, onRevised]);
+
   return (
     <article className="bg-white border border-gray-200 rounded-lg overflow-hidden">
       <header className="px-4 py-3 border-b border-gray-200 bg-gray-50 flex items-start justify-between gap-3">
@@ -1167,6 +1230,14 @@ export default function PlanCard({ plan, onCommitted, onDiscarded }: PlanCardPro
               Discard
             </button>
             <button
+              onClick={() => setRevisionModalOpen(true)}
+              disabled={busy !== null || revising}
+              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-indigo-700 border border-indigo-200 rounded-md bg-white hover:bg-indigo-50 disabled:opacity-50"
+            >
+              <ArrowPathIcon className={`w-4 h-4 ${revising ? 'animate-spin' : ''}`} />
+              {revising ? 'Revising...' : 'Revise'}
+            </button>
+            <button
               onClick={handleCommit}
               disabled={busy !== null}
               className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-white bg-emerald-600 rounded-md hover:bg-emerald-500 disabled:opacity-50"
@@ -1180,7 +1251,24 @@ export default function PlanCard({ plan, onCommitted, onDiscarded }: PlanCardPro
 
       <div className="p-4 space-y-3">
         {/* Per-kind structured renderer (split/merge/move/attach/detach). */}
-        <PlanKindRenderer plan={plan} />
+        {activeRevision && activeRevision.status !== 'pending' && (
+          <div className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-md">
+            <ArrowPathIcon className="w-3.5 h-3.5 shrink-0" />
+            Viewing Revision {activeRevision.revision_number} &mdash; this is a previous proposal
+          </div>
+        )}
+        <PlanKindRenderer plan={plan} metadataOverride={effectiveMetadata} />
+
+        {/* Revision history navigator for the primary changeset. */}
+        {isPending && primaryChangeset && (
+          <RevisionNavigator
+            changesetId={primaryChangeset.id}
+            revisionNumber={primaryChangeset.revision_number}
+            onRequestRevision={() => setRevisionModalOpen(true)}
+            onActiveRevisionChange={setActiveRevision}
+            revising={revising}
+          />
+        )}
 
         {/* Inline error from the last commit/discard attempt. */}
         {error && (
@@ -1254,6 +1342,14 @@ export default function PlanCard({ plan, onCommitted, onDiscarded }: PlanCardPro
           </ul>
         )}
       </div>
+
+      <RevisionModal
+        changesetId={primaryChangeset?.id ?? ''}
+        entitySummary={`${planKindLabel(plan.plan_kind)}${plan.summary ? `: ${plan.summary}` : ''}`}
+        isOpen={revisionModalOpen}
+        onClose={() => setRevisionModalOpen(false)}
+        onSubmit={handleBackgroundRevision}
+      />
     </article>
   );
 }
