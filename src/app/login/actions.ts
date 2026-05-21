@@ -4,28 +4,37 @@ import { redirect } from 'next/navigation'
 
 import { createClient } from '@/utils/supabase/server'
 
-export async function login(formData: FormData) {
-  const supabase = await createClient()
+export type LoginState = {
+  error?: string
+}
+
+export async function login(
+  _prevState: LoginState | null,
+  formData: FormData,
+): Promise<LoginState> {
+  let supabase
+  try {
+    supabase = await createClient()
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Authentication is not configured'
+    console.error('Failed to create Supabase client:', message)
+    return { error: message }
+  }
 
   const email = formData.get('email') as string
 
   if (!email) {
-    console.error('No email provided')
-    redirect('/error')
+    return { error: 'Email is required' }
   }
-
-  console.log('Sending OTP code to:', email)
 
   // Send OTP code (no emailRedirectTo = sends 6-digit code instead of magic link)
   const { error } = await supabase.auth.signInWithOtp({ email })
 
   if (error) {
     console.error('OTP send error:', error.message)
-    redirect('/error')
+    return { error: error.message }
   }
 
-  console.log('OTP code sent successfully')
-  // Redirect to verify page where user enters the code
   redirect(`/auth/verify?email=${encodeURIComponent(email)}`)
 }
 
@@ -51,8 +60,7 @@ export async function verifyCode(email: string, token: string) {
     return { error: error.message }
   }
 
-  console.log('OTP verified successfully')
-  redirect('/')
+  redirect('/graph/concepts')
 }
 
 export async function resendCode(email: string) {

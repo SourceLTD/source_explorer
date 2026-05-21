@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useActionState, useEffect, useState } from 'react'
 import { useFormStatus } from 'react-dom'
-import { login } from './actions'
+import { login, type LoginState } from './actions'
 import LoadingSpinner from '@/components/LoadingSpinner'
 
 const COOLDOWN_SECONDS = 15
@@ -40,6 +40,7 @@ function SubmitButton({ cooldown, setCooldown }: { cooldown: number, setCooldown
 
 export default function LoginPage() {
   const [cooldown, setCooldown] = useState(0)
+  const [state, formAction] = useActionState<LoginState | null, FormData>(login, null)
 
   useEffect(() => {
     if (cooldown > 0) {
@@ -58,7 +59,7 @@ export default function LoginPage() {
             </h1>
           </div>
           
-          <form action={login} className="space-y-6">
+          <form action={formAction} className="space-y-6">
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
                 Email address
@@ -73,6 +74,12 @@ export default function LoginPage() {
                 placeholder="Enter your email address"
               />
             </div>
+
+            {state?.error && (
+              <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-sm text-red-600">
+                {state.error}
+              </div>
+            )}
 
             <SubmitButton cooldown={cooldown} setCooldown={setCooldown} />
           </form>
