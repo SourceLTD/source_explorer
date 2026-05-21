@@ -1,22 +1,22 @@
 /**
- * Senses-centric bulk "set the frame" for a collection of lexical units.
+ * Senses-centric bulk "set the concept" for a collection of lexical units.
  *
- * The pre-senses architecture let callers PATCH { frame_id } on many LUs at once.
- * Now that frames are assigned via frame_senses, bulk-setting a frame means
- * rewriting the frame link of each LU's sense(s). This route resolves each
- * selected LU to its sense(s), dedupes, and stages one frame_sense update per
+ * The pre-senses architecture let callers PATCH { concept_id } on many LUs at once.
+ * Now that concepts are assigned via senses, bulk-setting a concept means
+ * rewriting the concept link of each LU's sense(s). This route resolves each
+ * selected LU to its sense(s), dedupes, and stages one sense update per
  * sense through the changeset/audit system.
  *
  * Request body:
  *   {
  *     lexical_unit_ids: Array<string | number>,  // LUs to re-point
- *     frame_id: string | number,                  // target frame id
+ *     concept_id: string | number,                  // target concept id
  *   }
  *
  * Response:
  *   {
  *     staged_count: number,            // number of sense changesets staged
- *     affected_sense_ids: string[],    // senses whose frame_id was staged
+ *     affected_sense_ids: string[],    // senses whose concept_id was staged
  *     skipped: Array<{
  *       lexical_unit_id: string,
  *       reason: 'no_senses' | 'multiple_senses' | 'not_found',
@@ -30,7 +30,7 @@
  *   }
  *
  * Callers that need to attach/detach existing senses or create new ones should
- * still use /api/frame-senses and /api/lexical-units/[id]/senses directly.
+ * still use /api/senses and /api/lexical-units/[id]/senses directly.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -68,7 +68,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     const rawLuIds = Array.isArray(body.lexical_unit_ids) ? body.lexical_unit_ids : null;
-    const rawFrameId = body.frame_id;
+    const rawFrameId = body.concept_id;
 
     if (!rawLuIds || rawLuIds.length === 0) {
       return NextResponse.json(
@@ -80,7 +80,7 @@ export async function PATCH(request: NextRequest) {
     const frameId = toBigIntSafe(rawFrameId);
     if (!frameId) {
       return NextResponse.json(
-        { error: 'frame_id is required and must be a numeric id' },
+        { error: 'concept_id is required and must be a numeric id' },
         { status: 400 }
       );
     }
@@ -104,22 +104,22 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    // Confirm the target frame exists and is not deleted — surface a clean error
+    // Confirm the target concept exists and is not deleted — surface a clean error
     // rather than letting the changeset commit fail later.
-    const frame = await prisma.frames.findUnique({
+    const frame = await prisma.concepts.findUnique({
       where: { id: frameId },
       select: { id: true, deleted: true },
     });
     if (!frame || frame.deleted) {
-      return NextResponse.json({ error: 'Target frame not found' }, { status: 404 });
+      return NextResponse.json({ error: 'Target concept not found' }, { status: 404 });
     }
 
     // Map each LU to its senses (ordered for determinism). We don't pre-filter on
     // sense count — we want to count skips accurately in the response.
     const luLinks = await prisma.lexical_unit_senses.findMany({
       where: { lexical_unit_id: { in: luIds } },
-      select: { lexical_unit_id: true, frame_sense_id: true },
-      orderBy: [{ lexical_unit_id: 'asc' }, { frame_sense_id: 'asc' }],
+      select: { lexical_unit_id: true, sense_id: true },
+      orderBy: [{ lexical_unit_id: 'asc' }, { sense_id: 'asc' }],
     });
 
     const luToSenseIds = new Map<string, number[]>();
@@ -127,7 +127,7 @@ export async function PATCH(request: NextRequest) {
     for (const link of luLinks) {
       const k = link.lexical_unit_id.toString();
       const arr = luToSenseIds.get(k) ?? [];
-      arr.push(link.frame_sense_id);
+      arr.push(link.sense_id);
       luToSenseIds.set(k, arr);
     }
 
@@ -142,7 +142,7 @@ export async function PATCH(request: NextRequest) {
           lexical_unit_id: luId.toString(),
           reason: 'no_senses',
           detail:
-            'Lexical unit has no senses; create one via POST /api/frame-senses with lexical_unit_ids=[...]',
+            'Lexical unit has no senses; create one via POST /api/senses with lexical_unit_ids=[...]',
         });
         continue;
       }
@@ -152,7 +152,7 @@ export async function PATCH(request: NextRequest) {
           reason: 'multiple_senses',
           detail:
             'Lexical unit has multiple senses; ambiguous which sense to re-point. ' +
-            'Edit the desired sense via PATCH /api/frame-senses/[id] instead.',
+            'Edit the desired sense via PATCH /api/senses/[id] instead.',
         });
         continue;
       }
@@ -163,14 +163,14 @@ export async function PATCH(request: NextRequest) {
     const warnings: WarningEntry[] = [];
     if (sensesToStage.size > 0) {
       const allLinks = await prisma.lexical_unit_senses.findMany({
-        where: { frame_sense_id: { in: Array.from(sensesToStage) } },
-        select: { frame_sense_id: true, lexical_unit_id: true },
+        where: { sense_id: { in: Array.from(sensesToStage) } },
+        select: { sense_id: true, lexical_unit_id: true },
       });
       const senseToLus = new Map<number, string[]>();
       for (const link of allLinks) {
-        const existing = senseToLus.get(link.frame_sense_id) ?? [];
+        const existing = senseToLus.get(link.sense_id) ?? [];
         existing.push(link.lexical_unit_id.toString());
-        senseToLus.set(link.frame_sense_id, existing);
+        senseToLus.set(link.sense_id, existing);
       }
       for (const senseId of sensesToStage) {
         const lus = senseToLus.get(senseId) ?? [];
@@ -194,7 +194,7 @@ export async function PATCH(request: NextRequest) {
       const response = await stageUpdate(
         'frame_sense',
         senseId.toString(),
-        { frame_id: frameId.toString() },
+        { concept_id: frameId.toString() },
         userId
       );
       affectedSenseIds.push(senseId.toString());
@@ -218,7 +218,7 @@ export async function PATCH(request: NextRequest) {
   } catch (error) {
     console.error('[API] PATCH /api/lexical-units/frame failed:', error);
     return NextResponse.json(
-      { error: 'Failed to stage bulk frame update' },
+      { error: 'Failed to stage bulk concept update' },
       { status: 500 }
     );
   }

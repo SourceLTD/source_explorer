@@ -20,15 +20,15 @@ import type {
   PaginationParams,
   PaginatedResult,
   TableEntry,
-  Frame,
-  FramePaginationParams,
+  Concept,
+  ConceptPaginationParams,
   VendlerClass,
 } from './types';
 import {
   lexicalUnitSensesInclude,
   transformLexicalUnitSenses,
-  derivePrimaryFrame,
-  flattenFrames,
+  derivePrimaryConcept,
+  flattenConcepts,
 } from './db/senses';
 
 // Re-export the unified pagination function
@@ -153,8 +153,8 @@ function transformToLexicalUnitWithRelations(entry: any): LexicalUnitWithRelatio
  */
 function transformToLexicalUnit(entry: any): LexicalUnit {
   const senses = transformLexicalUnitSenses(entry.lexical_unit_senses);
-  const primaryFrame = derivePrimaryFrame(senses);
-  const allFrames = flattenFrames(senses);
+  const primaryConcept = derivePrimaryConcept(senses);
+  const allConcepts = flattenConcepts(senses);
 
   return {
     id: entry.code || entry.id.toString(),
@@ -174,13 +174,13 @@ function transformToLexicalUnit(entry: any): LexicalUnit {
     legal_gloss: entry.legal_gloss ?? undefined,
     deleted: entry.deleted ?? undefined,
     senses,
-    frame_id: primaryFrame?.id ?? null,
-    frame_ids: allFrames.map(f => f.id),
-    frame: primaryFrame
+    concept_id: primaryConcept?.id ?? null,
+    concept_ids: allConcepts.map(f => f.id),
+    concept: primaryConcept
       ? {
-          id: primaryFrame.id,
-          label: primaryFrame.label,
-          code: primaryFrame.code,
+          id: primaryConcept.id,
+          label: primaryConcept.label,
+          code: primaryConcept.code,
           createdAt: new Date(),
           updatedAt: new Date(),
         }
@@ -306,15 +306,15 @@ export async function getGraphNodeUncached(idOrCode: string): Promise<GraphNode 
       include: {
         lexical_unit_senses: {
           include: {
-            frame_senses: {
+            senses: {
               include: {
-                frame_sense_frames: {
+                sense_concepts: {
                   include: {
-                    frames: {
+                    concepts: {
                       include: {
-                        frame_roles: true,
-                        role_groups: {
-                          include: { role_group_members: true },
+                        properties: true,
+                        property_groups: {
+                          include: { property_group_members: true },
                         },
                       },
                     },
@@ -361,8 +361,8 @@ export const getGraphNode = unstable_cache(
  */
 function transformToGraphNode(entry: any): GraphNode {
   const senses = transformLexicalUnitSenses(entry.lexical_unit_senses);
-  const primaryFrame = derivePrimaryFrame(senses);
-  const allFrames = flattenFrames(senses);
+  const primaryConcept = derivePrimaryConcept(senses);
+  const allConcepts = flattenConcepts(senses);
   return {
     id: entry.code || entry.id.toString(),
     numericId: entry.id.toString(),
@@ -380,8 +380,8 @@ function transformToGraphNode(entry: any): GraphNode {
     unverifiableReason: entry.unverifiable_reason ?? undefined,
     vendler_class: entry.vendler_class,
     senses,
-    frame_id: primaryFrame?.id ?? null,
-    frame_ids: allFrames.map(f => f.id),
+    concept_id: primaryConcept?.id ?? null,
+    concept_ids: allConcepts.map(f => f.id),
     countable: entry.countable ?? undefined,
     proper: entry.proper ?? undefined,
     collective: entry.collective ?? undefined,
@@ -405,21 +405,21 @@ function transformToGraphNode(entry: any): GraphNode {
 function transformToGraphNodeWithContext(entry: any): GraphNode {
   const node = transformToGraphNode(entry);
 
-  // Frame context: use the first sense's first frame (1:1 happy path) and hydrate
-  // the richer frame_roles/role_groups from the include.
+  // Concept context: use the first sense's first concept (1:1 happy path) and hydrate
+  // the richer properties/property_groups from the include.
   const firstSenseLink = entry.lexical_unit_senses?.[0];
-  const firstFrameLink = firstSenseLink?.frame_senses?.frame_sense_frames?.[0];
-  const frame = firstFrameLink?.frames;
-  if (frame) {
-    node.frame = {
-      id: frame.id.toString(),
-      label: frame.label,
-      code: frame.code,
-      definition: frame.definition,
-      short_definition: frame.short_definition,
-      createdAt: frame.created_at,
-      updatedAt: frame.updated_at,
-      frame_roles: (frame.frame_roles ?? []).map((role: any) => ({
+  const firstConceptLink = firstSenseLink?.senses?.sense_concepts?.[0];
+  const conceptData = firstConceptLink?.concepts;
+  if (conceptData) {
+    node.concept = {
+      id: conceptData.id.toString(),
+      label: conceptData.label,
+      code: conceptData.code,
+      definition: conceptData.definition,
+      short_definition: conceptData.short_definition,
+      createdAt: conceptData.created_at,
+      updatedAt: conceptData.updated_at,
+      properties: (conceptData.properties ?? []).map((role: any) => ({
         id: role.id.toString(),
         description: role.description,
         notes: role.notes,
@@ -429,20 +429,20 @@ function transformToGraphNodeWithContext(entry: any): GraphNode {
         label: role.label,
         fillers: role.fillers,
       })),
-      frame_type: frame.frame_type,
-      subtype: frame.subtype,
-      disable_healthcheck: frame.disable_healthcheck,
-      vendler: frame.vendler,
-      multi_perspective: frame.multi_perspective,
-      wikidata_id: frame.wikidata_id,
-      recipe: frame.recipe as Frame['recipe'],
+      archetype: conceptData.archetype,
+      subtype: conceptData.subtype,
+      disable_healthcheck: conceptData.disable_healthcheck,
+      vendler: conceptData.vendler,
+      multi_perspective: conceptData.multi_perspective,
+      wikidata_id: conceptData.wikidata_id,
+      recipe: conceptData.recipe as Concept['recipe'],
     };
 
-    node.roles = node.frame.frame_roles;
-    node.role_groups = (frame.role_groups ?? []).map((group: any) => ({
+    node.properties = node.concept.properties;
+    node.property_groups = (conceptData.property_groups ?? []).map((group: any) => ({
       id: group.id.toString(),
       description: group.description,
-      role_ids: (group.role_group_members ?? []).map((m: any) => m.role_id.toString()),
+      role_ids: (group.property_group_members ?? []).map((m: any) => m.property_id.toString()),
     }));
   }
 
@@ -627,8 +627,8 @@ export async function updateEntry(
       where: whereClause,
       data: dbUpdates,
     });
-    // Frame assignment is no longer an LU-level concept; it's mediated by frame_senses.
-    // Use the /api/frame-senses endpoints (or src/lib/db/senses.ts helpers) instead.
+    // Concept assignment is no longer an LU-level concept; it's mediated by senses.
+    // Use the /api/senses endpoints (or src/lib/db/senses.ts helpers) instead.
     return getEntryById(id);
   } catch (error) {
     console.error('Error updating entry:', error);
@@ -709,43 +709,43 @@ export async function updateFlagStatus(
 
 /**
  * Bulk "set the frame" for multiple lexical units is no longer meaningful now that
- * frames live behind `frame_senses`. Callers should instead create or attach
- * `frame_senses` via `src/lib/db/senses.ts`. This function is kept as a no-op so
+ * frames live behind `senses`. Callers should instead create or attach
+ * `senses` via `src/lib/db/senses.ts`. This function is kept as a no-op so
  * any lingering callers fail loudly in the logs without crashing the request.
  *
- * @deprecated Use `createFrameSense` / `attachSenseToLexicalUnit` in `src/lib/db/senses.ts`.
+ * @deprecated Use `createSense` / `attachSenseToLexicalUnit` in `src/lib/db/senses.ts`.
  */
-export async function updateFramesForEntries(
+export async function updateConceptsForEntries(
   _ids: string[],
-  _frameId: string | null
+  _conceptId: string | null
 ): Promise<{ success: boolean; updatedCount: number }> {
   console.warn(
-    '[db.updateFramesForEntries] Bulk frame assignment on lexical units is no longer supported. ' +
-      'Frames are now linked via frame_senses; use the senses API instead.'
+    '[db.updateConceptsForEntries] Bulk concept assignment on lexical units is no longer supported. ' +
+      'Concepts are now linked via senses; use the senses API instead.'
   );
   return { success: false, updatedCount: 0 };
 }
 
 /**
- * @deprecated Use `createFrameSense` / `attachSenseToLexicalUnit` in `src/lib/db/senses.ts`.
+ * @deprecated Use `createSense` / `attachSenseToLexicalUnit` in `src/lib/db/senses.ts`.
  */
-export async function updateFramesForLexicalUnits(
+export async function updateConceptsForLexicalUnits(
   ids: string[],
-  frameId: string | null
+  conceptId: string | null
 ): Promise<{ success: boolean; updatedCount: number }> {
-  return updateFramesForEntries(ids, frameId);
+  return updateConceptsForEntries(ids, conceptId);
 }
 
 // ============================================
-// Frame Operations
+// Concept Operations
 // ============================================
 
 /**
  * Get paginated frames
  */
-export async function getPaginatedFrames(
-  params: FramePaginationParams = {}
-): Promise<PaginatedResult<Frame>> {
+export async function getPaginatedConcepts(
+  params: ConceptPaginationParams = {}
+): Promise<PaginatedResult<Concept>> {
   const {
     page = 1,
     limit = 10,
@@ -763,7 +763,7 @@ export async function getPaginatedFrames(
   } = params;
 
   const skip = (page - 1) * limit;
-  const conditions: Prisma.framesWhereInput[] = [];
+  const conditions: Prisma.conceptsWhereInput[] = [];
 
   // Filter out deleted frames
   conditions.push({ deleted: false });
@@ -792,63 +792,63 @@ export async function getPaginatedFrames(
   if (updatedAfter) conditions.push({ updated_at: { gte: new Date(updatedAfter) } });
   if (updatedBefore) conditions.push({ updated_at: { lte: new Date(updatedBefore + 'T23:59:59.999Z') } });
 
-  const whereClause: Prisma.framesWhereInput = conditions.length > 0 ? { AND: conditions } : {};
+  const whereClause: Prisma.conceptsWhereInput = conditions.length > 0 ? { AND: conditions } : {};
 
   // Build order clause
-  const orderBy: Prisma.framesOrderByWithRelationInput = {};
+  const orderBy: Prisma.conceptsOrderByWithRelationInput = {};
   (orderBy as Record<string, 'asc' | 'desc'>)[sortBy] = sortOrder;
 
   // Get total count
-  const total = await prisma.frames.count({ where: whereClause });
+  const total = await prisma.concepts.count({ where: whereClause });
 
   // Get frames with counts
-  const frames = await prisma.frames.findMany({
+  const concepts = await prisma.concepts.findMany({
     where: whereClause,
     skip,
     take: limit,
     orderBy,
     include: {
-      frame_roles: true,
+      properties: true,
       _count: {
         select: {
-          frame_roles: true,
-          frame_sense_frames: true,
+          properties: true,
+          sense_concepts: true,
         },
       },
     },
   });
 
-  // Compute distinct-LU counts per frame via the sense chain. A single raw SQL
+  // Compute distinct-LU counts per concept via the sense chain. A single raw SQL
   // keeps this O(1) round-trip instead of N+1.
-  const frameIds = frames.map(f => f.id);
-  const luCountRows = frameIds.length > 0
-    ? await prisma.$queryRaw<Array<{ frame_id: bigint; lu_count: bigint }>>`
-        SELECT fsf.frame_id AS frame_id, COUNT(DISTINCT lus.lexical_unit_id)::bigint AS lu_count
-        FROM frame_sense_frames fsf
-        LEFT JOIN lexical_unit_senses lus ON lus.frame_sense_id = fsf.frame_sense_id
-        WHERE fsf.frame_id = ANY(${frameIds}::bigint[])
-        GROUP BY fsf.frame_id
+  const conceptIds = concepts.map(f => f.id);
+  const luCountRows = conceptIds.length > 0
+    ? await prisma.$queryRaw<Array<{ concept_id: bigint; lu_count: bigint }>>`
+        SELECT fsf.concept_id AS concept_id, COUNT(DISTINCT lus.lexical_unit_id)::bigint AS lu_count
+        FROM sense_concepts fsf
+        LEFT JOIN lexical_unit_senses lus ON lus.sense_id = fsf.sense_id
+        WHERE fsf.concept_id = ANY(${conceptIds}::bigint[])
+        GROUP BY fsf.concept_id
       `
     : [];
-  const luCountByFrame = new Map(luCountRows.map(r => [r.frame_id.toString(), Number(r.lu_count)]));
+  const luCountByConcept = new Map(luCountRows.map(r => [r.concept_id.toString(), Number(r.lu_count)]));
 
-  // Transform to Frame type
-  const data: Frame[] = frames.map(frame => ({
-    id: frame.id.toString(),
-    label: frame.label,
-    definition: frame.definition,
-    short_definition: frame.short_definition,
-    code: frame.code,
-    flagged: frame.flagged ?? undefined,
-    flaggedReason: frame.flagged_reason ?? undefined,
-    verifiable: frame.verifiable ?? undefined,
-    unverifiableReason: frame.unverifiable_reason ?? undefined,
-    createdAt: frame.created_at,
-    updatedAt: frame.updated_at,
-    roles_count: frame._count.frame_roles,
-    senses_count: frame._count.frame_sense_frames,
-    lexical_units_count: luCountByFrame.get(frame.id.toString()) ?? 0,
-    frame_roles: frame.frame_roles.map(role => ({
+  // Transform to Concept type
+  const data: Concept[] = concepts.map(concept => ({
+    id: concept.id.toString(),
+    label: concept.label,
+    definition: concept.definition,
+    short_definition: concept.short_definition,
+    code: concept.code,
+    flagged: concept.flagged ?? undefined,
+    flaggedReason: concept.flagged_reason ?? undefined,
+    verifiable: concept.verifiable ?? undefined,
+    unverifiableReason: concept.unverifiable_reason ?? undefined,
+    createdAt: concept.created_at,
+    updatedAt: concept.updated_at,
+    roles_count: concept._count.properties,
+    senses_count: concept._count.sense_concepts,
+    lexical_units_count: luCountByConcept.get(concept.id.toString()) ?? 0,
+    properties: concept.properties.map(role => ({
       id: role.id.toString(),
       description: role.description,
       notes: role.notes,
@@ -857,13 +857,13 @@ export async function getPaginatedFrames(
       label: role.label,
       fillers: role.fillers,
     })),
-    frame_type: frame.frame_type,
-    subtype: frame.subtype,
-    disable_healthcheck: frame.disable_healthcheck,
-    vendler: frame.vendler,
-    multi_perspective: frame.multi_perspective,
-    wikidata_id: frame.wikidata_id,
-    recipe: frame.recipe as Frame['recipe'],
+    archetype: concept.archetype,
+    subtype: concept.subtype,
+    disable_healthcheck: concept.disable_healthcheck,
+    vendler: concept.vendler,
+    multi_perspective: concept.multi_perspective,
+    wikidata_id: concept.wikidata_id,
+    recipe: concept.recipe as Concept['recipe'],
   }));
 
   const totalPages = Math.ceil(total / limit);
@@ -890,8 +890,8 @@ export function revalidateGraphNodeCache() {
 export function revalidateAllEntryCaches() {
   revalidateTag('graph-node');
   revalidateTag('entries');
-  revalidateTag('frames');
-  revalidateTag('frame-hierarchy-counts');
+  revalidateTag('concepts');
+  revalidateTag('concept-hierarchy-counts');
 }
 
 /**

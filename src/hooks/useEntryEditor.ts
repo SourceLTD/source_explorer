@@ -1,12 +1,12 @@
 import { useState, useCallback } from 'react';
-import { GraphNode, Frame, sortRolesByPrecedence } from '@/lib/types';
-import { EditableField, EditableFrameRole, Mode } from '@/components/editing/types';
+import { GraphNode, Concept, sortRolesByPrecedence } from '@/lib/types';
+import { EditableField, EditableConceptProperty, Mode } from '@/components/editing/types';
 
-export function useEntryEditor(node: GraphNode | Frame | null, mode: Mode) {
+export function useEntryEditor(node: GraphNode | Concept | null, mode: Mode) {
   const [editingField, setEditingField] = useState<EditableField | null>(null);
   const [editValue, setEditValue] = useState<string>('');
   const [editListItems, setEditListItems] = useState<string[]>([]);
-  const [editFrameRoles, setEditFrameRoles] = useState<EditableFrameRole[]>([]);
+  const [editProperties, setEditProperties] = useState<EditableConceptProperty[]>([]);
   const [codeValidationMessage, setCodeValidationMessage] = useState<string>('');
   const [selectedHyponymsToMove, setSelectedHyponymsToMove] = useState<Set<string>>(new Set());
   const [isSaving, setIsSaving] = useState(false);
@@ -17,17 +17,17 @@ export function useEntryEditor(node: GraphNode | Frame | null, mode: Mode) {
     setEditingField(field);
     setCodeValidationMessage('');
     
-    // Frame-specific fields
-    if (mode === 'frames' && 'label' in node) {
-      const frameNode = node as Frame;
+    // Concept-specific fields
+    if (mode === 'concepts' && 'label' in node) {
+      const conceptNode = node as Concept;
       if (field === 'label') {
-        setEditValue(frameNode.label);
+        setEditValue(conceptNode.label);
       } else if (field === 'definition') {
-        setEditValue(frameNode.definition ?? '');
+        setEditValue(conceptNode.definition ?? '');
       } else if (field === 'short_definition') {
-        setEditValue(frameNode.short_definition ?? '');
-      } else if (field === 'frame_roles') {
-        const preparedFrameRoles = sortRolesByPrecedence(frameNode.frame_roles || []).map((role, index) => {
+        setEditValue(conceptNode.short_definition ?? '');
+      } else if (field === 'properties') {
+        const preparedProperties = sortRolesByPrecedence(conceptNode.properties || []).map((role, index) => {
           const clientId = role.id && role.id.length > 0 ? role.id : `existing-role-${index}-${role.label || 'unnamed'}`;
           return {
             id: role.id,
@@ -39,7 +39,7 @@ export function useEntryEditor(node: GraphNode | Frame | null, mode: Mode) {
             examples: Array.isArray(role.examples) ? role.examples : [],
           };
         });
-        setEditFrameRoles(preparedFrameRoles);
+        setEditProperties(preparedProperties);
       }
       return;
     }
@@ -68,8 +68,8 @@ export function useEntryEditor(node: GraphNode | Frame | null, mode: Mode) {
       setEditValue(graphNode.vendler_class || '');
     } else if (field === 'lexfile') {
       setEditValue(graphNode.lexfile || '');
-    } else if (field === 'frame') {
-      setEditValue(graphNode.frame_id || '');
+    } else if (field === 'concept') {
+      setEditValue(graphNode.concept_id || '');
     }
   }, [node, mode]);
 
@@ -77,7 +77,7 @@ export function useEntryEditor(node: GraphNode | Frame | null, mode: Mode) {
     setEditingField(null);
     setEditValue('');
     setEditListItems([]);
-    setEditFrameRoles([]);
+    setEditProperties([]);
     setCodeValidationMessage('');
     setSelectedHyponymsToMove(new Set());
   }, []);
@@ -110,27 +110,27 @@ export function useEntryEditor(node: GraphNode | Frame | null, mode: Mode) {
     });
   }, []);
 
-  // Frame role editing helpers
-  const updateFrameRole = useCallback((clientId: string, field: 'label' | 'description' | 'notes' | 'main' | 'examples', value: string | boolean | string[]) => {
-    setEditFrameRoles(prev => prev.map((role) => 
+  // Property editing helpers
+  const updateProperty = useCallback((clientId: string, field: 'label' | 'description' | 'notes' | 'main' | 'examples', value: string | boolean | string[]) => {
+    setEditProperties(prev => prev.map((role) => 
       role.clientId === clientId ? { ...role, [field]: value } : role
     ));
   }, []);
 
-  const addFrameRole = useCallback((main: boolean) => {
+  const addProperty = useCallback((main: boolean) => {
     const clientId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
-    setEditFrameRoles(prev => [...prev, { id: '', clientId, label: '', description: '', notes: '', main, examples: [] }]);
+    setEditProperties(prev => [...prev, { id: '', clientId, label: '', description: '', notes: '', main, examples: [] }]);
   }, []);
 
-  const removeFrameRole = useCallback((clientId: string) => {
-    setEditFrameRoles(prev => prev.filter(role => role.clientId !== clientId));
+  const removeProperty = useCallback((clientId: string) => {
+    setEditProperties(prev => prev.filter(role => role.clientId !== clientId));
   }, []);
 
   return {
     editingField,
     editValue,
     editListItems,
-    editFrameRoles,
+    editProperties,
     codeValidationMessage,
     selectedHyponymsToMove,
     isSaving,
@@ -145,9 +145,9 @@ export function useEntryEditor(node: GraphNode | Frame | null, mode: Mode) {
     addListItem,
     removeListItem,
     toggleHyponymSelection,
-    updateFrameRole,
-    addFrameRole,
-    removeFrameRole,
+    updateProperty,
+    addProperty,
+    removeProperty,
   };
 }
 

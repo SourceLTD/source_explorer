@@ -1,17 +1,17 @@
 /**
- * Shared cache + fetcher for `/api/frames/[id]/roles`.
+ * Shared cache + fetcher for `/api/concepts/[id]/roles`.
  *
- * Built alongside `frameSummaryCache.ts` so the new always-visible
- * `FrameRolePanel` (and any future role-aware surface) hits the same
- * cache: the inbox should never trigger duplicate role fetches when a
+ * Built alongside `conceptSummaryCache.ts` so the new always-visible
+ * `PropertyPanel` (and any future property-aware surface) hits the same
+ * cache: the inbox should never trigger duplicate property fetches when a
  * reviewer scrolls between buckets.
  *
  * Also de-duplicates concurrent in-flight requests so multiple panels
- * mounting at once collapse onto a single network call per frame id.
+ * mounting at once collapse onto a single network call per concept id.
  */
 
-export interface FrameRoleRow {
-  /** Stringified frame_role id. */
+export interface ConceptPropertyRow {
+  /** Stringified property id. */
   id: string;
   label: string | null;
   description: string | null;
@@ -20,40 +20,49 @@ export interface FrameRoleRow {
   examples: string[];
 }
 
-export interface FrameRolesPayload {
-  /** Stringified frame id. */
+/** @deprecated Use ConceptPropertyRow instead */
+export type FrameRoleRow = ConceptPropertyRow;
+
+export interface ConceptPropertiesPayload {
+  /** Stringified concept id. */
   id: string;
   label: string;
   code: string | null;
-  frame_type: string | null;
-  /** Precedence-sorted role list. */
-  roles: FrameRoleRow[];
+  archetype: string | null;
+  /** Precedence-sorted property list. */
+  roles: ConceptPropertyRow[];
 }
 
-const rolesCache = new Map<string, FrameRolesPayload>();
-const inflight = new Map<string, Promise<FrameRolesPayload | null>>();
+/** @deprecated Use ConceptPropertiesPayload instead */
+export type FrameRolesPayload = ConceptPropertiesPayload;
 
-export function getCachedFrameRoles(
+const rolesCache = new Map<string, ConceptPropertiesPayload>();
+const inflight = new Map<string, Promise<ConceptPropertiesPayload | null>>();
+
+export function getCachedProperties(
   id: string | null | undefined,
-): FrameRolesPayload | null {
+): ConceptPropertiesPayload | null {
   if (!id) return null;
   return rolesCache.get(id) ?? null;
 }
 
+/** @deprecated Use getCachedProperties instead */
+export const getCachedFrameRoles = getCachedProperties;
+
 /**
- * Fetch a frame's roles, sharing in-flight requests across callers.
+ * Fetch a concept's properties, sharing in-flight requests across callers.
  *
  * The caller's `signal` is intentionally NOT forwarded to the
  * underlying `fetch`: in dev StrictMode (and when several panels mount
- * the same frame simultaneously) the first caller's cleanup would
+ * the same concept simultaneously) the first caller's cleanup would
  * otherwise abort the shared request and every other consumer of the
  * same `inflight` promise would resolve to `null`. Mirrors the fix we
- * landed in `frameSummaryCache.ts`.
+ * landed in `conceptSummaryCache.ts`.
  */
-export async function fetchFrameRoles(
+export async function fetchProperties(
   id: string,
   signal?: AbortSignal,
-): Promise<FrameRolesPayload | null> {
+): Promise<ConceptPropertiesPayload | null> {
   const cached = rolesCache.get(id);
   if (cached) return cached;
 
@@ -66,9 +75,9 @@ export async function fetchFrameRoles(
 
   const p = (async () => {
     try {
-      const res = await fetch(`/api/frames/${id}/roles`);
+      const res = await fetch(`/api/concepts/${id}/roles`);
       if (!res.ok) return null;
-      const data = (await res.json()) as FrameRolesPayload;
+      const data = (await res.json()) as ConceptPropertiesPayload;
       rolesCache.set(id, data);
       return data;
     } catch {
@@ -84,7 +93,13 @@ export async function fetchFrameRoles(
   return result;
 }
 
+/** @deprecated Use fetchProperties instead */
+export const fetchFrameRoles = fetchProperties;
+
 /** Heuristic: real db ids are positive integer strings. */
-export function isRealFrameId(id: string | null | undefined): boolean {
+export function isRealConceptId(id: string | null | undefined): boolean {
   return !!id && /^\d+$/.test(id);
 }
+
+/** @deprecated Use isRealConceptId instead */
+export const isRealFrameId = isRealConceptId;

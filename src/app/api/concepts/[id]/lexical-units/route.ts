@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
 /**
- * GET /api/frames/[id]/lexical-units
- * Returns ALL lexical units for the specified frame (no limit).
- * Used when copying a frame row to include all relations, not just the sample.
+ * GET /api/concepts/[id]/lexical-units
+ * Returns ALL lexical units for the specified concept (no limit).
+ * Used when copying a concept row to include all relations, not just the sample.
  */
 export async function GET(
   request: NextRequest,
@@ -15,25 +15,25 @@ export async function GET(
     const frameId = BigInt(idParam);
 
     // Check if frame exists
-    const frame = await prisma.frames.findUnique({
+    const frame = await prisma.concepts.findUnique({
       where: { id: frameId },
       select: { id: true },
     });
 
     if (!frame) {
       return NextResponse.json(
-        { error: 'Frame not found' },
+        { error: 'Concept not found' },
         { status: 404 }
       );
     }
 
-    // Fetch lexical units via the sense chain: frame → frame_sense_frames →
-    // frame_senses → lexical_unit_senses → lexical_units. Deduplicate by LU id
-    // because multiple senses on the frame may reference the same LU.
-    const senseFrameLinks = await prisma.frame_sense_frames.findMany({
-      where: { frame_id: frameId },
+    // Fetch lexical units via the sense chain: concept → sense_concepts →
+    // senses → lexical_unit_senses → lexical_units. Deduplicate by LU id
+    // because multiple senses on the concept may reference the same LU.
+    const senseFrameLinks = await prisma.sense_concepts.findMany({
+      where: { concept_id: frameId },
       select: {
-        frame_senses: {
+        senses: {
           select: {
             lexical_unit_senses: {
               where: { lexical_units: { deleted: false } },
@@ -64,7 +64,7 @@ export async function GET(
       gloss: string;
     }>();
     for (const sfLink of senseFrameLinks) {
-      for (const lus of sfLink.frame_senses.lexical_unit_senses) {
+      for (const lus of sfLink.senses.lexical_unit_senses) {
         const lu = lus.lexical_units;
         const key = lu.id.toString();
         if (!deduped.has(key)) {
@@ -87,7 +87,7 @@ export async function GET(
       totalCount: serialized.length,
     });
   } catch (error) {
-    console.error('[API] Error fetching lexical units for frame:', error);
+    console.error('[API] Error fetching lexical units for concept:', error);
     return NextResponse.json(
       { error: 'Failed to fetch lexical units' },
       { status: 500 }

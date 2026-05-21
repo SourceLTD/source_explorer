@@ -168,7 +168,7 @@ export function RevisionModal({
                 <textarea
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
-                  placeholder='e.g. "Make the definition more concise", "Change the parent frame to MOTION", "Add an example sentence"...'
+                  placeholder='e.g. "Make the definition more concise", "Change the parent concept to MOTION", "Add an example sentence"...'
                   rows={4}
                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
                   disabled={submitting}

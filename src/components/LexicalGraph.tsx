@@ -77,7 +77,7 @@ export default function LexicalGraph({ currentNode, onNodeClick, onEditClick, mo
     
     if (node.vendler_class) height += 20;
     height += 22; // Category
-    if (node.frame) height += 22; // Frame
+    if (node.concept) height += 22; // Concept
     
     const glossText = node.gloss || '';
     const glossHeight = glossText ? Math.max(40, estimateTextHeight(glossText, contentWidth, 14, 1.3) + 10) : 40;
@@ -308,7 +308,7 @@ export default function LexicalGraph({ currentNode, onNodeClick, onEditClick, mo
               const contentWidth = nodeWidth - 24;
               const { glossHeight, lemmasHeight, examplesHeight } = nodeHeights;
               
-              let sectionY = centerY + 55 + (posNode.node.vendler_class ? 20 : 0) + 22 + (posNode.node.frame ? 22 : 0) + glossHeight + lemmasHeight + examplesHeight;
+              let sectionY = centerY + 55 + (posNode.node.vendler_class ? 20 : 0) + 22 + (posNode.node.concept ? 22 : 0) + glossHeight + lemmasHeight + examplesHeight;
               
               const causesY = sectionY;
               let causesHeight = 0;
@@ -424,7 +424,7 @@ export default function LexicalGraph({ currentNode, onNodeClick, onEditClick, mo
                       </span>
                     </div>
                   </foreignObject>
-                  {posNode.node.frame && (
+                  {posNode.node.concept && (
                     <foreignObject
                       x={centerX + 12}
                       y={centerY + (posNode.node.vendler_class ? 90 : 70)}
@@ -436,14 +436,14 @@ export default function LexicalGraph({ currentNode, onNodeClick, onEditClick, mo
                           FRAME
                         </span>
                         <span style={{ fontWeight: '500', fontSize: '10px' }}>
-                          {posNode.node.frame.label}
+                          {posNode.node.concept.label}
                         </span>
                       </div>
                     </foreignObject>
                   )}
                   <foreignObject
                     x={centerX + 12}
-                    y={centerY + 55 + (posNode.node.vendler_class ? 20 : 0) + 22 + (posNode.node.frame ? 22 : 0)}
+                    y={centerY + 55 + (posNode.node.vendler_class ? 20 : 0) + 22 + (posNode.node.concept ? 22 : 0)}
                     width={nodeWidth - 24}
                     height={glossHeight}
                   >
@@ -453,7 +453,7 @@ export default function LexicalGraph({ currentNode, onNodeClick, onEditClick, mo
                   </foreignObject>
                   <foreignObject
                     x={centerX + 12}
-                    y={centerY + 55 + (posNode.node.vendler_class ? 20 : 0) + 22 + (posNode.node.frame ? 22 : 0) + glossHeight}
+                    y={centerY + 55 + (posNode.node.vendler_class ? 20 : 0) + 22 + (posNode.node.concept ? 22 : 0) + glossHeight}
                     width={nodeWidth - 24}
                     height={20}
                   >
@@ -467,7 +467,7 @@ export default function LexicalGraph({ currentNode, onNodeClick, onEditClick, mo
                   {lemmasExpanded && (
                     <foreignObject
                       x={centerX + 12}
-                      y={centerY + 55 + (posNode.node.vendler_class ? 20 : 0) + 22 + (posNode.node.frame ? 22 : 0) + glossHeight + 20}
+                      y={centerY + 55 + (posNode.node.vendler_class ? 20 : 0) + 22 + (posNode.node.concept ? 22 : 0) + glossHeight + 20}
                       width={nodeWidth - 24}
                       height={lemmasHeight - 20}
                     >
@@ -480,7 +480,7 @@ export default function LexicalGraph({ currentNode, onNodeClick, onEditClick, mo
                     <>
                       <foreignObject
                         x={centerX + 12}
-                        y={centerY + 55 + (posNode.node.vendler_class ? 20 : 0) + 22 + (posNode.node.frame ? 22 : 0) + glossHeight + lemmasHeight}
+                        y={centerY + 55 + (posNode.node.vendler_class ? 20 : 0) + 22 + (posNode.node.concept ? 22 : 0) + glossHeight + lemmasHeight}
                         width={nodeWidth - 24}
                         height={20}
                       >
@@ -494,7 +494,7 @@ export default function LexicalGraph({ currentNode, onNodeClick, onEditClick, mo
                       {examplesExpanded && (
                         <foreignObject
                           x={centerX + 12}
-                          y={centerY + 55 + (posNode.node.vendler_class ? 20 : 0) + 22 + (posNode.node.frame ? 22 : 0) + glossHeight + lemmasHeight + 20}
+                          y={centerY + 55 + (posNode.node.vendler_class ? 20 : 0) + 22 + (posNode.node.concept ? 22 : 0) + glossHeight + lemmasHeight + 20}
                           width={nodeWidth - 24}
                           height={examplesHeight - 20}
                         >

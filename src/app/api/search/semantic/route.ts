@@ -19,7 +19,7 @@ interface SemanticSearchResult {
   similarity: number;
 }
 
-interface FrameSearchResult {
+interface ConceptSearchResult {
   id: number;
   label: string;
   short_definition?: string | null;
@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
   }
 
   // Update valid tables to include lexical_units
-  const validTables = ['lexical_units', 'frames', 'verbs', 'nouns', 'adjectives', 'adverbs'];
+  const validTables = ['lexical_units', 'concepts', 'verbs', 'nouns', 'adjectives', 'adverbs'];
   if (!validTables.includes(table)) {
     return NextResponse.json(
       { error: `Invalid table. Must be one of: ${validTables.join(', ')}` },
@@ -83,7 +83,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const results = (data as (SemanticSearchResult | FrameSearchResult)[]).map((item) => {
+    const results = (data as (SemanticSearchResult | ConceptSearchResult)[]).map((item) => {
       if ('label' in item) {
         return {
           id: item.id.toString(),

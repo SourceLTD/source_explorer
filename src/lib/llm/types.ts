@@ -4,10 +4,10 @@ import type { PartOfSpeech as POSType } from '@/lib/types';
 
 /**
  * The type of entity an LLM job can target.
- * Either a specific part of speech (Lexical Unit), a generic Lexical Unit, or a Frame.
- * Note: A Frame is not a Lexical Unit.
+ * Either a specific part of speech (Lexical Unit), a generic Lexical Unit, or a Concept.
+ * Note: A Concept is not a Lexical Unit.
  */
-export type JobTargetType = POSType | 'lexical_units' | 'frames';
+export type JobTargetType = POSType | 'lexical_units' | 'concepts';
 
 export interface JobScopeIds {
   kind: 'ids';
@@ -16,11 +16,11 @@ export interface JobScopeIds {
 }
 
 export interface JobScopeFrameIds {
-  kind: 'frame_ids';
-  frameIds: string[];
+  kind: 'concept_ids';
+  conceptIds: string[];
   targetType?: JobTargetType;
   includeLexicalUnits?: boolean;
-  flagTarget?: 'frame' | 'lexical_unit' | 'both';
+  flagTarget?: 'concept' | 'lexical_unit' | 'both';
   offset?: number;
   limit?: number;
 }
@@ -71,16 +71,16 @@ export interface CreateLLMJobParams {
     content: string;
     createdAt: string;
   }>;
-  /** Minimum number of new frames to create when splitting (default: 2) */
+  /** Minimum number of new concepts to create when splitting (default: 2) */
   splitMinFrames?: number;
-  /** Maximum number of new frames to create when splitting (default: 5) */
+  /** Maximum number of new concepts to create when splitting (default: 5) */
   splitMaxFrames?: number;
 }
 
 /**
  * Structured role data for template loops
  */
-export interface FrameRoleData {
+export interface ConceptPropertyData {
   type: string;
   description: string;
   examples: string[];
@@ -91,7 +91,7 @@ export interface FrameRoleData {
 /**
  * Structured lexical unit data for template loops
  */
-export interface FrameLexicalUnitData {
+export interface ConceptLexicalUnitData {
   id: string;
   code: string;
   gloss: string;
@@ -102,16 +102,16 @@ export interface FrameLexicalUnitData {
 }
 
 /**
- * Structured frame data with nested relations for template rendering
+ * Structured concept data with nested relations for template rendering
  */
-export interface FrameRelationData {
+export interface ConceptRelationData {
   id: string;
   code: string | null;
   label: string;
   definition?: string | null;
   short_definition?: string | null;
-  roles: FrameRoleData[];
-  lexical_units: FrameLexicalUnitData[];
+  roles: ConceptPropertyData[];
+  lexical_units: ConceptLexicalUnitData[];
 }
 
 export interface LexicalUnitSummary {
@@ -128,12 +128,12 @@ export interface LexicalUnitSummary {
   label?: string | null;
   lexfile?: string | null;
   additional?: Record<string, unknown>;
-  frame?: FrameRelationData | null;
-  // Frame-specific fields
+  concept?: ConceptRelationData | null;
+  // Concept-specific fields
   definition?: string | null;
   short_definition?: string | null;
-  roles?: FrameRoleData[];
-  lexical_units?: FrameLexicalUnitData[];
+  roles?: ConceptPropertyData[];
+  lexical_units?: ConceptLexicalUnitData[];
 }
 
 export interface RenderedPrompt {
@@ -141,7 +141,7 @@ export interface RenderedPrompt {
   variables: Record<string, string>;
 }
 
-export interface SerializedJobItem extends Omit<llm_job_items, 'id' | 'job_id' | 'created_at' | 'updated_at' | 'started_at' | 'completed_at' | 'lexical_unit_id' | 'frame_id'> {
+export interface SerializedJobItem extends Omit<llm_job_items, 'id' | 'job_id' | 'created_at' | 'updated_at' | 'started_at' | 'completed_at' | 'lexical_unit_id' | 'concept_id'> {
   id: string;
   job_id: string;
   created_at: string;
@@ -149,7 +149,7 @@ export interface SerializedJobItem extends Omit<llm_job_items, 'id' | 'job_id' |
   started_at: string | null;
   completed_at: string | null;
   lexical_unit_id: string | null;
-  frame_id: string | null;
+  concept_id: string | null;
 }
 
 export interface SerializedJob extends Omit<llm_jobs, 'id' | 'created_at' | 'updated_at' | 'started_at' | 'completed_at' | 'cost_microunits'> {
@@ -227,7 +227,7 @@ export function parseJobConfig(config: unknown): ParsedJobConfig | null {
 export function parseJobScope(scope: unknown): JobScope | null {
   if (!scope || typeof scope !== 'object') return null;
   const parsed = scope as { kind?: string };
-  if (!parsed.kind || !['ids', 'frame_ids', 'filters'].includes(parsed.kind)) {
+  if (!parsed.kind || !['ids', 'concept_ids', 'filters'].includes(parsed.kind)) {
     return null;
   }
   return scope as JobScope;
@@ -239,14 +239,14 @@ export function formatScopeDescription(scope: JobScope | null, totalItems: numbe
   switch (scope.kind) {
     case 'ids':
       return `${scope.ids.length} ${scope.targetType} by ID selection`;
-    case 'frame_ids': {
-      const frameCount = scope.frameIds?.length ?? 0;
+    case 'concept_ids': {
+      const conceptCount = scope.conceptIds?.length ?? 0;
       const target = scope.flagTarget === 'both' 
-        ? 'frames & lexical units' 
-        : scope.flagTarget === 'frame'
-          ? 'frames'
+        ? 'concepts & lexical units' 
+        : scope.flagTarget === 'concept'
+          ? 'concepts'
           : 'lexical units';
-      return `${frameCount} frames (${target})`;
+      return `${conceptCount} concepts (${target})`;
     }
     case 'filters':
       return `Filtered ${scope.targetType}${scope.filters?.limit ? ` (limit: ${scope.filters.limit})` : ''}`;

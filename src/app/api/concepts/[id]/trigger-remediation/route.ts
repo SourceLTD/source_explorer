@@ -1,7 +1,7 @@
 /**
- * API Route: /api/frames/[id]/trigger-remediation
+ * API Route: /api/concepts/[id]/trigger-remediation
  *
- * POST — Schedules a remediation run for a specific frame by creating
+ * POST — Schedules a remediation run for a specific concept by creating
  * a finding + remediation run + target directly, bypassing the full
  * health check pipeline.
  */
@@ -20,7 +20,7 @@ export async function POST(
     const { id: rawId } = await params;
     const frameId = parseIdParam(rawId);
     if (frameId === null) {
-      return NextResponse.json({ error: 'Invalid frame id' }, { status: 400 });
+      return NextResponse.json({ error: 'Invalid concept id' }, { status: 400 });
     }
 
     const body = await request.json();
@@ -40,12 +40,12 @@ export async function POST(
       );
     }
 
-    const frame = await prisma.frames.findFirst({
+    const frame = await prisma.concepts.findFirst({
       where: { id: frameId, deleted: false },
       select: { id: true, label: true },
     });
     if (!frame) {
-      return NextResponse.json({ error: 'Frame not found' }, { status: 404 });
+      return NextResponse.json({ error: 'Concept not found' }, { status: 404 });
     }
 
     const userId = await getCurrentUserName();
@@ -110,7 +110,7 @@ export async function POST(
             severity: 'medium',
             title: `[Manual] ${strategy.replace(/_/g, ' ')} — ${frame.label}`,
             message: [
-              description || `Manually scheduled remediation (strategy: ${strategy}) for frame "${frame.label}" (id: ${frameId}).`,
+              description || `Manually scheduled remediation (strategy: ${strategy}) for concept "${frame.label}" (id: ${frameId}).`,
               justification ? `\n\nJustification: ${justification}` : '',
             ].join(''),
           },
@@ -123,7 +123,7 @@ export async function POST(
         data: {
           kind: 'manual',
           status: 'queued',
-          scope: { frame_ids: [frameId.toString()], strategy },
+          scope: { concept_ids: [frameId.toString()], strategy },
           config: { triggered_by: userId },
         },
       });
@@ -132,7 +132,7 @@ export async function POST(
       const target = await tx.health_remediation_targets.create({
         data: {
           run_id: remediationRun.id,
-          finding_id: findingId,
+          finding_id: findingId!,
           diagnosis_code_id: diagnosisCode!.id,
           strategy,
           execution_kind: 'llm_batch',
@@ -141,7 +141,7 @@ export async function POST(
           target_fingerprint: `manual:${frameId}:${Date.now()}`,
           context: {
             triggered_by: userId,
-            frame_label: frame.label,
+            concept_label: frame.label,
             ...(description ? { user_description: description } : {}),
             ...(justification ? { user_justification: justification } : {}),
           },

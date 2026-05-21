@@ -13,10 +13,10 @@ export function parseURLToFilterAST(pos: JobTargetType, input: string | URLSearc
   const get = (k: string) => params.get(k);
 
   // Text filters
-  if (pos === 'frames') {
-    // Frame-specific text filters
-    const frameName = get('label');
-    if (frameName) addRule(group, { kind: 'rule', field: 'label', operator: 'contains', value: frameName });
+  if (pos === 'concepts') {
+    // Concept-specific text filters
+    const conceptName = get('label');
+    if (conceptName) addRule(group, { kind: 'rule', field: 'label', operator: 'contains', value: conceptName });
 
     const definition = get('definition');
     if (definition) addRule(group, { kind: 'rule', field: 'definition', operator: 'contains', value: definition });
@@ -52,22 +52,22 @@ export function parseURLToFilterAST(pos: JobTargetType, input: string | URLSearc
   if (unverifiableReason) addRule(group, { kind: 'rule', field: 'unverifiable_reason', operator: 'contains', value: unverifiableReason });
 
   // Categorical (skip for frames)
-  if (pos !== 'frames') {
+  if (pos !== 'concepts') {
     const lexfile = get('lexfile');
     if (lexfile) {
       const values = splitCsv(lexfile);
       addRule(group, { kind: 'rule', field: 'lexfile', operator: values.length > 1 ? 'in' : 'equals', value: values.length > 1 ? values : values[0] });
     }
 
-    const frameId = get('frame_id');
-    if (frameId && pos === 'verb') {
-      const values = splitCsv(frameId);
-      addRule(group, { kind: 'rule', field: 'frame_id', operator: values.length > 1 ? 'in' : 'equals', value: values.length > 1 ? values : values[0] });
+    const conceptId = get('concept_id');
+    if (conceptId && pos === 'verb') {
+      const values = splitCsv(conceptId);
+      addRule(group, { kind: 'rule', field: 'concept_id', operator: values.length > 1 ? 'in' : 'equals', value: values.length > 1 ? values : values[0] });
     }
   }
 
   // Booleans (URL uses camelCase for isMwe)
-  if (pos !== 'frames') {
+  if (pos !== 'concepts') {
     // Entry-specific boolean filters
     const isMwe = get('isMwe');
     if (isMwe !== null && pos !== 'verb') addRule(group, { kind: 'rule', field: 'is_mwe', operator: 'is', value: isMwe === 'true' });

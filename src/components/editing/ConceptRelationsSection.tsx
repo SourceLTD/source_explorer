@@ -1,13 +1,13 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { Frame } from '@/lib/types';
+import { Concept } from '@/lib/types';
 import { OverlaySection } from './OverlaySection';
-import { FrameSearchSelector } from './FrameSearchSelector';
+import { ConceptSearchSelector } from './ConceptSearchSelector';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import { refreshPendingChangesCount } from '@/hooks/usePendingChangesCount';
 
-interface FrameRelation {
+interface ConceptRelation {
   type: string;
   direction: 'incoming' | 'outgoing';
   source?: { id: string; label: string; short_definition?: string | null };
@@ -24,20 +24,20 @@ interface PendingRelationChange {
   target_short_definition?: string | null;
 }
 
-interface FrameRelationsSectionProps {
-  frame: Frame;
+interface ConceptRelationsSectionProps {
+  concept: Concept;
   isOpen: boolean;
   onToggle: () => void;
   onUpdate: () => Promise<void>;
 }
 
-export function FrameRelationsSection({
-  frame,
+export function ConceptRelationsSection({
+  concept,
   isOpen,
   onToggle,
   onUpdate,
-}: FrameRelationsSectionProps) {
-  const [relations, setRelations] = useState<FrameRelation[]>([]);
+}: ConceptRelationsSectionProps) {
+  const [relations, setRelations] = useState<ConceptRelation[]>([]);
   const [pendingRelChanges, setPendingRelChanges] = useState<PendingRelationChange[]>([]);
   const [loading, setLoading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -49,7 +49,7 @@ export function FrameRelationsSection({
   const fetchRelations = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/frames/${frame.id}/graph`);
+      const res = await fetch(`/api/concepts/${concept.id}/graph`);
       if (!res.ok) return;
       const data = await res.json();
       setRelations(data.relations ?? []);
@@ -59,7 +59,7 @@ export function FrameRelationsSection({
     } finally {
       setLoading(false);
     }
-  }, [frame.id]);
+  }, [concept.id]);
 
   useEffect(() => {
     if (isOpen) {
@@ -88,7 +88,7 @@ export function FrameRelationsSection({
     setError(null);
     setSuccessMessage(null);
     try {
-      const res = await fetch(`/api/frames/${frame.id}/reparent`, {
+      const res = await fetch(`/api/concepts/${concept.id}/reparent`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -124,7 +124,7 @@ export function FrameRelationsSection({
   };
 
   const isParentPendingDelete = (parentId: string) =>
-    pendingDeletes.some(p => p.source_id === frame.id && p.target_id === parentId);
+    pendingDeletes.some(p => p.source_id === concept.id && p.target_id === parentId);
 
   return (
     <OverlaySection
@@ -161,7 +161,7 @@ export function FrameRelationsSection({
             </div>
 
             {parents.length === 0 && pendingCreates.length === 0 ? (
-              <div className="text-sm text-gray-500 italic">No parent frames (root frame)</div>
+              <div className="text-sm text-gray-500 italic">No parent concepts (root concept)</div>
             ) : (
               <div className="space-y-1.5">
                 {parents.map(rel => {
@@ -199,13 +199,13 @@ export function FrameRelationsSection({
 
             {isEditing && (
               <div className="mt-3">
-                <FrameSearchSelector
+                <ConceptSearchSelector
                   value={selectedParentId}
                   onChange={setSelectedParentId}
                   onSave={handleSave}
                   onCancel={handleCancel}
                   isSaving={isSaving}
-                  placeholder="Search for new parent frame..."
+                  placeholder="Search for new parent concept..."
                 />
               </div>
             )}
@@ -225,7 +225,7 @@ export function FrameRelationsSection({
               <span className="ml-1 text-xs text-gray-400 font-normal">({children.length})</span>
             </h3>
             {children.length === 0 ? (
-              <div className="text-sm text-gray-500 italic">No child frames</div>
+              <div className="text-sm text-gray-500 italic">No child concepts</div>
             ) : (
               <div className="space-y-1.5 max-h-48 overflow-y-auto">
                 {children.map(rel => (

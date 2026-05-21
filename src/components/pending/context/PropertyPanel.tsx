@@ -2,15 +2,15 @@
 
 import React, { useEffect, useMemo, useState, type ReactNode } from 'react';
 import LoadingSpinner from '@/components/LoadingSpinner';
-import FrameInfoCard from './FrameInfoCard';
+import ConceptInfoCard from './ConceptInfoCard';
 import PlanContextPanel from './PlanContextPanel';
 import {
-  fetchFrameRoles,
-  getCachedFrameRoles,
-  isRealFrameId,
-  type FrameRoleRow,
-  type FrameRolesPayload,
-} from './frameRolesCache';
+  fetchProperties,
+  getCachedProperties,
+  isRealConceptId,
+  type ConceptPropertyRow,
+  type ConceptPropertiesPayload,
+} from './propertiesCache';
 
 /**
  * Snapshot of a single frame_role row, as captured on a pending
@@ -27,82 +27,82 @@ export interface RoleSnapshot {
   examples?: string[] | null;
 }
 
-export interface FrameRolePanelProps {
-  /** Real frame id from `snapshot.frame_id`. */
-  frameId: string | null;
-  /** Used while the frame loads, and as the title for missing ids. */
-  frameLabelFallback?: string;
+export interface PropertyPanelProps {
+  /** Real concept id from `snapshot.concept_id`. */
+  conceptId: string | null;
+  /** Used while the concept loads, and as the title for missing ids. */
+  conceptLabelFallback?: string;
   /** Operation on the role row itself. */
   operation: 'create' | 'update' | 'delete';
-  /** Snapshot of the role before the change. `null` for create. */
+  /** Snapshot of the property before the change. `null` for create. */
   before: RoleSnapshot | null;
-  /** Snapshot of the role after the change. `null` for delete. */
+  /** Snapshot of the property after the change. `null` for delete. */
   after: RoleSnapshot | null;
   /**
-   * Stable id of the role row (matches one of the entries in
-   * `FrameRolesPayload.roles[].id`). For create ops on a not-yet-
-   * committed role this can be null — we fall back to matching by
-   * label, and otherwise just append the synthetic role.
+   * Stable id of the property row (matches one of the entries in
+   * `ConceptPropertiesPayload.roles[].id`). For create ops on a not-yet-
+   * committed property this can be null — we fall back to matching by
+   * label, and otherwise just append the synthetic property.
    */
-  roleId: string | null;
+  propertyId: string | null;
 }
 
 /**
  * Always-visible rich panel for `entity_type='frame_role'` loose
  * changesets. Mirrors the visual language of the merge / move-sense
- * panels: a single `FrameInfoCard` for the parent frame on top, and a
- * Before/After `PlanContextPanel` underneath listing every role on
- * the parent frame so the reviewer can see the change in context
- * (e.g. "did renaming this role accidentally collide with a sibling?").
+ * panels: a single `ConceptInfoCard` for the parent concept on top, and a
+ * Before/After `PlanContextPanel` underneath listing every property on
+ * the parent concept so the reviewer can see the change in context
+ * (e.g. "did renaming this property accidentally collide with a sibling?").
  *
- * The edited role is highlighted green in the After column for create
- * / update, and red in the Before column for delete. Every other role
+ * The edited property is highlighted green in the After column for create
+ * / update, and red in the Before column for delete. Every other property
  * renders identically on both sides so the visual diff is purely
  * about the affected row.
  */
-export default function FrameRolePanel({
-  frameId,
-  frameLabelFallback,
+export default function PropertyPanel({
+  conceptId,
+  conceptLabelFallback,
   operation,
   before,
   after,
-  roleId,
-}: FrameRolePanelProps) {
-  const [payload, setPayload] = useState<FrameRolesPayload | null>(() =>
-    getCachedFrameRoles(frameId),
+  propertyId,
+}: PropertyPanelProps) {
+  const [payload, setPayload] = useState<ConceptPropertiesPayload | null>(() =>
+    getCachedProperties(conceptId),
   );
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!frameId || !isRealFrameId(frameId)) {
+    if (!conceptId || !isRealConceptId(conceptId)) {
       setPayload(null);
       return;
     }
-    const cached = getCachedFrameRoles(frameId);
+    const cached = getCachedProperties(conceptId);
     if (cached) {
       setPayload(cached);
       return;
     }
     const ac = new AbortController();
     setLoading(true);
-    void fetchFrameRoles(frameId, ac.signal).then((data) => {
+    void fetchProperties(conceptId, ac.signal).then((data) => {
       if (ac.signal.aborted) return;
       if (data) setPayload(data);
       setLoading(false);
     });
     return () => ac.abort();
-  }, [frameId]);
+  }, [conceptId]);
 
-  const { beforeRoles, afterRoles, beforeCount, afterCount } = useMemo(
-    () => deriveDiffedRoles({ payload, operation, before, after, roleId }),
-    [payload, operation, before, after, roleId],
+  const { beforeProperties, afterProperties, beforeCount, afterCount } = useMemo(
+    () => deriveDiffedProperties({ payload, operation, before, after, propertyId }),
+    [payload, operation, before, after, propertyId],
   );
 
   return (
     <div className="space-y-3">
-      <FrameInfoCard
-        frameId={frameId}
-        fallbackLabel={frameLabelFallback}
+      <ConceptInfoCard
+        conceptId={conceptId}
+        fallbackLabel={conceptLabelFallback}
         emphasis="focus"
         withPopover={false}
         hideSenses
@@ -111,14 +111,14 @@ export default function FrameRolePanel({
       {loading && !payload ? (
         <div className="flex items-center gap-2 text-[11px] text-gray-500 px-3 py-2">
           <LoadingSpinner size="sm" noPadding />
-          Loading roles…
+          Loading properties…
         </div>
       ) : (
         <PlanContextPanel
-          beforeLabel={`Current roles (${beforeCount})`}
-          afterLabel={`Proposed roles (${afterCount})`}
-          beforeContent={<RoleList rows={beforeRoles} />}
-          afterContent={<RoleList rows={afterRoles} />}
+          beforeLabel={`Current properties (${beforeCount})`}
+          afterLabel={`Proposed properties (${afterCount})`}
+          beforeContent={<PropertyList rows={beforeProperties} />}
+          afterContent={<PropertyList rows={afterProperties} />}
         />
       )}
     </div>
@@ -131,21 +131,21 @@ export default function FrameRolePanel({
 
 type DiffMark = 'unchanged' | 'updated' | 'added' | 'removed';
 
-interface DiffedRoleRow extends FrameRoleRow {
+interface DiffedPropertyRow extends ConceptPropertyRow {
   mark: DiffMark;
 }
 
 interface DeriveArgs {
-  payload: FrameRolesPayload | null;
+  payload: ConceptPropertiesPayload | null;
   operation: 'create' | 'update' | 'delete';
   before: RoleSnapshot | null;
   after: RoleSnapshot | null;
-  roleId: string | null;
+  propertyId: string | null;
 }
 
-interface DerivedRoles {
-  beforeRoles: DiffedRoleRow[];
-  afterRoles: DiffedRoleRow[];
+interface DerivedProperties {
+  beforeProperties: DiffedPropertyRow[];
+  afterProperties: DiffedPropertyRow[];
   beforeCount: number;
   afterCount: number;
 }
@@ -163,115 +163,96 @@ interface DerivedRoles {
  * drop the matching row from After and mark the same row as
  * `removed` in Before.
  */
-function deriveDiffedRoles({
+function deriveDiffedProperties({
   payload,
   operation,
   before,
   after,
-  roleId,
-}: DeriveArgs): DerivedRoles {
-  const baseRoles: FrameRoleRow[] = payload?.roles ?? [];
+  propertyId,
+}: DeriveArgs): DerivedProperties {
+  const baseProperties: ConceptPropertyRow[] = payload?.roles ?? [];
 
-  /**
-   * Pick the index of the role this changeset is editing. Prefer
-   * matching by id (the stable identifier). Fall back to label match
-   * across whichever snapshots the caller offers — `after` first
-   * because that's the proposed shape, then `before` so we still
-   * find the row when the writer only stamped non-label fields on
-   * `after` (e.g. an examples-only update).
-   */
-  const findRoleIndex = (
+  const findPropertyIndex = (
     ...snapshots: (RoleSnapshot | null | undefined)[]
   ): number => {
-    if (roleId) {
-      const i = baseRoles.findIndex((r) => r.id === roleId);
+    if (propertyId) {
+      const i = baseProperties.findIndex((r) => r.id === propertyId);
       if (i >= 0) return i;
     }
     for (const snap of snapshots) {
       const label = snap?.label;
       if (typeof label === 'string' && label) {
-        const i = baseRoles.findIndex((r) => r.label === label);
+        const i = baseProperties.findIndex((r) => r.label === label);
         if (i >= 0) return i;
       }
     }
     return -1;
   };
 
-  const beforeUnchanged: DiffedRoleRow[] = baseRoles.map((r) => ({
+  const beforeUnchanged: DiffedPropertyRow[] = baseProperties.map((r) => ({
     ...r,
     mark: 'unchanged',
   }));
-  const afterUnchanged: DiffedRoleRow[] = baseRoles.map((r) => ({
+  const afterUnchanged: DiffedPropertyRow[] = baseProperties.map((r) => ({
     ...r,
     mark: 'unchanged',
   }));
 
   if (operation === 'create') {
-    const synthetic = roleFromSnapshot(after, roleId, after?.label ?? '(new role)');
+    const synthetic = propertyFromSnapshot(after, propertyId, after?.label ?? '(new property)');
     afterUnchanged.push({ ...synthetic, mark: 'added' });
-    // Before: the create hasn't landed yet, so the parent's current
-    // roles list is exactly what we already rendered as `unchanged`.
     return {
-      beforeRoles: beforeUnchanged,
-      afterRoles: afterUnchanged,
+      beforeProperties: beforeUnchanged,
+      afterProperties: afterUnchanged,
       beforeCount: beforeUnchanged.length,
       afterCount: afterUnchanged.length,
     };
   }
 
   if (operation === 'update') {
-    const idx = findRoleIndex(after, before);
-    const baseRow = idx >= 0 ? baseRoles[idx] : null;
-    const merged = mergeRoleWithBase(after, baseRow, roleId);
+    const idx = findPropertyIndex(after, before);
+    const baseRow = idx >= 0 ? baseProperties[idx] : null;
+    const merged = mergePropertyWithBase(after, baseRow, propertyId);
     if (idx >= 0) {
       afterUnchanged[idx] = { ...merged, mark: 'updated' };
     } else {
-      // We couldn't find the role in the cached list (probably stale
-      // cache or an id mismatch). Append it so the reviewer still
-      // sees the proposed shape rather than a silent miss.
       afterUnchanged.push({ ...merged, mark: 'updated' });
     }
     return {
-      beforeRoles: beforeUnchanged,
-      afterRoles: afterUnchanged,
+      beforeProperties: beforeUnchanged,
+      afterProperties: afterUnchanged,
       beforeCount: beforeUnchanged.length,
       afterCount: afterUnchanged.length,
     };
   }
 
   // delete
-  const idx = findRoleIndex(before);
+  const idx = findPropertyIndex(before);
   if (idx >= 0) {
     beforeUnchanged[idx] = { ...beforeUnchanged[idx], mark: 'removed' };
     afterUnchanged.splice(idx, 1);
   } else {
-    // Couldn't find the role in cache; surface what we do know from
-    // the before snapshot so the reviewer isn't staring at "nothing
-    // changed" on a delete.
-    const fallback = roleFromSnapshot(before, roleId, before?.label ?? '(deleted role)');
+    const fallback = propertyFromSnapshot(before, propertyId, before?.label ?? '(deleted property)');
     beforeUnchanged.push({ ...fallback, mark: 'removed' });
   }
   return {
-    beforeRoles: beforeUnchanged,
-    afterRoles: afterUnchanged,
+    beforeProperties: beforeUnchanged,
+    afterProperties: afterUnchanged,
     beforeCount: beforeUnchanged.length,
-    // The After list dropped the deleted role, so beforeCount stays
-    // the parent's full count and afterCount reflects the projected
-    // post-commit count.
     afterCount: afterUnchanged.length,
   };
 }
 
 /**
- * Synthesise a `FrameRoleRow` from a snapshot only — used for create
+ * Synthesise a `ConceptPropertyRow` from a snapshot only — used for create
  * and delete, where there is no cached base row to merge with.
  * Missing fields become null / empty defaults.
  */
-function roleFromSnapshot(
+function propertyFromSnapshot(
   snap: RoleSnapshot | null,
   fallbackId: string | null,
   fallbackLabel: string,
-): FrameRoleRow {
+): ConceptPropertyRow {
   return {
     id: snap?.id ?? fallbackId ?? `synthetic-${fallbackLabel}`,
     label: snap?.label ?? fallbackLabel,
@@ -285,7 +266,7 @@ function roleFromSnapshot(
 }
 
 /**
- * Build the proposed `FrameRoleRow` for an `update`. Fields the
+ * Build the proposed `ConceptPropertyRow` for an `update`. Fields the
  * writer touched (present on the snapshot — not `undefined`) win;
  * fields the writer didn't touch fall back to the cached base row so
  * the reviewer sees the role's full identity, not just the changed
@@ -295,12 +276,12 @@ function roleFromSnapshot(
  * the writer explicitly cleared the field, which is rare for
  * `frame_role` but real (e.g. removing all notes).
  */
-function mergeRoleWithBase(
+function mergePropertyWithBase(
   snap: RoleSnapshot | null,
-  baseRow: FrameRoleRow | null,
+  baseRow: ConceptPropertyRow | null,
   fallbackId: string | null,
-): FrameRoleRow {
-  const fallbackLabel = baseRow?.label ?? snap?.label ?? '(role)';
+): ConceptPropertyRow {
+  const fallbackLabel = baseRow?.label ?? snap?.label ?? '(property)';
   return {
     id: snap?.id ?? baseRow?.id ?? fallbackId ?? `synthetic-${fallbackLabel}`,
     label: snap?.label !== undefined ? (snap.label ?? fallbackLabel) : (baseRow?.label ?? fallbackLabel),
@@ -314,21 +295,21 @@ function mergeRoleWithBase(
 }
 
 // =====================================================================
-// Role list renderer
+// Property list renderer
 // =====================================================================
 
-function RoleList({ rows }: { rows: DiffedRoleRow[] }) {
+function PropertyList({ rows }: { rows: DiffedPropertyRow[] }) {
   if (rows.length === 0) {
     return (
       <div className="text-[11px] italic text-gray-500 px-2 py-1.5">
-        No roles defined.
+        No properties defined.
       </div>
     );
   }
   return (
     <ul className="space-y-1.5">
       {rows.map((row) => (
-        <RoleCard key={`${row.id}-${row.mark}`} row={row} />
+        <PropertyCard key={`${row.id}-${row.mark}`} row={row} />
       ))}
     </ul>
   );
@@ -357,9 +338,9 @@ const MARK_STYLES: Record<DiffMark, { container: string; chip: string; tag: stri
   },
 };
 
-function RoleCard({ row }: { row: DiffedRoleRow }) {
+function PropertyCard({ row }: { row: DiffedPropertyRow }) {
   const style = MARK_STYLES[row.mark];
-  const label = row.label ?? '(unnamed role)';
+  const label = row.label ?? '(unnamed property)';
   return (
     <li
       className={`rounded-md border px-2 py-1.5 ${style.container}`}
@@ -411,7 +392,7 @@ function RoleCard({ row }: { row: DiffedRoleRow }) {
         >
           {row.examples.slice(0, 4).map((ex, i) => (
             <li key={i} className="line-clamp-2">
-              &ldquo;{renderRoleExample(ex)}&rdquo;
+              &ldquo;{renderPropertyExample(ex)}&rdquo;
             </li>
           ))}
           {row.examples.length > 4 && (
@@ -431,14 +412,14 @@ function RoleCard({ row }: { row: DiffedRoleRow }) {
  * wrapped span as bold text and strip the literal chevrons so the
  * reviewer sees the filler emphasised, not the markup.
  */
-const ROLE_EXAMPLE_CHEVRON_RE = /<<([^<>]+)>>/g;
-function renderRoleExample(example: string): ReactNode[] {
+const PROPERTY_EXAMPLE_CHEVRON_RE = /<<([^<>]+)>>/g;
+function renderPropertyExample(example: string): ReactNode[] {
   const parts: ReactNode[] = [];
   let lastIndex = 0;
   let key = 0;
-  ROLE_EXAMPLE_CHEVRON_RE.lastIndex = 0;
+  PROPERTY_EXAMPLE_CHEVRON_RE.lastIndex = 0;
   let match: RegExpExecArray | null;
-  while ((match = ROLE_EXAMPLE_CHEVRON_RE.exec(example)) !== null) {
+  while ((match = PROPERTY_EXAMPLE_CHEVRON_RE.exec(example)) !== null) {
     if (match.index > lastIndex) {
       parts.push(example.slice(lastIndex, match.index));
     }
@@ -447,7 +428,7 @@ function renderRoleExample(example: string): ReactNode[] {
         {match[1]}
       </strong>,
     );
-    lastIndex = ROLE_EXAMPLE_CHEVRON_RE.lastIndex;
+    lastIndex = PROPERTY_EXAMPLE_CHEVRON_RE.lastIndex;
   }
   if (lastIndex < example.length) {
     parts.push(example.slice(lastIndex));

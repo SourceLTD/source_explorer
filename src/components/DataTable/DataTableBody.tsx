@@ -2,22 +2,22 @@
 
 import React, { useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { TableEntry, Frame, FrameSenseTableRow, POS_LABELS, PendingChangeInfo, getRoleTypeAcronym, posShortLabel } from '@/lib/types';
+import { TableEntry, Concept, SenseTableRow, POS_LABELS, PendingChangeInfo, getRoleTypeAcronym, posShortLabel } from '@/lib/types';
 import { ColumnConfig } from '@/components/ColumnVisibilityPanel';
 import { CheckCircleIcon, XCircleIcon, ClipboardDocumentIcon } from '@heroicons/react/24/outline';
 import {
   getPendingCellClasses,
   getPendingRowClasses,
-  getFrameRoleOperation,
-  getFrameRolePendingCellClasses,
-  getFrameRoleChangeSummary,
-  getFrameRoleOldSnapshot,
+  getPropertyOperation,
+  getPropertyPendingCellClasses,
+  getPropertyChangeSummary,
+  getPropertyOldSnapshot,
 } from '@/components/PendingChangeIndicator';
 import { EmptyState } from '@/components/ui';
 import { DataTableMode, getGraphBasePath, FIELD_NAME_MAP } from './config';
 import { SortState, EditingState, FilterState } from './types';
 
-type DataTableEntry = TableEntry | Frame | FrameSenseTableRow;
+type DataTableEntry = TableEntry | Concept | SenseTableRow;
 
 // Helper components for empty/null values
 export const EmptyCell = () => <span className="text-gray-400 text-sm">—</span>;
@@ -231,18 +231,18 @@ export function CellContent({
   const router = useRouter();
   const graphBasePath = getGraphBasePath(mode);
 
-  const isFrame = (e: DataTableEntry): e is Frame => {
-    return mode === 'frames' && 'label' in e;
+  const isConcept = (e: DataTableEntry): e is Concept => {
+    return mode === 'concepts' && 'label' in e;
   };
 
-  const isFrameSense = (e: DataTableEntry): e is FrameSenseTableRow => {
-    return mode === 'frame_senses' && 'frameWarning' in e;
+  const isSense = (e: DataTableEntry): e is SenseTableRow => {
+    return mode === 'senses' && 'conceptWarning' in e;
   };
 
   // Common styles
   const textContainerClasses = "text-sm text-gray-900 break-words max-w-full";
 
-  if (isFrameSense(entry)) {
+  if (isSense(entry)) {
     switch (columnKey) {
       case 'id':
         return <span className="text-xs font-mono text-blue-600 break-all">{entry.id}</span>;
@@ -267,26 +267,26 @@ export function CellContent({
         ) : <EmptyCell />;
       case 'definition':
         return <div className={textContainerClasses}>{entry.definition || '—'}</div>;
-      case 'frame_type':
-        return entry.frame_type ? (
+      case 'archetype':
+        return entry.archetype ? (
           <span className="inline-flex px-1.5 py-0.5 rounded-full border text-xs font-medium bg-blue-50 text-blue-700 border-blue-200">
-            {entry.frame_type}
+            {entry.archetype}
           </span>
         ) : (
           <span className="text-xs text-gray-300"></span>
         );
       case 'frame':
-        return entry.frames.length > 0 ? (
+        return entry.concepts.length > 0 ? (
           <div className="flex flex-wrap gap-1">
-            {entry.frames.map(frame => (
+            {entry.concepts.map(concept => (
               <button
-                key={frame.id}
+                key={concept.id}
                 type="button"
-                onClick={() => router.push(`/graph/frames?entry=${encodeURIComponent(frame.id)}`)}
+                onClick={() => router.push(`/graph/concepts?entry=${encodeURIComponent(concept.id)}`)}
                 className="inline-flex items-center rounded bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-600 hover:bg-blue-100 cursor-pointer transition-colors"
-                title={frame.label}
+                title={concept.label}
               >
-                {frame.code ?? frame.label ?? frame.id}
+                {concept.code ?? concept.label ?? concept.id}
               </button>
             ))}
           </div>
@@ -316,11 +316,11 @@ export function CellContent({
             )}
           </div>
         );
-      case 'frameWarning':
-        if (entry.frameWarning === null) return <EmptyCell />;
+      case 'conceptWarning':
+        if (entry.conceptWarning === null) return <EmptyCell />;
         return (
           <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
-            {entry.frameWarning === 'none' ? 'No frame' : 'Multiple frames'}
+            {entry.conceptWarning === 'none' ? 'No concept' : 'Multiple concepts'}
           </span>
         );
       case 'confidence':
@@ -336,7 +336,7 @@ export function CellContent({
       default:
         break;
     }
-  } else if (isFrame(entry)) {
+  } else if (isConcept(entry)) {
     switch (columnKey) {
       case 'id':
         return <span className="text-xs font-mono text-blue-600 break-words">{entry.id}</span>;
@@ -374,26 +374,26 @@ export function CellContent({
         );
       case 'lexical_units_count':
         return <div className="text-sm text-gray-600">{entry.lexical_units_count ?? 0}</div>;
-      case 'frame_roles':
+      case 'properties':
         {
           const pending = entry.pending;
-          const summary = getFrameRoleChangeSummary(pending);
-          const deletedRoleTypes = summary.deleted;
-          const roles = entry.frame_roles || [];
+          const summary = getPropertyChangeSummary(pending);
+          const deletedPropertyTypes = summary.deleted;
+          const properties = entry.properties || [];
 
-          if (roles.length === 0 && deletedRoleTypes.length === 0) return <EmptyCell />;
+          if (properties.length === 0 && deletedPropertyTypes.length === 0) return <EmptyCell />;
 
           return (
             <div className="space-y-1 max-w-full">
-              {roles.map((role, idx) => {
-                const roleTypeLabel =
-                  role.label ??
-                  (role as any)?.roleType ??
+              {properties.map((prop, idx) => {
+                const propertyTypeLabel =
+                  prop.label ??
+                  (prop as any)?.roleType ??
                   'Unknown';
 
-                const op = getFrameRoleOperation(pending, roleTypeLabel);
-                const rowHighlight = op ? getFrameRolePendingCellClasses(op) : '';
-                const acronym = getRoleTypeAcronym(roleTypeLabel);
+                const op = getPropertyOperation(pending, propertyTypeLabel);
+                const rowHighlight = op ? getPropertyPendingCellClasses(op) : '';
+                const acronym = getRoleTypeAcronym(propertyTypeLabel);
 
                 return (
                   <div
@@ -403,21 +403,21 @@ export function CellContent({
                   >
                     <div className="flex justify-end">
                       <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-600 whitespace-nowrap">
-                        <span className="font-bold">{role.label || '—'}</span>
+                        <span className="font-bold">{prop.label || '—'}</span>
                         <span className="text-blue-400 ml-1">({acronym})</span>
                       </span>
                     </div>
-                    <span className="text-xs text-gray-600 truncate self-center" title={role.description || ''}>
-                      {role.description || '—'}
+                    <span className="text-xs text-gray-600 truncate self-center" title={prop.description || ''}>
+                      {prop.description || '—'}
                     </span>
                   </div>
                 );
               })}
 
-              {deletedRoleTypes.length > 0 && (
+              {deletedPropertyTypes.length > 0 && (
                 <div className="pt-1 space-y-1">
-                  {deletedRoleTypes.map((rt) => {
-                    const old = getFrameRoleOldSnapshot(pending, rt);
+                  {deletedPropertyTypes.map((rt) => {
+                    const old = getPropertyOldSnapshot(pending, rt);
                     const displayLabel = old?.label || rt;
                     const acronym = getRoleTypeAcronym(rt);
                     const description = old?.description || '—';
@@ -425,9 +425,9 @@ export function CellContent({
                     return (
                       <div
                         key={rt}
-                        className={`grid gap-x-2 rounded px-1 py-0.5 ${getFrameRolePendingCellClasses('delete')}`}
+                        className={`grid gap-x-2 rounded px-1 py-0.5 ${getPropertyPendingCellClasses('delete')}`}
                         style={{ gridTemplateColumns: 'auto 1fr' }}
-                        title="Role will be deleted"
+                        title="Property will be deleted"
                       >
                         <div className="flex justify-end">
                           <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-50 text-red-700 whitespace-nowrap">
@@ -525,13 +525,13 @@ export function CellContent({
           </div>
         );
       case 'frame': {
-      // With the senses refactor, a lexical unit may have multiple frames (via its senses).
-      // We show all of them, deduped, as clickable chips. `entry.frames` is populated from
-      // the senses chain; `entry.frame`/`entry.frame_id` remain as legacy single-value fields.
-      const frames = entry.frames && entry.frames.length > 0
-        ? entry.frames
-        : (entry.frame_id
-            ? [{ id: entry.frame_id, label: entry.frame ?? entry.frame_id, code: entry.frame ?? null }]
+      // With the senses refactor, a lexical unit may have multiple concepts (via its senses).
+      // We show all of them, deduped, as clickable chips. `entry.concepts` is populated from
+      // the senses chain; `entry.concept`/`entry.concept_id` remain as legacy single-value fields.
+      const frames = entry.concepts && entry.concepts.length > 0
+        ? entry.concepts
+        : (entry.concept_id
+            ? [{ id: entry.concept_id, label: entry.concept ?? entry.concept_id, code: entry.concept ?? null }]
             : []);
 
       if (frames.length === 0) {
@@ -547,7 +547,7 @@ export function CellContent({
               <span
                 key={f.id}
                 className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-600 hover:bg-blue-100 cursor-pointer transition-colors"
-                onClick={() => router.push(`/graph/frames?entry=${f.id}`)}
+                onClick={() => router.push(`/graph/concepts?entry=${f.id}`)}
                 title={f.label}
               >
                 {dotIndex !== -1 ? (
@@ -571,8 +571,8 @@ export function CellContent({
       }
       return (
         <div className="flex flex-col gap-1">
-          {senses.slice(0, 4).map(sense => {
-            const warning = sense.frameWarning;
+            {senses.slice(0, 4).map(sense => {
+            const warning = sense.conceptWarning;
             return (
               <div
                 key={sense.id}
@@ -587,12 +587,12 @@ export function CellContent({
                   {sense.definition?.slice(0, 80) || '(no definition)'}
                   {sense.definition && sense.definition.length > 80 ? '…' : ''}
                 </span>
-                {warning === null && sense.frame && (
+                {warning === null && sense.concept && (
                   <span
                     className="shrink-0 text-[10px] text-gray-500"
-                    title={sense.frame.label}
+                    title={sense.concept.label}
                   >
-                    → {sense.frame.code ?? sense.frame.label}
+                    → {sense.concept.code ?? sense.concept.label}
                   </span>
                 )}
                 {warning !== null && (
@@ -600,11 +600,11 @@ export function CellContent({
                     className="shrink-0 text-[10px] font-semibold text-amber-700"
                     title={
                       warning === 'none'
-                        ? 'No frame linked'
-                        : `${sense.frames.length} frames linked`
+                        ? 'No concept linked'
+                        : `${sense.concepts.length} concepts linked`
                     }
                   >
-                    {warning === 'none' ? '⚠ no frame' : `⚠ ${sense.frames.length}`}
+                    {warning === 'none' ? '⚠ no concept' : `⚠ ${sense.concepts.length}`}
                   </span>
                 )}
               </div>
@@ -982,7 +982,7 @@ export function DataTableBody({
                     ));
 
                   const hasPendingFieldChangeForField = baseHasPendingFieldChangeForField;
-                  const isFrameRolesColumn = col.key === 'frame_roles';
+                  const isPropertiesColumn = col.key === 'properties';
                   const cellOp = pending?.operation ?? 'update';
 
                   const content = (
@@ -1008,7 +1008,7 @@ export function DataTableBody({
                       className="px-3 py-3 align-top border-l border-gray-50"
                       style={{ width: getColumnWidth(col.key) }}
                     >
-                      {hasPendingFieldChangeForField && pending && !isFrameRolesColumn ? (
+                      {hasPendingFieldChangeForField && pending && !isPropertiesColumn ? (
                         <div className={`inline-block max-w-full rounded px-1 ${getPendingCellClasses(cellOp)}`}>
                           {content}
                         </div>

@@ -845,7 +845,7 @@ function DiagnosisCodesPanel({
                       f === 'standalone'
                         ? 'Codes with no group_id (no related variants)'
                         : f === 'scoped'
-                          ? 'Codes targeted at specific frame_type / subtype values'
+                          ? 'Codes targeted at specific archetype / subtype values'
                           : f === 'disabled'
                             ? 'Codes that are currently disabled'
                             : 'All codes'
@@ -1149,7 +1149,7 @@ function CodeDetailPanel({
         </DetailBlock>
 
         <div className="grid grid-cols-3 gap-4">
-          <DetailBlock title="Frame Targeting">
+          <DetailBlock title="Concept Targeting">
             <ScopeSummary code={code} />
           </DetailBlock>
 
@@ -1257,40 +1257,40 @@ function SummaryStat({ label, value }: { label: string; value: number }) {
 }
 
 const DIAGNOSIS_CODE_GROUP_DESCRIPTIONS: Record<string, string> = {
-  dr_011: 'Frame definitions that open with boilerplate instead of directly stating the frame meaning.',
-  dr_012: 'Frame definitions padded with formulaic filler rather than substantive semantic content.',
-  dr_015: 'Definitions that add required constraints not supported by the frame inventory.',
-  dr_016: 'Definitions that use generic role names instead of the frame role labels.',
-  dr_029: 'Frames missing a core participant or structural role implied by the definition.',
-  dr_030: 'Core roles that are not entailed by the frame definition or role structure.',
-  dr_031: 'Role inventories where core and peripheral status appears misassigned.',
-  dr_032: 'Role families that look inconsistent with the frame type or subtype.',
-  dr_034: 'Duplicate scalar, degree, extent, or strength roles in one frame.',
-  dr_035: 'Gradable frames missing a degree, amount, value, or scale role.',
-  dr_036: 'Symmetric or directional relations whose role inventory does not match the relation.',
-  dr_038: 'Core role labels that are too generic for the frame-specific participant.',
-  dr_040: 'Role labels that mix naming perspectives or duplicate the same participant view.',
-  dr_043: 'Role descriptions too vague to identify filler type or semantic function.',
-  dr_044: 'Role descriptions whose filler type conflicts with the role or frame.',
-  dr_047: 'Role examples that highlight the wrong filler or span.',
-  dr_048: 'Role examples that do not clearly evoke the target frame.',
-  dr_057: 'Role mappings with inconsistent absorbed/incorporated value flags.',
-  dr_063: 'Role mappings between ontologically incompatible parent and child roles.',
-  dr_064: 'Role mappings that treat unrelated roles as renamed equivalents.',
-  dr_066: 'Forced mappings used to avoid dropping a parent role despite poor alignment.',
-  dr_067: 'Inherited parent core roles missing a corresponding child mapping.',
-  dr_068: 'Peripheral or circumstantial roles incorrectly mapped to core semantic participants.',
-  dr_072: 'Role inventory patterns suggesting the frame has the wrong frame_type.',
-  dr_073: 'Definitions and roles that suggest the current parent edge is invalid.',
-  fs_001: 'Frames missing a legitimate part-of-speech alternation sense.',
-  fs_005: 'Frame senses whose meaning belongs in a different frame.',
-  fs_007: 'Cross-POS derivations that combine incompatible concepts in one frame.',
-  fs_008: 'Cause, event, result, or state readings bundled into one frame sense family.',
-  fs_009: 'Entity-like noun senses attached to property, measure, or relation frames.',
-  fs_011: 'Referent noun senses placed in frames for pertinence or relation meanings.',
-  fs_013: 'Abstract and physical readings collapsed into one frame sense family.',
-  fs_014: 'Literal and metaphorical readings mixed under one frame.',
-  fs_015: 'Spatial and temporal readings treated as the same frame sense family.',
+  dr_011: 'Concept definitions that open with boilerplate instead of directly stating the concept meaning.',
+  dr_012: 'Concept definitions padded with formulaic filler rather than substantive semantic content.',
+  dr_015: 'Definitions that add required constraints not supported by the concept inventory.',
+  dr_016: 'Definitions that use generic property names instead of the concept property labels.',
+  dr_029: 'Concepts missing a core participant or structural property implied by the definition.',
+  dr_030: 'Core properties that are not entailed by the concept definition or property structure.',
+  dr_031: 'Property inventories where core and peripheral status appears misassigned.',
+  dr_032: 'Property families that look inconsistent with the archetype or subtype.',
+  dr_034: 'Duplicate scalar, degree, extent, or strength properties in one concept.',
+  dr_035: 'Gradable concepts missing a degree, amount, value, or scale property.',
+  dr_036: 'Symmetric or directional relations whose property inventory does not match the relation.',
+  dr_038: 'Core property labels that are too generic for the concept-specific participant.',
+  dr_040: 'Property labels that mix naming perspectives or duplicate the same participant view.',
+  dr_043: 'Property descriptions too vague to identify filler type or semantic function.',
+  dr_044: 'Property descriptions whose filler type conflicts with the property or concept.',
+  dr_047: 'Property examples that highlight the wrong filler or span.',
+  dr_048: 'Property examples that do not clearly evoke the target concept.',
+  dr_057: 'Property mappings with inconsistent absorbed/incorporated value flags.',
+  dr_063: 'Property mappings between ontologically incompatible parent and child properties.',
+  dr_064: 'Property mappings that treat unrelated properties as renamed equivalents.',
+  dr_066: 'Forced mappings used to avoid dropping a parent property despite poor alignment.',
+  dr_067: 'Inherited parent core properties missing a corresponding child mapping.',
+  dr_068: 'Peripheral or circumstantial properties incorrectly mapped to core semantic participants.',
+  dr_072: 'Property inventory patterns suggesting the concept has the wrong archetype.',
+  dr_073: 'Definitions and properties that suggest the current parent edge is invalid.',
+  fs_001: 'Concepts missing a legitimate part-of-speech alternation sense.',
+  fs_005: 'Concept senses whose meaning belongs in a different concept.',
+  fs_007: 'Cross-POS derivations that combine incompatible concepts in one concept.',
+  fs_008: 'Cause, event, result, or state readings bundled into one concept sense family.',
+  fs_009: 'Entity-like noun senses attached to property, measure, or relation concepts.',
+  fs_011: 'Referent noun senses placed in concepts for pertinence or relation meanings.',
+  fs_013: 'Abstract and physical readings collapsed into one concept sense family.',
+  fs_014: 'Literal and metaphorical readings mixed under one concept.',
+  fs_015: 'Spatial and temporal readings treated as the same concept sense family.',
   fs_016: 'Physical, mental, or emotional readings bundled together.',
   fs_017: 'Private cognitive acts mixed with public communicative acts.',
   fs_018: 'Creation, joining, repair, or modification readings collapsed together.',
@@ -1298,10 +1298,10 @@ const DIAGNOSIS_CODE_GROUP_DESCRIPTIONS: Record<string, string> = {
   fs_020: 'Activity, process, achievement, and result readings bundled together.',
   fs_021: 'Attempt readings mixed with successful achievement readings.',
   fs_022: 'Cause, mechanism, symptom, and downstream effect readings collapsed together.',
-  fs_023: 'Part, material component, and whole-system readings treated as one frame.',
+  fs_023: 'Part, material component, and whole-system readings treated as one concept.',
   fs_024: 'Categorical type readings mixed with pertinence or relation readings.',
   fs_025: 'Purpose or function readings mixed with domain pertinence readings.',
-  fs_026: 'Distinct relation predicates bundled into one relation frame.',
+  fs_026: 'Distinct relation predicates bundled into one relation concept.',
   fs_027: 'Membership, parthood, enclosure, ownership, or belonging readings collapsed together.',
   fs_030: 'Dispositional readings mixed with occurrent state readings.',
   fs_031: 'Intrinsic properties mixed with comparative or norm-relative properties.',
@@ -1310,38 +1310,38 @@ const DIAGNOSIS_CODE_GROUP_DESCRIPTIONS: Record<string, string> = {
   fs_035: 'Neutral report readings mixed with pejorative or evaluative readings.',
   fs_036: 'Broad hypernym readings mixed with specialized subtype readings.',
   fs_038: 'Scalar thresholds, degree bands, or magnitude ranges collapsed together.',
-  fs_040: 'Opposite directions, orientations, or converse relations treated as one frame.',
+  fs_040: 'Opposite directions, orientations, or converse relations treated as one concept.',
   fs_041: 'Agent capability readings mixed with patient susceptibility readings.',
-  fs_042: 'Pole-specific or biased senses placed in a neutral dimensional frame.',
+  fs_042: 'Pole-specific or biased senses placed in a neutral dimensional concept.',
   fs_045: 'Complementary attribute facets split despite describing one trait bundle.',
   fs_048: 'Senses split only by someone/something or animacy distinctions.',
   fs_049: 'Pertinence senses duplicated through false specificity.',
-  fs_050: 'Causative or inchoative variants split without a real frame distinction.',
+  fs_050: 'Causative or inchoative variants split without a real concept distinction.',
   fs_051: 'Event senses split only by perspective or participant focus.',
   fs_052: 'Duplicate senses created from minor filler or reflexive variation.',
   fs_053: 'Technical or operational distinctions that are not separate lexical senses.',
-  fs_055: 'Eventive senses attached to non-eventive frames.',
-  fs_056: 'Non-eventive senses attached to event frames.',
-  fs_057: 'Sense definitions whose wording is in the wrong frame register.',
-  fs_058: 'Sense definitions that do not follow the expected template for their frame type.',
+  fs_055: 'Eventive senses attached to non-eventive concepts.',
+  fs_056: 'Non-eventive senses attached to event concepts.',
+  fs_057: 'Sense definitions whose wording is in the wrong concept register.',
+  fs_058: 'Sense definitions that do not follow the expected template for their archetype.',
   fs_062: 'Biased property or endpoint noun senses placed outside the neutral scale.',
   fs_063: 'Paired senses with incorrect alternation metadata.',
   fs_064: 'Converse relation readings treated as mere perspective variants.',
   fs_067: 'Dynamic process readings mixed with static measure readings.',
   i_001: 'Parent-child hierarchy edges recorded in the wrong direction.',
-  i_003: 'Child frames attached below an over-specific parent instead of the correct ancestor.',
-  i_004: 'Sibling frames incorrectly connected as parent and child.',
+  i_003: 'Child concepts attached below an over-specific parent instead of the correct ancestor.',
+  i_004: 'Sibling concepts incorrectly connected as parent and child.',
   i_005: 'Hierarchy edges where the endpoints appear duplicate or near-synonymous.',
-  i_007: 'Literal and metaphorical frames incorrectly linked by inheritance.',
-  i_009: 'Frames in the same domain but with different mechanisms linked as IS-A.',
-  i_012: 'Property frames attached to parents with the wrong bearer or measurand.',
+  i_007: 'Literal and metaphorical concepts incorrectly linked by inheritance.',
+  i_009: 'Concepts in the same domain but with different mechanisms linked as IS-A.',
+  i_012: 'Property concepts attached to parents with the wrong bearer or measurand.',
   i_014: 'Polarity, opposite-pole, or converse relation errors in the hierarchy.',
   i_015: 'Associative, topical, or contextual links mistaken for IS-A inheritance.',
-  i_020: 'Scalar or measure frames attached to the wrong scale parent.',
+  i_020: 'Scalar or measure concepts attached to the wrong scale parent.',
   i_022: 'Specialized parent edges where the child broadens outside the parent domain.',
   s_010: 'Action or process senses mixed with patient capability adjective readings.',
   s_028: 'Dynamic change readings mixed with static property readings.',
-  s_045: 'Entity frames that collapse distinct entity kinds with different identity criteria.',
+  s_045: 'Entity concepts that collapse distinct entity kinds with different identity criteria.',
   s_073: 'Sense definitions that are circular rather than informative.',
   s_074: 'Sense definitions that rely on open-ended exemplar lists.',
   s_078: 'Sense definitions that include example clauses instead of only denotation.',
@@ -1415,8 +1415,8 @@ function buildGroupLookup(codes: HealthDiagnosisCode[]) {
 
 function isScopedDiagnosisCode(code: HealthDiagnosisCode) {
   return (
-    (code.applies_to_frame_types?.length ?? 0) > 0 ||
-    (code.applies_to_frame_subtypes?.length ?? 0) > 0 ||
+    (code.applies_to_archetypes?.length ?? 0) > 0 ||
+    (code.applies_to_subtypes?.length ?? 0) > 0 ||
     code.match_null_subtype === true
   );
 }
@@ -1510,10 +1510,10 @@ interface ScopeUnion {
 function getScopeUnion(codes: HealthDiagnosisCode[]): ScopeUnion {
   return {
     types: Array.from(
-      new Set(codes.flatMap((code) => code.applies_to_frame_types ?? [])),
+      new Set(codes.flatMap((code) => code.applies_to_archetypes ?? [])),
     ).sort(),
     subtypes: Array.from(
-      new Set(codes.flatMap((code) => code.applies_to_frame_subtypes ?? [])),
+      new Set(codes.flatMap((code) => code.applies_to_subtypes ?? [])),
     ).sort(),
     matchNullSubtype: codes.some((code) => code.match_null_subtype),
   };
@@ -1533,7 +1533,7 @@ function ScopeBadges({ scope }: { scope: ScopeUnion }) {
         <span
           key={`type:${type}`}
           className="inline-flex px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-medium"
-          title={`Applies to frame_type: ${type}`}
+          title={`Applies to archetype: ${type}`}
         >
           {type}
         </span>
@@ -1621,15 +1621,15 @@ function flattenCodesByGroup(
 }
 
 function ScopeSummary({ code }: { code: HealthDiagnosisCode }) {
-  const types = code.applies_to_frame_types ?? [];
-  const subtypes = code.applies_to_frame_subtypes ?? [];
+  const types: string[] = code.applies_to_archetypes ?? [];
+  const subtypes: string[] = code.applies_to_subtypes ?? [];
 
   const noTypeFilter = types.length === 0;
   const noSubtypeFilter = subtypes.length === 0;
   if (noTypeFilter && noSubtypeFilter) {
     return (
       <span className="text-gray-700">
-        Applies to <span className="font-medium">all frames</span>.
+        Applies to <span className="font-medium">all concepts</span>.
       </span>
     );
   }
@@ -1637,7 +1637,7 @@ function ScopeSummary({ code }: { code: HealthDiagnosisCode }) {
   return (
     <div className="space-y-1.5">
       <div className="flex flex-wrap items-center gap-1.5">
-        <span className="text-xs text-gray-500">frame_type:</span>
+        <span className="text-xs text-gray-500">archetype:</span>
         {types.length === 0 ? (
           <span className="text-xs text-gray-500 italic">any</span>
         ) : (

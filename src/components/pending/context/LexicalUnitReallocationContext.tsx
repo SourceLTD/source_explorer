@@ -17,7 +17,7 @@ interface LexicalUnitSnippetApi {
   gloss: string;
 }
 
-interface FrameFromPaginated {
+interface ConceptFromPaginated {
   id: string;
   label: string;
   code?: string | null;
@@ -30,8 +30,8 @@ interface FrameFromPaginated {
   };
 }
 
-interface FramesPaginatedResponse {
-  data: FrameFromPaginated[];
+interface ConceptsPaginatedResponse {
+  data: ConceptFromPaginated[];
 }
 
 function isAbortError(err: unknown): boolean {
@@ -66,7 +66,7 @@ async function fetchJson<T>(url: string, signal: AbortSignal): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-function frameFromSnapshot(virtualId: string, snapshot: unknown): FrameFromPaginated {
+function conceptFromSnapshot(virtualId: string, snapshot: unknown): ConceptFromPaginated {
   const rec = (snapshot && typeof snapshot === 'object' && !Array.isArray(snapshot)) ? (snapshot as JsonRecord) : {};
   const label = typeof rec.label === 'string' ? rec.label : '';
   const code = typeof rec.code === 'string' ? rec.code : null;
@@ -80,30 +80,30 @@ function frameFromSnapshot(virtualId: string, snapshot: unknown): FrameFromPagin
   };
 }
 
-async function loadFrameRef(
+async function loadConceptRef(
   ref: string,
   signal: AbortSignal
-): Promise<FrameFromPaginated> {
+): Promise<ConceptFromPaginated> {
   if (ref.startsWith('-')) {
     const changesetId = ref.slice(1);
     const changeset = await fetchJson<any>(`/api/changesets/${changesetId}`, signal);
     const snapshot = changeset?.after_snapshot ?? changeset?.before_snapshot ?? null;
-    return frameFromSnapshot(ref, snapshot);
+    return conceptFromSnapshot(ref, snapshot);
   }
 
-  const url = `/api/frames/paginated?search=${encodeURIComponent(ref)}&page=1&limit=1&sortBy=label&sortOrder=asc`;
-  const res = await fetchJson<FramesPaginatedResponse>(url, signal);
-  const frame = Array.isArray(res.data) && res.data.length > 0 ? res.data[0] : null;
-  if (!frame) throw new Error(`Frame ${ref} not found`);
-  return frame;
+  const url = `/api/concepts/paginated?search=${encodeURIComponent(ref)}&page=1&limit=1&sortBy=label&sortOrder=asc`;
+  const res = await fetchJson<ConceptsPaginatedResponse>(url, signal);
+  const concept = Array.isArray(res.data) && res.data.length > 0 ? res.data[0] : null;
+  if (!concept) throw new Error(`Concept ${ref} not found`);
+  return concept;
 }
 
 async function loadLexicalUnitSiblings(
-  frameId: string,
+  conceptId: string,
   page: number,
   signal: AbortSignal
 ): Promise<{ data: LexicalUnitSnippetApi[]; total: number }> {
-  const url = `/api/lexical-units/paginated?frame_id=${encodeURIComponent(frameId)}&page=${page}&limit=10&sortBy=code&sortOrder=asc`;
+  const url = `/api/lexical-units/paginated?concept_id=${encodeURIComponent(conceptId)}&page=${page}&limit=10&sortBy=code&sortOrder=asc`;
   const res = await fetchJson<any>(url, signal);
   return { 
     data: res.data ?? [], 
@@ -112,19 +112,19 @@ async function loadLexicalUnitSiblings(
 }
 
 export interface LexicalUnitReallocationContextProps {
-  oldFrameRef: string | null;
-  newFrameRef: string | null;
+  oldConceptRef: string | null;
+  newConceptRef: string | null;
   virtualIndex?: VirtualIndex;
 }
 
 export default function LexicalUnitReallocationContext(props: LexicalUnitReallocationContextProps) {
-  const oldRef = useMemo(() => normalizeIntLike(props.oldFrameRef), [props.oldFrameRef]);
-  const newRef = useMemo(() => normalizeIntLike(props.newFrameRef), [props.newFrameRef]);
+  const oldRef = useMemo(() => normalizeIntLike(props.oldConceptRef), [props.oldConceptRef]);
+  const newRef = useMemo(() => normalizeIntLike(props.newConceptRef), [props.newConceptRef]);
 
   const [isExpanded, setIsExpanded] = useState(false);
 
-  const [oldFrame, setOldFrame] = useState<FrameFromPaginated | null>(null);
-  const [newFrame, setNewFrame] = useState<FrameFromPaginated | null>(null);
+  const [oldConcept, setOldConcept] = useState<ConceptFromPaginated | null>(null);
+  const [newConcept, setNewConcept] = useState<ConceptFromPaginated | null>(null);
   const [oldSiblings, setOldSiblings] = useState<{ data: LexicalUnitSnippetApi[]; total: number } | null>(null);
   const [newSiblings, setNewSiblings] = useState<{ data: LexicalUnitSnippetApi[]; total: number } | null>(null);
 
@@ -141,13 +141,13 @@ export default function LexicalUnitReallocationContext(props: LexicalUnitRealloc
   const [errorOldSiblings, setErrorOldSiblings] = useState<string | null>(null);
   const [errorNewSiblings, setErrorNewSiblings] = useState<string | null>(null);
 
-  const frameCacheRef = useRef(new Map<string, FrameFromPaginated | null>());
+  const conceptCacheRef = useRef(new Map<string, ConceptFromPaginated | null>());
 
   useEffect(() => {
     if (!isExpanded) return;
     const ac = new AbortController();
 
-    const loadParent = async (ref: string | null, setParent: (f: FrameFromPaginated | null) => void, setLoading: (l: boolean) => void, setError: (e: string | null) => void) => {
+    const loadParent = async (ref: string | null, setParent: (f: ConceptFromPaginated | null) => void, setLoading: (l: boolean) => void, setError: (e: string | null) => void) => {
       if (!ref) {
         setParent(null);
         return;
@@ -155,25 +155,25 @@ export default function LexicalUnitReallocationContext(props: LexicalUnitRealloc
       setLoading(true);
       setError(null);
       try {
-        if (frameCacheRef.current.has(ref)) {
-          setParent(frameCacheRef.current.get(ref) ?? null);
+        if (conceptCacheRef.current.has(ref)) {
+          setParent(conceptCacheRef.current.get(ref) ?? null);
         } else {
-          const frame = await loadFrameRef(ref, ac.signal);
-          frameCacheRef.current.set(ref, frame);
-          setParent(frame);
+          const concept = await loadConceptRef(ref, ac.signal);
+          conceptCacheRef.current.set(ref, concept);
+          setParent(concept);
         }
       } catch (e) {
         if (isAbortError(e) || ac.signal.aborted) return;
         setParent(null);
-        setError(e instanceof Error ? e.message : 'Failed to load frame');
+        setError(e instanceof Error ? e.message : 'Failed to load concept');
       } finally {
         if (!ac.signal.aborted) setLoading(false);
       }
     };
 
     void Promise.all([
-      loadParent(oldRef, setOldFrame, setLoadingOld, setErrorOld),
-      loadParent(newRef, setNewFrame, setLoadingNew, setErrorNew),
+      loadParent(oldRef, setOldConcept, setLoadingOld, setErrorOld),
+      loadParent(newRef, setNewConcept, setLoadingNew, setErrorNew),
     ]);
 
     return () => ac.abort();
@@ -351,7 +351,7 @@ export default function LexicalUnitReallocationContext(props: LexicalUnitRealloc
 
   const renderVirtualParentDetails = (parentId: string | null) => {
     if (!parentId || /^\d+$/.test(parentId)) return null;
-    const virtualParent = props.virtualIndex?.virtualFramesByRef.get(parentId);
+    const virtualParent = props.virtualIndex?.virtualConceptsByRef.get(parentId);
     if (!virtualParent) {
       return <div className="text-[11px] text-gray-400 italic">Pending destination details unavailable.</div>;
     }
@@ -381,11 +381,11 @@ export default function LexicalUnitReallocationContext(props: LexicalUnitRealloc
       {isExpanded && (
         <div className="mt-2 flex items-start gap-3">
           <div className="flex-1 min-w-0 flex flex-col gap-4">
-            {oldFrame ? (
+            {oldConcept ? (
               <div className="space-y-2">
                 <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Parent Details</div>
                 <div className="bg-gray-50/50 p-2 rounded-lg border border-gray-100 italic text-[11px] text-gray-600 line-clamp-3">
-                  {oldFrame.short_definition || oldFrame.definition}
+                  {oldConcept.short_definition || oldConcept.definition}
                 </div>
               </div>
             ) : (
@@ -398,11 +398,11 @@ export default function LexicalUnitReallocationContext(props: LexicalUnitRealloc
           <div className="flex-shrink-0 w-24" aria-hidden="true" />
 
           <div className="flex-1 min-w-0 flex flex-col gap-4">
-            {newFrame ? (
+            {newConcept ? (
               <div className="space-y-2">
                 <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Parent Details</div>
                 <div className="bg-gray-50/50 p-2 rounded-lg border border-gray-100 italic text-[11px] text-gray-600 line-clamp-3">
-                  {newFrame.short_definition || newFrame.definition}
+                  {newConcept.short_definition || newConcept.definition}
                 </div>
               </div>
             ) : (

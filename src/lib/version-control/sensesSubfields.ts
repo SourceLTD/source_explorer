@@ -9,7 +9,7 @@
  *   old_value  = boolean (whether the link existed before)
  *   new_value  = boolean (whether the link should exist after)
  *
- * This mirrors the `frame_roles.<roleType>.__exists` convention (see
+ * This mirrors the `properties.<roleType>.__exists` convention (see
  * frameRolesSubfields.ts) and lets multiple staged attach/detach operations
  * coexist on one changeset, with idempotent upserts at commit time.
  */

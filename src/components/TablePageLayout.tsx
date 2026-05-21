@@ -10,7 +10,7 @@ import SignOutButton from '@/components/SignOutButton';
 import ChatButton from '@/components/ChatButton';
 import { EditOverlay } from '@/components/editing/EditOverlay';
 import { Mode } from '@/components/editing/types';
-import { SearchResult, TableEntry, Frame, GraphNode } from '@/lib/types';
+import { SearchResult, TableEntry, Concept, GraphNode } from '@/lib/types';
 
 interface TablePageLayoutProps {
   mode: Mode;
@@ -18,15 +18,16 @@ interface TablePageLayoutProps {
   onSearchQueryChange: (query: string) => void;
   // Edit overlay props
   isEditOverlayOpen: boolean;
-  currentEntity: GraphNode | Frame | null;
+  currentEntity: GraphNode | Concept | null;
   selectedEntityId: string;
   refreshTrigger: number;
-  onEditClick: (entry: TableEntry | Frame) => Promise<void>;
+  onEditClick: (entry: TableEntry | Concept) => Promise<void>;
   onUpdate: () => Promise<void>;
   onCloseOverlay: () => void;
   tabs?: React.ReactNode;
   children?: React.ReactNode;
   showViewToggle?: boolean;
+  showSensesLink?: boolean;
   searchPlaceholder?: string;
 }
 
@@ -69,9 +70,9 @@ const modeConfig: Record<Mode, {
     showRecipes: false,
     showPendingChanges: true,
   },
-  frames: {
-    graphPath: '/graph/frames',
-    searchPlaceholder: 'Search frames...',
+  concepts: {
+    graphPath: '/graph/concepts',
+    searchPlaceholder: 'Search concepts...',
     showRecipes: true,
     showPendingChanges: true,
   },
@@ -95,6 +96,7 @@ export function TablePageLayout({
   tabs,
   children,
   showViewToggle = false,
+  showSensesLink = false,
   searchPlaceholder,
 }: TablePageLayoutProps) {
   const router = useRouter();
@@ -139,6 +141,15 @@ export function TablePageLayout({
                 mode={mode === 'verbs' ? undefined : mode}
               />
             </div>
+            {showSensesLink && (
+              <button
+                type="button"
+                onClick={() => router.push('/table')}
+                className="text-sm font-medium text-gray-600 hover:text-gray-900 px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors shrink-0"
+              >
+                Senses
+              </button>
+            )}
             {showViewToggle && (
               <ViewToggle 
                 currentView="table"
@@ -159,7 +170,7 @@ export function TablePageLayout({
             <Suspense fallback={<div className="p-8 text-center text-gray-500">Loading...</div>}>
               <DataTable 
                 searchQuery={searchQuery}
-                mode={mode === 'frames' ? 'frames' : 'lexical_units'}
+                mode={mode === 'concepts' ? 'concepts' : 'lexical_units'}
                 onEditClick={onEditClick}
                 refreshTrigger={refreshTrigger}
               />

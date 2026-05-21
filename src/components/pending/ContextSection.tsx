@@ -67,7 +67,7 @@ export default function ContextSection(props: PendingChangesContextSectionProps)
   const getEntityLabel = () => {
     switch (props.entityType) {
       case 'frame':
-        return 'Frame';
+        return 'Concept';
       case 'lexical_unit':
         return 'Word';
       default:

@@ -658,7 +658,7 @@ export async function createChangesetFromUpdate(
     };
   }
   
-  // Create a new changeset. `version` may be absent (e.g. frame_senses has no
+  // Create a new changeset. `version` may be absent (e.g. senses has no
   // optimistic-locking column); in that case pass undefined so no conflict check runs.
   const hasVersion = typeof currentEntity.version === 'number';
   const newChangeset = await createChangeset({

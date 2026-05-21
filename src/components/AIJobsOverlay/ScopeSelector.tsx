@@ -6,7 +6,7 @@ import { getManualIdPlaceholder } from './utils';
 import type { DataTableMode } from '../DataTable/types';
 
 // Normalize DataTableMode to the simpler Pos type used by BooleanFilterBuilder
-type FilterBuilderPos = 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames' | 'lexical_units';
+type FilterBuilderPos = 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'concepts' | 'lexical_units';
 function normalizeToFilterPos(mode: DataTableMode): FilterBuilderPos {
   return mode as FilterBuilderPos;
 }
@@ -91,8 +91,8 @@ export const ScopeSelector = memo(function ScopeSelector({
   onValidateFilters: () => void;
   frameIncludeLexicalUnits?: boolean;
   onFrameIncludeLexicalUnitsChange?: (include: boolean) => void;
-  frameFlagTarget?: 'frame' | 'lexical_unit' | 'both';
-  onFrameFlagTargetChange?: (target: 'frame' | 'lexical_unit' | 'both') => void;
+  frameFlagTarget?: 'concept' | 'lexical_unit' | 'both';
+  onFrameFlagTargetChange?: (target: 'concept' | 'lexical_unit' | 'both') => void;
 }) {
   return (
     <div className="space-y-2">
@@ -221,7 +221,7 @@ export const ScopeSelector = memo(function ScopeSelector({
                   >
                     <ul>
                       {manualIdSuggestions.map((suggestion, idx) => {
-                        const isFrameMode = pos === 'frames';
+                        const isFrameMode = pos === 'concepts';
                         return (
                           <li key={suggestion.code}>
                             <button
@@ -257,21 +257,21 @@ export const ScopeSelector = memo(function ScopeSelector({
           </div>
         </label>
 
-        {/* Frame IDs scope - only for lexical_units and frames */}
-        {(pos === 'lexical_units' || pos === 'frames') && (
-          <label className={`flex items-start gap-2 rounded-xl border px-3 py-2 ${mode === 'frames' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
+        {/* Concept IDs scope - only for lexical_units and concepts */}
+        {(pos === 'lexical_units' || pos === 'concepts') && (
+          <label className={`flex items-start gap-2 rounded-xl border px-3 py-2 ${mode === 'concepts' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
           <input
             type="radio"
             name="scope"
-            value="frames"
-            checked={mode === 'frames'}
-            onChange={() => setMode('frames')}
+            value="concepts"
+            checked={mode === 'concepts'}
+            onChange={() => setMode('concepts')}
             className="mt-1"
           />
           <div className="flex-1">
-            <div className="text-sm font-medium text-gray-800">Frame IDs</div>
-            <p className="text-xs text-gray-500">Enter frame names or numeric IDs only.</p>
-            {mode === 'frames' && (
+            <div className="text-sm font-medium text-gray-800">Concept IDs</div>
+            <p className="text-xs text-gray-500">Enter concept names or numeric IDs only.</p>
+            {mode === 'concepts' && (
               <div className="relative mt-2 space-y-3">
                 <textarea
                   ref={frameIdInputRef}
@@ -317,8 +317,8 @@ export const ScopeSelector = memo(function ScopeSelector({
                   </div>
                 )}
                 
-                {/* Frames-specific controls (only when pos='frames') */}
-                {pos === 'frames' && (
+                {/* Concepts-specific controls (only when pos='concepts') */}
+                {pos === 'concepts' && (
                   <div className="space-y-2 rounded-xl border border-blue-200 bg-blue-50 p-2">
                     <div className="flex items-center gap-2">
                       <input
@@ -351,12 +351,12 @@ export const ScopeSelector = memo(function ScopeSelector({
                           <input
                             type="radio"
                             name="frameFlagTarget"
-                            value="frame"
-                            checked={frameFlagTarget === 'frame'}
-                            onChange={() => onFrameFlagTargetChange?.('frame')}
+                            value="concept"
+                            checked={frameFlagTarget === 'concept'}
+                            onChange={() => onFrameFlagTargetChange?.('concept')}
                             className="text-blue-600 focus:ring-blue-500"
                           />
-                          <span className="text-xs text-gray-700">Frame only</span>
+                          <span className="text-xs text-gray-700">Concept only</span>
                         </label>
                         <label className="flex items-center gap-2">
                           <input
@@ -367,7 +367,7 @@ export const ScopeSelector = memo(function ScopeSelector({
                             onChange={() => onFrameFlagTargetChange?.('both')}
                             className="text-blue-600 focus:ring-blue-500"
                           />
-                          <span className="text-xs text-gray-700">Both frame and lexical units</span>
+                          <span className="text-xs text-gray-700">Both concept and lexical units</span>
                         </label>
                       </div>
                     </div>

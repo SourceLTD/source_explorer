@@ -242,7 +242,7 @@ function formatValue(value: unknown): string {
 }
 
 function parseFrameRolesFieldName(fieldName: string): { roleType: string; field: string } | null {
-  if (!fieldName.toLowerCase().startsWith('frame_roles.')) return null;
+  if (!fieldName.toLowerCase().startsWith('properties.') && !fieldName.toLowerCase().startsWith('frame_roles.')) return null;
   const parts = fieldName.split('.');
   if (parts.length < 3) return null;
   const roleType = parts[1];
@@ -261,7 +261,7 @@ const ROLE_SUBFIELD_LABELS: Record<string, string> = {
 };
 
 function formatFieldName(fieldName: string, opts?: { short?: boolean }): string {
-  if (fieldName.toLowerCase() === 'frame_id') return 'Frame';
+  if (fieldName.toLowerCase() === 'concept_id' || fieldName.toLowerCase() === 'frame_id') return 'Concept';
 
   const parsed = parseFrameRolesFieldName(fieldName);
   if (!parsed) return fieldName;
@@ -414,7 +414,7 @@ function renderValueWithHover(
   const size = opts?.size || 'sm';
   const sizeClass = size === 'xs' ? 'text-xs' : 'text-sm';
 
-  const isFrameRef = fc.field_name === 'frame_id';
+  const isFrameRef = fc.field_name === 'concept_id' || fc.field_name === 'frame_id';
   const normalizedId = normalizeIntLike(rawVal);
   
   if (!isFrameRef || !normalizedId) {
@@ -427,7 +427,7 @@ function renderValueWithHover(
 
   return (
     <ReferenceHoverPopup
-      mode="frame_senses"
+      mode="senses"
       entityId={normalizedId}
       virtualIndex={virtualIndex}
     >
@@ -1391,7 +1391,7 @@ export default function PendingChangesList({ onRefresh, embedded }: PendingChang
                 <span>
                   {selectedDetail.operation === 'move'
                     ? 'Pending DAG Move'
-                    : `Pending ${selectedDetail.entity_type === 'lexical_unit' ? 'Word' : selectedDetail.entity_type === 'frame_relation' ? 'Frame Relation' : selectedDetail.entity_type.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')} Change`}
+                    : `Pending ${selectedDetail.entity_type === 'lexical_unit' ? 'Word' : selectedDetail.entity_type === 'frame_relation' ? 'Concept Relation' : selectedDetail.entity_type.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')} Change`}
                 </span>
                 <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${getOperationColor(selectedDetail.operation)}`}>
                   {selectedDetail.operation}
@@ -1512,23 +1512,23 @@ export default function PendingChangesList({ onRefresh, embedded }: PendingChang
                   const snap = selectedDetail.after_snapshot || selectedDetail.before_snapshot;
                   const pairSnap = selectedDetail.moveGroupPairChangeset?.before_snapshot
                     ?? selectedDetail.moveGroupPairChangeset?.after_snapshot;
-                  const sourceId = String(snap?.source_id ?? pairSnap?.source_id ?? '');
-                  const sourceLabel = String(snap?.source_label ?? pairSnap?.source_label ?? '');
+                  const sourceId = String(snap?.child_id ?? snap?.source_id ?? pairSnap?.child_id ?? pairSnap?.source_id ?? '');
+                  const sourceLabel = String(snap?.child_label ?? snap?.source_label ?? pairSnap?.child_label ?? pairSnap?.source_label ?? '');
 
                   // For merged move rows (operation === 'move')
                   if (selectedDetail.operation === 'move' && selectedDetail.moveGroupPairChangeset) {
                     const deleteSnap = selectedDetail.moveGroupPairChangeset.before_snapshot;
                     const createSnap = selectedDetail.after_snapshot;
-                    const oldParentId = String(deleteSnap?.target_id ?? '');
-                    const newParentId = String(createSnap?.target_id ?? '');
-                    const oldParentLabel = String(deleteSnap?.target_label ?? '');
-                    const newParentLabel = String(createSnap?.target_label ?? '');
+                    const oldParentId = String(deleteSnap?.parent_id ?? deleteSnap?.target_id ?? '');
+                    const newParentId = String(createSnap?.parent_id ?? createSnap?.target_id ?? '');
+                    const oldParentLabel = String(deleteSnap?.parent_label ?? deleteSnap?.target_label ?? '');
+                    const newParentLabel = String(createSnap?.parent_label ?? createSnap?.target_label ?? '');
 
                     if (sourceId && newParentId) {
                       return (
                         <DAGMoveVisualization
-                          frameId={sourceId}
-                          frameLabel={sourceLabel || undefined}
+                          conceptId={sourceId}
+                          conceptLabel={sourceLabel || undefined}
                           oldParentId={oldParentId || null}
                           oldParentLabel={oldParentLabel || null}
                           newParentId={newParentId}
@@ -1540,13 +1540,13 @@ export default function PendingChangesList({ onRefresh, embedded }: PendingChang
 
                   // For standalone create/delete frame_relation changesets
                   if (selectedDetail.operation === 'create' && snap) {
-                    const targetId = String(snap.target_id ?? '');
-                    const targetLabel = String(snap.target_label ?? '');
+                    const targetId = String(snap.parent_id ?? snap.target_id ?? '');
+                    const targetLabel = String(snap.parent_label ?? snap.target_label ?? '');
                     if (sourceId && targetId) {
                       return (
                         <DAGMoveVisualization
-                          frameId={sourceId}
-                          frameLabel={sourceLabel || undefined}
+                          conceptId={sourceId}
+                          conceptLabel={sourceLabel || undefined}
                           oldParentId={null}
                           newParentId={targetId}
                           newParentLabel={targetLabel || null}
@@ -1556,8 +1556,8 @@ export default function PendingChangesList({ onRefresh, embedded }: PendingChang
                   }
 
                   if (selectedDetail.operation === 'delete' && snap) {
-                    const targetId = String(snap.target_id ?? '');
-                    const targetLabel = String(snap.target_label ?? '');
+                    const targetId = String(snap.parent_id ?? snap.target_id ?? '');
+                    const targetLabel = String(snap.parent_label ?? snap.target_label ?? '');
                     if (sourceId && targetId) {
                       return (
                         <div className="space-y-3">
@@ -1721,10 +1721,10 @@ export default function PendingChangesList({ onRefresh, embedded }: PendingChang
                               </div>
                             </div>
 
-                            {fc.field_name === 'frame_id' && selectedDetail.entity_type === 'lexical_unit' && (
+                            {(fc.field_name === 'concept_id' || fc.field_name === 'frame_id') && selectedDetail.entity_type === 'lexical_unit' && (
                               <LexicalUnitReallocationContext
-                                oldFrameRef={normalizeIntLike(fc.old_value)}
-                                newFrameRef={normalizeIntLike(fc.new_value)}
+                                oldConceptRef={normalizeIntLike(fc.old_value)}
+                                newConceptRef={normalizeIntLike(fc.new_value)}
                                 virtualIndex={virtualIndex}
                               />
                             )}

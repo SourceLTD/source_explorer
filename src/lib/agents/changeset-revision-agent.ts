@@ -80,19 +80,19 @@ const REVISION_MODEL = 'us.anthropic.claude-sonnet-4-20250514-v1:0';
 const SYSTEM_PROMPT = `You are a changeset revision agent for a lexical resource database.
 
 The database contains:
-- frames: Semantic frames with labels, definitions, roles, relations
+- concepts: Semantic concepts with labels, definitions, roles, relations
 - lexical_units: Word senses with lemmas, glosses, POS, examples
-- frame_roles: Roles belonging to frames (PROTO_AGENT, PATIENT, etc.)
-- frame_senses: Intermediate entities linking lexical units to frames
-- frame_relations: Parent-child hierarchy between frames (source_id = PARENT frame, target_id = CHILD frame, type = 'parent_of')
-- frame_role_mappings: Role inheritance mappings between parent/child frames
+- properties: Properties belonging to concepts (PROTO_AGENT, PATIENT, etc.)
+- senses: Intermediate entities linking lexical units to concepts
+- concept_relations: Parent-child hierarchy between concepts (parent_id = PARENT concept, child_id = CHILD concept, type = 'parent_of')
+- property_mappings: Property inheritance mappings between parent/child concepts
 
-CRITICAL: In frame_relations, source_id is the PARENT and target_id is the CHILD.
+CRITICAL: In concept_relations, parent_id is the PARENT and child_id is the CHILD.
 A row {source_id: A, target_id: B, type: 'parent_of'} means "A is parent of B".
-To change which frame is the NEW PARENT, you change source_id.
+To change which concept is the NEW PARENT, you change parent_id.
 
 A changeset represents a proposed modification to one entity. It contains:
-- entity_type: Which table (frame, lexical_unit, frame_role, frame_relation, etc.)
+- entity_type: Which table (concept, lexical_unit, property, concept_relation, etc.)
 - entity_id: The ID of the entity being changed (null for creates)
 - operation: create, update, delete, move, or merge
 - before_snapshot: The full entity row as it currently exists (null for creates)
@@ -105,19 +105,19 @@ produce a revised set of field changes. You can:
 2. Add new field changes (propose changes to additional fields)
 3. Remove field changes (keep the original value for that field)
 4. For structural operations (create/delete), propose field changes that redefine
-   the target — e.g. changing which parent frame a reparent targets by modifying
+   the target — e.g. changing which parent concept a reparent targets by modifying
    the source_id field (since source_id = parent), or changing any field on the
    entity being created.
 
-IMPORTANT for reparent (move_frame_parent) operations:
-- A reparent plan has a CREATE changeset for the new frame_relation.
+IMPORTANT for reparent (move_concept_parent) operations:
+- A reparent plan has a CREATE changeset for the new concept_relation.
 - The CREATE changeset's after_snapshot has: source_id (the NEW parent),
   target_id (the child being moved), type ('parent_of').
 - If the user says "move X under Y" or "make X a child of Y", they want
-  source_id changed to Y's frame ID (because source_id = parent).
+  parent_id changed to Y's concept ID (because parent_id = parent).
 - Derive field_changes from after_snapshot for the CREATE changeset:
   each field becomes {field_name, old_value: null, new_value: <value>}
-- Then modify source_id's new_value to the user's requested parent frame.
+- Then modify parent_id's new_value to the user's requested parent concept.
 
 IMPORTANT for structural operations (create/delete/move):
 - If the changeset has NO field_changes but has before_snapshot/after_snapshot,
@@ -134,12 +134,12 @@ Rules:
 - Preserve old_value from the original changeset (it's the current DB state)
 - If the user's request is unclear, make your best interpretation
 - For text fields like definitions, make changes that are linguistically appropriate
-- For relational fields (frame_id, parent relations), use query_database to validate targets
+- For relational fields (concept_id, parent relations), use query_database to validate targets
 - NEVER use placeholder values like "SOME_FRAME_ID" — always look up the actual ID using query_database
 - Use query_database for ALL lookups. Example queries:
-  SELECT id, label FROM frames WHERE label ILIKE '%search_term%' LIMIT 10
-  SELECT id, source_id, target_id, type FROM frame_relations WHERE target_id = 123
-  SELECT id, frame_id, label FROM frame_roles WHERE frame_id = 123
+  SELECT id, label FROM concepts WHERE label ILIKE '%search_term%' LIMIT 10
+  SELECT id, parent_id, child_id, type FROM concept_relations WHERE child_id = 123
+  SELECT id, concept_id, label FROM properties WHERE concept_id = 123
 - You MUST always return field_changes — never return an empty array
 - You MUST always use real, verified database IDs — never guess or use placeholders`;
 
@@ -211,7 +211,7 @@ For DELETE operations (no field_changes but has before_snapshot):
   that describe what the revised deletion should target.
 
 For MOVE / structural operations:
-- The key structural fields (e.g. source_id, target_id for frame_relations)
+- The key structural fields (e.g. parent_id, child_id for concept_relations)
   define what the operation does. Revise those per the user's feedback.
 
 You MUST respond with a JSON object in this exact format (no markdown fences):
@@ -232,7 +232,7 @@ IMPORTANT: You must ALWAYS return at least one field_change. Never return an emp
     messages: [{ role: 'user', content: userMessage }],
     tools: {
       query_database: tool<z.infer<typeof executeSqlParams>, any>({
-        description: 'Execute a read-only SQL query against the PostgreSQL database. Use this to look up frames, relations, lexical units, roles, etc. Key tables: frames (id, label, definition), frame_relations (id, source_id, target_id, type), frame_roles (id, frame_id, label, description), frame_senses (id, frame_id, pos, definition), lexical_units (id, lemma, pos). Only SELECT statements are allowed.',
+        description: 'Execute a read-only SQL query against the PostgreSQL database. Use this to look up concepts, relations, lexical units, properties, etc. Key tables: concepts (id, label, definition), concept_relations (id, parent_id, child_id, type), properties (id, concept_id, label, description), senses (id, concept_id, pos, definition), lexical_units (id, lemma, pos). Only SELECT statements are allowed.',
         inputSchema: executeSqlParams,
         execute: async ({ query }) => {
           console.log('[RevisionAgent] Tool call: query_database |', query.slice(0, 200));

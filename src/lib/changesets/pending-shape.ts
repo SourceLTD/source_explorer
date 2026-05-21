@@ -7,7 +7,7 @@
  * action helpers. This module owns:
  *
  *   1. The Prisma include shape (`PENDING_CHANGESET_INCLUDE`).
- *   2. The frame_id display-decoration lookup (`buildFrameRefLookup`).
+ *   2. The concept_id display-decoration lookup (`buildConceptRefLookup`).
  *   3. Per-row conversion to the wire format (`shapePendingChangeset`).
  *
  * Keep these in lockstep with `Changeset` in
@@ -16,7 +16,7 @@
  */
 import { prisma } from '@/lib/prisma';
 
-const FRAME_REF_FIELDS = new Set(['frame_id']);
+const CONCEPT_REF_FIELDS = new Set(['concept_id']);
 
 export interface ShapedFieldChange {
   id: string;
@@ -80,9 +80,9 @@ export const PENDING_CHANGESET_INCLUDE = {
   },
 } as const;
 
-export interface FrameRefLookup {
+export interface ConceptRefLookup {
   /** Decorate a raw frame-ref value (positive id or `-changeset_id` virtual id). */
-  displayForFrameRef(raw: string | null): string | null;
+  displayForConceptRef(raw: string | null): string | null;
 }
 
 function normalizeIntLike(value: unknown): string | null {
@@ -111,47 +111,47 @@ function pickSnapshotName(snapshot: unknown): string | null {
   return null;
 }
 
-function pickFrameName(frame: { code: string | null; label: string }): string {
-  const code = typeof frame.code === 'string' ? frame.code.trim() : '';
+function pickConceptName(concept: { code: string | null; label: string }): string {
+  const code = typeof concept.code === 'string' ? concept.code.trim() : '';
   if (code) return code;
-  const label = frame.label.trim();
+  const label = concept.label.trim();
   if (label) return label;
   return 'Unknown';
 }
 
 /**
- * Walk every field-change in `rows`, collect the frame ids referenced
- * by `frame_id` fields, and resolve them to display names. Virtual
+ * Walk every field-change in `rows`, collect the concept ids referenced
+ * by `concept_id` fields, and resolve them to display names. Virtual
  * negative ids point at create-changesets whose `after_snapshot.code`
  * (or `.label`) we surface as a "(pending)" hint.
  */
-export async function buildFrameRefLookup(
+export async function buildConceptRefLookup(
   rows: Array<{ field_changes: Array<{ field_name: string; old_value: unknown; new_value: unknown }> }>,
-): Promise<FrameRefLookup> {
-  const positiveFrameIds = new Set<string>();
+): Promise<ConceptRefLookup> {
+  const positiveConceptIds = new Set<string>();
   const virtualCreateChangesetIds = new Set<string>();
 
   for (const cs of rows) {
     for (const fc of cs.field_changes) {
-      if (!FRAME_REF_FIELDS.has(fc.field_name)) continue;
+      if (!CONCEPT_REF_FIELDS.has(fc.field_name)) continue;
       for (const v of [fc.old_value, fc.new_value]) {
         const raw = normalizeIntLike(v);
         if (!raw) continue;
-        if (/^\d+$/.test(raw)) positiveFrameIds.add(raw);
+        if (/^\d+$/.test(raw)) positiveConceptIds.add(raw);
         else if (/^-\d+$/.test(raw)) virtualCreateChangesetIds.add(raw.slice(1));
       }
     }
   }
 
-  const frameIdToName = new Map<string, string>();
-  if (positiveFrameIds.size > 0) {
-    const ids = Array.from(positiveFrameIds, (s) => BigInt(s));
-    const frames = await prisma.frames.findMany({
+  const conceptIdToName = new Map<string, string>();
+  if (positiveConceptIds.size > 0) {
+    const ids = Array.from(positiveConceptIds, (s) => BigInt(s));
+    const concepts = await prisma.concepts.findMany({
       where: { id: { in: ids } },
       select: { id: true, code: true, label: true },
     });
-    for (const f of frames) {
-      frameIdToName.set(f.id.toString(), pickFrameName(f));
+    for (const f of concepts) {
+      conceptIdToName.set(f.id.toString(), pickConceptName(f));
     }
   }
 
@@ -169,10 +169,10 @@ export async function buildFrameRefLookup(
   }
 
   return {
-    displayForFrameRef(raw: string | null): string | null {
+    displayForConceptRef(raw: string | null): string | null {
       if (!raw) return null;
       if (/^\d+$/.test(raw)) {
-        const name = frameIdToName.get(raw) ?? 'Unknown';
+        const name = conceptIdToName.get(raw) ?? 'Unknown';
         return `${name} (#${raw})`;
       }
       if (/^-\d+$/.test(raw)) {
@@ -230,7 +230,7 @@ interface PendingChangesetRow {
  */
 export function shapePendingChangeset(
   row: PendingChangesetRow,
-  lookup: FrameRefLookup,
+  lookup: ConceptRefLookup,
 ): ShapedChangeset {
   return {
     id: row.id.toString(),
@@ -253,11 +253,11 @@ export function shapePendingChangeset(
     revision_number: row.revision_number ?? 1,
     revision_prompt: row.revision_prompt ?? null,
     field_changes: row.field_changes.map((fc) => {
-      const shouldDecorate = FRAME_REF_FIELDS.has(fc.field_name);
+      const shouldDecorate = CONCEPT_REF_FIELDS.has(fc.field_name);
       const oldRaw = shouldDecorate ? normalizeIntLike(fc.old_value) : null;
       const newRaw = shouldDecorate ? normalizeIntLike(fc.new_value) : null;
-      const oldDisplay = shouldDecorate ? lookup.displayForFrameRef(oldRaw) : null;
-      const newDisplay = shouldDecorate ? lookup.displayForFrameRef(newRaw) : null;
+      const oldDisplay = shouldDecorate ? lookup.displayForConceptRef(oldRaw) : null;
+      const newDisplay = shouldDecorate ? lookup.displayForConceptRef(newRaw) : null;
 
       return {
         id: fc.id.toString(),

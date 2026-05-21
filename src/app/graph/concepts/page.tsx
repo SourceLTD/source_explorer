@@ -2,20 +2,20 @@
 
 import { Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import FrameExplorer from '@/components/FrameExplorer';
+import ConceptExplorer from '@/components/ConceptExplorer';
 import LoadingSpinner from '@/components/LoadingSpinner';
 
-function FrameGraphContent() {
+function ConceptGraphContent() {
   const searchParams = useSearchParams();
-  const frameId = searchParams.get('entry');
+  const conceptId = searchParams.get('entry');
 
-  return <FrameExplorer initialFrameId={frameId || undefined} />;
+  return <ConceptExplorer initialConceptId={conceptId || undefined} />;
 }
 
-export default function FrameGraphMode() {
+export default function ConceptGraphMode() {
   return (
     <Suspense fallback={<LoadingSpinner fullPage />}>
-      <FrameGraphContent />
+      <ConceptGraphContent />
     </Suspense>
   );
 }

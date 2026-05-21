@@ -13,7 +13,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import {
   PENDING_CHANGESET_INCLUDE,
-  buildFrameRefLookup,
+  buildConceptRefLookup,
   shapePendingChangeset,
   type ShapedChangeset,
 } from '@/lib/changesets/pending-shape';
@@ -59,7 +59,7 @@ export async function GET(_request: NextRequest) {
       include: PENDING_CHANGESET_INCLUDE,
     });
 
-    const lookup = await buildFrameRefLookup(changesets);
+    const lookup = await buildConceptRefLookup(changesets);
 
     const llmJobGroups = new Map<
       string,

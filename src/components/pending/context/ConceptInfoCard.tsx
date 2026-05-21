@@ -3,15 +3,15 @@
 import React, { useEffect, useState } from 'react';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import NodeCard from './NodeCard';
-import FrameRefPopover from './FrameRefPopover';
+import ConceptRefPopover from './ConceptRefPopover';
 import { posShortLabel } from '@/lib/types';
 import {
-  fetchFrameSummary,
-  getCachedFrameSummary,
-  isRealFrameId,
-  type FrameSenseSummary,
-  type FrameSummary,
-} from './frameSummaryCache';
+  fetchConceptSummary,
+  getCachedConceptSummary,
+  isRealConceptId,
+  type ConceptSenseSummary,
+  type ConceptSummary,
+} from './conceptSummaryCache';
 
 /**
  * Sense entry overlaid on top of the frame's normal senses list. Used
@@ -21,12 +21,12 @@ import {
  */
 export interface ExtraSense {
   /**
-   * Match the shape returned by `/api/frames/[id]/summary` but
+   * Match the shape returned by `/api/concepts/[id]/summary` but
    * allow `id` to come in as a string (planner metadata) or a
    * number (cached API row). All other sense fields are optional;
    * the card falls back to `fallbackLabel` when they're missing.
    */
-  sense: Omit<Partial<FrameSenseSummary>, 'id'> & {
+  sense: Omit<Partial<ConceptSenseSummary>, 'id'> & {
     id: number | string;
     pos?: string;
   };
@@ -36,7 +36,7 @@ export interface ExtraSense {
   fallbackLabel?: string;
 }
 
-const FRAME_TYPE_BADGE: Record<string, string> = {
+const CONCEPT_TYPE_BADGE: Record<string, string> = {
   event: 'bg-blue-50 text-blue-700 border-blue-200',
   state: 'bg-amber-50 text-amber-700 border-amber-200',
   entity: 'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -44,19 +44,19 @@ const FRAME_TYPE_BADGE: Record<string, string> = {
   relation: 'bg-pink-50 text-pink-700 border-pink-200',
 };
 
-function frameTypeBadgeClass(t: string | null): string {
+function conceptTypeBadgeClass(t: string | null): string {
   if (!t) return 'bg-gray-100 text-gray-700 border-gray-200';
-  return FRAME_TYPE_BADGE[t] ?? 'bg-gray-100 text-gray-700 border-gray-200';
+  return CONCEPT_TYPE_BADGE[t] ?? 'bg-gray-100 text-gray-700 border-gray-200';
 }
 
-export interface FrameInfoCardProps {
+export interface ConceptInfoCardProps {
   /**
    * Real frame id, or `null` for virtual / not-yet-created frames
    * (e.g. the result frames of an unrun split). The card falls back
    * to the supplied `fallbackLabel` and `fallbackDefinition` in that
    * case so reviewers still see the planner's intent.
    */
-  frameId: string | null;
+  conceptId: string | null;
   /** Used while the summary loads, and as the title for virtual ids. */
   fallbackLabel?: string;
   /** Definition shown when no real id (and so no summary fetch). */
@@ -83,8 +83,8 @@ export interface FrameInfoCardProps {
    */
   hideSenses?: boolean;
   /**
-   * Wrap the card in a hover popover (using FrameRefPopover) so the
-   * reviewer can pull up the full FrameSummary tooltip without
+   * Wrap the card in a hover popover (using ConceptRefPopover) so the
+   * reviewer can pull up the full ConceptSummary tooltip without
    * leaving the panel. On by default — virtual ids skip it.
    */
   withPopover?: boolean;
@@ -105,20 +105,20 @@ export interface FrameInfoCardProps {
 }
 
 /**
- * Always-visible rich identity card for a frame.
+ * Always-visible rich identity card for a concept.
  *
  * Built on `NodeCard` so it shares look & padding with the cards used
- * in `DAGMoveVisualization`. Fetches `/api/frames/[id]/summary` (via
- * the shared cache in `frameSummaryCache.ts`) so all hovering popovers
+ * in `DAGMoveVisualization`. Fetches `/api/concepts/[id]/summary` (via
+ * the shared cache in `conceptSummaryCache.ts`) so all hovering popovers
  * and inline cards across the pending-changes UI collapse onto one
- * request per frame.
+ * request per concept.
  *
  * For virtual frame ids (e.g. the result frames of a not-yet-committed
  * split), no fetch happens and the card reads `fallbackLabel` /
  * `fallbackDefinition` from the planner's `metadata`.
  */
-export default function FrameInfoCard({
-  frameId,
+export default function ConceptInfoCard({
+  conceptId,
   fallbackLabel,
   fallbackDefinition,
   emphasis = 'sibling',
@@ -128,34 +128,34 @@ export default function FrameInfoCard({
   withPopover = true,
   extraSenses,
   excludeSenseIds,
-}: FrameInfoCardProps) {
-  const [summary, setSummary] = useState<FrameSummary | null>(() =>
-    getCachedFrameSummary(frameId),
+}: ConceptInfoCardProps) {
+  const [summary, setSummary] = useState<ConceptSummary | null>(() =>
+    getCachedConceptSummary(conceptId),
   );
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!frameId || !isRealFrameId(frameId)) {
+    if (!conceptId || !isRealConceptId(conceptId)) {
       setSummary(null);
       return;
     }
-    const cached = getCachedFrameSummary(frameId);
+    const cached = getCachedConceptSummary(conceptId);
     if (cached) {
       setSummary(cached);
       return;
     }
     const ac = new AbortController();
     setLoading(true);
-    void fetchFrameSummary(frameId, ac.signal).then((data) => {
+    void fetchConceptSummary(conceptId, ac.signal).then((data) => {
       if (ac.signal.aborted) return;
       if (data) setSummary(data);
       setLoading(false);
     });
     return () => ac.abort();
-  }, [frameId]);
+  }, [conceptId]);
 
-  const title = summary?.label ?? fallbackLabel ?? `Frame #${frameId ?? '?'}`;
-  const subtitle = frameId ? `#${frameId}` : 'pending';
+  const title = summary?.label ?? fallbackLabel ?? `Concept #${conceptId ?? '?'}`;
+  const subtitle = conceptId ? `#${conceptId}` : 'pending';
   const def = summary?.short_definition ?? summary?.definition_excerpt ?? fallbackDefinition ?? null;
 
   const card = (
@@ -167,17 +167,17 @@ export default function FrameInfoCard({
       wrap
     >
       <div className="space-y-1.5">
-        {summary?.frame_type && (
+        {summary?.archetype && (
           <div className="flex items-center gap-1.5 flex-wrap">
             <span
-              className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-medium uppercase tracking-wide ${frameTypeBadgeClass(summary.frame_type)}`}
+              className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-medium uppercase tracking-wide ${conceptTypeBadgeClass(summary.archetype)}`}
               title={
                 summary.subtype
-                  ? `${summary.frame_type} · ${summary.subtype}`
-                  : summary.frame_type
+                  ? `${summary.archetype} · ${summary.subtype}`
+                  : summary.archetype
               }
             >
-              {summary.frame_type}
+              {summary.archetype}
               {summary.subtype && (
                 <span className="ml-1 opacity-70 normal-case">/ {summary.subtype}</span>
               )}
@@ -215,9 +215,9 @@ export default function FrameInfoCard({
   if (!withPopover) return card;
 
   return (
-    <FrameRefPopover as="div" frameId={frameId} fallbackLabel={fallbackLabel}>
+    <ConceptRefPopover as="div" conceptId={conceptId} fallbackLabel={fallbackLabel}>
       {card}
-    </FrameRefPopover>
+    </ConceptRefPopover>
   );
 }
 
@@ -226,7 +226,7 @@ function SensesList({
   extraSenses,
   excludeSenseIds,
 }: {
-  summary: FrameSummary | null;
+  summary: ConceptSummary | null;
   extraSenses: ExtraSense[];
   excludeSenseIds: Array<string | number>;
 }) {

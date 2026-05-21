@@ -1,8 +1,8 @@
 import { useState, useCallback } from 'react';
-import { GraphNode, Frame, TableLexicalUnit } from '@/lib/types';
+import { GraphNode, Concept, TableLexicalUnit } from '@/lib/types';
 import { Mode } from '@/components/editing/types';
 
-type EntityData = GraphNode | Frame | null;
+type EntityData = GraphNode | Concept | null;
 
 interface UseTableEditOverlayReturn {
   isEditOverlayOpen: boolean;
@@ -10,7 +10,7 @@ interface UseTableEditOverlayReturn {
   selectedEntityId: string;
   refreshTrigger: number;
   isLoading: boolean;
-  handleEditClick: (entry: TableLexicalUnit | Frame) => Promise<void>;
+  handleEditClick: (entry: TableLexicalUnit | Concept) => Promise<void>;
   handleUpdate: () => Promise<void>;
   handleCloseOverlay: () => void;
 }
@@ -19,9 +19,8 @@ interface UseTableEditOverlayReturn {
  * Gets the API endpoint for fetching entity data based on mode
  */
 function getApiEndpoint(mode: Mode, id: string, forUpdate: boolean = false): string {
-  if (mode === 'frames') {
-    // Frames use a different endpoint structure
-    const baseUrl = `/api/frames/${id}`;
+  if (mode === 'concepts') {
+    const baseUrl = `/api/concepts/${id}`;
     return forUpdate ? `${baseUrl}?t=${Date.now()}` : baseUrl;
   }
   // Lexical units use unified endpoint
@@ -40,7 +39,7 @@ export function useTableEditOverlay(mode: Mode): UseTableEditOverlayReturn {
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleEditClick = useCallback(async (entry: TableLexicalUnit | Frame) => {
+  const handleEditClick = useCallback(async (entry: TableLexicalUnit | Concept) => {
     setIsEditOverlayOpen(true);
     setSelectedEntityId(entry.id);
     setCurrentEntity(null);

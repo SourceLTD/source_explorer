@@ -55,7 +55,7 @@ export async function PATCH(request: NextRequest) {
       const numericIds = ids.filter(id => /^\d+$/.test(id)).map(id => BigInt(id));
       const labels = ids.filter(id => !/^\d+$/.test(id));
 
-      const result = await prisma.frames.updateMany({
+      const result = await prisma.concepts.updateMany({
         where: {
           OR: [
             { id: { in: numericIds } },
@@ -65,7 +65,7 @@ export async function PATCH(request: NextRequest) {
         data: dbUpdates,
       });
       directCount = result.count;
-      message = `Updated flagging status for ${directCount} frames. `;
+      message = `Updated flagging status for ${directCount} concepts. `;
     }
 
     // Handle staged updates (verifiable) - go through version control
@@ -73,7 +73,7 @@ export async function PATCH(request: NextRequest) {
       const result = await stageFlagUpdates('frame', ids, stagedUpdates, userId);
       stagedCount = result.staged_count;
       changesetIds.push(...result.changeset_ids);
-      message += `Staged other flag changes for ${stagedCount} frames.`;
+      message += `Staged other flag changes for ${stagedCount} concepts.`;
     }
 
     return NextResponse.json({
@@ -91,9 +91,9 @@ export async function PATCH(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('[API] Error updating frame flags:', error);
+    console.error('[API] Error updating concept flags:', error);
     return NextResponse.json(
-      { error: 'Failed to update frame flags' },
+      { error: 'Failed to update concept flags' },
       { status: 500 }
     );
   }

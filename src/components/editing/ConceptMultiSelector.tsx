@@ -3,17 +3,17 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import { XMarkIcon } from '@heroicons/react/24/outline';
-import { FieldEditorProps, FrameOption } from './types';
+import { FieldEditorProps, ConceptOption } from './types';
 
-interface FrameMultiSelectorProps extends FieldEditorProps {
+interface ConceptMultiSelectorProps extends FieldEditorProps {
   value: string[];
   onChange: (value: string[]) => void;
   limit?: number;
   placeholder?: string;
 }
 
-function renderFrameDisplay(frame: FrameOption) {
-  const displayValue = frame.code?.trim() || frame.label;
+function renderConceptDisplay(concept: ConceptOption) {
+  const displayValue = concept.code?.trim() || concept.label;
   const dotIndex = displayValue.indexOf('.');
   if (dotIndex !== -1) {
     return (
@@ -26,25 +26,25 @@ function renderFrameDisplay(frame: FrameOption) {
   return displayValue;
 }
 
-export function FrameMultiSelector({
+export function ConceptMultiSelector({
   value,
   onChange,
   onSave,
   onCancel,
   isSaving,
   limit = 100,
-  placeholder = 'Search frames by id, code, or label...'
-}: FrameMultiSelectorProps) {
-  const [frames, setFrames] = useState<FrameOption[]>([]);
+  placeholder = 'Search concepts by id, code, or label...'
+}: ConceptMultiSelectorProps) {
+  const [concepts, setConcepts] = useState<ConceptOption[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [query, setQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
-  const [selectedFrames, setSelectedFrames] = useState<FrameOption[]>([]);
+  const [selectedConcepts, setSelectedConcepts] = useState<ConceptOption[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const isNumericId = (v: string) => /^\d+$/.test(v.trim());
 
-  const fetchFrames = async (searchQuery: string) => {
+  const fetchConcepts = async (searchQuery: string) => {
     setIsLoading(true);
     try {
       const queryParams = new URLSearchParams();
@@ -53,16 +53,16 @@ export function FrameMultiSelector({
         queryParams.set('search', trimmed);
       }
       queryParams.set('limit', String(limit));
-      const response = await fetch(`/api/frames?${queryParams.toString()}`, { cache: 'no-store' });
+      const response = await fetch(`/api/concepts?${queryParams.toString()}`, { cache: 'no-store' });
       if (!response.ok) {
-        setFrames([]);
+        setConcepts([]);
         return;
       }
-      const data: FrameOption[] = await response.json();
-      setFrames(Array.isArray(data) ? data : []);
+      const data: ConceptOption[] = await response.json();
+      setConcepts(Array.isArray(data) ? data : []);
     } catch (error) {
-      console.error('Failed to fetch frames:', error);
-      setFrames([]);
+      console.error('Failed to fetch concepts:', error);
+      setConcepts([]);
     } finally {
       setIsLoading(false);
     }
@@ -71,7 +71,7 @@ export function FrameMultiSelector({
   useEffect(() => {
     if (!isOpen) return;
     const timeoutId = setTimeout(() => {
-      void fetchFrames(query);
+      void fetchConcepts(query);
     }, 300);
     return () => clearTimeout(timeoutId);
   }, [isOpen, query, limit]);
@@ -89,11 +89,11 @@ export function FrameMultiSelector({
 
   useEffect(() => {
     if (value.length === 0) {
-      setSelectedFrames([]);
+      setSelectedConcepts([]);
       return;
     }
 
-    const missingIds = value.filter(id => !selectedFrames.some(f => f.id === id));
+    const missingIds = value.filter(id => !selectedConcepts.some(f => f.id === id));
     if (missingIds.length === 0) return;
 
     void (async () => {
@@ -101,57 +101,57 @@ export function FrameMultiSelector({
         const params = new URLSearchParams();
         params.set('ids', missingIds.join(','));
         params.set('limit', String(missingIds.length + 5));
-        const resp = await fetch(`/api/frames?${params.toString()}`, { cache: 'no-store' });
+        const resp = await fetch(`/api/concepts?${params.toString()}`, { cache: 'no-store' });
         if (!resp.ok) return;
-        const data: FrameOption[] = await resp.json();
+        const data: ConceptOption[] = await resp.json();
         if (Array.isArray(data)) {
-          setSelectedFrames(prev => {
+          setSelectedConcepts(prev => {
             const existing = new Set(prev.map(f => f.id));
-            const newFrames = data.filter(f => !existing.has(f.id));
-            return [...prev, ...newFrames];
+            const newConcepts = data.filter(f => !existing.has(f.id));
+            return [...prev, ...newConcepts];
           });
         }
       } catch (error) {
-        console.error('Failed to resolve selected frames:', error);
+        console.error('Failed to resolve selected concepts:', error);
       }
     })();
   }, [value]);
 
-  const handleAddFrame = (frame: FrameOption) => {
-    if (!value.includes(frame.id)) {
-      onChange([...value, frame.id]);
-      setSelectedFrames(prev => [...prev, frame]);
+  const handleAddConcept = (concept: ConceptOption) => {
+    if (!value.includes(concept.id)) {
+      onChange([...value, concept.id]);
+      setSelectedConcepts(prev => [...prev, concept]);
     }
     setQuery('');
     setIsOpen(false);
   };
 
-  const handleRemoveFrame = (frameId: string) => {
-    onChange(value.filter(id => id !== frameId));
-    setSelectedFrames(prev => prev.filter(f => f.id !== frameId));
+  const handleRemoveConcept = (conceptId: string) => {
+    onChange(value.filter(id => id !== conceptId));
+    setSelectedConcepts(prev => prev.filter(f => f.id !== conceptId));
   };
 
-  const displayedSelectedFrames = useMemo(() => {
-    return value.map(id => selectedFrames.find(f => f.id === id)).filter(Boolean) as FrameOption[];
-  }, [value, selectedFrames]);
+  const displayedSelectedConcepts = useMemo(() => {
+    return value.map(id => selectedConcepts.find(f => f.id === id)).filter(Boolean) as ConceptOption[];
+  }, [value, selectedConcepts]);
 
-  const availableFrames = useMemo(() => {
-    return frames.filter(f => !value.includes(f.id));
-  }, [frames, value]);
+  const availableConcepts = useMemo(() => {
+    return concepts.filter(f => !value.includes(f.id));
+  }, [concepts, value]);
 
   return (
     <div className="space-y-2">
-      {displayedSelectedFrames.length > 0 && (
+      {displayedSelectedConcepts.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-2">
-          {displayedSelectedFrames.map(frame => (
+          {displayedSelectedConcepts.map(concept => (
             <span
-              key={frame.id}
+              key={concept.id}
               className="inline-flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-700 rounded-lg text-sm"
             >
-              {renderFrameDisplay(frame)}
+              {renderConceptDisplay(concept)}
               <button
                 type="button"
-                onClick={() => handleRemoveFrame(frame.id)}
+                onClick={() => handleRemoveConcept(concept.id)}
                 className="p-0.5 hover:bg-blue-100 rounded cursor-pointer"
                 disabled={isSaving}
               >
@@ -179,25 +179,25 @@ export function FrameMultiSelector({
               <div className="flex items-center justify-center py-6">
                 <LoadingSpinner size="sm" noPadding />
               </div>
-            ) : availableFrames.length === 0 ? (
+            ) : availableConcepts.length === 0 ? (
               <div className="px-3 py-2 text-sm text-gray-500">
-                {query ? 'No frames found' : 'Type to search frames'}
+                {query ? 'No concepts found' : 'Type to search concepts'}
               </div>
             ) : (
-              availableFrames.map((frame) => (
+              availableConcepts.map((concept) => (
                 <button
-                  key={frame.id}
+                  key={concept.id}
                   type="button"
-                  onClick={() => handleAddFrame(frame)}
+                  onClick={() => handleAddConcept(concept)}
                   className="w-full text-left px-3 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-medium text-gray-900 truncate">
-                        {renderFrameDisplay(frame)}
+                        {renderConceptDisplay(concept)}
                       </div>
                       <div className="text-xs text-gray-500 font-mono truncate">
-                        {frame.id}{frame.code ? ` · ${frame.label}` : ''}
+                        {concept.id}{concept.code ? ` · ${concept.label}` : ''}
                       </div>
                     </div>
                   </div>
@@ -210,9 +210,9 @@ export function FrameMultiSelector({
 
       <div className="text-xs text-gray-600">
         {value.length === 0 ? (
-          <span className="text-gray-500">No frames selected</span>
+          <span className="text-gray-500">No concepts selected</span>
         ) : (
-          <span>{value.length} frame{value.length !== 1 ? 's' : ''} selected</span>
+          <span>{value.length} concept{value.length !== 1 ? 's' : ''} selected</span>
         )}
       </div>
 

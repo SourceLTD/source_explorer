@@ -8,8 +8,8 @@ import { attachPendingInfoToEntities } from '@/lib/version-control';
 
 type ChildCountMode = 'frame';
 
-const FRAME_TABLE_ALIAS = 'f';
-const FRAME_ID_REF = Prisma.raw('f."id"');
+const CONCEPT_TABLE_ALIAS = 'f';
+const CONCEPT_ID_REF = Prisma.raw('f."id"');
 
 function toSqlDateEndOfDay(value: string): Date {
   return new Date(`${value}T23:59:59.999Z`);
@@ -18,7 +18,7 @@ function toSqlDateEndOfDay(value: string): Date {
 function buildTextRuleSql(column: string, rule: BooleanFilterRule): Prisma.Sql | null {
   const raw = String(rule.value ?? '').trim();
   if (!raw) return null;
-  const col = Prisma.raw(`${FRAME_TABLE_ALIAS}.${column}`);
+  const col = Prisma.raw(`${CONCEPT_TABLE_ALIAS}.${column}`);
   switch (rule.operator) {
     case 'contains':
       return Prisma.sql`${col} ILIKE ${`%${raw}%`}`;
@@ -35,13 +35,13 @@ function buildTextRuleSql(column: string, rule: BooleanFilterRule): Prisma.Sql |
 
 function buildBooleanRuleSql(column: string, rule: BooleanFilterRule): Prisma.Sql | null {
   if (rule.operator !== 'is') return null;
-  return Prisma.sql`${Prisma.raw(`${FRAME_TABLE_ALIAS}.${column}`)} = ${Boolean(rule.value)}`;
+  return Prisma.sql`${Prisma.raw(`${CONCEPT_TABLE_ALIAS}.${column}`)} = ${Boolean(rule.value)}`;
 }
 
 function buildDateRuleSql(column: string, rule: BooleanFilterRule): Prisma.Sql | null {
   const raw = String(rule.value ?? '').trim();
   if (!raw) return null;
-  const col = Prisma.raw(`${FRAME_TABLE_ALIAS}.${column}`);
+  const col = Prisma.raw(`${CONCEPT_TABLE_ALIAS}.${column}`);
   if (rule.operator === 'after') {
     return Prisma.sql`${col} >= ${new Date(raw)}`;
   }
@@ -106,14 +106,14 @@ function buildChildrenCountSql(
   const childFilters = computedFilters.filter(f => f.field === 'childrenCount');
   if (childFilters.length === 0) return null;
 
-  // Distinct LUs reachable through the frame's senses:
-  // frame → frame_sense_frames → frame_senses → lexical_unit_senses → lexical_units.
+  // Distinct LUs reachable through the concept's senses:
+  // concept → sense_concepts → senses → lexical_unit_senses → lexical_units.
   const childCountExpr = Prisma.sql`
     (SELECT COUNT(DISTINCT lus.lexical_unit_id)
-     FROM frame_sense_frames fsf
-     JOIN lexical_unit_senses lus ON lus.frame_sense_id = fsf.frame_sense_id
+     FROM sense_concepts sc
+     JOIN lexical_unit_senses lus ON lus.sense_id = sc.sense_id
      JOIN lexical_units lu ON lu.id = lus.lexical_unit_id
-     WHERE fsf.frame_id = ${FRAME_ID_REF} AND COALESCE(lu.deleted, false) = false)
+     WHERE sc.concept_id = ${CONCEPT_ID_REF} AND COALESCE(lu.deleted, false) = false)
   `;
 
   const conditions = childFilters.map(filter => {
@@ -155,7 +155,7 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search');
     const rawSortBy = searchParams.get('sortBy') || 'label';
     const sortOrder = searchParams.get('sortOrder') === 'desc' ? 'desc' : 'asc';
-    const parent_frame_id = searchParams.get('parent_frame_id');
+    const parent_concept_id = searchParams.get('parent_concept_id');
     
     const skip = (page - 1) * limit;
 
@@ -179,11 +179,11 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    let where: Prisma.framesWhereInput = {};
-    const filterAST = parseURLToFilterAST('frames', searchParams);
-    const { where: filterWhere, computedFilters } = await translateFilterASTToPrisma('frames', filterAST || undefined);
+    let where: Prisma.conceptsWhereInput = {};
+    const filterAST = parseURLToFilterAST('concepts', searchParams);
+    const { where: filterWhere, computedFilters } = await translateFilterASTToPrisma('concepts', filterAST || undefined);
     
-    const baseConditions: Prisma.framesWhereInput[] = [{ deleted: false }];
+    const baseConditions: Prisma.conceptsWhereInput[] = [{ deleted: false }];
     
     if (search) {
       baseConditions.push({
@@ -196,11 +196,11 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    if (parent_frame_id) {
+    if (parent_concept_id) {
       baseConditions.push({
-        frame_relations_frame_relations_target_idToframes: {
+        concept_relations_concept_relations_child_idToconcepts: {
           some: {
-            source_id: BigInt(parent_frame_id),
+            parent_id: BigInt(parent_concept_id),
             type: 'parent_of',
           },
         },
@@ -232,11 +232,11 @@ export async function GET(request: NextRequest) {
       sqlConditions.push(Prisma.sql`(${Prisma.join(searchConditions, ' OR ')})`);
     }
 
-    if (parent_frame_id) {
+    if (parent_concept_id) {
       sqlConditions.push(Prisma.sql`EXISTS (
-        SELECT 1 FROM frame_relations fr
-        WHERE fr.target_id = f.id
-          AND fr.source_id = ${BigInt(parent_frame_id)}
+        SELECT 1 FROM concept_relations fr
+        WHERE fr.child_id = f.id
+          AND fr.parent_id = ${BigInt(parent_concept_id)}
           AND fr.type = 'parent_of'
       )`);
     }
@@ -254,13 +254,13 @@ export async function GET(request: NextRequest) {
     const orderBySql = Prisma.sql`ORDER BY ${Prisma.raw(`f.${sortBy}`)} ${Prisma.raw(sortOrder)}`;
 
     let totalCount = 0;
-    let frames: Array<Prisma.framesGetPayload<{
+    let concepts: Array<Prisma.conceptsGetPayload<{
       include: {
-        _count: { select: { frame_roles: true; frame_sense_frames: true } };
-        frame_roles: true;
-        frame_sense_frames: {
+        _count: { select: { properties: true; sense_concepts: true } };
+        properties: true;
+        sense_concepts: {
           include: {
-            frame_senses: {
+            senses: {
               include: {
                 lexical_unit_senses: {
                   include: {
@@ -279,14 +279,14 @@ export async function GET(request: NextRequest) {
     if (hasChildrenCountFilter) {
       const totalRows = await prisma.$queryRaw<Array<{ total: bigint }>>(Prisma.sql`
         SELECT COUNT(*)::bigint AS total
-        FROM frames f
+        FROM concepts f
         ${whereSql}
       `);
       totalCount = Number(totalRows[0]?.total ?? 0);
 
       const idRows = await prisma.$queryRaw<Array<{ id: bigint }>>(Prisma.sql`
         SELECT f.id
-        FROM frames f
+        FROM concepts f
         ${whereSql}
         ${orderBySql}
         LIMIT ${limit} OFFSET ${skip}
@@ -294,14 +294,14 @@ export async function GET(request: NextRequest) {
       const pageIds = idRows.map(row => row.id);
 
       if (pageIds.length > 0) {
-        const fetchedFrames = await prisma.frames.findMany({
+        const fetchedConcepts = await prisma.concepts.findMany({
           where: { id: { in: pageIds } },
           include: {
-            _count: { select: { frame_roles: true, frame_sense_frames: true } },
-            frame_roles: true,
-            frame_sense_frames: {
+            _count: { select: { properties: true, sense_concepts: true } },
+            properties: true,
+            sense_concepts: {
               include: {
-                frame_senses: {
+                senses: {
                   include: {
                     lexical_unit_senses: {
                       where: { lexical_units: { deleted: false } },
@@ -317,24 +317,24 @@ export async function GET(request: NextRequest) {
             },
           },
         });
-        const framesById = new Map(fetchedFrames.map(frame => [frame.id.toString(), frame]));
-        frames = pageIds
-          .map(id => framesById.get(id.toString()))
-          .filter((frame): frame is (typeof fetchedFrames)[number] => Boolean(frame));
+        const conceptsById = new Map(fetchedConcepts.map(concept => [concept.id.toString(), concept]));
+        concepts = pageIds
+          .map(id => conceptsById.get(id.toString()))
+          .filter((concept): concept is (typeof fetchedConcepts)[number] => Boolean(concept));
       }
     } else {
-      totalCount = await prisma.frames.count({ where });
-      frames = await prisma.frames.findMany({
+      totalCount = await prisma.concepts.count({ where });
+      concepts = await prisma.concepts.findMany({
         where,
         skip,
         take: limit,
         orderBy: { [sortBy]: sortOrder },
         include: {
-          _count: { select: { frame_roles: true, frame_sense_frames: true } },
-          frame_roles: true,
-          frame_sense_frames: {
+          _count: { select: { properties: true, sense_concepts: true } },
+          properties: true,
+          sense_concepts: {
             include: {
-              frame_senses: {
+              senses: {
                 include: {
                   lexical_unit_senses: {
                     where: { lexical_units: { deleted: false } },
@@ -352,11 +352,11 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const serializedFrames = frames.map(frame => {
-      // Collect distinct LUs across all senses linked to this frame.
+    const serializedConcepts = concepts.map(concept => {
+      // Collect distinct LUs across all senses linked to this concept.
       const luMap = new Map<string, { code: string; lemmas: string[]; src_lemmas: string[]; pos: string; gloss: string }>();
-      for (const sfLink of frame.frame_sense_frames) {
-        for (const lus of sfLink.frame_senses.lexical_unit_senses) {
+      for (const scLink of concept.sense_concepts) {
+        for (const lus of scLink.senses.lexical_unit_senses) {
           const lu = lus.lexical_units;
           const key = lu.id.toString();
           if (!luMap.has(key)) {
@@ -372,31 +372,31 @@ export async function GET(request: NextRequest) {
       }
       const lexicalUnitsCount = luMap.size;
       const lexicalUnitSnippets = Array.from(luMap.values()).slice(0, 10);
-      const sensesCount = frame._count.frame_sense_frames;
+      const sensesCount = concept._count.sense_concepts;
 
       return {
-        id: frame.id.toString(),
-        label: frame.label,
-        code: frame.code,
-        definition: frame.definition,
-        short_definition: frame.short_definition,
-        flagged: frame.flagged ?? false,
-        flaggedReason: frame.flagged_reason ?? undefined,
-        verifiable: frame.verifiable ?? true,
-        unverifiableReason: frame.unverifiable_reason ?? undefined,
-        createdAt: frame.created_at.toISOString(),
-        updatedAt: frame.updated_at.toISOString(),
-        frame_type: frame.frame_type,
-        subtype: frame.subtype,
-        disable_healthcheck: frame.disable_healthcheck,
-        vendler: frame.vendler,
-        multi_perspective: frame.multi_perspective,
-        wikidata_id: frame.wikidata_id,
-        recipe: frame.recipe,
-        roles_count: frame._count.frame_roles,
+        id: concept.id.toString(),
+        label: concept.label,
+        code: concept.code,
+        definition: concept.definition,
+        short_definition: concept.short_definition,
+        flagged: concept.flagged ?? false,
+        flaggedReason: concept.flagged_reason ?? undefined,
+        verifiable: concept.verifiable ?? true,
+        unverifiableReason: concept.unverifiable_reason ?? undefined,
+        createdAt: concept.created_at.toISOString(),
+        updatedAt: concept.updated_at.toISOString(),
+        archetype: concept.archetype,
+        subtype: concept.subtype,
+        disable_healthcheck: concept.disable_healthcheck,
+        vendler: concept.vendler,
+        multi_perspective: concept.multi_perspective,
+        wikidata_id: concept.wikidata_id,
+        recipe: concept.recipe,
+        roles_count: concept._count.properties,
         senses_count: sensesCount,
         lexical_units_count: lexicalUnitsCount,
-        frame_roles: frame.frame_roles.map(fr => ({
+        properties: concept.properties.map(fr => ({
           id: fr.id.toString(),
           description: fr.description,
           notes: fr.notes,
@@ -416,9 +416,9 @@ export async function GET(request: NextRequest) {
     const totalPages = Math.ceil(totalCount / limit);
 
     const dataWithPending = await attachPendingInfoToEntities(
-      serializedFrames,
+      serializedConcepts,
       'frame',
-      (frame) => BigInt(frame.id)
+      (concept) => BigInt(concept.id)
     );
 
     return NextResponse.json({
@@ -431,9 +431,9 @@ export async function GET(request: NextRequest) {
       hasPrev: page > 1,
     });
   } catch (error) {
-    console.error('[API] Error fetching paginated frames:', error);
+    console.error('[API] Error fetching paginated concepts:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch frames' },
+      { error: 'Failed to fetch concepts' },
       { status: 500 }
     );
   }

@@ -3,13 +3,13 @@
 import React from 'react';
 import { useRouter } from 'next/navigation';
 import { FlagIcon } from '@heroicons/react/24/outline';
-import { TableEntry, Frame } from '@/lib/types';
+import { TableEntry, Concept } from '@/lib/types';
 import { DataTableMode, getGraphBasePath } from './config';
 import { ContextMenuState } from './types';
 
 interface ContextMenuProps {
   contextMenu: ContextMenuState;
-  entry: TableEntry | Frame | null;
+  entry: TableEntry | Concept | null;
   mode: DataTableMode;
   onClose: () => void;
   onAction: (action: 'flag' | 'unflag' | 'forbid' | 'allow') => void;
@@ -29,20 +29,20 @@ export function ContextMenu({
     return null;
   }
 
-  const isFrameEntry = mode === 'frames' && 'label' in entry;
-  const frameEntry = isFrameEntry ? entry as Frame : null;
-  const tableEntry = !isFrameEntry ? entry as TableEntry : null;
+  const isConceptEntry = mode === 'concepts' && 'label' in entry;
+  const conceptEntry = isConceptEntry ? entry as Concept : null;
+  const tableEntry = !isConceptEntry ? entry as TableEntry : null;
 
   const handleOpenInGraph = () => {
     onClose();
-    const targetId = frameEntry ? frameEntry.id : (tableEntry?.id || '');
+    const targetId = conceptEntry ? conceptEntry.id : (tableEntry?.id || '');
     router.push(`${graphBasePath}?entry=${targetId}`);
   };
 
-  const handleViewSubframes = () => {
+  const handleViewSubconcepts = () => {
     onClose();
-    if (frameEntry) {
-      router.push(`/table/frames?parent_frame_id=${frameEntry.id}`);
+    if (conceptEntry) {
+      router.push(`/table/concepts?parent_concept_id=${conceptEntry.id}`);
     }
   };
 
@@ -61,11 +61,11 @@ export function ContextMenu({
     >
       {/* Entry info header */}
       <div className="px-4 py-2 border-b border-gray-200 bg-gray-50">
-        {frameEntry ? (
+        {conceptEntry ? (
           <>
-            <div className="text-xs font-mono text-blue-600">{frameEntry.id}</div>
+            <div className="text-xs font-mono text-blue-600">{conceptEntry.id}</div>
             <div className="text-xs text-gray-600 mt-1 truncate max-w-xs">
-              {frameEntry.label}
+              {conceptEntry.label}
             </div>
           </>
         ) : tableEntry ? (
@@ -80,7 +80,7 @@ export function ContextMenu({
 
       {/* Menu items */}
       <div className="py-1">
-        {frameEntry && (
+        {conceptEntry && (
           <button
             onClick={handleOpenInGraph}
             className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 flex items-center gap-2"
@@ -92,19 +92,19 @@ export function ContextMenu({
           </button>
         )}
 
-        {frameEntry && (
+        {conceptEntry && (
           <button
-            onClick={handleViewSubframes}
+            onClick={handleViewSubconcepts}
             className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 flex items-center gap-2"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
             </svg>
-            View Subframes
+            View Subconcepts
           </button>
         )}
 
-        {/* Only show flag actions for table entries, not frames */}
+        {/* Only show flag actions for table entries, not concepts */}
         {tableEntry && (
           <>
             <div className="border-t border-gray-200 my-1"></div>

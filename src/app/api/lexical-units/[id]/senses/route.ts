@@ -15,7 +15,7 @@ async function resolveLexicalUnitId(idOrCode: string): Promise<bigint | null> {
 
 /**
  * GET /api/lexical-units/[id]/senses
- * Returns all frame_senses attached to this lexical unit, including each sense's frame(s).
+ * Returns all senses attached to this lexical unit, including each sense's concept(s).
  */
 export async function GET(
   _request: NextRequest,
@@ -38,7 +38,7 @@ export async function GET(
 /**
  * POST /api/lexical-units/[id]/senses
  *
- * Stages an attach of an existing frame_sense to this lexical unit via the
+ * Stages an attach of an existing sense to this lexical unit via the
  * changeset/audit system. The link change is recorded as a subfield change
  * (`senses.<senseId>.__exists = true`) on the LU's changeset and applied at
  * commit time.
@@ -64,12 +64,12 @@ export async function POST(
 
     // Defensive: ensure the sense exists before staging, so we surface a 404
     // rather than blowing up at commit time.
-    const senseExists = await prisma.frame_senses.findUnique({
+    const senseExists = await prisma.senses.findUnique({
       where: { id: senseId },
       select: { id: true },
     });
     if (!senseExists) {
-      return NextResponse.json({ error: 'Frame sense not found' }, { status: 404 });
+      return NextResponse.json({ error: 'Sense not found' }, { status: 404 });
     }
 
     const userId = await getCurrentUserName();

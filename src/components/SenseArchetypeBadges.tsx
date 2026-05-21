@@ -28,18 +28,18 @@ const BADGE_DEFINITIONS: Array<{
   },
 ];
 
-export function getFrameSenseTypeBadges(sense: FrameSenseBadgeSource) {
+export function getSenseArchetypeBadges(sense: FrameSenseBadgeSource) {
   return BADGE_DEFINITIONS.filter(definition => sense[definition.key]);
 }
 
-export default function FrameSenseTypeBadges({
+export default function SenseArchetypeBadges({
   sense,
   className = '',
 }: {
   sense: FrameSenseBadgeSource;
   className?: string;
 }) {
-  const badges = getFrameSenseTypeBadges(sense);
+  const badges = getSenseArchetypeBadges(sense);
   if (badges.length === 0) return null;
 
   return (

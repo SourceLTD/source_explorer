@@ -78,8 +78,8 @@ export default function DiagnosisCodeFormModal({
     setCategory(diagnosisCode?.category ?? '');
     setSeverity(diagnosisCode?.severity ?? 'medium');
     setEnabled(diagnosisCode?.enabled ?? true);
-    setAppliesToFrameTypes(diagnosisCode?.applies_to_frame_types ?? []);
-    setAppliesToFrameSubtypes(diagnosisCode?.applies_to_frame_subtypes ?? []);
+    setAppliesToFrameTypes(diagnosisCode?.applies_to_archetypes ?? []);
+    setAppliesToFrameSubtypes(diagnosisCode?.applies_to_subtypes ?? []);
     setMatchNullSubtype(diagnosisCode?.match_null_subtype ?? false);
     setRemediationStrategy(diagnosisCode?.remediation_strategy ?? null);
     setRemediationNotes(diagnosisCode?.remediation_notes ?? '');
@@ -269,8 +269,8 @@ export default function DiagnosisCodeFormModal({
           <p className="mt-1 text-xs text-gray-500">
             Cluster this code under a family of related variants (e.g.
             <code className="font-mono"> fs_001</code> for the &ldquo;Wrong
-            Frame Sense&rdquo; family). Groups have no leader code; severity,
-            examples, and frame targeting are per-code, not inherited from
+            Concept Sense&rdquo; family). Groups have no leader code; severity,
+            examples, and concept targeting are per-code, not inherited from
             the group. Leave empty for codes that have no related variants.
           </p>
         </div>
@@ -353,33 +353,33 @@ export default function DiagnosisCodeFormModal({
 
         <div className="border-t border-gray-200 pt-4">
           <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
-            Frame Targeting (optional)
+            Concept Targeting (optional)
           </h4>
           <p className="text-xs text-gray-500 mb-3">
             Restrict when this diagnosis code applies. Leave both lists empty to
-            apply to every frame.
+            apply to every concept.
           </p>
           <div className="space-y-3">
             <ChipInput
-              label="Applies to frame types"
+              label="Applies to archetypes"
               values={appliesToFrameTypes}
               onChange={setAppliesToFrameTypes}
               placeholder="e.g. State (press Enter)"
-              hint="Empty = any frame_type."
+              hint="Empty = any archetype."
             />
             <ChipInput
-              label="Applies to frame subtypes"
+              label="Applies to subtypes"
               values={appliesToFrameSubtypes}
               onChange={setAppliesToFrameSubtypes}
               placeholder="e.g. relation (press Enter)"
               hint={
                 matchNullSubtype && appliesToFrameSubtypes.length === 0
-                  ? 'Currently: only frames whose subtype IS NULL.'
+                  ? 'Currently: only concepts whose subtype IS NULL.'
                   : matchNullSubtype
-                    ? 'Listed values OR frames whose subtype IS NULL.'
+                    ? 'Listed values OR concepts whose subtype IS NULL.'
                     : appliesToFrameSubtypes.length === 0
                       ? 'Empty = any subtype (including NULL).'
-                      : 'Only frames whose subtype is one of the listed values.'
+                      : 'Only concepts whose subtype is one of the listed values.'
               }
             />
             <div className="flex items-center gap-2">
@@ -394,7 +394,7 @@ export default function DiagnosisCodeFormModal({
                 htmlFor="diag-match-null-subtype"
                 className="text-sm text-gray-700"
               >
-                Also match frames whose subtype is NULL
+                Also match concepts whose subtype is NULL
               </label>
             </div>
           </div>

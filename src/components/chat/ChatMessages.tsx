@@ -31,7 +31,7 @@ function Greeting() {
         How can I help?
       </h3>
       <p className="text-sm text-gray-500 max-w-sm">
-        Ask about frames, senses, semantic relations, or anything about your data.
+        Ask about concepts, senses, semantic relations, or anything about your data.
       </p>
     </motion.div>
   );
@@ -55,8 +55,8 @@ function ThinkingIndicator() {
 }
 
 const TOOL_LABELS: Record<string, string> = {
-  search_frames: 'Searching frames',
-  select_frames: 'Looking up frames',
+  search_frames: 'Searching concepts',
+  select_frames: 'Looking up concepts',
   select_lexical_units: 'Looking up words',
   ask_questions: 'Waiting for your response',
 };

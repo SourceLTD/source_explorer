@@ -10,8 +10,8 @@ export const MODEL_OPTIONS = [
 
 export type JobType = 'flag' | 'edit' | 'allocate_contents' | 'allocate' | 'split';
 export type LexicalJobType = 'flag' | 'edit' | 'allocate';
-export type FrameJobType = 'flag' | 'edit' | 'allocate' | 'allocate_contents' | 'split';
-export type EntityType = 'lexical_units' | 'frames';
+export type ConceptJobType = 'flag' | 'edit' | 'allocate' | 'allocate_contents' | 'split';
+export type EntityType = 'lexical_units' | 'concepts';
 
 // ============================================================================
 // PROMPT BUILDING BLOCKS
@@ -34,10 +34,10 @@ const PERSISTENCE_BLOCK = `
 const AGENTIC_INSTRUCTIONS = `
 <tools>
 You have access to MCP tools for searching the database. Use these tools to:
-- Look up frame definitions and find semantically similar frames
+- Look up concept definitions and find semantically similar concepts
 - Search for related verbs, nouns, or other lexical units
-- Verify frame assignments by examining other entries in the same frame
-- Research alternative frames before making recommendations
+- Verify concept assignments by examining other entries in the same concept
+- Research alternative concepts before making recommendations
 
 Be thorough in your research before finalizing your response.
 </tools>`;
@@ -49,7 +49,7 @@ const SCOPE_CONTEXT: Record<ScopeMode, string> = {
   all: 'You are reviewing entries from the complete database.',
   selection: 'You are reviewing a user-selected subset of entries.',
   manual: 'You are reviewing specific entries chosen by the user.',
-  frames: 'You are reviewing entries associated with specific frames.',
+  concepts: 'You are reviewing entries associated with specific concepts.',
   filters: 'You are reviewing entries matching specific filter criteria.',
 };
 
@@ -66,14 +66,14 @@ Part of Speech: {{pos}}
 Gloss: {{gloss}}
 Lemmas: {{lemmas}}
 Examples:\n{{examples}}
-Frame: {{label}}
+Concept: {{label}}
 Currently Flagged: {{flagged}}
 Flagged Reason: {{flagged_reason}}
 
 Decide whether the entry should be flagged for review. Consider:
 - Is the gloss accurate and well-formed?
 - Do the examples properly illustrate the meaning?
-- Is the frame assignment appropriate?
+- Is the concept assignment appropriate?
 
 Respond using the provided JSON schema.`,
 
@@ -84,7 +84,7 @@ Part of Speech: {{pos}}
 Current Gloss: {{gloss}}
 Current Lemmas: {{lemmas}}
 Current Examples:\n{{examples}}
-Frame: {{label}}
+Concept: {{label}}
 
 Review this entry and suggest improvements to make the data more accurate and useful:
 - Improve the gloss if it's unclear, incomplete, or grammatically awkward
@@ -93,94 +93,94 @@ Review this entry and suggest improvements to make the data more accurate and us
 
 Respond using the provided JSON schema with your suggested edits.`,
 
-  allocate: `You are evaluating frame assignments for lexical units.
+  allocate: `You are evaluating concept assignments for lexical units.
 
 Entry Code: {{code}}
 Part of Speech: {{pos}}
 Gloss: {{gloss}}
 Lemmas: {{lemmas}}
 Examples:\n{{examples}}
-Current Frame: {{label}}
-Frame Definition: {{frame.definition}}
+Current Concept: {{label}}
+Concept Definition: {{concept.definition}}
 
-Evaluate whether this entry is in the best possible frame:
-- Does the entry's meaning align with the current frame?
-- Would a different frame be more semantically appropriate?
+Evaluate whether this entry is in the best possible concept:
+- Does the entry's meaning align with the current concept?
+- Would a different concept be more semantically appropriate?
 - Consider typical usage patterns and semantic roles
 
-Respond using the provided JSON schema with your frame recommendation.`,
+Respond using the provided JSON schema with your concept recommendation.`,
 };
 
-// Prompts for frames (different fields: label, definition, short_definition, etc.)
-const FRAME_PROMPTS: Record<FrameJobType, string> = {
-  flag: `You are reviewing semantic frames for quality assurance.
+// Prompts for concepts (different fields: label, definition, short_definition, etc.)
+const CONCEPT_PROMPTS: Record<ConceptJobType, string> = {
+  flag: `You are reviewing semantic concepts for quality assurance.
 
-Frame Label: {{label}}
+Concept Label: {{label}}
 Definition: {{definition}}
 Short Definition: {{short_definition}}
 Currently Flagged: {{flagged}}
 Flagged Reason: {{flagged_reason}}
 Verifiable: {{verifiable}}
 Unverifiable Reason: {{unverifiable_reason}}
-Number of Roles: {{roles_count}}
+Number of Properties: {{roles_count}}
 Number of Lexical Units: {{lexical_units_count}}
 
-Decide whether the frame should be flagged for review. Consider:
+Decide whether the concept should be flagged for review. Consider:
 - Is the definition clear and comprehensive?
-- Does the short definition accurately summarize the frame's meaning?
+- Does the short definition accurately summarize the concept's meaning?
 
 Respond using the provided JSON schema.`,
 
-  edit: `You are improving the quality of semantic frame data.
+  edit: `You are improving the quality of semantic concept data.
 
-Frame Label: {{label}}
+Concept Label: {{label}}
 Current Definition: {{definition}}
 Current Short Definition: {{short_definition}}
-Number of Roles: {{roles_count}}
+Number of Properties: {{roles_count}}
 Number of Lexical Units: {{lexical_units_count}}
 
-Review this frame and suggest improvements to make the data more accurate and useful:
+Review this concept and suggest improvements to make the data more accurate and useful:
 - Improve the definition if it's unclear, incomplete, or could be more precise
 - Enhance the short definition to be more concise yet informative
 
 Respond using the provided JSON schema with your suggested edits.`,
 
-  allocate_contents: `You are reviewing the composition of a semantic frame.
+  allocate_contents: `You are reviewing the composition of a semantic concept.
 
-Frame Label: {{label}}
+Concept Label: {{label}}
 Definition: {{definition}}
 Short Definition: {{short_definition}}
-Number of Roles: {{roles_count}}
+Number of Properties: {{roles_count}}
 Number of Lexical Units: {{lexical_units_count}}
 
-Evaluate whether verbs and other lexical units in this frame are correctly assigned:
-- Does the frame's definition clearly delineate what entries should belong?
-- Are there entries that might fit better in a different frame?
-- Consider the semantic coherence of the frame's contents
+Evaluate whether verbs and other lexical units in this concept are correctly assigned:
+- Does the concept's definition clearly delineate what entries should belong?
+- Are there entries that might fit better in a different concept?
+- Consider the semantic coherence of the concept's contents
 
 Respond using the provided JSON schema with your recommendations.`,
 
-  allocate: `You are evaluating the hierarchical placement of a semantic frame.
+  allocate: `You are evaluating the hierarchical placement of a semantic concept.
 
-Frame ID: {{id}}
-Frame Label: {{label}}
+Concept ID: {{id}}
+Concept Label: {{label}}
 Definition: {{definition}}
 Short Definition: {{short_definition}}
-Number of Roles: {{roles_count}}
+Number of Properties: {{roles_count}}
 Number of Lexical Units: {{lexical_units_count}}
 
-Evaluate whether this frame is correctly placed in the parent_of hierarchy:
-- Does the frame's meaning suggest it should inherit from a different parent frame?
-- Consider the semantic relationships between this frame and potential parent frames
+Evaluate whether this concept is correctly placed in the parent_of hierarchy:
+- Does the concept's meaning suggest it should inherit from a different parent concept?
+- Consider the semantic relationships between this concept and potential parent concepts
 - Use recommended_parent_frame_id to suggest a new parent in the parent_of DAG
-- Use recommended_super_frame_id to suggest a new superframe grouping
+- Use recommended_super_frame_id to suggest a new superconcept grouping
 
 Respond using the provided JSON schema with your recommendation.`,
 
-  split: `You are splitting a semantic frame into multiple more specific frames.
+  split: `You are splitting a semantic concept into multiple more specific concepts.
 
-Frame ID: {{id}}
-Frame Label: {{label}}
+Concept ID: {{id}}
+Concept Label: {{label}}
 Definition: {{definition}}
 Short Definition: {{short_definition}}
 Number of Lexical Units: {{lexical_units_count}}
@@ -190,25 +190,25 @@ Current Lexical Units:
 - {{lu.code}} ({{lu.pos}}): {{lu.gloss}}
 {% endfor %}
 
-Your task is to split this frame into {{min_splits}} to {{max_splits}} new frames. For each new frame:
+Your task is to split this concept into {{min_splits}} to {{max_splits}} new concepts. For each new concept:
 1. Create a unique, descriptive label
-2. Write a clear definition that distinguishes it from sibling frames
+2. Write a clear definition that distinguishes it from sibling concepts
 3. Write a concise short_definition
-4. Assign each lexical unit to exactly one of the new frames
+4. Assign each lexical unit to exactly one of the new concepts
 
 IMPORTANT:
-- Set roles = [] for every proposed new frame in the structured response.
+- Set properties = [] for every proposed new concept in the structured response.
 
 Guidelines:
-- Each new frame should be semantically coherent and distinct
-- All lexical units from the original frame must be assigned to a new frame
-- The split should result in more precise, useful frame definitions
+- Each new concept should be semantically coherent and distinct
+- All lexical units from the original concept must be assigned to a new concept
+- The split should result in more precise, useful concept definitions
 - Consider the semantic relationships between lexical units when grouping
 
 Respond using the provided JSON schema with:
-- Whether the frame should be split
-- Proposed new frames (labels/definitions/short_definition)
-- Assignment of every lexical unit to exactly one proposed new frame
+- Whether the concept should be split
+- Proposed new concepts (labels/definitions/short_definition)
+- Assignment of every lexical unit to exactly one proposed new concept
 - Whether the original should be deleted
 - Confidence + justification`,
 };
@@ -231,8 +231,8 @@ export interface BuildPromptOptions {
  * Get the base prompt template for a given entity type and job type
  */
 function getBasePrompt(entityType: EntityType, jobType: JobType): string {
-  if (entityType === 'frames') {
-    return FRAME_PROMPTS[jobType as FrameJobType];
+  if (entityType === 'concepts') {
+    return CONCEPT_PROMPTS[jobType as ConceptJobType];
   }
   // Lexical entries only support flag, edit, and allocate
   if (jobType === 'allocate_contents' || jobType === 'split') {

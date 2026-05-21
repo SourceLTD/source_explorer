@@ -73,17 +73,17 @@ export interface IssueChangesetSummary {
  * rewrite; the remaining kinds are exhaustive.
  */
 export type ChangePlanKind =
-  | 'split_frame'
-  | 'merge_frame'
+  | 'split_concept'
+  | 'merge_concept'
   /**
-   * v2 Phase 1: collapse two `frame_senses` rows on the same frame
+   * v2 Phase 1: collapse two `senses` rows on the same frame
    * into one. Lowers to a single changeset with `operation='merge'`
    * (added by `add_merge_to_change_operation.sql`); the explorer's
    * `commitMergeInTx` runs the link-table repointing + winner-defn
    * UPDATE + loser DELETE inside the outer plan transaction.
    */
   | 'merge_sense'
-  | 'move_frame_sense'
+  | 'move_sense'
   /**
    * v2: a frame reparent in the inheritance DAG. Lowers to one
    * `frame_relation` DELETE (current `parent_of`) plus one
@@ -91,7 +91,7 @@ export type ChangePlanKind =
    * `reparent_frame` strategy that owns the 29 hierarchy `I-*` codes
    * promoted in runner migration `0048`.
    */
-  | 'move_frame_parent'
+  | 'move_concept_parent'
   /**
    * v2 Phase 3 (cascading remediations, eventual-consistency model):
    * detach a `parent_of` edge. Lowers to a single `frame_relation`
@@ -164,7 +164,7 @@ export interface IssueChangePlanSummary {
  * follow-up fetch. `code` is the human-facing identifier (may be null
  * for frames that haven't been assigned one).
  */
-export interface IssueFindingFrameRef {
+export interface IssueFindingConceptRef {
   id: string;
   label: string;
   code: string | null;
@@ -182,28 +182,28 @@ export interface IssueFindingFrameRef {
  */
 export type IssueFindingEntityContext =
   | {
-      kind: 'frame_relation';
+      kind: 'concept_relation';
       relation_type: string;
-      parent: IssueFindingFrameRef;
-      child: IssueFindingFrameRef;
+      parent: IssueFindingConceptRef;
+      child: IssueFindingConceptRef;
     }
   | {
-      kind: 'frame';
-      frame: IssueFindingFrameRef;
+      kind: 'concept';
+      concept: IssueFindingConceptRef;
     }
   | {
-      kind: 'frame_role';
+      kind: 'property';
       role: { id: string; label: string };
-      frame: IssueFindingFrameRef;
+      concept: IssueFindingConceptRef;
     }
   | {
-      kind: 'frame_sense';
+      kind: 'sense';
       sense: {
         id: string;
         pos: string | null;
         definition_snippet: string | null;
       };
-      frame: IssueFindingFrameRef;
+      concept: IssueFindingConceptRef;
     };
 
 export interface IssueHealthCheckFindingSummary {

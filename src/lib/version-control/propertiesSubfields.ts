@@ -1,19 +1,19 @@
-export type FrameRoleField = 'label' | 'description' | 'notes' | 'main' | 'examples' | '__exists';
+export type PropertyField = 'label' | 'description' | 'notes' | 'main' | 'examples' | '__exists';
 
-export function isFrameRolesFieldName(fieldName: string): boolean {
-  return fieldName === 'frame_roles' || fieldName.startsWith('frame_roles.');
+export function isPropertiesFieldName(fieldName: string): boolean {
+  return fieldName === 'properties' || fieldName.startsWith('properties.');
 }
 
-export function parseFrameRolesFieldName(
+export function parsePropertiesFieldName(
   fieldName: string
-): { roleType: string; field: FrameRoleField } | null {
-  if (!fieldName.startsWith('frame_roles.')) return null;
+): { propertyType: string; field: PropertyField } | null {
+  if (!fieldName.startsWith('properties.')) return null;
   const parts = fieldName.split('.');
-  // Expected: frame_roles.<ROLETYPE>.<FIELD>
+  // Expected: properties.<PROPERTYTYPE>.<FIELD>
   if (parts.length < 3) return null;
-  const roleType = parts[1];
-  const field = parts.slice(2).join('.') as FrameRoleField;
-  if (!roleType) return null;
+  const propertyType = parts[1];
+  const field = parts.slice(2).join('.') as PropertyField;
+  if (!propertyType) return null;
   if (
     field !== '__exists' &&
     field !== 'label' &&
@@ -24,11 +24,11 @@ export function parseFrameRolesFieldName(
   ) {
     return null;
   }
-  return { roleType, field };
+  return { propertyType, field };
 }
 
-export type NormalizedFrameRole = {
-  roleType: string;
+export type NormalizedProperty = {
+  propertyType: string;
   description: string | null;
   notes: string | null;
   main: boolean;
@@ -36,9 +36,9 @@ export type NormalizedFrameRole = {
   label: string | null;
 };
 
-export function defaultNormalizedFrameRole(roleType: string): NormalizedFrameRole {
+export function defaultNormalizedProperty(propertyType: string): NormalizedProperty {
   return {
-    roleType,
+    propertyType,
     description: null,
     notes: null,
     main: false,
@@ -47,10 +47,10 @@ export function defaultNormalizedFrameRole(roleType: string): NormalizedFrameRol
   };
 }
 
-export function coerceNormalizedFrameRoleValue(
-  field: Exclude<FrameRoleField, '__exists'>,
+export function coerceNormalizedPropertyValue(
+  field: Exclude<PropertyField, '__exists'>,
   v: unknown
-): NormalizedFrameRole[Exclude<FrameRoleField, '__exists'>] {
+): NormalizedProperty[Exclude<PropertyField, '__exists'>] {
   switch (field) {
     case 'label':
     case 'description':
@@ -63,37 +63,51 @@ export function coerceNormalizedFrameRoleValue(
   }
 }
 
-export function applyFrameRolesSubChanges(
-  baseRoles: NormalizedFrameRole[],
+export function applyPropertiesSubChanges(
+  baseProperties: NormalizedProperty[],
   changes: Array<{ field_name: string; new_value: unknown }>
-): NormalizedFrameRole[] {
-  const rolesByType = new Map<string, NormalizedFrameRole>(baseRoles.map(r => [r.roleType, { ...r }]));
+): NormalizedProperty[] {
+  const propertiesByType = new Map<string, NormalizedProperty>(baseProperties.map(r => [r.propertyType, { ...r }]));
 
   // Apply existence first
   for (const c of changes) {
-    const parsed = parseFrameRolesFieldName(c.field_name);
+    const parsed = parsePropertiesFieldName(c.field_name);
     if (!parsed || parsed.field !== '__exists') continue;
     const nextExists = typeof c.new_value === 'boolean' ? c.new_value : Boolean(c.new_value);
 
     if (!nextExists) {
-      rolesByType.delete(parsed.roleType);
+      propertiesByType.delete(parsed.propertyType);
       continue;
     }
 
-    if (!rolesByType.has(parsed.roleType)) {
-      rolesByType.set(parsed.roleType, defaultNormalizedFrameRole(parsed.roleType));
+    if (!propertiesByType.has(parsed.propertyType)) {
+      propertiesByType.set(parsed.propertyType, defaultNormalizedProperty(parsed.propertyType));
     }
   }
 
   // Then field updates
   for (const c of changes) {
-    const parsed = parseFrameRolesFieldName(c.field_name);
+    const parsed = parsePropertiesFieldName(c.field_name);
     if (!parsed || parsed.field === '__exists') continue;
-    const role = rolesByType.get(parsed.roleType);
-    if (!role) continue;
-    (role as any)[parsed.field] = coerceNormalizedFrameRoleValue(parsed.field, c.new_value);
+    const prop = propertiesByType.get(parsed.propertyType);
+    if (!prop) continue;
+    (prop as any)[parsed.field] = coerceNormalizedPropertyValue(parsed.field, c.new_value);
   }
 
-  return Array.from(rolesByType.values()).sort((a, b) => a.roleType.localeCompare(b.roleType));
+  return Array.from(propertiesByType.values()).sort((a, b) => a.propertyType.localeCompare(b.propertyType));
 }
 
+/** @deprecated Use PropertyField */
+export type FrameRoleField = PropertyField;
+/** @deprecated Use NormalizedProperty */
+export type NormalizedFrameRole = NormalizedProperty;
+/** @deprecated Use isPropertiesFieldName */
+export const isFrameRolesFieldName = isPropertiesFieldName;
+/** @deprecated Use parsePropertiesFieldName */
+export const parseFrameRolesFieldName = parsePropertiesFieldName;
+/** @deprecated Use defaultNormalizedProperty */
+export const defaultNormalizedFrameRole = defaultNormalizedProperty;
+/** @deprecated Use coerceNormalizedPropertyValue */
+export const coerceNormalizedFrameRoleValue = coerceNormalizedPropertyValue;
+/** @deprecated Use applyPropertiesSubChanges */
+export const applyFrameRolesSubChanges = applyPropertiesSubChanges;

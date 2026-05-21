@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
-import { TableLexicalUnit, Frame } from '@/lib/types';
+import { TableLexicalUnit, Concept } from '@/lib/types';
 import { showGlobalAlert } from '@/lib/alerts';
 import { api } from '@/lib/api-client';
 import Pagination from '@/components/Pagination';
@@ -16,7 +16,7 @@ import { useJobCompletionBroadcast } from '@/hooks/useJobCompletionBroadcast';
 import { useDataTableState, useCopyFieldSelection } from './hooks';
 import { DataTableToolbar } from './DataTableToolbar';
 import { DataTableBody } from './DataTableBody';
-import { FlagModal, FrameChangeModal } from './DataTableModals';
+import { FlagModal, ConceptChangeModal } from './DataTableModals';
 import { ContextMenu } from './ContextMenu';
 import { CopyFieldSelector } from './CopyFieldSelector';
 import AIAgentQuickEditModal from '@/components/AIAgentQuickEditModal';
@@ -27,7 +27,7 @@ import {
   FlagModalState,
   EditingState,
   ContextMenuState,
-  FrameOption,
+  ConceptOption,
   FlagState,
 } from './types';
 
@@ -105,7 +105,7 @@ export default function DataTable({
   const [isAIOverlayOpen, setIsAIOverlayOpen] = useState(false);
   const [pendingAIJobs, setPendingAIJobs] = useState(0);
 
-  const [aiQuickEditEntry, setAiQuickEditEntry] = useState<TableLexicalUnit | Frame | null>(null);
+  const [aiQuickEditEntry, setAiQuickEditEntry] = useState<TableLexicalUnit | Concept | null>(null);
 
   const quickEditJobIdsRef = useRef<Set<string>>(new Set());
   const [isPollingQuickEditJobs, setIsPollingQuickEditJobs] = useState(false);
@@ -113,14 +113,14 @@ export default function DataTable({
   // Flag loading state
   const [isFlagLoading, setIsFlagLoading] = useState(false);
   
-  // Frame modal state
-  const [isFrameModalOpen, setIsFrameModalOpen] = useState(false);
-  const [frameOptions, setFrameOptions] = useState<FrameOption[]>([]);
-  const [frameOptionsLoading, setFrameOptionsLoading] = useState(false);
-  const [frameOptionsError, setFrameOptionsError] = useState<string | null>(null);
-  const [selectedFrameValue, setSelectedFrameValue] = useState<string>('');
-  const [frameSearchQuery, setFrameSearchQuery] = useState('');
-  const [isFrameUpdating, setIsFrameUpdating] = useState(false);
+  // Concept modal state
+  const [isConceptModalOpen, setIsConceptModalOpen] = useState(false);
+  const [conceptOptions, setConceptOptions] = useState<ConceptOption[]>([]);
+  const [conceptOptionsLoading, setConceptOptionsLoading] = useState(false);
+  const [conceptOptionsError, setConceptOptionsError] = useState<string | null>(null);
+  const [selectedConceptValue, setSelectedConceptValue] = useState<string>('');
+  const [conceptSearchQuery, setConceptSearchQuery] = useState('');
+  const [isConceptUpdating, setIsConceptUpdating] = useState(false);
 
   // Copy field selector state
   const copyFieldSelection = useCopyFieldSelection(mode);
@@ -143,7 +143,7 @@ export default function DataTable({
   }, [tableState.data, selection.selectedIds, selection.selectedCount]);
 
   const selectedFlaggableEntriesOnCurrentPage = useMemo(
-    () => selectedEntriesOnCurrentPage.filter((entry): entry is TableLexicalUnit | Frame => 'flagged' in entry),
+    () => selectedEntriesOnCurrentPage.filter((entry): entry is TableLexicalUnit | Concept => 'flagged' in entry),
     [selectedEntriesOnCurrentPage]
   );
 
@@ -155,19 +155,19 @@ export default function DataTable({
     isAIOverlayOpen // Don't poll when overlay is open - it handles polling itself
   );
 
-  // Filtered frame options based on search
-  const filteredFrameOptions = useMemo(() => {
-    if (!frameSearchQuery.trim()) {
-      return frameOptions;
+  // Filtered concept options based on search
+  const filteredConceptOptions = useMemo(() => {
+    if (!conceptSearchQuery.trim()) {
+      return conceptOptions;
     }
-    const query = frameSearchQuery.trim().toLowerCase();
-    return frameOptions.filter(frame => {
+    const query = conceptSearchQuery.trim().toLowerCase();
+    return conceptOptions.filter(concept => {
       return (
-        frame.label.toLowerCase().includes(query) ||
-        (frame.code?.toLowerCase().includes(query) ?? false)
+        concept.label.toLowerCase().includes(query) ||
+        (concept.code?.toLowerCase().includes(query) ?? false)
       );
     });
-  }, [frameOptions, frameSearchQuery]);
+  }, [conceptOptions, conceptSearchQuery]);
 
   // Close context menu when clicking outside
   useEffect(() => {
@@ -185,7 +185,7 @@ export default function DataTable({
 
   // Fetch pending AI jobs (filtered by current mode)
   const fetchPendingAIJobs = useCallback(async () => {
-    if (mode === 'frame_senses') {
+    if (mode === 'senses') {
       setPendingAIJobs(0);
       return;
     }
@@ -199,46 +199,46 @@ export default function DataTable({
     }
   }, [mode]);
 
-  // Fetch frame options
-  const fetchFrameOptions = useCallback(async (search?: string) => {
+  // Fetch concept options
+  const fetchConceptOptions = useCallback(async (search?: string) => {
     if (mode !== 'lexical_units') {
       return;
     }
 
-    setFrameOptionsLoading(true);
-    setFrameOptionsError(null);
+    setConceptOptionsLoading(true);
+    setConceptOptionsError(null);
 
     try {
       const queryParams = new URLSearchParams();
       if (search) queryParams.set('search', search);
       queryParams.set('limit', '100');
 
-      const response = await fetch(`/api/frames?${queryParams.toString()}`, { cache: 'no-store' });
+      const response = await fetch(`/api/concepts?${queryParams.toString()}`, { cache: 'no-store' });
       if (!response.ok) {
-        throw new Error('Failed to load frames');
+        throw new Error('Failed to load concepts');
       }
 
-      const frames: FrameOption[] = await response.json();
-      setFrameOptions(frames);
+      const concepts: ConceptOption[] = await response.json();
+      setConceptOptions(concepts);
     } catch (error) {
-      setFrameOptionsError(error instanceof Error ? error.message : 'Failed to load frames');
+      setConceptOptionsError(error instanceof Error ? error.message : 'Failed to load concepts');
     } finally {
-      setFrameOptionsLoading(false);
+      setConceptOptionsLoading(false);
     }
   }, [mode]);
 
-  // Load frame options when modal opens or search query changes
+  // Load concept options when modal opens or search query changes
   useEffect(() => {
-    if (!isFrameModalOpen || mode !== 'lexical_units') {
+    if (!isConceptModalOpen || mode !== 'lexical_units') {
       return;
     }
 
     const debounceTimer = setTimeout(() => {
-      void fetchFrameOptions(frameSearchQuery);
+      void fetchConceptOptions(conceptSearchQuery);
     }, 300);
 
     return () => clearTimeout(debounceTimer);
-  }, [fetchFrameOptions, frameSearchQuery, isFrameModalOpen, mode]);
+  }, [fetchConceptOptions, conceptSearchQuery, isConceptModalOpen, mode]);
 
   // Load pending AI jobs on mount and poll
   useEffect(() => {
@@ -450,47 +450,47 @@ export default function DataTable({
     handleFlagUpdate(updates);
   };
 
-  // Frame modal handlers
-  const handleOpenFrameModal = () => {
+  // Concept modal handlers
+  const handleOpenConceptModal = () => {
     if (mode !== 'lexical_units') {
       return;
     }
-    setFrameOptionsError(null);
-    setSelectedFrameValue('');
-    setFrameSearchQuery('');
-    setIsFrameModalOpen(true);
+    setConceptOptionsError(null);
+    setSelectedConceptValue('');
+    setConceptSearchQuery('');
+    setIsConceptModalOpen(true);
   };
 
-  const handleCloseFrameModal = () => {
-    if (isFrameUpdating) {
+  const handleCloseConceptModal = () => {
+    if (isConceptUpdating) {
       return;
     }
-    setIsFrameModalOpen(false);
-    setSelectedFrameValue('');
-    setFrameSearchQuery('');
-    setFrameOptionsError(null);
+    setIsConceptModalOpen(false);
+    setSelectedConceptValue('');
+    setConceptSearchQuery('');
+    setConceptOptionsError(null);
   };
 
-  const handleConfirmFrameChange = async () => {
+  const handleConfirmConceptChange = async () => {
     if (selection.selectedCount === 0 || mode !== 'lexical_units') {
       return;
     }
 
-    const normalizedFrameValue =
-      selectedFrameValue === ''
+    const normalizedConceptValue =
+      selectedConceptValue === ''
         ? undefined
-        : selectedFrameValue === '__CLEAR__'
+        : selectedConceptValue === '__CLEAR__'
           ? null
-          : selectedFrameValue;
+          : selectedConceptValue;
 
-    if (normalizedFrameValue === undefined) {
-      setFrameOptionsError('Please select a frame before confirming');
+    if (normalizedConceptValue === undefined) {
+      setConceptOptionsError('Please select a concept before confirming');
       return;
     }
 
     const selectedCount = selection.selectedCount;
-    setIsFrameUpdating(true);
-    setFrameOptionsError(null);
+    setIsConceptUpdating(true);
+    setConceptOptionsError(null);
 
     try {
       const response = await fetch(`${tableState.apiPrefix}/frame`, {
@@ -500,34 +500,34 @@ export default function DataTable({
         },
         body: JSON.stringify({
           ids: Array.from(selection.selectedIds),
-          frameId: normalizedFrameValue,
+          conceptId: normalizedConceptValue,
         }),
       });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => null);
-        throw new Error(errorData?.error ?? 'Failed to update frames');
+        throw new Error(errorData?.error ?? 'Failed to update concepts');
       }
 
       const result = await response.json();
       const actualCount = result.updatedCount || result.updated_count || result.count || 0;
 
-      const chosenFrame =
-        normalizedFrameValue === null
+      const chosenConcept =
+        normalizedConceptValue === null
           ? null
-          : frameOptions.find(frame => frame.id === normalizedFrameValue) ?? null;
+          : conceptOptions.find(concept => concept.id === normalizedConceptValue) ?? null;
 
       await tableState.fetchData();
       refreshPendingChangesCount();
 
       selection.clearSelection();
-      setIsFrameModalOpen(false);
-      setSelectedFrameValue('');
-      setFrameSearchQuery('');
-      setFrameOptionsError(null);
+      setIsConceptModalOpen(false);
+      setSelectedConceptValue('');
+      setConceptSearchQuery('');
+      setConceptOptionsError(null);
 
-      const frameName = chosenFrame ? (chosenFrame.code?.trim() || chosenFrame.label) : 'No frame';
-      const action = normalizedFrameValue === null ? 'cleared frames for' : `updated to ${frameName} for`;
+      const conceptName = chosenConcept ? (chosenConcept.code?.trim() || chosenConcept.label) : 'No concept';
+      const action = normalizedConceptValue === null ? 'cleared concepts for' : `updated to ${conceptName} for`;
       
       if (actualCount === selectedCount) {
         showGlobalAlert({
@@ -552,8 +552,8 @@ export default function DataTable({
         });
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to update frames';
-      setFrameOptionsError(errorMessage);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to update concepts';
+      setConceptOptionsError(errorMessage);
       
       showGlobalAlert({
         type: 'error',
@@ -562,7 +562,7 @@ export default function DataTable({
         durationMs: 6000
       });
     } finally {
-      setIsFrameUpdating(false);
+      setIsConceptUpdating(false);
     }
   };
 
@@ -693,7 +693,7 @@ export default function DataTable({
     return String(value);
   }, []);
 
-  // Format an array item (like a frame_role or lexical_unit) using selected sub-fields
+  // Format an array item (like a property or lexical_unit) using selected sub-fields
   const formatArrayItem = useCallback((item: Record<string, unknown>, selectedSubFields: string[]): string => {
     if (selectedSubFields.length === 0) {
       return '—';
@@ -721,11 +721,11 @@ export default function DataTable({
     
     // Handle nested columns with sub-field selection
     if (hasNestedFields(columnKey) && selectedNestedFields && selectedNestedFields.length > 0) {
-      if (columnKey === 'frame_roles' && 'frame_roles' in entry) {
-        const roles = entry.frame_roles as unknown as Array<Record<string, unknown>>;
-        if (!roles || roles.length === 0) return '—';
+      if (columnKey === 'properties' && 'properties' in entry) {
+        const properties = entry.properties as unknown as Array<Record<string, unknown>>;
+        if (!properties || properties.length === 0) return '—';
         
-        return roles.map(role => formatArrayItem(role, selectedNestedFields)).join('\n  - ');
+        return properties.map(prop => formatArrayItem(prop, selectedNestedFields)).join('\n  - ');
       }
       
       if (columnKey === 'lexical_units' && 'lexical_units' in entry) {
@@ -737,10 +737,10 @@ export default function DataTable({
     }
     
     // Fallback for nested columns without sub-field selection
-    if (columnKey === 'frame_roles' && 'frame_roles' in entry) {
-      const roles = entry.frame_roles as unknown as Array<{ label?: string | null }>;
-      if (!roles || roles.length === 0) return '—';
-      return roles.map(r => r.label || '—').filter(Boolean).join(', ');
+    if (columnKey === 'properties' && 'properties' in entry) {
+      const properties = entry.properties as unknown as Array<{ label?: string | null }>;
+      if (!properties || properties.length === 0) return '—';
+      return properties.map(r => r.label || '—').filter(Boolean).join(', ');
     }
     
     if (columnKey === 'lexical_units' && 'lexical_units' in entry) {
@@ -829,14 +829,14 @@ export default function DataTable({
   }, [currentColumnsWithActions]);
 
   const handleRowClick = useCallback((entry: DataTableEntry) => {
-    if ('frameWarning' in entry) {
+    if ('conceptWarning' in entry) {
       return;
     }
     onRowClick?.(entry);
   }, [onRowClick]);
 
   const handleEditEntryClick = useCallback((entry: DataTableEntry) => {
-    if ('frameWarning' in entry) {
+    if ('conceptWarning' in entry) {
       return;
     }
     onEditClick?.(entry);
@@ -896,10 +896,10 @@ export default function DataTable({
         onResetColumnWidths={tableState.handleResetColumnWidths}
         pendingAIJobs={pendingAIJobs}
         onOpenAIOverlay={() => setIsAIOverlayOpen(true)}
-        selectedCount={mode === 'frame_senses' ? 0 : selection.selectedCount}
+        selectedCount={mode === 'senses' ? 0 : selection.selectedCount}
         flagState={getSelectionFlagState()}
         onOpenFlagModal={handleOpenFlagModal}
-        onOpenFrameModal={handleOpenFrameModal}
+        onOpenConceptModal={handleOpenConceptModal}
         isPageSizePanelOpen={tableState.isPageSizePanelOpen}
         onPageSizePanelToggle={() => tableState.setIsPageSizePanelOpen(!tableState.isPageSizePanelOpen)}
         pageSize={tableState.pageSize}
@@ -953,14 +953,14 @@ export default function DataTable({
         pageSize={tableState.data?.limit || tableState.pageSize}
         onPageChange={tableState.handlePageChange}
         loading={tableState.loading}
-        itemLabel={mode === 'frame_senses' ? 'senses' : 'entries'}
+        itemLabel={mode === 'senses' ? 'senses' : 'entries'}
       />
 
       {/* Context Menu */}
-      {mode !== 'frame_senses' && (
+      {mode !== 'senses' && (
         <ContextMenu
           contextMenu={contextMenu}
-          entry={contextMenuEntry as TableLexicalUnit | Frame | null}
+          entry={contextMenuEntry as TableLexicalUnit | Concept | null}
           mode={mode}
           onClose={handleCloseContextMenu}
           onAction={handleContextMenuAction}
@@ -979,30 +979,30 @@ export default function DataTable({
         onReasonChange={(reason) => setFlagModal(prev => ({ ...prev, reason }))}
       />
 
-      {/* Frame Change Modal */}
+      {/* Concept Change Modal */}
       {mode === 'lexical_units' && (
-        <FrameChangeModal
-          isOpen={isFrameModalOpen}
+        <ConceptChangeModal
+          isOpen={isConceptModalOpen}
           selectedCount={selection.selectedCount}
           selectedEntriesOnCurrentPage={selectedFlaggableEntriesOnCurrentPage}
-          frameOptions={frameOptions}
-          filteredFrameOptions={filteredFrameOptions}
-          frameOptionsLoading={frameOptionsLoading}
-          frameOptionsError={frameOptionsError}
-          selectedFrameValue={selectedFrameValue}
-          frameSearchQuery={frameSearchQuery}
-          isFrameUpdating={isFrameUpdating}
-          onClose={handleCloseFrameModal}
-          onConfirm={handleConfirmFrameChange}
-          onFrameValueChange={setSelectedFrameValue}
-          onSearchQueryChange={setFrameSearchQuery}
-          onClearError={() => setFrameOptionsError(null)}
-          onRetryLoad={fetchFrameOptions}
+          conceptOptions={conceptOptions}
+          filteredConceptOptions={filteredConceptOptions}
+          conceptOptionsLoading={conceptOptionsLoading}
+          conceptOptionsError={conceptOptionsError}
+          selectedConceptValue={selectedConceptValue}
+          conceptSearchQuery={conceptSearchQuery}
+          isConceptUpdating={isConceptUpdating}
+          onClose={handleCloseConceptModal}
+          onConfirm={handleConfirmConceptChange}
+          onConceptValueChange={setSelectedConceptValue}
+          onSearchQueryChange={setConceptSearchQuery}
+          onClearError={() => setConceptOptionsError(null)}
+          onRetryLoad={fetchConceptOptions}
         />
       )}
 
       {/* AI Jobs Overlay */}
-      {mode !== 'frame_senses' && (
+      {mode !== 'senses' && (
         <AIJobsOverlay
           isOpen={isAIOverlayOpen}
           onClose={() => setIsAIOverlayOpen(false)}
@@ -1014,7 +1014,7 @@ export default function DataTable({
       )}
 
       {/* AI Agent Quick Edit Modal */}
-      {aiQuickEditEntry && mode !== 'frame_senses' && (
+      {aiQuickEditEntry && mode !== 'senses' && (
         <AIAgentQuickEditModal
           isOpen={!!aiQuickEditEntry}
           onClose={handleCloseAIQuickEdit}

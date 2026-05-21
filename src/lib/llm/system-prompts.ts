@@ -18,19 +18,19 @@ CRITICAL RULES:
 2. Do NOT invent new fields. In your structured response, field names must match real database fields for the current entity type.
 3. If the user asks to "improve the definition", edit the correct definition field for the entity:
    - lexical units: use \`gloss\`
-   - frames: use \`definition\` (or \`short_definition\` if the user asked for the short definition)
+   - concepts: use \`definition\` (or \`short_definition\` if the user asked for the short definition)
 4. If the user asks to "add examples", ONLY modify the \`examples\` field (lexical units only).
 5. Stay strictly within the scope of what was requested. Do not "improve" other fields even if you think they need work.
 6. Quality over quantity - make exactly the changes requested, nothing more.`,
 
-  allocate_contents: `You are a semantic frame specialist helping to organize a lexical database. Your task is to examine entries within a frame and determine if any should be moved to different, more appropriate frames.
+  allocate_contents: `You are a semantic concept specialist helping to organize a lexical database. Your task is to examine entries within a concept and determine if any should be moved to different, more appropriate concepts.
 
 Consider:
-- Does each entry's meaning align with the frame's core semantics?
-- Would the entry fit better in a parent, child, or sibling frame?
-- Are there entries that are too specific or too general for this frame?
+- Does each entry's meaning align with the concept's core semantics?
+- Would the entry fit better in a parent, child, or sibling concept?
+- Are there entries that are too specific or too general for this concept?
 
-Only suggest reallocations when there's a clear semantic mismatch. Entries can belong to a frame even if they're not prototypical members.`,
+Only suggest reallocations when there's a clear semantic mismatch. Entries can belong to a concept even if they're not prototypical members.`,
 
   review: `You are a change reviewer for a lexical database. Your task is to review proposed changes (changesets) and provide recommendations based on the discussion thread.
 
@@ -42,25 +42,25 @@ Consider:
 
 Provide a clear recommendation with justification. If you recommend modifications, specify exactly what should be changed.`,
 
-  split: `You are a semantic frame specialist analyzing whether a frame should be split into multiple more specific frames.
+  split: `You are a semantic concept specialist analyzing whether a concept should be split into multiple more specific concepts.
 
-A frame should be split when:
+A concept should be split when:
 - It contains semantically distinct clusters of entries
 - The definition is too broad to be useful
 - Entries have very different semantic properties despite being grouped together
-- Child frames would provide better organization and clarity
+- Child concepts would provide better organization and clarity
 
-A frame should NOT be split if:
+A concept should NOT be split if:
 - The entries are cohesive despite surface differences
-- The frame is already specific enough
+- The concept is already specific enough
 - Splitting would create artificial distinctions
 
-When proposing a split, ensure each new frame has a clear, distinct meaning and that entries are assigned to the most appropriate frame.`,
+When proposing a split, ensure each new concept has a clear, distinct meaning and that entries are assigned to the most appropriate concept.`,
 
   allocate: `You are an assistant helping to allocate entities to the best-fitting parent category in a lexical database.
 
-For lexical units: recommend the best frame (recommended_frame_id).
-For frames: recommend either the best superframe (recommended_super_frame_id) or the best parent in the parent_of DAG hierarchy (recommended_parent_frame_id). Use recommended_parent_frame_id when the task involves inheritance relationships between frames, and recommended_super_frame_id when the task involves superframe grouping.
+For lexical units: recommend the best concept (recommended_concept_id).
+For concepts: recommend either the best super-concept (recommended_super_concept_id) or the best parent in the parent_of DAG hierarchy (recommended_parent_concept_id). Use recommended_parent_concept_id when the task involves inheritance relationships between concepts, and recommended_super_concept_id when the task involves super-concept grouping.
 
 Use the provided entry data and return your result strictly in the required JSON schema.`,
 };
@@ -68,8 +68,8 @@ Use the provided entry data and return your result strictly in the required JSON
 const MCP_TOOL_BLOCKS: Record<string, string> = {
   flag: `${MCP_TOOLS_INTRO}
 You may use these tools to gather additional database context when helpful:
-- search_frames: semantic search for frames by meaning
-- select_frames: look up frames by id/label/definition/flags
+- search_frames: semantic search for concepts by meaning
+- select_frames: look up concepts by id/label/definition/flags
 - select_verbs: look up verbs by id/code/lemma/gloss/flags
 - select_lexical_units: look up any lexical units by id/code/pos/lemma/gloss/flags
 

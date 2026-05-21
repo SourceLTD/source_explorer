@@ -50,7 +50,7 @@ const TERMINAL_ITEM_STATUSES = new Set(['succeeded', 'failed', 'skipped']);
 async function enrichJobItemsWithDbCodes(items: any[]): Promise<void> {
   if (items.length === 0) return;
 
-  const frameIdsToFetch = new Set<bigint>();
+  const conceptIdsToFetch = new Set<bigint>();
   const luIdsToFetch = new Set<bigint>();
   
   for (const item of items) {
@@ -58,8 +58,8 @@ async function enrichJobItemsWithDbCodes(items: any[]): Promise<void> {
     if (!entry) continue;
 
     // For frames, always fetch since code might be incorrectly set to label
-    if (item.frame_id) {
-      frameIdsToFetch.add(BigInt(item.frame_id));
+    if (item.concept_id) {
+      conceptIdsToFetch.add(BigInt(item.concept_id));
     } else if (item.lexical_unit_id) {
       // For lexical units, only fetch if code looks wrong
       const looksLikeId = entry.code && /^\d+$/.test(entry.code);
@@ -69,16 +69,16 @@ async function enrichJobItemsWithDbCodes(items: any[]): Promise<void> {
     }
   }
 
-  if (frameIdsToFetch.size === 0 && luIdsToFetch.size === 0) return;
+  if (conceptIdsToFetch.size === 0 && luIdsToFetch.size === 0) return;
 
   const MAX_BIND_VARS = 15000;
   
-  const fetchFrames = async () => {
-    const ids = Array.from(frameIdsToFetch);
+  const fetchConcepts = async () => {
+    const ids = Array.from(conceptIdsToFetch);
     const records: any[] = [];
     for (let i = 0; i < ids.length; i += MAX_BIND_VARS) {
       const chunk = ids.slice(i, i + MAX_BIND_VARS);
-      const chunkRecords = await prisma.frames.findMany({
+      const chunkRecords = await prisma.concepts.findMany({
         where: { id: { in: chunk } },
         select: { id: true, code: true, label: true }
       });
@@ -101,24 +101,24 @@ async function enrichJobItemsWithDbCodes(items: any[]): Promise<void> {
     return records;
   };
 
-  const [frameRecords, luRecords] = await Promise.all([
-    frameIdsToFetch.size > 0 ? fetchFrames() : Promise.resolve([]),
+  const [conceptRecords, luRecords] = await Promise.all([
+    conceptIdsToFetch.size > 0 ? fetchConcepts() : Promise.resolve([]),
     luIdsToFetch.size > 0 ? fetchLUs() : Promise.resolve([])
   ]);
 
-  const frameMap = new Map(frameRecords.map(r => [r.id, r]));
+  const conceptMap = new Map(conceptRecords.map(r => [r.id, r]));
   const luMap = new Map(luRecords.map(r => [r.id, r]));
 
   for (const item of items) {
     const entry = item.entry;
     if (!entry) continue;
 
-    if (item.frame_id) {
-      const frame = frameMap.get(BigInt(item.frame_id));
-      if (frame) {
+    if (item.concept_id) {
+      const concept = conceptMap.get(BigInt(item.concept_id));
+      if (concept) {
         // Always use the DB code for frames (prioritize code > label > id)
-        entry.code = frame.code ?? frame.label ?? frame.id.toString();
-        if (frame.label) entry.label = frame.label;
+        entry.code = concept.code ?? concept.label ?? concept.id.toString();
+        if (concept.label) entry.label = concept.label;
       }
     } else if (item.lexical_unit_id) {
       const looksLikeId = entry.code && /^\d+$/.test(entry.code);
@@ -140,7 +140,7 @@ function inferTargetTypeFromJobScope(scope: JobScope | null): JobTargetType | nu
   if (!scope) return null;
   if (scope.kind === 'ids') return scope.targetType;
   if (scope.kind === 'filters') return scope.targetType;
-  if (scope.kind === 'frame_ids') return 'frames';
+  if (scope.kind === 'concept_ids') return 'concepts';
   return null;
 }
 
@@ -233,7 +233,7 @@ async function fetchJobRecord(jobId: bigint, options: FetchOptions = {}): Promis
         started_at: item.started_at ? item.started_at.toISOString() : null,
         completed_at: item.completed_at ? item.completed_at.toISOString() : null,
         lexical_unit_id: item.lexical_unit_id ? item.lexical_unit_id.toString() : null,
-        frame_id: item.frame_id ? item.frame_id.toString() : null,
+        concept_id: item.concept_id ? item.concept_id.toString() : null,
         entry: extractEntrySummary(item),
       }))
     : [];
@@ -288,17 +288,17 @@ function extractEntrySummary(item: llm_job_items): {
 } {
   const payload = (item.request_payload as Prisma.JsonObject | null) ?? {};
   const entry = (payload.entry as Prisma.JsonObject | undefined) ?? {};
-  const frameInfo = (payload.frameInfo as Prisma.JsonObject | undefined) ?? {};
+  const conceptInfo = (payload.frameInfo as Prisma.JsonObject | undefined) ?? {};
   
   const rawCode = entry.code;
-  const rawLabel = entry.label || frameInfo.name;
+  const rawLabel = entry.label || conceptInfo.name;
   
   const code = rawCode !== null && rawCode !== undefined ? String(rawCode) : null;
   const label = rawLabel !== null && rawLabel !== undefined ? String(rawLabel) : null;
-  const pos = (entry.pos as JobTargetType) ?? (item.frame_id ? 'frames' : null);
+  const pos = (entry.pos as JobTargetType) ?? (item.concept_id ? 'concepts' : null);
 
   return {
-    code: (code && code.trim() !== '' && !/^\d+$/.test(code)) ? code : (label && label.trim() !== '' && !/^\d+$/.test(label)) ? label : code || label || (item.frame_id ?? item.lexical_unit_id ?? item.id).toString(),
+    code: (code && code.trim() !== '' && !/^\d+$/.test(code)) ? code : (label && label.trim() !== '' && !/^\d+$/.test(label)) ? label : code || label || (item.concept_id ?? item.lexical_unit_id ?? item.id).toString(),
     pos,
     gloss: (entry.gloss as string) ?? null,
     lemmas: (entry.lemmas as string[]) ?? null,
@@ -342,7 +342,7 @@ function buildVariableMap(entry: LexicalUnitSummary): Record<string, string> {
     lexfile: entry.lexfile ?? '',
   };
 
-  if (entry.pos === 'frames') {
+  if (entry.pos === 'concepts') {
     base.definition = entry.definition ?? '';
     base.short_definition = entry.short_definition ?? '';
     base.flagged = entry.flagged ? 'true' : 'false';
@@ -359,8 +359,8 @@ function buildVariableMap(entry: LexicalUnitSummary): Record<string, string> {
     }
   }
 
-  if (entry.frame?.definition) {
-    base.frame_definition = entry.frame.definition;
+  if (entry.concept?.definition) {
+    base.concept_definition = entry.concept.definition;
   }
 
   return base;
@@ -387,7 +387,7 @@ function buildTemplateContext(entry: LexicalUnitSummary): Record<string, unknown
     lexfile: entry.lexfile ?? '',
   };
 
-  if (entry.pos === 'frames') {
+  if (entry.pos === 'concepts') {
     context.definition = entry.definition ?? '';
     context.short_definition = entry.short_definition ?? '';
     context.roles = entry.roles ?? [];
@@ -397,20 +397,20 @@ function buildTemplateContext(entry: LexicalUnitSummary): Record<string, unknown
     context.lexical_units_count = entry.lexical_units?.length ?? 0;
   }
 
-  if (entry.frame) {
-    context.frame = entry.frame;
+  if (entry.concept) {
+    context.concept = entry.concept;
   }
 
   if (entry.additional) {
     for (const [key, value] of Object.entries(entry.additional)) {
-      if (!key.startsWith('frame.') || typeof value === 'string') {
+      if (!key.startsWith('concept.') || typeof value === 'string') {
         context[key] = value;
       }
     }
   }
 
-  if (entry.frame?.definition) {
-    context.frame_definition = entry.frame.definition;
+  if (entry.concept?.definition) {
+    context.concept_definition = entry.concept.definition;
   }
 
   return context;
@@ -780,8 +780,8 @@ export async function previewLLMJob(params: CreateLLMJobParams) {
   const previewScope = { ...params.scope };
   if (previewScope.kind === 'filters') {
     previewScope.filters = { ...previewScope.filters, limit: 5 };
-  } else if (previewScope.kind === 'frame_ids') {
-    previewScope.frameIds = previewScope.frameIds.slice(0, 5);
+  } else if (previewScope.kind === 'concept_ids') {
+    previewScope.conceptIds = previewScope.conceptIds.slice(0, 5);
     previewScope.limit = 5;
   } else if (previewScope.kind === 'ids') {
     previewScope.ids = previewScope.ids.slice(0, 5);
@@ -872,12 +872,12 @@ export async function createLLMJob(
       metadata: params.metadata,
     });
 
-    const frameInfo = entry.frame ? {
-      name: entry.frame.label,
-      id: entry.frame.id,
-      definition: entry.frame.definition,
-      short_definition: entry.frame.short_definition,
-      roles: entry.frame.roles,
+    const conceptInfo = entry.concept ? {
+      name: entry.concept.label,
+      id: entry.concept.id,
+      definition: entry.concept.definition,
+      short_definition: entry.concept.short_definition,
+      roles: entry.concept.roles,
     } : null;
 
     const requestPayload = {
@@ -901,13 +901,13 @@ export async function createLLMJob(
         lexical_units: (entry.lexical_units ?? []) as any[],
         roles: (entry.roles ?? []) as any[],
       },
-      frameInfo,
+      frameInfo: conceptInfo,
     } satisfies Record<string, unknown>;
 
     return {
       status: 'queued' as const,
-      lexical_unit_id: entry.pos !== 'frames' ? entry.dbId : null,
-      frame_id: entry.pos === 'frames' ? entry.dbId : null,
+      lexical_unit_id: entry.pos !== 'concepts' ? entry.dbId : null,
+      concept_id: entry.pos === 'concepts' ? entry.dbId : null,
       request_payload: requestPayload as Prisma.InputJsonObject,
     };
   }));
@@ -993,8 +993,8 @@ export async function listLLMJobs(options: JobListOptions = {}): Promise<Seriali
       
       if (options.entityType === 'lexical_units') {
         return isLexicalUnitPOS(jobTargetType);
-      } else if (options.entityType === 'frames') {
-        return jobTargetType === 'frames';
+      } else if (options.entityType === 'concepts') {
+        return jobTargetType === 'concepts';
       }
       
       return jobTargetType === options.entityType;
@@ -1013,7 +1013,7 @@ export async function listLLMJobs(options: JobListOptions = {}): Promise<Seriali
       started_at: item.started_at ? item.started_at.toISOString() : null,
       completed_at: item.completed_at ? item.completed_at.toISOString() : null,
       lexical_unit_id: item.lexical_unit_id ? item.lexical_unit_id.toString() : null,
-      frame_id: item.frame_id ? item.frame_id.toString() : null,
+      concept_id: item.concept_id ? item.concept_id.toString() : null,
       entry: extractEntrySummary(item),
     }));
 
@@ -1149,8 +1149,8 @@ export async function getUnseenJobsCount(targetType?: JobEntityTypeFilter): Prom
       
       if (targetType === 'lexical_units') {
         return isLexicalUnitPOS(jobTargetType);
-      } else if (targetType === 'frames') {
-        return jobTargetType === 'frames';
+      } else if (targetType === 'concepts') {
+        return jobTargetType === 'concepts';
       }
       
       return jobTargetType === targetType;

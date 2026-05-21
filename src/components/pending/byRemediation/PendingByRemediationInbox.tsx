@@ -39,7 +39,7 @@ const FRAME_FIELD_FRAGMENTS: Record<string, string> = {
   recipe: 'recipe',
   recipe_graph: 'recipe',
   vendler: 'Vendler class',
-  frame_type: 'type',
+  archetype: 'type',
   subtype: 'subtype',
   flagged: 'flag',
   verifiable: 'verifiability',
@@ -69,8 +69,8 @@ function primaryUpdateFieldKey(cs: ByRemediationChangeset): string | null {
   if (fieldNames.length === 0) return null;
 
   if (entityType === 'frame') {
-    // frame_roles.* sub-fields → group together as "roles"
-    if (fieldNames.some((f) => f.startsWith('frame_roles.'))) return 'roles';
+    // frame_roles.* sub-fields → group together as "properties"
+    if (fieldNames.some((f) => f.startsWith('properties.') || f.startsWith('frame_roles.'))) return 'properties';
     // Priority order: pick the first known field
     for (const f of fieldNames) {
       if (FRAME_FIELD_FRAGMENTS[f]) return f;
@@ -89,9 +89,9 @@ function primaryUpdateFieldKey(cs: ByRemediationChangeset): string | null {
 }
 
 function primaryUpdateFieldLabel(cs: ByRemediationChangeset, fieldKey: string): string {
-  const base = cs.entity_type === 'frame_role' ? 'Update role' : 'Update frame';
+  const base = cs.entity_type === 'frame_role' ? 'Update property' : 'Update concept';
   if (cs.entity_type === 'frame') {
-    if (fieldKey === 'roles') return 'Update frame roles';
+    if (fieldKey === 'properties') return 'Update concept properties';
     const frag = FRAME_FIELD_FRAGMENTS[fieldKey];
     return frag ? `${base} ${frag}` : `${base} (${fieldKey})`;
   }
@@ -137,7 +137,7 @@ function splitUpdateBuckets(buckets: ActionBucket[]): ActionBucket[] {
 
     // Only bother splitting when there's more than one distinct sub-key.
     // Even when all changesets share one field key, still rename the label
-    // to the specific version (e.g. "Update frame definition" not "Update frame").
+    // to the specific version (e.g. "Update concept definition" not "Update concept").
     if (subMap.size <= 1) {
       const [[, { label }]] = subMap;
       result.push(label !== bucket.action_label ? { ...bucket, action_label: label } : bucket);
@@ -207,8 +207,8 @@ interface PendingByRemediationInboxProps {
 }
 
 /**
- * Master/detail inbox organised by action type (e.g. "Reparent frame",
- * "Update frame"). Each row in the left rail represents one action bucket
+ * Master/detail inbox organised by action type (e.g. "Reparent concept",
+ * "Update concept"). Each row in the left rail represents one action bucket
  * and expands to reveal health-check sub-rows (diagnosis codes) nested
  * below it. Selecting a row shows the full changeset list in the right pane.
  */

@@ -8,11 +8,11 @@ interface SearchBoxProps {
   onSelectResult: (result: SearchResult) => void;
   onSearchChange?: (query: string) => void;
   placeholder?: string;
-  mode?: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames' | 'lexical_units';
+  mode?: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'concepts' | 'lexical_units';
 }
 
-function FrameResultPreview({ result }: { result: SearchResult }) {
-  const definition = result.frameDefinition || result.gloss;
+function ConceptResultPreview({ result }: { result: SearchResult }) {
+  const definition = result.conceptDefinition || result.gloss;
 
   return (
     <div className="w-full min-w-0">
@@ -23,9 +23,9 @@ function FrameResultPreview({ result }: { result: SearchResult }) {
         <span className="shrink-0 px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-600 text-[10px] font-mono">
           #{result.id}
         </span>
-        {result.frameType && (
+        {result.archetype && (
           <span className="shrink-0 rounded-full bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700">
-            {result.frameType}
+            {result.archetype}
           </span>
         )}
       </div>
@@ -59,8 +59,8 @@ export default function SearchBox({ onSelectResult, onSearchChange, placeholder 
     try {
       let apiEndpoint = '/api/search';
       
-      if (mode === 'frames') {
-        apiEndpoint = '/api/frames/search';
+      if (mode === 'concepts') {
+        apiEndpoint = '/api/concepts/search';
       } else if (mode === 'nouns') {
         apiEndpoint = '/api/search?pos=noun';
       } else if (mode === 'adjectives') {
@@ -173,8 +173,8 @@ export default function SearchBox({ onSelectResult, onSearchChange, placeholder 
               onClick={() => handleSelectResult(result)}
               className="w-full px-4 py-3 text-left hover:bg-gray-50 focus:bg-gray-50 focus:outline-none border-b border-gray-100 last:border-b-0 cursor-pointer"
             >
-              {mode === 'frames' ? (
-                <FrameResultPreview result={result} />
+              {mode === 'concepts' ? (
+                <ConceptResultPreview result={result} />
               ) : (
                 <div className="w-full">
                   <div className="font-medium text-gray-900 truncate mb-1">

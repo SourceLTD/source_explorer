@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 
-export type Category = 'frames' | 'lexical_units' | 'verbs' | 'nouns' | 'adjectives' | 'adverbs';
+export type Category = 'concepts' | 'lexical_units' | 'verbs' | 'nouns' | 'adjectives' | 'adverbs';
 
 interface CategoryDropdownProps {
   currentCategory: Category;
@@ -10,7 +10,7 @@ interface CategoryDropdownProps {
 }
 
 const CATEGORIES: { id: Category; label: string; tablePath: string; graphPath?: string }[] = [
-  { id: 'frames', label: 'Frames', tablePath: '/table/frames', graphPath: '/graph/frames' },
+  { id: 'concepts', label: 'Concepts', tablePath: '/table/concepts', graphPath: '/graph/concepts' },
 ];
 
 export default function CategoryDropdown({ currentCategory, currentView = 'table' }: CategoryDropdownProps) {

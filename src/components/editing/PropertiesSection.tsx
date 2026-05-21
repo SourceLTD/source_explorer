@@ -1,50 +1,50 @@
 import React from 'react';
-import { Frame, sortRolesByPrecedence } from '@/lib/types';
-import { EditableField, EditableFrameRole } from './types';
+import { Concept, sortRolesByPrecedence } from '@/lib/types';
+import { EditableField, EditableConceptProperty } from './types';
 import { OverlaySection } from './OverlaySection';
 import { FrameRoleEditor } from './FrameRoleEditor';
 import {
-  getFrameRoleOperation,
-  getFrameRolePendingCellClasses,
-  getFrameRoleChangeSummary,
-  getFrameRoleOldSnapshot,
+  getPropertyOperation,
+  getPropertyPendingCellClasses,
+  getPropertyChangeSummary,
+  getPropertyOldSnapshot,
 } from '@/components/PendingChangeIndicator';
 
-interface FrameRolesSectionProps {
-  frame: Frame;
+interface PropertiesSectionProps {
+  concept: Concept;
   editingField: EditableField | null;
-  editFrameRoles: EditableFrameRole[];
+  editProperties: EditableConceptProperty[];
   isOpen: boolean;
   onToggle: () => void;
   onStartEdit: (field: EditableField) => void;
-  onFrameRoleChange: (clientId: string, field: 'label' | 'description' | 'notes' | 'main' | 'examples', value: string | boolean | string[]) => void;
-  onFrameRoleAdd: (main: boolean) => void;
-  onFrameRoleRemove: (clientId: string) => void;
+  onPropertyChange: (clientId: string, field: 'label' | 'description' | 'notes' | 'main' | 'examples', value: string | boolean | string[]) => void;
+  onPropertyAdd: (main: boolean) => void;
+  onPropertyRemove: (clientId: string) => void;
   onSave: () => void;
   onCancel: () => void;
   isSaving: boolean;
 }
 
-export function FrameRolesSection({
-  frame,
+export function PropertiesSection({
+  concept,
   editingField,
-  editFrameRoles,
+  editProperties,
   isOpen,
   onToggle,
   onStartEdit,
-  onFrameRoleChange,
-  onFrameRoleAdd,
-  onFrameRoleRemove,
+  onPropertyChange,
+  onPropertyAdd,
+  onPropertyRemove,
   onSave,
   onCancel,
   isSaving,
-}: FrameRolesSectionProps) {
-  const pending = frame.pending;
-  const summary = getFrameRoleChangeSummary(pending);
+}: PropertiesSectionProps) {
+  const pending = concept.pending;
+  const summary = getPropertyChangeSummary(pending);
 
   return (
     <OverlaySection
-      title="Frame Roles"
+      title="Properties"
       icon={
         <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
@@ -56,9 +56,9 @@ export function FrameRolesSection({
       <div>
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-sm font-medium text-gray-700">Thematic Roles</h3>
-          {editingField !== 'frame_roles' && (
+          {editingField !== 'properties' && (
             <button
-              onClick={() => onStartEdit('frame_roles')}
+              onClick={() => onStartEdit('properties')}
               className="text-xs text-blue-600 hover:text-blue-600 font-medium cursor-pointer"
             >
               Edit
@@ -66,24 +66,24 @@ export function FrameRolesSection({
           )}
         </div>
 
-        {editingField === 'frame_roles' ? (
+        {editingField === 'properties' ? (
           <FrameRoleEditor
-            roles={editFrameRoles}
-            onRoleChange={onFrameRoleChange}
-            onRoleAdd={onFrameRoleAdd}
-            onRoleRemove={onFrameRoleRemove}
+            roles={editProperties}
+            onRoleChange={onPropertyChange}
+            onRoleAdd={onPropertyAdd}
+            onRoleRemove={onPropertyRemove}
             onSave={onSave}
             onCancel={onCancel}
             isSaving={isSaving}
           />
         ) : (
           <div>
-            {frame.frame_roles && frame.frame_roles.length > 0 ? (
+            {concept.properties && concept.properties.length > 0 ? (
               <div className="space-y-2">
-                {sortRolesByPrecedence(frame.frame_roles).map((role, index) => {
+                {sortRolesByPrecedence(concept.properties).map((role, index) => {
                   const roleLabel = role.label || 'Unnamed';
-                  const op = getFrameRoleOperation(pending, roleLabel);
-                  const rowHighlight = op ? getFrameRolePendingCellClasses(op) : '';
+                  const op = getPropertyOperation(pending, roleLabel);
+                  const rowHighlight = op ? getPropertyPendingCellClasses(op) : '';
 
                   return (
                     <div
@@ -104,13 +104,13 @@ export function FrameRolesSection({
                 })}
               </div>
             ) : (
-              <p className="text-gray-500 text-sm italic">No roles defined</p>
+              <p className="text-gray-500 text-sm italic">No properties defined</p>
             )}
 
             {summary.deleted.length > 0 && (
               <div className="mt-2 space-y-1">
                 {summary.deleted.map((rt) => {
-                  const old = getFrameRoleOldSnapshot(pending, rt);
+                  const old = getPropertyOldSnapshot(pending, rt);
                   const displayLabel = old?.label || rt;
                   const description = old?.description || 'No description';
                   const notes = old?.notes || null;
@@ -120,7 +120,7 @@ export function FrameRolesSection({
                   return (
                     <div
                       key={rt}
-                      className={`text-sm rounded px-2 py-1 ${getFrameRolePendingCellClasses('delete')}`}
+                      className={`text-sm rounded px-2 py-1 ${getPropertyPendingCellClasses('delete')}`}
                     >
                       <span className="font-medium text-red-800">
                         {displayLabel}

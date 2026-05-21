@@ -2,17 +2,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
 /**
- * GET /api/frames/[id]/dag-context
+ * GET /api/concepts/[id]/dag-context
  *
- * Returns the immediate DAG neighborhood for a frame:
- * - The frame itself (label, short_definition, definition_excerpt)
+ * Returns the immediate DAG neighborhood for a concept:
+ * - The concept itself (label, short_definition, definition_excerpt)
  * - Its parent_of parents
  * - Its child_of children (siblings under each parent)
  *
  * Both `short_definition` (curated, may be null) and a derived
  * `definition_excerpt` (the first sentence of the long definition)
  * are returned so callers can fall back to whichever exists. Many
- * frames have a long `definition` but no `short_definition`, and
+ * concepts have a long `definition` but no `short_definition`, and
  * the visualization needs *something* to show alongside the label.
  */
 
@@ -45,7 +45,7 @@ export async function GET(
     const { id: idParam } = await params;
     const id = BigInt(idParam);
 
-    const frame = await prisma.frames.findUnique({
+    const frame = await prisma.concepts.findUnique({
       where: { id },
       select: {
         id: true,
@@ -57,31 +57,31 @@ export async function GET(
     });
 
     if (!frame || frame.deleted) {
-      return NextResponse.json({ error: 'Frame not found' }, { status: 404 });
+      return NextResponse.json({ error: 'Concept not found' }, { status: 404 });
     }
 
-    // Parents (frames this frame inherits from) - current frame is target/child
-    const parentRels = await prisma.frame_relations.findMany({
-      where: { target_id: id, type: 'parent_of' },
+    // Parents (concepts this concept inherits from) - current concept is the child
+    const parentRels = await prisma.concept_relations.findMany({
+      where: { child_id: id, type: 'parent_of' },
       include: {
-        frames_frame_relations_source_idToframes: {
+        concepts_concept_relations_parent_idToconcepts: {
           select: { id: true, label: true, short_definition: true, definition: true },
         },
       },
     });
 
-    // Children (frames that inherit from this frame) - current frame is source/parent
-    const childRels = await prisma.frame_relations.findMany({
-      where: { source_id: id, type: 'parent_of' },
+    // Children (concepts that inherit from this concept) - current concept is the parent
+    const childRels = await prisma.concept_relations.findMany({
+      where: { parent_id: id, type: 'parent_of' },
       include: {
-        frames_frame_relations_target_idToframes: {
+        concepts_concept_relations_child_idToconcepts: {
           select: { id: true, label: true, short_definition: true, definition: true },
         },
       },
     });
 
     const parents = parentRels.map(r => {
-      const f = r.frames_frame_relations_source_idToframes;
+      const f = r.concepts_concept_relations_parent_idToconcepts;
       return {
         id: f.id.toString(),
         label: f.label,
@@ -91,7 +91,7 @@ export async function GET(
     });
 
     const children = childRels.map(r => {
-      const f = r.frames_frame_relations_target_idToframes;
+      const f = r.concepts_concept_relations_child_idToconcepts;
       return {
         id: f.id.toString(),
         label: f.label,
@@ -109,9 +109,9 @@ export async function GET(
       children,
     });
   } catch (error) {
-    console.error('[API] Error fetching frame DAG context:', error);
+    console.error('[API] Error fetching concept DAG context:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch frame DAG context' },
+      { error: 'Failed to fetch concept DAG context' },
       { status: 500 }
     );
   }

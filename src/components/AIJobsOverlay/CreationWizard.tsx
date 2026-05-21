@@ -169,12 +169,12 @@ export const CreationWizard = memo(function CreationWizard({
     switch (currentStep) {
       case 'scope': {
         // Job type availability matrix (DataTableMode -> allowed job types)
-        const allowAllocate = mode === 'lexical_units' || mode === 'frames';
-        const allowReallocateContents = mode === 'frames';
-        const allowSplit = mode === 'frames';
+        const allowAllocate = mode === 'lexical_units' || mode === 'concepts';
+        const allowReallocateContents = mode === 'concepts';
+        const allowSplit = mode === 'concepts';
         const allocateSubtitle =
           mode === 'lexical_units'
-            ? 'Find best frame'
+            ? 'Find best concept'
             : 'Reparent in hierarchy';
         const reallocateSubtitle = 'Reallocate lexical units';
         return (
@@ -334,10 +334,10 @@ export const CreationWizard = memo(function CreationWizard({
                 <p className="text-xs text-red-500">
                   {scopeMode === 'manual' && manualIds.length > 0 && manualIds.some(id => !validatedManualIds.has(id))
                     ? 'Some manual IDs are invalid. Please ensure all IDs exist in the database.'
-                    : scopeMode === 'frames' && (mode === 'lexical_units' || mode === 'frames') && frameIds.length > 0 && frameIds.some(id => !validatedFrameIds.has(id))
+                    : scopeMode === 'concepts' && (mode === 'lexical_units' || mode === 'concepts') && frameIds.length > 0 && frameIds.some(id => !validatedFrameIds.has(id))
                     ? (frameIncludeLexicalUnits && mode === 'lexical_units' 
-                        ? 'Some frame IDs are invalid or have no associated lexical units. Please ensure all frame IDs exist and have lexical units.'
-                        : 'Some frame IDs are invalid. Please ensure all frame IDs exist in the database.')
+                        ? 'Some concept IDs are invalid or have no associated lexical units. Please ensure all concept IDs exist and have lexical units.'
+                        : 'Some concept IDs are invalid. Please ensure all concept IDs exist in the database.')
                     : 'Choose at least one target before continuing.'}
                 </p>
               )}
@@ -432,13 +432,13 @@ export const CreationWizard = memo(function CreationWizard({
                 <div className="space-y-3">
                   <label className="block text-xs font-semibold text-gray-700">Split Configuration</label>
                   <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-700">
-                    <div className="font-semibold mb-1">Splitting Frame</div>
+                    <div className="font-semibold mb-1">Splitting Concept</div>
                     <p className="text-xs mb-3">
-                      The AI will split this frame into multiple new frames, distributing lexical units among them.
+                      The AI will split this concept into multiple new concepts, distributing lexical units among them.
                     </p>
                     <div className="flex gap-4 items-center">
                       <div className="flex-1">
-                        <label className="block text-[10px] font-medium text-blue-800 mb-1">Min Frames</label>
+                        <label className="block text-[10px] font-medium text-blue-800 mb-1">Min Concepts</label>
                         <input
                           type="number"
                           min={2}
@@ -449,7 +449,7 @@ export const CreationWizard = memo(function CreationWizard({
                         />
                       </div>
                       <div className="flex-1">
-                        <label className="block text-[10px] font-medium text-blue-800 mb-1">Max Frames</label>
+                        <label className="block text-[10px] font-medium text-blue-800 mb-1">Max Concepts</label>
                         <input
                           type="number"
                           min={splitMinFrames}
@@ -461,7 +461,7 @@ export const CreationWizard = memo(function CreationWizard({
                       </div>
                     </div>
                     <p className="text-[10px] text-blue-600 mt-2">
-                      The AI will decide the optimal number of frames within this range based on the content.
+                      The AI will decide the optimal number of concepts within this range based on the content.
                     </p>
                   </div>
                 </div>
@@ -534,8 +534,8 @@ export const CreationWizard = memo(function CreationWizard({
                 <label className="block text-sm font-medium text-gray-900">Agentic Mode</label>
                 <p className="text-xs text-gray-500 mt-0.5">
                   {jobType === 'split'
-                    ? 'Optional: enable MCP tools so the AI can look up related frames/entries for extra context while proposing a split.'
-                    : 'Enable AI to use MCP tools for searching frames and verbs in the database for additional context.'}
+                    ? 'Optional: enable MCP tools so the AI can look up related concepts/entries for extra context while proposing a split.'
+                    : 'Enable AI to use MCP tools for searching concepts and verbs in the database for additional context.'}
                 </p>
               </div>
               <button
@@ -575,10 +575,10 @@ export const CreationWizard = memo(function CreationWizard({
           scopeMode,
         });
         const effectivePrompt = promptMode === 'simple' ? defaultPrompt : promptTemplate;
-        const modeSuggestsClustering = mode === 'frames';
+        const modeSuggestsClustering = mode === 'concepts';
         const showClustering =
           modeSuggestsClustering ||
-          /\{%\s*for\s+\w+\s+in\s+(lexical_units|child_frames)\s*%\}/.test(effectivePrompt);
+          /\{%\s*for\s+\w+\s+in\s+(lexical_units|child_concepts)\s*%\}/.test(effectivePrompt);
         
         return (
           <div className="flex h-full flex-col gap-4">
@@ -595,7 +595,7 @@ export const CreationWizard = memo(function CreationWizard({
                     </code>{' '}
                     and{' '}
                     <code className="rounded bg-white/70 px-1 py-0.5">
-                      {'{% for frame in child_frames %}...{% endfor %}'}
+                      {'{% for concept in child_concepts %}...{% endfor %}'}
                     </code>{' '}
                     outputs into clusters.
                   </div>
@@ -784,29 +784,29 @@ export const CreationWizard = memo(function CreationWizard({
               <div className="shrink-0 space-y-1 text-xs text-gray-500">
                 <p>
                   Type <code className="rounded bg-gray-100 px-1">{'{{'}</code> to insert variables.
-                  {(mode === 'lexical_units' || mode === 'frames') && (
+                  {(mode === 'lexical_units' || mode === 'concepts') && (
                     <>
                       {' '}Use{' '}
                       <code className="rounded bg-indigo-50 px-1 text-indigo-600">
                         {mode === 'lexical_units' 
-                          ? '{% for role in frame.roles %}' 
+                          ? '{% for property in concept.properties %}' 
                           : '{% for lu in lexical_units %}'}
                       </code>
                       {' '}for loops.
                     </>
                   )}
                 </p>
-                {(mode === 'lexical_units' || mode === 'frames') && (
+                {(mode === 'lexical_units' || mode === 'concepts') && (
                   <details className="cursor-pointer">
                     <summary className="text-gray-400 hover:text-gray-600">Loop syntax help</summary>
                     <div className="mt-1.5 rounded-lg bg-gray-50 p-2 font-mono text-[11px] leading-relaxed">
                       {mode === 'lexical_units' ? (
                         <>
-                          <div className="text-gray-600">{'{%'} for role in frame.roles {'%}'}</div>
-                          <div className="pl-2 text-gray-500">{'{{ role.type }}'}: {'{{ role.description }}'}</div>
+                          <div className="text-gray-600">{'{%'} for property in concept.properties {'%}'}</div>
+                          <div className="pl-2 text-gray-500">{'{{ property.type }}'}: {'{{ property.description }}'}</div>
                           <div className="text-gray-600">{'{%'} endfor {'%}'}</div>
                           <div className="mt-1.5 border-t border-gray-200 pt-1.5 text-gray-400">
-                            Available: frame.roles, frame.lexical_units
+                            Available: concept.properties, concept.lexical_units
                           </div>
                         </>
                       ) : (
@@ -815,7 +815,7 @@ export const CreationWizard = memo(function CreationWizard({
                           <div className="pl-2 text-gray-500">- {'{{ lu.code }}'}: {'{{ lu.gloss }}'}</div>
                           <div className="text-gray-600">{'{%'} endfor {'%}'}</div>
                           <div className="mt-1.5 border-t border-gray-200 pt-1.5 text-gray-400">
-                            Available: roles, lexical_units
+                            Available: properties, lexical_units
                           </div>
                         </>
                       )}
@@ -935,7 +935,7 @@ export const CreationWizard = memo(function CreationWizard({
                     {scopeMode === 'manual' && manualIds.length > scopeExampleList.length && (
                       <li key="more">…and {manualIds.length - scopeExampleList.length} more</li>
                     )}
-                    {scopeMode === 'frames' && frameIds.length > scopeExampleList.length && (
+                    {scopeMode === 'concepts' && frameIds.length > scopeExampleList.length && (
                       <li key="more">…and {frameIds.length - scopeExampleList.length} more</li>
                     )}
                   </ul>

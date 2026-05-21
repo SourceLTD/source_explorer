@@ -13,8 +13,8 @@ import { getPOSConfig, parsePOSFilter, isValidPOS } from './config';
 import {
   lexicalUnitSensesInclude,
   transformLexicalUnitSenses,
-  derivePrimaryFrame,
-  flattenFrames,
+  derivePrimaryConcept,
+  flattenConcepts,
   countAnomalousSenses,
 } from './senses';
 
@@ -36,7 +36,7 @@ function buildWhereConditions(
     flagged,
     verifiable,
     isMwe,
-    excludeNullFrame,
+    excludeNullConcept,
     createdAfter,
     createdBefore,
     updatedAfter,
@@ -120,7 +120,7 @@ function buildWhereConditions(
     conditions.push({ is_mwe: isMwe });
   }
 
-  if (excludeNullFrame === true) {
+  if (excludeNullConcept === true) {
     // "Has at least one sense" is the senses-era equivalent of "has a frame".
     conditions.push({ lexical_unit_senses: { some: {} } });
   }
@@ -151,12 +151,12 @@ function buildWhereConditions(
 async function buildAdvancedWhereConditions(
   params: PaginationParams
 ): Promise<Prisma.lexical_unitsWhereInput[]> {
-  const { frame_id, flaggedByJobId, pendingCreate, pendingUpdate, pendingDelete } = params;
+  const { concept_id, flaggedByJobId, pendingCreate, pendingUpdate, pendingDelete } = params;
   const conditions: Prisma.lexical_unitsWhereInput[] = [];
 
-  // Frame filter
-  if (frame_id) {
-    const rawValues = frame_id.split(',').map(id => id.trim()).filter(Boolean);
+  // Concept filter
+  if (concept_id) {
+    const rawValues = concept_id.split(',').map(id => id.trim()).filter(Boolean);
 
     if (rawValues.length > 0) {
       const numericIds = new Set<bigint>();
@@ -171,7 +171,7 @@ async function buildAdvancedWhereConditions(
       });
 
       if (codesToLookup.length > 0) {
-        const frames = await prisma.frames.findMany({
+        const concepts = await prisma.concepts.findMany({
           where: {
             OR: codesToLookup.map(code => ({
               label: { equals: code, mode: 'insensitive' as const },
@@ -180,19 +180,19 @@ async function buildAdvancedWhereConditions(
           select: { id: true },
         });
 
-        frames.forEach(frame => {
-          numericIds.add(frame.id);
+        concepts.forEach(concept => {
+          numericIds.add(concept.id);
         });
       }
 
       if (numericIds.size > 0) {
-        // Traverse senses: LU → lexical_unit_senses → frame_senses → frame_sense_frames → frame_id.
+        // Traverse senses: LU → lexical_unit_senses → senses → sense_concepts → concept_id.
         conditions.push({
           lexical_unit_senses: {
             some: {
-              frame_senses: {
-                frame_sense_frames: {
-                  some: { frame_id: { in: Array.from(numericIds) } },
+              senses: {
+                sense_concepts: {
+                  some: { concept_id: { in: Array.from(numericIds) } },
                 },
               },
             },
@@ -377,8 +377,8 @@ function transformToTableLexicalUnit(
   const numericId = entry.id.toString();
 
   const senses = transformLexicalUnitSenses(entry.lexical_unit_senses);
-  const primaryFrame = derivePrimaryFrame(senses);
-  const allFrames = flattenFrames(senses);
+  const primaryConcept = derivePrimaryConcept(senses);
+  const allConcepts = flattenConcepts(senses);
   const anomalousSenseCount = countAnomalousSenses(senses);
 
   return {
@@ -398,9 +398,9 @@ function transformToTableLexicalUnit(
     unverifiableReason: entry.unverifiable_reason ?? undefined,
     senses,
     anomalousSenseCount,
-    frame_ids: allFrames.map(f => f.id),
-    frames: allFrames,
-    frame: primaryFrame?.code || null,
+    concept_ids: allConcepts.map(f => f.id),
+    concepts: allConcepts,
+    concept: primaryConcept?.code || null,
     
     // Verb-specific
     vendler_class: entry.vendler_class as VendlerClass | null,

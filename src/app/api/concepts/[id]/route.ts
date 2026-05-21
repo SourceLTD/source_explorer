@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { updateFlagStatus } from '@/lib/db';
 import { stageUpdate, stageDelete, getPendingInfoForEntity } from '@/lib/version-control';
 import { getCurrentUserName } from '@/utils/supabase/server';
-import { applyFrameRolesSubChanges, type NormalizedFrameRole } from '@/lib/version-control/frameRolesSubfields';
+import { applyPropertiesSubChanges, type NormalizedProperty } from '@/lib/version-control/propertiesSubfields';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,15 +15,15 @@ export async function GET(
     const { id: idParam } = await params;
     const id = BigInt(idParam);
 
-    const frame = await (prisma.frames as any).findUnique({
+    const frame = await (prisma.concepts as any).findUnique({
       where: { id },
       include: {
-        frame_roles: true,
-        frame_sense_frames: {
+        properties: true,
+        sense_concepts: {
           include: {
-            frame_senses: {
+            senses: {
               include: {
-                frame_sense_frames: true,
+                sense_concepts: true,
                 lexical_unit_senses: {
                   where: { lexical_units: { deleted: false } },
                   include: {
@@ -48,7 +48,7 @@ export async function GET(
 
     if (!frame || frame.deleted) {
       return NextResponse.json(
-        { error: 'Frame not found' },
+        { error: 'Concept not found' },
         { status: 404 }
       );
     }
@@ -65,23 +65,23 @@ export async function GET(
     }));
 
     // Build senses-first payload and dedupe flat LUs for legacy consumers.
-    const senseLinks = (frame as any).frame_sense_frames ?? [];
+    const senseLinks = (frame as any).sense_concepts ?? [];
     const senses = senseLinks.map((sfLink: any) => {
-      const sense = sfLink.frame_senses;
-      const senseFrameCount = (sense.frame_sense_frames ?? []).length;
-      const frameWarning =
-        senseFrameCount === 0 ? 'none' : senseFrameCount > 1 ? 'multiple' : null;
+      const sense = sfLink.senses;
+      const senseConceptCount = (sense.sense_concepts ?? []).length;
+      const conceptWarning =
+        senseConceptCount === 0 ? 'none' : senseConceptCount > 1 ? 'multiple' : null;
       return {
         id: sense.id.toString(),
         pos: sense.pos,
         definition: sense.definition,
-        frame_type: sense.frame_type,
+        archetype: sense.archetype,
         confidence: sense.confidence,
         type_dispute: sense.type_dispute,
         causative: sense.causative,
         inchoative: sense.inchoative,
         perspectival: sense.perspectival,
-        frameWarning,
+        conceptWarning,
         lexical_units: (sense.lexical_unit_senses ?? []).map((lus: any) => ({
           ...lus.lexical_units,
           id: lus.lexical_units.id.toString(),
@@ -98,11 +98,11 @@ export async function GET(
     const serialized = {
       ...frame,
       id: frame.id.toString(),
-      frame_roles: serializeRoles(frame.frame_roles || []),
+      properties: serializeRoles(frame.properties || []),
       senses,
       lexical_units: Array.from(luDedupe.values()),
     };
-    delete (serialized as any).frame_sense_frames;
+    delete (serialized as any).sense_concepts;
 
     // Attach & apply pending changes so the edit overlay can immediately reflect staged updates
     const pendingInfo = await getPendingInfoForEntity('frame', id);
@@ -125,11 +125,11 @@ export async function GET(
     for (const [fieldName, pendingField] of Object.entries(pendingInfo.pending_fields)) {
       if (pendingField.status !== 'pending' && pendingField.status !== 'approved') continue;
 
-      if (fieldName === 'frame_roles') {
+      if (fieldName === 'properties') {
         const newValue = pendingField.new_value;
         if (!Array.isArray(newValue)) continue;
 
-        serializedWithPending.frame_roles = newValue.map((r: unknown, index: number) => {
+        serializedWithPending.properties = newValue.map((r: unknown, index: number) => {
           const obj = (r && typeof r === 'object') ? (r as any) : {};
           return {
             id: typeof obj.id === 'string' ? obj.id : `pending-role-${index}`,
@@ -145,7 +145,7 @@ export async function GET(
         continue;
       }
       
-      if (fieldName.startsWith('frame_roles.')) {
+      if (fieldName.startsWith('properties.')) {
         pendingFrameRoleSubChanges.push({ field_name: fieldName, new_value: pendingField.new_value });
         continue;
       }
@@ -155,8 +155,8 @@ export async function GET(
     }
 
     if (pendingFrameRoleSubChanges.length > 0) {
-      const baseRoles: NormalizedFrameRole[] = Array.isArray(serializedWithPending.frame_roles)
-        ? serializedWithPending.frame_roles
+      const baseRoles: NormalizedProperty[] = Array.isArray(serializedWithPending.properties)
+        ? serializedWithPending.properties
             .map((r: any) => {
               const label: string = typeof r?.label === 'string' ? r.label : '';
               if (!label) return null;
@@ -169,14 +169,14 @@ export async function GET(
                 label: typeof r.label === 'string' ? r.label : null,
               };
             })
-            .filter((x: unknown): x is NormalizedFrameRole => Boolean(x))
+            .filter((x: unknown): x is NormalizedProperty => Boolean(x))
         : [];
 
-      const patched = applyFrameRolesSubChanges(baseRoles, pendingFrameRoleSubChanges);
+      const patched = applyPropertiesSubChanges(baseRoles, pendingFrameRoleSubChanges);
 
-      serializedWithPending.frame_roles = patched.map((r, index) => {
-        const existing = Array.isArray(serializedWithPending.frame_roles)
-          ? serializedWithPending.frame_roles.find((er: any) => er?.label === r.roleType)
+      serializedWithPending.properties = patched.map((r, index) => {
+        const existing = Array.isArray(serializedWithPending.properties)
+          ? serializedWithPending.properties.find((er: any) => er?.label === r.propertyType)
           : null;
         return {
           id: existing && typeof existing.id === 'string' ? existing.id : `pending-role-${index}`,
@@ -184,7 +184,7 @@ export async function GET(
           notes: r.notes,
           main: r.main,
           examples: r.examples,
-          label: r.label ?? r.roleType,
+          label: r.label ?? r.propertyType,
           fillers: existing?.fillers ?? null,
         };
       });
@@ -197,9 +197,9 @@ export async function GET(
       },
     });
   } catch (error) {
-    console.error('[API] Error fetching frame:', error);
+    console.error('[API] Error fetching concept:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch frame' },
+      { error: 'Failed to fetch concept' },
       { status: 500 }
     );
   }
@@ -225,7 +225,7 @@ export async function PATCH(
     
     if (body.verifiable !== undefined) updateData.verifiable = body.verifiable;
     if (body.unverifiableReason !== undefined) updateData.unverifiable_reason = body.unverifiableReason;
-    if (body.frame_type !== undefined) updateData.frame_type = body.frame_type;
+    if (body.archetype !== undefined) updateData.archetype = body.archetype;
     if (body.subtype !== undefined) updateData.subtype = body.subtype;
     if (body.disable_healthcheck !== undefined) {
       updateData.disable_healthcheck = Boolean(body.disable_healthcheck);
@@ -263,9 +263,9 @@ export async function PATCH(
       },
     });
   } catch (error) {
-    console.error('[API] Error staging frame update:', error);
+    console.error('[API] Error staging concept update:', error);
     return NextResponse.json(
-      { error: 'Failed to stage frame update' },
+      { error: 'Failed to stage concept update' },
       { status: 500 }
     );
   }
@@ -287,9 +287,9 @@ export async function DELETE(
       },
     });
   } catch (error) {
-    console.error('[API] Error staging frame delete:', error);
+    console.error('[API] Error staging concept delete:', error);
     return NextResponse.json(
-      { error: 'Failed to stage frame deletion' },
+      { error: 'Failed to stage concept deletion' },
       { status: 500 }
     );
   }

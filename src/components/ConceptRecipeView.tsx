@@ -1,17 +1,16 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { FrameGraphNode, FrameRecipeData, FrameRelationType, posShortLabel, compareSensesByPos } from '@/lib/types';
+import { ConceptGraphNode, ConceptRecipeData, ConceptRelationType, posShortLabel, compareSensesByPos } from '@/lib/types';
 
-interface FrameRecipeViewProps {
-  currentFrame: FrameGraphNode;
-  recipeData: FrameRecipeData | null;
-  onFrameClick: (frameId: string) => void;
+interface ConceptRecipeViewProps {
+  currentConcept: ConceptGraphNode;
+  recipeData: ConceptRecipeData | null;
+  onConceptClick: (conceptId: string) => void;
   onEditClick?: () => void;
 }
 
-// Relation type display labels - only parent_of is supported
-const RELATION_LABELS: Record<FrameRelationType, string> = {
+const RELATION_LABELS: Record<ConceptRelationType, string> = {
   'parent_of': 'Parent Of',
 };
 
@@ -23,12 +22,12 @@ const VENDLER_COLORS = {
   achievement: { bg: 'bg-red-100', text: 'text-red-800', border: 'border-red-200' },
 };
 
-export default function FrameRecipeView({ 
-  currentFrame, 
+export default function ConceptRecipeView({ 
+  currentConcept, 
   recipeData, 
-  onFrameClick, 
+  onConceptClick, 
   onEditClick 
-}: FrameRecipeViewProps) {
+}: ConceptRecipeViewProps) {
   const [expandedSections, setExpandedSections] = useState({
     roles: true,
     senses: true,
@@ -39,9 +38,8 @@ export default function FrameRecipeView({
     setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
   };
 
-  // Group roles by main/alt
-  const groupedRoles = useMemo(() => {
-    const roles = recipeData?.roles || currentFrame.roles?.map(r => ({
+  const groupedProperties = useMemo(() => {
+    const properties = recipeData?.properties || currentConcept.properties?.map(r => ({
       id: r.id,
       description: r.description,
       notes: r.notes,
@@ -52,10 +50,10 @@ export default function FrameRecipeView({
     })) || [];
     
     return {
-      main: roles.filter(r => r.main),
-      alt: roles.filter(r => !r.main),
+      main: properties.filter((r: any) => r.main),
+      alt: properties.filter((r: any) => !r.main),
     };
-  }, [recipeData, currentFrame]);
+  }, [recipeData, currentConcept]);
 
   // Get inheritance chain
   const inheritanceChain = useMemo(() => {
@@ -71,12 +69,12 @@ export default function FrameRecipeView({
       {/* Left Panel - Frame Details */}
       <div className="w-1/2 flex flex-col overflow-hidden">
         <div className="bg-gradient-to-br from-purple-600 to-purple-800 rounded-xl p-6 overflow-auto">
-          {/* Frame Header */}
+          {/* Concept Header */}
           <div className="flex items-start justify-between mb-4">
             <div>
-              <h2 className="text-2xl font-bold text-white">{currentFrame.label}</h2>
-              {currentFrame.short_definition && (
-                <p className="text-purple-200 mt-1">{currentFrame.short_definition}</p>
+              <h2 className="text-2xl font-bold text-white">{currentConcept.label}</h2>
+              {currentConcept.short_definition && (
+                <p className="text-purple-200 mt-1">{currentConcept.short_definition}</p>
               )}
             </div>
             {onEditClick && (
@@ -90,9 +88,9 @@ export default function FrameRecipeView({
           </div>
 
           {/* Definition */}
-          {currentFrame.gloss && (
+          {currentConcept.gloss && (
             <div className="mb-6 p-4 bg-white/10 rounded-lg">
-              <p className="text-white/90 text-sm leading-relaxed">{currentFrame.gloss}</p>
+              <p className="text-white/90 text-sm leading-relaxed">{currentConcept.gloss}</p>
             </div>
           )}
 
@@ -103,16 +101,16 @@ export default function FrameRecipeView({
               className="flex items-center gap-2 text-white font-semibold mb-3"
             >
               <span>{expandedSections.roles ? '▼' : '▶'}</span>
-              Roles ({groupedRoles.main.length + groupedRoles.alt.length})
+              Properties ({groupedProperties.main.length + groupedProperties.alt.length})
             </button>
             
             {expandedSections.roles && (
               <div className="space-y-2">
-                {/* Main Roles */}
-                {groupedRoles.main.length > 0 && (
+                {/* Main Properties */}
+                {groupedProperties.main.length > 0 && (
                   <div className="space-y-2">
-                    <div className="text-xs font-medium text-purple-300 uppercase tracking-wide">Main Roles</div>
-                    {groupedRoles.main.map(role => (
+                    <div className="text-xs font-medium text-purple-300 uppercase tracking-wide">Main Properties</div>
+                    {groupedProperties.main.map(role => (
                       <div key={role.id} className="p-3 bg-blue-500/30 rounded-lg border border-blue-400/30">
                         <div className="flex items-center gap-2">
                           <span className="font-semibold text-white">{role.label || 'Unnamed'}</span>
@@ -128,11 +126,11 @@ export default function FrameRecipeView({
                   </div>
                 )}
                 
-                {/* Alt Roles */}
-                {groupedRoles.alt.length > 0 && (
+                {/* Alt Properties */}
+                {groupedProperties.alt.length > 0 && (
                   <div className="space-y-2 mt-3">
-                    <div className="text-xs font-medium text-purple-300 uppercase tracking-wide">Alternative Roles</div>
-                    {groupedRoles.alt.map(role => (
+                    <div className="text-xs font-medium text-purple-300 uppercase tracking-wide">Alternative Properties</div>
+                    {groupedProperties.alt.map(role => (
                       <div key={role.id} className="p-3 bg-white/10 rounded-lg">
                         <div className="flex items-center gap-2">
                           <span className="font-semibold text-white">{role.label || 'Unnamed'}</span>
@@ -145,8 +143,8 @@ export default function FrameRecipeView({
                   </div>
                 )}
                 
-                {groupedRoles.main.length === 0 && groupedRoles.alt.length === 0 && (
-                  <p className="text-purple-300 text-sm italic">No roles defined</p>
+                {groupedProperties.main.length === 0 && groupedProperties.alt.length === 0 && (
+                  <p className="text-purple-300 text-sm italic">No properties defined</p>
                 )}
               </div>
             )}
@@ -164,7 +162,7 @@ export default function FrameRecipeView({
               className="flex items-center gap-2 text-gray-800 font-semibold mb-3"
             >
               <span>{expandedSections.inheritance ? '▼' : '▶'}</span>
-              Frame Inheritance
+              Concept Inheritance
             </button>
             
             {expandedSections.inheritance && (
@@ -179,7 +177,7 @@ export default function FrameRecipeView({
                       {inheritanceChain.parents.map(parent => (
                         <div 
                           key={parent.id}
-                          onClick={() => onFrameClick(parent.id)}
+                          onClick={() => onConceptClick(parent.id)}
                           className="p-3 bg-green-50 border border-green-200 rounded-lg cursor-pointer hover:bg-green-100 transition-colors"
                         >
                           <div className="font-semibold text-green-800">{parent.label}</div>
@@ -188,7 +186,7 @@ export default function FrameRecipeView({
                           )}
                           {parent.roles && parent.roles.length > 0 && (
                             <div className="mt-2 flex flex-wrap gap-1">
-                              {parent.roles.slice(0, 5).map(role => (
+                              {parent.roles.slice(0, 5).map((role: { id: string; label: string | null; main: boolean | null }) => (
                                 <span 
                                   key={role.id}
                                   className={`text-xs px-2 py-0.5 rounded ${role.main ? 'bg-green-200 text-green-800' : 'bg-gray-200 text-gray-700'}`}
@@ -217,7 +215,7 @@ export default function FrameRecipeView({
                       {inheritanceChain.children.map(child => (
                         <div 
                           key={child.id}
-                          onClick={() => onFrameClick(child.id)}
+                          onClick={() => onConceptClick(child.id)}
                           className="p-3 bg-amber-50 border border-amber-200 rounded-lg cursor-pointer hover:bg-amber-100 transition-colors"
                         >
                           <div className="font-semibold text-amber-800">{child.label}</div>
@@ -231,7 +229,7 @@ export default function FrameRecipeView({
                 )}
                 
                 {inheritanceChain.parents.length === 0 && inheritanceChain.children.length === 0 && (
-                  <p className="text-gray-500 text-sm italic">No frame inheritance relationships</p>
+                  <p className="text-gray-500 text-sm italic">No concept inheritance relationships</p>
                 )}
               </div>
             )}
@@ -240,7 +238,7 @@ export default function FrameRecipeView({
           {/* Senses Section — each sense lists its lexical units */}
           <div className="mb-6">
             {(() => {
-              const senses = (recipeData?.senses || currentFrame.senses || []).slice().sort(compareSensesByPos);
+              const senses = (recipeData?.senses || currentConcept.senses || []).slice().sort(compareSensesByPos);
 
               return (
                 <>
@@ -255,7 +253,7 @@ export default function FrameRecipeView({
                   {expandedSections.senses && (
                     <div className="space-y-3 max-h-80 overflow-auto">
                       {senses.map(sense => {
-                        const warning = sense.frameWarning;
+                        const warning = sense.conceptWarning;
                         return (
                           <div
                             key={sense.id}
@@ -272,11 +270,11 @@ export default function FrameRecipeView({
                                     {posShortLabel(sense.pos)}
                                   </span>
                                   <span className="text-[10px] font-medium uppercase bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">
-                                    {sense.frame_type}
+                                    {sense.archetype}
                                   </span>
                                   {warning && (
                                     <span className="text-[10px] font-semibold text-amber-700 bg-amber-100 border border-amber-300 px-1.5 py-0.5 rounded">
-                                      {warning === 'none' ? '⚠ no frame' : '⚠ multiple frames'}
+                                      {warning === 'none' ? '⚠ no concept' : '⚠ multiple concepts'}
                                     </span>
                                   )}
                                 </div>
@@ -326,7 +324,7 @@ export default function FrameRecipeView({
 
                       {senses.length === 0 && (
                         <p className="text-gray-500 text-sm italic">
-                          No senses attached to this frame
+                          No senses attached to this concept
                         </p>
                       )}
                     </div>

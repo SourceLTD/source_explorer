@@ -192,8 +192,8 @@ export function AIJobsOverlay({
     switch (mode) {
       case 'lexical_units':
         return 'AI Agent';
-      case 'frames':
-        return 'Frame AI Agent';
+      case 'concepts':
+        return 'Concept AI Agent';
       default:
         return 'AI Agent';
     }

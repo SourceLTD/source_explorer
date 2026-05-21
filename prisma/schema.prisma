@@ -8,104 +8,11 @@ datasource db {
   directUrl = env("POSTGRES_URL_NON_POOLING")
 }
 
-model frame_roles {
-  created_at         DateTime             @default(now())
-  updated_at         DateTime             @default(now())
-  id                 BigInt               @id @default(autoincrement())
-  frame_id           BigInt
-  description        String?
-  notes              String?
-  main               Boolean?
-  examples           String[]             @default([])
-  label              String?
-  fillers            Json?
-  frames             frames               @relation(fields: [frame_id], references: [id], onDelete: Cascade)
-  role_group_members role_group_members[]
-
-  @@unique([id, frame_id], map: "uq_frame_roles_id_frame")
-  @@index([frame_id], map: "idx_frame_roles_frame_id")
-}
-
-model frames {
-  label                                                           String
-  definition                                                      String?
-  short_definition                                                String?
-  created_at                                                      DateTime               @default(now())
-  updated_at                                                      DateTime               @default(now())
-  id                                                              BigInt                 @id @default(autoincrement())
-  flagged                                                         Boolean?               @default(false)
-  flagged_reason                                                  String?
-  verifiable                                                      Boolean?               @default(false)
-  unverifiable_reason                                             String?
-  version                                                         Int                    @default(1)
-  embedding                                                       Unsupported("vector")?
-  deleted                                                         Boolean                @default(false)
-  deleted_at                                                      DateTime?              @db.Timestamp(6)
-  deleted_reason                                                  String?
-  code                                                            String?
-  frame_type                                                      frame_type_enum?
-  vendler                                                         String?
-  multi_perspective                                               Boolean?
-  wikidata_id                                                     String?
-  recipe                                                          Json?
-  recipe_graph                                                    Json?
-  subtype                                                         frame_subtype_enum?
-  disable_healthcheck                                             Boolean                @default(false)
-  descendant_count                                                Int                    @default(0)
-  merged_into                                                     BigInt?
-  frame_relations_frame_relations_source_idToframes               frame_relations[]      @relation("frame_relations_source_idToframes")
-  frame_relations_frame_relations_target_idToframes               frame_relations[]      @relation("frame_relations_target_idToframes")
-  frame_role_mappings_frame_role_mappings_child_frame_idToframes  frame_role_mappings[]  @relation("frame_role_mappings_child_frame_idToframes")
-  frame_role_mappings_frame_role_mappings_parent_frame_idToframes frame_role_mappings[]  @relation("frame_role_mappings_parent_frame_idToframes")
-  frame_roles                                                     frame_roles[]
-  frame_sense_frames                                              frame_sense_frames[]
-  merged_into_frame                                               frames?                @relation("frames_merged_into", fields: [merged_into], references: [id], onUpdate: NoAction, map: "fk_frames_merged_into")
-  merged_from_frames                                              frames[]               @relation("frames_merged_into")
-  llm_job_items                                                   llm_job_items[]
-  role_groups                                                     role_groups[]
-
-  @@index([label], map: "idx_frames_frame_name")
-  @@index([flagged], map: "idx_frames_flagged")
-  @@index([embedding], map: "idx_frames_embedding")
-  @@index([deleted], map: "idx_frames_deleted")
-  @@index([verifiable], map: "idx_frames_verifiable")
-  @@index([code], map: "idx_frames_code")
-  @@index([recipe_graph], map: "idx_frames_recipe_graph", type: Gin)
-}
-
 model instantiation_types {
   label       String  @unique
   wikidata_id String? @unique
   id          BigInt  @id @default(autoincrement())
   code        String  @unique(map: "instantiation_types_code_unique") @db.VarChar
-}
-
-/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
-model role_group_members {
-  id            BigInt      @id @default(autoincrement())
-  role_group_id BigInt
-  role_id       BigInt
-  created_at    DateTime    @default(now()) @db.Timestamp(6)
-  role_groups   role_groups @relation(fields: [role_group_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_role_group_members_group")
-  roles         frame_roles @relation(fields: [role_id], references: [id], onDelete: Cascade, map: "fk_role_group_members_role")
-
-  @@unique([role_group_id, role_id], map: "uq_role_group_member")
-  @@index([role_group_id], map: "idx_role_group_members_group")
-  @@index([role_id], map: "idx_role_group_members_role")
-}
-
-/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
-model role_groups {
-  id                   BigInt               @id @default(autoincrement())
-  description          String?
-  require_at_least_one Boolean              @default(true)
-  created_at           DateTime             @default(now()) @db.Timestamp(6)
-  updated_at           DateTime             @default(now()) @db.Timestamp(6)
-  frame_id             BigInt?
-  role_group_members   role_group_members[]
-  frames               frames?              @relation(fields: [frame_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-
-  @@index([frame_id], map: "idx_role_groups_frame_id")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -127,15 +34,15 @@ model llm_job_items {
   started_at       DateTime?           @db.Timestamptz(6)
   completed_at     DateTime?           @db.Timestamptz(6)
   updated_at       DateTime            @default(now()) @db.Timestamptz(6)
-  frame_id         BigInt?
+  concept_id       BigInt?
   has_edits        Boolean?            @default(false)
   lexical_unit_id  BigInt?
-  frames           frames?             @relation(fields: [frame_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  concepts         concepts?           @relation(fields: [concept_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   llm_jobs         llm_jobs            @relation(fields: [job_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   lexical_units    lexical_units?      @relation(fields: [lexical_unit_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
-  @@index([frame_id], map: "idx_llm_job_items_frame")
   @@index([lexical_unit_id], map: "idx_llm_job_items_lexical_unit")
+  @@index([concept_id], map: "idx_llm_job_items_concept")
 }
 
 model llm_jobs {
@@ -169,45 +76,6 @@ model llm_jobs {
   job_type        llm_job_type?   @default(flag)
   changesets      changesets[]
   llm_job_items   llm_job_items[]
-}
-
-model frame_relations {
-  id                                       BigInt              @id @default(autoincrement())
-  source_id                                BigInt
-  target_id                                BigInt
-  type                                     frame_relation_type
-  created_at                               DateTime?           @default(now()) @db.Timestamp(6)
-  updated_at                               DateTime?           @default(now()) @db.Timestamp(6)
-  version                                  Int                 @default(1)
-  locked                                   Boolean             @default(false)
-  frames_frame_relations_source_idToframes frames              @relation("frame_relations_source_idToframes", fields: [source_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_frame_relations_source")
-  frames_frame_relations_target_idToframes frames              @relation("frame_relations_target_idToframes", fields: [target_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_frame_relations_target")
-
-  @@unique([source_id, type, target_id], map: "uq_frame_relation")
-  @@index([source_id], map: "idx_frame_relations_source")
-  @@index([source_id, type], map: "idx_frame_relations_source_type")
-  @@index([target_id], map: "idx_frame_relations_target")
-  @@index([target_id, type], map: "idx_frame_relations_target_type")
-  @@index([type], map: "idx_frame_relations_type")
-}
-
-model frame_role_mappings {
-  id                                                 BigInt   @id @default(autoincrement())
-  parent_frame_id                                    BigInt
-  child_frame_id                                     BigInt
-  parent_role_label                                  String
-  child_role_label                                   String?
-  is_absorbed                                        Boolean?
-  incorporated_value                                 String?
-  model                                              String?
-  run_id                                             String   @default("")
-  created_at                                         DateTime @default(now()) @db.Timestamptz(6)
-  frames_frame_role_mappings_child_frame_idToframes  frames   @relation("frame_role_mappings_child_frame_idToframes", fields: [child_frame_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  frames_frame_role_mappings_parent_frame_idToframes frames   @relation("frame_role_mappings_parent_frame_idToframes", fields: [parent_frame_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-
-  @@unique([parent_frame_id, child_frame_id, parent_role_label, child_role_label, run_id], map: "frame_role_mappings_edge_role_run_uq")
-  @@index([parent_frame_id], map: "frame_role_mappings_parent_frame_idx")
-  @@index([child_frame_id], map: "frame_role_mappings_child_frame_idx")
 }
 
 model audit_log {
@@ -273,8 +141,6 @@ model changesets {
   /// strategies (split_frame, merge_frame, move_frame_sense, etc.) populate
   /// it so the commit endpoint can apply every member in one transaction.
   change_plan_id        BigInt?
-  /// Health check finding that triggered this changeset (set for AI-remediated changesets).
-  finding_id            BigInt?
   /// Revision chain: points to the changeset this revision was derived from.
   revision_parent_id    BigInt?
   /// Monotonically increasing revision number within a chain (1 = original).
@@ -283,15 +149,17 @@ model changesets {
   revision_prompt       String?
   /// Points to the next revision that supersedes this changeset.
   superseded_by_id      BigInt?
+  /// Health check finding that triggered this changeset (set for AI-remediated changesets).
+  finding_id            BigInt?
   ai_revisions          ai_revisions[]
   audit_log             audit_log[]
   change_comments       change_comments[]
+  revision_parent       changesets?                    @relation("ChangesetRevisionChain", fields: [revision_parent_id], references: [id], onUpdate: NoAction, map: "fk_changesets_revision_parent")
+  revision_children     changesets[]                   @relation("ChangesetRevisionChain")
+  superseded_by         changesets?                    @relation("ChangesetSupersession", fields: [superseded_by_id], references: [id], onUpdate: NoAction, map: "fk_changesets_superseded_by")
+  supersedes            changesets[]                   @relation("ChangesetSupersession")
   change_plan           change_plans?                  @relation(fields: [change_plan_id], references: [id], onUpdate: NoAction, map: "fk_changesets_change_plan")
   llm_jobs              llm_jobs?                      @relation(fields: [llm_job_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_changesets_llm_job")
-  revision_parent       changesets?                    @relation("ChangesetRevisionChain", fields: [revision_parent_id], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_changesets_revision_parent")
-  revision_children     changesets[]                   @relation("ChangesetRevisionChain")
-  superseded_by         changesets?                    @relation("ChangesetSupersession", fields: [superseded_by_id], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_changesets_superseded_by")
-  supersedes            changesets[]                   @relation("ChangesetSupersession")
   comment_reads         comment_reads[]
   field_changes         field_changes[]
   health_check_findings health_check_findings[]
@@ -302,8 +170,6 @@ model changesets {
   @@index([entity_type, entity_id], map: "idx_changesets_entity")
   @@index([status], map: "idx_changesets_status")
   @@index([llm_job_id], map: "idx_changesets_llm_job")
-  @@index([revision_parent_id], map: "idx_changesets_revision_parent")
-  @@index([superseded_by_id], map: "idx_changesets_superseded_by")
 }
 
 model change_plans {
@@ -313,8 +179,6 @@ model change_plans {
   plan_kind             String
   /// Optional one-line summary for list views.
   summary               String?
-  /// Health check finding that triggered this plan (set for AI-remediated plans).
-  finding_id            BigInt?
   created_by            String
   status                change_plan_status             @default(pending)
   reviewed_by           String?
@@ -326,6 +190,8 @@ model change_plans {
   metadata              Json                           @default("{}")
   created_at            DateTime                       @default(now()) @db.Timestamptz(6)
   updated_at            DateTime                       @default(now()) @updatedAt @db.Timestamptz(6)
+  /// Health check finding that triggered this plan (set for AI-remediated plans).
+  finding_id            BigInt?
   changesets            changesets[]
   remediation_proposals health_remediation_proposals[] @relation("ChangePlanRemediationProposals")
 
@@ -333,7 +199,6 @@ model change_plans {
   @@index([created_by], map: "idx_change_plans_created_by")
   @@index([plan_kind], map: "idx_change_plans_kind")
 }
-
 
 model health_check_definitions {
   id                      BigInt                    @id @default(autoincrement())
@@ -370,8 +235,8 @@ model health_diagnosis_codes {
   category                     String?
   enabled                      Boolean                       @default(true)
   created_at                   DateTime                      @default(now()) @db.Timestamptz(6)
-  applies_to_frame_types       frame_type_enum[]             @default([])
-  applies_to_frame_subtypes    frame_subtype_enum[]          @default([])
+  applies_to_archetypes        concept_archetype_enum[]      @default([])
+  applies_to_subtypes          concept_subtype_enum[]        @default([])
   match_null_subtype           Boolean                       @default(false)
   group_id                     BigInt?
   /// Stable machine key describing the intended remediation category.
@@ -387,39 +252,39 @@ model health_diagnosis_codes {
 
   @@index([check_definition_id], map: "idx_health_diagnosis_codes_check")
   @@index([severity], map: "idx_health_diagnosis_codes_severity")
-  @@index([applies_to_frame_types], map: "idx_health_diagnosis_codes_frame_types", type: Gin)
-  @@index([applies_to_frame_subtypes], map: "idx_health_diagnosis_codes_frame_subtypes", type: Gin)
   @@index([group_id], map: "idx_health_diagnosis_codes_group_id")
   @@index([remediation_strategy], map: "idx_health_diagnosis_codes_remediation_strategy")
+  @@index([applies_to_archetypes], map: "idx_health_diagnosis_codes_archetypes", type: Gin)
+  @@index([applies_to_subtypes], map: "idx_health_diagnosis_codes_subtypes", type: Gin)
 }
 
 model health_check_runs {
-  id                      BigInt                         @id @default(autoincrement())
+  id                      BigInt                    @id @default(autoincrement())
   check_definition_id     BigInt?
   label                   String?
-  status                  health_check_run_status        @default(queued)
+  status                  health_check_run_status   @default(queued)
   scope                   Json?
   config                  Json?
   worker_id               String?
   model                   String?
   llm_job_id              BigInt?
-  total_items             Int                            @default(0)
-  processed_items         Int                            @default(0)
-  passed_items            Int                            @default(0)
-  warning_items           Int                            @default(0)
-  failed_items            Int                            @default(0)
-  error_items             Int                            @default(0)
-  input_tokens            Int                            @default(0)
-  output_tokens           Int                            @default(0)
+  total_items             Int                       @default(0)
+  processed_items         Int                       @default(0)
+  passed_items            Int                       @default(0)
+  warning_items           Int                       @default(0)
+  failed_items            Int                       @default(0)
+  error_items             Int                       @default(0)
+  input_tokens            Int                       @default(0)
+  output_tokens           Int                       @default(0)
   cost_microunits         BigInt?
   error                   String?
-  created_at              DateTime                       @default(now()) @db.Timestamptz(6)
-  started_at              DateTime?                      @db.Timestamptz(6)
-  completed_at            DateTime?                      @db.Timestamptz(6)
-  updated_at              DateTime                       @default(now()) @updatedAt @db.Timestamptz(6)
+  created_at              DateTime                  @default(now()) @db.Timestamptz(6)
+  started_at              DateTime?                 @db.Timestamptz(6)
+  completed_at            DateTime?                 @db.Timestamptz(6)
+  updated_at              DateTime                  @default(now()) @updatedAt @db.Timestamptz(6)
   health_check_batch_jobs health_check_batch_jobs[]
   results                 health_check_results[]
-  check_definition        health_check_definitions?      @relation(fields: [check_definition_id], references: [id], onUpdate: NoAction, map: "fk_health_check_runs_check")
+  check_definition        health_check_definitions? @relation(fields: [check_definition_id], references: [id], onUpdate: NoAction, map: "fk_health_check_runs_check")
 
   @@index([check_definition_id], map: "idx_health_check_runs_check")
   @@index([status], map: "idx_health_check_runs_status")
@@ -507,18 +372,18 @@ model health_check_findings {
 /// Remediation pipeline (runner-owned tables; Explorer reads them for UI).
 /// Mirrors source-health-check-runner/migrations/0045_*.sql.
 model health_remediation_runs {
-  id           BigInt                           @id @default(autoincrement())
-  kind         health_remediation_run_kind      @default(manual)
-  status       health_remediation_run_status    @default(queued)
-  scope        Json                             @default("{}")
-  config       Json                             @default("{}")
+  id           BigInt                          @id @default(autoincrement())
+  kind         health_remediation_run_kind     @default(manual)
+  status       health_remediation_run_status   @default(queued)
+  scope        Json                            @default("{}")
+  config       Json                            @default("{}")
   summary      Json?
   worker_id    String?
-  started_at   DateTime?                        @db.Timestamptz(6)
-  completed_at DateTime?                        @db.Timestamptz(6)
+  started_at   DateTime?                       @db.Timestamptz(6)
+  completed_at DateTime?                       @db.Timestamptz(6)
   error        String?
-  created_at   DateTime                         @default(now()) @db.Timestamptz(6)
-  updated_at   DateTime                         @default(now()) @updatedAt @db.Timestamptz(6)
+  created_at   DateTime                        @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime                        @default(now()) @updatedAt @db.Timestamptz(6)
   batch_jobs   health_remediation_batch_jobs[]
   targets      health_remediation_targets[]
 
@@ -528,7 +393,6 @@ model health_remediation_runs {
 model health_remediation_targets {
   id                 BigInt                            @id @default(autoincrement())
   run_id             BigInt
-  finding_id         BigInt?
   diagnosis_code_id  BigInt
   strategy           String
   execution_kind     health_remediation_execution_kind
@@ -542,6 +406,9 @@ model health_remediation_targets {
   status_reason      String?
   created_at         DateTime                          @default(now()) @db.Timestamptz(6)
   updated_at         DateTime                          @default(now()) @updatedAt @db.Timestamptz(6)
+  stage              Int                               @default(0)
+  stage_data         Json?
+  finding_id         BigInt
   proposals          health_remediation_proposals[]
   diagnosis_code     health_diagnosis_codes            @relation(fields: [diagnosis_code_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_health_remediation_targets_diag")
   run                health_remediation_runs           @relation(fields: [run_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_health_remediation_targets_run")
@@ -551,6 +418,7 @@ model health_remediation_targets {
   @@index([run_id, status], map: "idx_health_remediation_targets_status")
   @@index([strategy], map: "idx_health_remediation_targets_strategy")
   @@index([finding_id], map: "idx_health_remediation_targets_finding")
+  @@index([run_id, strategy, stage], map: "idx_health_remediation_targets_stage")
 }
 
 model health_remediation_batch_jobs {
@@ -578,9 +446,10 @@ model health_remediation_batch_jobs {
   imported_items     Int                           @default(0)
   created_at         DateTime                      @default(now()) @db.Timestamptz(6)
   updated_at         DateTime                      @default(now()) @updatedAt @db.Timestamptz(6)
+  stage              Int                           @default(0)
   run                health_remediation_runs       @relation(fields: [run_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_health_remediation_batch_jobs_run")
 
-  @@unique([run_id, strategy, shard_index], map: "uq_health_remediation_batch_jobs_shard")
+  @@unique([run_id, strategy, shard_index, stage], map: "uq_health_remediation_batch_jobs_shard")
   @@index([run_id], map: "idx_health_remediation_batch_jobs_run")
   @@index([status], map: "idx_health_remediation_batch_jobs_status")
   @@index([provider, provider_job_id], map: "idx_health_remediation_batch_jobs_provider_job")
@@ -589,7 +458,6 @@ model health_remediation_batch_jobs {
 model health_remediation_proposals {
   id                    BigInt                                         @id @default(autoincrement())
   target_id             BigInt
-  finding_id            BigInt?
   target_fingerprint    String
   model                 String?
   raw_response_s3_uri   String?
@@ -605,6 +473,7 @@ model health_remediation_proposals {
   /// single changeset. Mutually exclusive with `staged_changeset_id`
   /// (enforced by `health_remediation_proposals_one_staged_target` CHECK).
   staged_change_plan_id BigInt?
+  finding_id            BigInt
   staged_change_plan    change_plans?                                  @relation("ChangePlanRemediationProposals", fields: [staged_change_plan_id], references: [id], onUpdate: NoAction, map: "fk_health_remediation_proposals_change_plan")
   staged_changeset      changesets?                                    @relation("ChangesetRemediationProposals", fields: [staged_changeset_id], references: [id], onUpdate: NoAction, map: "fk_health_remediation_proposals_changeset")
   target                health_remediation_targets                     @relation(fields: [target_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_health_remediation_proposals_target")
@@ -612,6 +481,7 @@ model health_remediation_proposals {
   @@unique([finding_id, target_fingerprint], map: "uq_health_remediation_proposals_dedup")
   @@index([target_id], map: "idx_health_remediation_proposals_target")
   @@index([validation_status], map: "idx_health_remediation_proposals_validation")
+  @@index([finding_id], map: "idx_health_remediation_proposals_finding")
 }
 
 model health_remediation_strategy_config {
@@ -824,99 +694,12 @@ model chat_streams {
   chat       chat_conversations @relation(fields: [chat_id], references: [id], onDelete: Cascade)
 }
 
-/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
-/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
-model frame_sense_contrasts {
-  id                                                                   Int          @id @default(autoincrement())
-  frame_sense_id                                                       Int
-  contrasted_sense_id                                                  Int
-  contrast_text                                                        String
-  created_at                                                           DateTime?    @default(now()) @db.Timestamp(6)
-  updated_at                                                           DateTime?    @default(now()) @db.Timestamp(6)
-  frame_senses_frame_sense_contrasts_contrasted_sense_idToframe_senses frame_senses @relation("frame_sense_contrasts_contrasted_sense_idToframe_senses", fields: [contrasted_sense_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  frame_senses_frame_sense_contrasts_frame_sense_idToframe_senses      frame_senses @relation("frame_sense_contrasts_frame_sense_idToframe_senses", fields: [frame_sense_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-
-  @@unique([frame_sense_id, contrasted_sense_id])
-  @@index([contrasted_sense_id], map: "idx_frame_sense_contrasts_contrasted_id")
-  @@index([frame_sense_id], map: "idx_frame_sense_contrasts_sense_id")
-}
-
-/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
-model frame_sense_definition_revisions {
-  id                     BigInt       @id @default(autoincrement())
-  frame_sense_id         Int
-  old_definition         String?
-  new_definition         String?
-  old_frame_type         String?
-  suggested_frame_type   String?
-  canonical_pattern      String?
-  revision_process       String
-  action_type            String
-  referent               String?
-  referent_class         String?
-  heuristic_flags        String[]
-  sibling_sense_ids      BigInt[]
-  preserved_content_lost String?
-  reasoning              String?
-  confidence             Float?       @db.Real
-  model                  String?
-  applied_at             DateTime?    @db.Timestamptz(6)
-  reverted_at            DateTime?    @db.Timestamptz(6)
-  created_at             DateTime     @default(now()) @db.Timestamptz(6)
-  frame_senses           frame_senses @relation(fields: [frame_sense_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-
-  @@index([action_type], map: "idx_fsdr_action_type")
-  @@index([applied_at], map: "idx_fsdr_applied_at")
-  @@index([canonical_pattern], map: "idx_fsdr_canonical_pattern")
-  @@index([frame_sense_id], map: "idx_fsdr_frame_sense_id")
-  @@index([revision_process], map: "idx_fsdr_revision_process")
-  @@index([suggested_frame_type], map: "idx_fsdr_suggested_frame_type")
-}
-
-model frame_sense_frames {
-  frame_sense_id Int
-  frame_id       BigInt
-  created_at     DateTime?    @default(now()) @db.Timestamp(6)
-  frames         frames       @relation(fields: [frame_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_frame_sense_frames_frame")
-  frame_senses   frame_senses @relation(fields: [frame_sense_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_frame_sense_frames_sense")
-
-  @@id([frame_sense_id, frame_id])
-  @@index([frame_id], map: "idx_frame_sense_frames_frame_id")
-  @@index([frame_sense_id], map: "idx_frame_sense_frames_sense_id")
-}
-
-/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
-/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
-model frame_senses {
-  id                                                                            Int                                @id @default(autoincrement())
-  pos                                                                           part_of_speech
-  definition                                                                    String
-  created_at                                                                    DateTime?                          @default(now()) @db.Timestamp(6)
-  updated_at                                                                    DateTime?                          @default(now()) @db.Timestamp(6)
-  confidence                                                                    String?
-  frame_type                                                                    String
-  type_dispute                                                                  String?
-  causative                                                                     Boolean?
-  inchoative                                                                    Boolean?
-  perspectival                                                                  Boolean?
-  lemmas                                                                        String[]                           @default([])
-  frame_sense_contrasts_frame_sense_contrasts_contrasted_sense_idToframe_senses frame_sense_contrasts[]            @relation("frame_sense_contrasts_contrasted_sense_idToframe_senses")
-  frame_sense_contrasts_frame_sense_contrasts_frame_sense_idToframe_senses      frame_sense_contrasts[]            @relation("frame_sense_contrasts_frame_sense_idToframe_senses")
-  frame_sense_definition_revisions                                              frame_sense_definition_revisions[]
-  frame_sense_frames                                                            frame_sense_frames[]
-  lexical_unit_senses                                                           lexical_unit_senses[]
-
-  @@index([pos], map: "idx_frame_senses_pos")
-  @@index([frame_type], map: "idx_frame_senses_type")
-  @@index([lemmas], map: "idx_frame_senses_lemmas_gin", type: Gin)
-}
-
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model labile_sense_updates {
   id                  Int      @id @default(autoincrement())
   sense_id            Int
-  frame_id            Int
-  frame_label         String
+  concept_id          Int
+  concept_label       String
   original_definition String
   new_definition      String
   classification      String
@@ -933,14 +716,14 @@ model labile_sense_updates {
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model lexical_unit_senses {
   lexical_unit_id BigInt
-  frame_sense_id  Int
+  sense_id        Int
   created_at      DateTime?     @default(now()) @db.Timestamp(6)
-  frame_senses    frame_senses  @relation(fields: [frame_sense_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   lexical_units   lexical_units @relation(fields: [lexical_unit_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  senses          senses        @relation(fields: [sense_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
-  @@id([lexical_unit_id, frame_sense_id])
-  @@index([frame_sense_id], map: "idx_lexical_unit_senses_fs_id")
+  @@id([lexical_unit_id, sense_id])
   @@index([lexical_unit_id], map: "idx_lexical_unit_senses_lu_id")
+  @@index([sense_id], map: "idx_lexical_unit_senses_sense_id")
 }
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
@@ -1027,11 +810,407 @@ model health_diagnosis_code_groups {
   health_diagnosis_codes health_diagnosis_codes[]
 }
 
+model arguments {
+  id                 BigInt      @id @default(autoincrement())
+  narrative_id       BigInt
+  parent_argument_id BigInt?
+  label              String?
+  description        String?
+  metadata           Json?
+  created_at         DateTime    @default(now()) @db.Timestamptz(6)
+  narratives         narratives  @relation(fields: [narrative_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  arguments          arguments?  @relation("argumentsToarguments", fields: [parent_argument_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  other_arguments    arguments[] @relation("argumentsToarguments")
+
+  @@index([narrative_id], map: "idx_arguments_narrative")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model concept_relations {
+  id                                             BigInt                @id @default(autoincrement())
+  parent_id                                      BigInt
+  child_id                                       BigInt
+  type                                           concept_relation_type
+  created_at                                     DateTime?             @default(now()) @db.Timestamp(6)
+  updated_at                                     DateTime?             @default(now()) @db.Timestamp(6)
+  version                                        Int                   @default(1)
+  locked                                         Boolean               @default(false)
+  concepts_concept_relations_child_idToconcepts  concepts              @relation("concept_relations_child_idToconcepts", fields: [child_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_concept_relations_child")
+  concepts_concept_relations_parent_idToconcepts concepts              @relation("concept_relations_parent_idToconcepts", fields: [parent_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_concept_relations_parent")
+
+  @@unique([parent_id, type, child_id], map: "uq_concept_relation")
+  @@index([child_id], map: "idx_concept_relations_child")
+  @@index([child_id, type], map: "idx_concept_relations_child_type")
+  @@index([parent_id], map: "idx_concept_relations_parent")
+  @@index([parent_id, type], map: "idx_concept_relations_parent_type")
+  @@index([type], map: "idx_concept_relations_type")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model concepts {
+  label                                                           String
+  definition                                                      String?
+  short_definition                                                String?
+  created_at                                                      DateTime                      @default(now())
+  updated_at                                                      DateTime                      @default(now())
+  id                                                              BigInt                        @id @default(autoincrement())
+  flagged                                                         Boolean?                      @default(false)
+  flagged_reason                                                  String?
+  verifiable                                                      Boolean?                      @default(false)
+  unverifiable_reason                                             String?
+  version                                                         Int                           @default(1)
+  embedding                                                       Unsupported("vector")?
+  deleted                                                         Boolean                       @default(false)
+  deleted_at                                                      DateTime?                     @db.Timestamp(6)
+  deleted_reason                                                  String?
+  code                                                            String?
+  archetype                                                       concept_archetype_enum?
+  vendler                                                         String?
+  multi_perspective                                               Boolean?
+  wikidata_id                                                     String?
+  recipe                                                          Json?
+  recipe_graph                                                    Json?
+  subtype                                                         concept_subtype_enum?
+  disable_healthcheck                                             Boolean                       @default(false)
+  merged_into                                                     BigInt?
+  descendant_count                                                Int                           @default(0)
+  concept_relations_concept_relations_child_idToconcepts          concept_relations[]           @relation("concept_relations_child_idToconcepts")
+  concept_relations_concept_relations_parent_idToconcepts         concept_relations[]           @relation("concept_relations_parent_idToconcepts")
+  concepts                                                        concepts?                     @relation("conceptsToconcepts", fields: [merged_into], references: [id], onUpdate: NoAction, map: "fk_concepts_merged_into")
+  other_concepts                                                  concepts[]                    @relation("conceptsToconcepts")
+  instances                                                       instances[]
+  llm_job_items                                                   llm_job_items[]
+  properties                                                      properties[]
+  property_filler_constraints                                     property_filler_constraints[]
+  property_groups                                                 property_groups[]
+  property_mappings_property_mappings_child_concept_idToconcepts  property_mappings[]           @relation("property_mappings_child_concept_idToconcepts")
+  property_mappings_property_mappings_parent_concept_idToconcepts property_mappings[]           @relation("property_mappings_parent_concept_idToconcepts")
+  sense_concepts                                                  sense_concepts[]
+  units                                                           units[]
+
+  @@index([code], map: "idx_concepts_code")
+  @@index([deleted], map: "idx_concepts_deleted")
+  @@index([flagged], map: "idx_concepts_flagged")
+  @@index([label], map: "idx_concepts_label")
+  @@index([recipe_graph], map: "idx_concepts_recipe_graph", type: Gin)
+  @@index([verifiable], map: "idx_concepts_verifiable")
+}
+
+model filler_types {
+  id                          Int                           @id @default(autoincrement())
+  label                       String                        @unique
+  description                 String?
+  examples                    String[]
+  instance_fillers            instance_fillers[]
+  property_filler_constraints property_filler_constraints[]
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model instance_fillers {
+  id                                                       BigInt        @id @default(autoincrement())
+  instance_id                                              BigInt
+  property_id                                              BigInt
+  filler_instance_id                                       BigInt?
+  filler_primitive_type_id                                 Int?
+  filler_value                                             String?
+  confidence                                               Float?        @db.Real
+  source_span_start                                        Int?
+  source_span_end                                          Int?
+  instances_instance_fillers_filler_instance_idToinstances instances?    @relation("instance_fillers_filler_instance_idToinstances", fields: [filler_instance_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  filler_types                                             filler_types? @relation(fields: [filler_primitive_type_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  instances_instance_fillers_instance_idToinstances        instances     @relation("instance_fillers_instance_idToinstances", fields: [instance_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  properties                                               properties    @relation(fields: [property_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([instance_id], map: "idx_instance_fillers_instance")
+  @@index([property_id], map: "idx_instance_fillers_property")
+}
+
+model knowledge_graphs {
+  id          BigInt      @id @default(autoincrement())
+  label       String
+  description String?
+  metadata    Json?
+  created_at  DateTime    @default(now()) @db.Timestamptz(6)
+  instances   instances[]
+
+  @@index([label])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model instances {
+  id                                                              BigInt                @id @default(autoincrement())
+  concept_id                                                      BigInt
+  knowledge_graph_id                                              BigInt?
+  confidence                                                      Float?                @db.Real
+  source_text_id                                                  BigInt?
+  created_at                                                      DateTime              @default(now()) @db.Timestamptz(6)
+  metadata                                                        Json?
+  referential_status                                              referential_status    @default(specific)
+  instance_fillers_instance_fillers_filler_instance_idToinstances instance_fillers[]    @relation("instance_fillers_filler_instance_idToinstances")
+  instance_fillers_instance_fillers_instance_idToinstances        instance_fillers[]    @relation("instance_fillers_instance_idToinstances")
+  concepts                                                        concepts              @relation(fields: [concept_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  knowledge_graphs                                                knowledge_graphs?     @relation(fields: [knowledge_graph_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  source_texts                                                    source_texts?         @relation(fields: [source_text_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  narrative_instances                                             narrative_instances[]
+  instance_mentions                                              instance_mentions[]
+
+  @@index([concept_id], map: "idx_instances_concept")
+  @@index([knowledge_graph_id], map: "idx_instances_knowledge_graph")
+}
+
+model narrative_instances {
+  narrative_id BigInt
+  instance_id  BigInt
+  instances    instances  @relation(fields: [instance_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  narratives   narratives @relation(fields: [narrative_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([narrative_id, instance_id])
+  @@index([instance_id], map: "idx_narrative_instances_instance")
+}
+
+model narratives {
+  id                  BigInt                @id @default(autoincrement())
+  label               String
+  description         String?
+  source_text_id      BigInt?
+  metadata            Json?
+  created_at          DateTime              @default(now()) @db.Timestamptz(6)
+  arguments           arguments[]
+  narrative_instances narrative_instances[]
+  source_texts        source_texts?         @relation(fields: [source_text_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model properties {
+  created_at                  DateTime                      @default(now())
+  updated_at                  DateTime                      @default(now())
+  id                          BigInt                        @id @default(autoincrement())
+  concept_id                  BigInt
+  description                 String?
+  notes                       String?
+  main                        Boolean?
+  examples                    String[]                      @default([])
+  label                       String?
+  fillers                     Json?
+  instance_fillers            instance_fillers[]
+  concepts                    concepts                      @relation(fields: [concept_id], references: [id], onDelete: Cascade)
+  property_filler_constraints property_filler_constraints[]
+  property_group_members      property_group_members[]
+
+  @@unique([id, concept_id], map: "uq_properties_id_concept")
+  @@index([concept_id], map: "idx_properties_concept_id")
+}
+
+model property_filler_constraints {
+  id             BigInt       @id @default(autoincrement())
+  property_id    BigInt
+  filler_type_id Int
+  concept_id     BigInt?
+  concepts       concepts?    @relation(fields: [concept_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  filler_types   filler_types @relation(fields: [filler_type_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  properties     properties   @relation(fields: [property_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([property_id], map: "idx_property_filler_constraints_property")
+  @@index([filler_type_id], map: "idx_property_filler_constraints_type")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model property_group_members {
+  id              BigInt          @id @default(autoincrement())
+  role_group_id   BigInt
+  property_id     BigInt
+  created_at      DateTime        @default(now()) @db.Timestamp(6)
+  property_groups property_groups @relation(fields: [role_group_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_property_group_members_group")
+  properties      properties      @relation(fields: [property_id], references: [id], onDelete: Cascade, map: "fk_property_group_members_property")
+
+  @@unique([role_group_id, property_id], map: "uq_property_group_member")
+  @@index([role_group_id], map: "idx_property_group_members_group")
+  @@index([property_id], map: "idx_property_group_members_property")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model property_groups {
+  id                     BigInt                   @id @default(autoincrement())
+  description            String?
+  require_at_least_one   Boolean                  @default(true)
+  created_at             DateTime                 @default(now()) @db.Timestamp(6)
+  updated_at             DateTime                 @default(now()) @db.Timestamp(6)
+  concept_id             BigInt?
+  property_group_members property_group_members[]
+  concepts               concepts?                @relation(fields: [concept_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([concept_id], map: "idx_property_groups_concept_id")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model property_mappings {
+  id                                                     BigInt   @id @default(autoincrement())
+  parent_concept_id                                      BigInt
+  child_concept_id                                       BigInt
+  parent_property_label                                  String
+  child_property_label                                   String?
+  is_absorbed                                            Boolean?
+  incorporated_value                                     String?
+  model                                                  String?
+  run_id                                                 String   @default("")
+  created_at                                             DateTime @default(now()) @db.Timestamptz(6)
+  concepts_property_mappings_child_concept_idToconcepts  concepts @relation("property_mappings_child_concept_idToconcepts", fields: [child_concept_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  concepts_property_mappings_parent_concept_idToconcepts concepts @relation("property_mappings_parent_concept_idToconcepts", fields: [parent_concept_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([parent_concept_id, child_concept_id, parent_property_label, child_property_label, run_id], map: "property_mappings_edge_run_uq")
+  @@index([child_concept_id], map: "property_mappings_child_concept_idx")
+  @@index([parent_concept_id], map: "property_mappings_parent_concept_idx")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model sense_concepts {
+  sense_id   Int
+  concept_id BigInt
+  created_at DateTime? @default(now()) @db.Timestamp(6)
+  concepts   concepts  @relation(fields: [concept_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_sense_concepts_concept")
+  senses     senses    @relation(fields: [sense_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_sense_concepts_sense")
+
+  @@id([sense_id, concept_id])
+  @@index([concept_id], map: "idx_sense_concepts_concept_id")
+  @@index([sense_id], map: "idx_sense_concepts_sense_id")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model sense_contrasts {
+  id                                                 Int       @id @default(autoincrement())
+  sense_id                                           Int
+  contrasted_sense_id                                Int
+  contrast_text                                      String
+  created_at                                         DateTime? @default(now()) @db.Timestamp(6)
+  updated_at                                         DateTime? @default(now()) @db.Timestamp(6)
+  senses_sense_contrasts_contrasted_sense_idTosenses senses    @relation("sense_contrasts_contrasted_sense_idTosenses", fields: [contrasted_sense_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  senses_sense_contrasts_sense_idTosenses            senses    @relation("sense_contrasts_sense_idTosenses", fields: [sense_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([sense_id, contrasted_sense_id])
+  @@index([contrasted_sense_id], map: "idx_sense_contrasts_contrasted_id")
+  @@index([sense_id], map: "idx_sense_contrasts_sense_id")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model sense_definition_revisions {
+  id                     BigInt    @id @default(autoincrement())
+  sense_id               Int
+  old_definition         String?
+  new_definition         String?
+  old_archetype          String?
+  suggested_archetype    String?
+  canonical_pattern      String?
+  revision_process       String
+  action_type            String
+  referent               String?
+  referent_class         String?
+  heuristic_flags        String[]
+  sibling_sense_ids      BigInt[]
+  preserved_content_lost String?
+  reasoning              String?
+  confidence             Float?    @db.Real
+  model                  String?
+  applied_at             DateTime? @db.Timestamptz(6)
+  reverted_at            DateTime? @db.Timestamptz(6)
+  created_at             DateTime  @default(now()) @db.Timestamptz(6)
+  senses                 senses    @relation(fields: [sense_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([action_type], map: "idx_sdr_action_type")
+  @@index([applied_at], map: "idx_sdr_applied_at")
+  @@index([canonical_pattern], map: "idx_sdr_canonical_pattern")
+  @@index([revision_process], map: "idx_sdr_revision_process")
+  @@index([sense_id], map: "idx_sdr_sense_id")
+  @@index([suggested_archetype], map: "idx_sdr_suggested_archetype")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model senses {
+  id                                                          Int                          @id @default(autoincrement())
+  pos                                                         part_of_speech
+  definition                                                  String
+  created_at                                                  DateTime?                    @default(now()) @db.Timestamp(6)
+  updated_at                                                  DateTime?                    @default(now()) @db.Timestamp(6)
+  confidence                                                  String?
+  archetype                                                   String
+  type_dispute                                                String?
+  causative                                                   Boolean?
+  inchoative                                                  Boolean?
+  perspectival                                                Boolean?
+  lemmas                                                      String[]                     @default([])
+  embedding                                                   Unsupported("halfvec")?
+  lexical_unit_senses                                         lexical_unit_senses[]
+  sense_concepts                                              sense_concepts[]
+  sense_contrasts_sense_contrasts_contrasted_sense_idTosenses sense_contrasts[]            @relation("sense_contrasts_contrasted_sense_idTosenses")
+  sense_contrasts_sense_contrasts_sense_idTosenses            sense_contrasts[]            @relation("sense_contrasts_sense_idTosenses")
+  sense_definition_revisions                                  sense_definition_revisions[]
+
+  @@index([archetype], map: "idx_senses_archetype")
+  @@index([embedding], map: "idx_senses_embedding")
+  @@index([lemmas], map: "idx_senses_lemmas_gin", type: Gin)
+  @@index([pos], map: "idx_senses_pos")
+}
+
+model source_texts {
+  id             BigInt       @id @default(autoincrement())
+  content        String
+  source_uri     String?
+  metadata       Json?
+  created_at     DateTime     @default(now()) @db.Timestamptz(6)
+  content_type   String?      @default("text/plain")
+  artifact_uri   String?
+  document_index Json?
+  instances      instances[]
+  narratives     narratives[]
+}
+
+model instance_mentions {
+  id           BigInt    @id @default(autoincrement())
+  instance_id  BigInt
+  locator      Json
+  mention_text String?
+  confidence   Float?    @db.Real
+  created_at   DateTime  @default(now()) @db.Timestamptz(6)
+  instances    instances @relation(fields: [instance_id], references: [id], onDelete: Cascade)
+
+  @@index([instance_id], map: "idx_instance_mentions_instance")
+}
+
+model units {
+  id          Int       @id @default(autoincrement())
+  label       String    @unique
+  symbol      String?
+  dimension   String?
+  description String?
+  concept_id  BigInt?
+  created_at  DateTime  @default(now()) @db.Timestamptz(6)
+  concepts    concepts? @relation(fields: [concept_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([dimension], map: "idx_units_dimension")
+}
+
 enum vendler_class_type {
   state
   activity
   accomplishment
   achievement
+}
+
+enum referential_status {
+  specific
+  generic
+  hypothetical
 }
 
 enum llm_job_item_status {
@@ -1050,10 +1229,6 @@ enum llm_job_status {
   failed
   cancelled
   paused
-}
-
-enum frame_relation_type {
-  parent_of
 }
 
 enum change_operation {
@@ -1096,6 +1271,14 @@ enum entity_type {
   role_group_member
   frame_sense_frame
   lexical_unit_sense
+  concept
+  property
+  concept_relation
+  sense
+  property_mapping
+  sense_concept
+  property_group
+  property_group_member
 }
 
 enum health_check_run_status {
@@ -1207,18 +1390,6 @@ enum lexical_unit_type {
   numeric
 }
 
-enum frame_subtype_enum {
-  communication
-  relation
-}
-
-enum frame_type_enum {
-  Event
-  State
-  Entity
-  Measure
-}
-
 enum health_check_batch_job_status {
   pending
   submitted
@@ -1262,4 +1433,79 @@ enum health_remediation_proposal_validation_status {
 enum health_remediation_execution_kind {
   llm_batch
   programmatic
+}
+
+enum concept_archetype_enum {
+  Event
+  State
+  Entity
+  Measure
+}
+
+enum concept_relation_type {
+  parent_of
+}
+
+enum concept_subtype_enum {
+  communication
+  relation
+  acquire
+  assist
+  attachment
+  attempt
+  avoidance
+  bearing
+  beginning
+  body_process       @map("body process")
+  characterization
+  combination
+  competition
+  compulsion
+  concealment
+  conduct
+  conflict
+  consumption
+  contact
+  control_access     @map("control access")
+  creation
+  delay
+  deprivation
+  emission
+  ending
+  enrol
+  expose
+  failure
+  give_care          @map("give care")
+  group_action       @map("group action")
+  host
+  legal_proceeding   @map("legal proceeding")
+  mental_process     @map("mental process")
+  motion
+  natural_process    @map("natural process")
+  officiate
+  ordering
+  participation
+  persistence
+  prevention
+  procedure
+  progress
+  protection
+  put
+  reach
+  recreation
+  resumption
+  separation
+  sexual_intercourse @map("sexual intercourse")
+  subtraction
+  termination
+  transfer
+  transformation
+  work_up            @map("work up")
+  quality
+  configuration
+  experience
+  capacity
+  tendency
+  susceptibility
+  status
 }

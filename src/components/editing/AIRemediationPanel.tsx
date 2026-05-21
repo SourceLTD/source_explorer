@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Frame } from '@/lib/types';
+import { Concept } from '@/lib/types';
 import {
   HEALTH_REMEDIATION_STRATEGY_LABELS,
   type HealthRemediationStrategy,
@@ -9,7 +9,7 @@ import {
 import LoadingSpinner from '@/components/LoadingSpinner';
 
 interface AIRemediationPanelProps {
-  frame: Frame;
+  concept: Concept;
   onUpdate: () => Promise<void>;
 }
 
@@ -19,7 +19,7 @@ type ClassificationResult = {
   confidence: string;
 };
 
-export function AIRemediationPanel({ frame, onUpdate }: AIRemediationPanelProps) {
+export function AIRemediationPanel({ concept, onUpdate }: AIRemediationPanelProps) {
   const [description, setDescription] = useState('');
   const [justification, setJustification] = useState('');
   const [classifying, setClassifying] = useState(false);
@@ -34,7 +34,7 @@ export function AIRemediationPanel({ frame, onUpdate }: AIRemediationPanelProps)
     setError(null);
     setClassification(null);
     try {
-      const response = await fetch(`/api/frames/${frame.id}/classify-remediation`, {
+      const response = await fetch(`/api/concepts/${concept.id}/classify-remediation`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ description: description.trim() }),
@@ -57,7 +57,7 @@ export function AIRemediationPanel({ frame, onUpdate }: AIRemediationPanelProps)
     setSubmitting(true);
     setError(null);
     try {
-      const response = await fetch(`/api/frames/${frame.id}/trigger-remediation`, {
+      const response = await fetch(`/api/concepts/${concept.id}/trigger-remediation`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -120,7 +120,7 @@ export function AIRemediationPanel({ frame, onUpdate }: AIRemediationPanelProps)
             setDescription(e.target.value);
             if (classification) setClassification(null);
           }}
-          placeholder={`e.g. "Move this frame under MOTION", "Split into separate verb and noun frames", "Update the definition to be more specific"...`}
+          placeholder={`e.g. "Move this concept under MOTION", "Split into separate verb and noun concepts", "Update the definition to be more specific"...`}
           rows={3}
           className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
         />

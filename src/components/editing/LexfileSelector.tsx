@@ -24,7 +24,7 @@ const LEXFILE_OPTIONS: Record<Mode, string[]> = {
   ],
   adjectives: ['adj.all', 'adj.pert', 'adj.ppl'],
   adverbs: ['adv.all'],
-  frames: [], // Frames don't have lexfiles
+  concepts: [],
   lexical_units: [
     'verb.body', 'verb.change', 'verb.cognition', 'verb.communication', 
     'verb.competition', 'verb.consumption', 'verb.contact', 'verb.creation', 

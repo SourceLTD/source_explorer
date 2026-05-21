@@ -1,12 +1,12 @@
-import { TableLexicalUnit, Frame, FrameSenseTableRow } from '@/lib/types';
+import { TableLexicalUnit, Concept, SenseTableRow } from '@/lib/types';
 
-export type DataTableMode = 'lexical_units' | 'frames';
-export type DataTableRenderMode = DataTableMode | 'frame_senses';
-export type DataTableEntry = TableLexicalUnit | Frame | FrameSenseTableRow;
+export type DataTableMode = 'lexical_units' | 'concepts';
+export type DataTableRenderMode = DataTableMode | 'senses';
+export type DataTableEntry = TableLexicalUnit | Concept | SenseTableRow;
 
 export interface DataTableProps {
-  onRowClick?: (entry: TableLexicalUnit | Frame) => void;
-  onEditClick?: (entry: TableLexicalUnit | Frame) => void;
+  onRowClick?: (entry: TableLexicalUnit | Concept) => void;
+  onEditClick?: (entry: TableLexicalUnit | Concept) => void;
   searchQuery?: string;
   className?: string;
   mode?: DataTableRenderMode;
@@ -37,7 +37,7 @@ export interface ContextMenuState {
   unitId: string | null;
 }
 
-export interface FrameOption {
+export interface ConceptOption {
   id: string;
   code: string | null;
   label: string;
@@ -51,6 +51,6 @@ export interface FlagState {
 }
 
 // Re-export commonly used types
-export type { TableLexicalUnit, Frame, FrameSenseTableRow, PaginatedResult, PaginationParams } from '@/lib/types';
+export type { TableLexicalUnit, Concept, SenseTableRow, PaginatedResult, PaginationParams } from '@/lib/types';
 export type { FilterState } from './filterState';
 export type { ColumnConfig, ColumnVisibilityState } from '@/components/ColumnVisibilityPanel';

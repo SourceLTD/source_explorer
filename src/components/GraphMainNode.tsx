@@ -3,7 +3,7 @@
 import React, { useState, useCallback } from 'react';
 import { Group } from '@visx/group';
 import { GraphNode, sortRolesByPrecedence } from '@/lib/types';
-import FrameSenseTypeBadges from './FrameSenseTypeBadges';
+import SenseArchetypeBadges from './SenseArchetypeBadges';
 import { getPendingNodeStroke, getPendingNodeFill } from './PendingChangeIndicator';
 
 interface GraphMainNodeProps {
@@ -95,7 +95,7 @@ export default function GraphMainNode({
     perspectival: node.senses?.some(sense => sense.perspectival) ?? false,
   };
   const hasFrameSenseRow = Boolean(
-    node.frame ||
+    node.concept ||
     frameSenseTypeBadgeSource.inchoative ||
     frameSenseTypeBadgeSource.causative ||
     frameSenseTypeBadgeSource.perspectival
@@ -169,8 +169,8 @@ export default function GraphMainNode({
     }
     
     let rolesHeight = 20; // Always show Roles header
-    if (rolesExpanded && node.roles && node.roles.length > 0) {
-      node.roles.forEach(role => {
+    if (rolesExpanded && node.properties && node.properties.length > 0) {
+      node.properties.forEach(role => {
         const roleText = `${role.label}: ${role.description || 'No description'}`;
         const estimatedLines = Math.ceil(roleText.length / 60);
         const roleHeight = estimatedLines <= 2 ? 45 : 60;
@@ -424,9 +424,9 @@ export default function GraphMainNode({
               alignItems: 'center',
               gap: '4px',
             }}
-            title={node.frame?.short_definition ?? undefined}
+            title={node.concept?.short_definition ?? undefined}
           >
-            {node.frame && (
+            {node.concept && (
               <>
                 <span style={{ 
                   backgroundColor: '#8b5cf6', 
@@ -438,11 +438,11 @@ export default function GraphMainNode({
                   FRAME
                 </span>
                 <span style={{ fontWeight: '500', fontSize: '10px' }}>
-                  {node.frame.label}
+                  {node.concept.label}
                 </span>
               </>
             )}
-            <FrameSenseTypeBadges sense={frameSenseTypeBadgeSource} />
+            <SenseArchetypeBadges sense={frameSenseTypeBadgeSource} />
           </div>
         </foreignObject>
       )}
@@ -616,7 +616,7 @@ export default function GraphMainNode({
         let currentRoleY = rolesStartY + 20;
         const roleElements: JSX.Element[] = [];
         
-        if (rolesExpanded && node.roles && node.roles.length > 0) {
+        if (rolesExpanded && node.properties && node.properties.length > 0) {
           // Custom ordering for speech-related roles
           const speechRoleOrder: Record<string, number> = {
             'CONTENT.ENTITY': 1,
@@ -626,7 +626,7 @@ export default function GraphMainNode({
           
           // Create a map from role ID to group ID and organize groups
           const roleToGroup = new Map<string, string>();
-          const roleGroups = node.role_groups || [];
+          const roleGroups = node.property_groups || [];
           const groupedRoleIds = new Set<string>();
           
           roleGroups.forEach(group => {
@@ -636,12 +636,12 @@ export default function GraphMainNode({
             });
           });
           
-          const sortedRoles = sortRolesByPrecedence(node.roles);
+          const sortedRoles = sortRolesByPrecedence(node.properties);
           
           // Organize roles by group with custom ordering
           const rolesByGroup = new Map<string, typeof sortedRoles>();
           roleGroups.forEach(group => {
-            const rolesInGroup = node.roles!.filter(role => group.role_ids.includes(role.id));
+            const rolesInGroup = node.properties!.filter(role => group.role_ids.includes(role.id));
             // Sort roles within group by custom order if applicable
             rolesInGroup.sort((a, b) => {
               const orderA = speechRoleOrder[a.label ?? ''] || 999;
@@ -1111,7 +1111,7 @@ export function calculateMainNodeHeight(
   height += 25; // Title
   if (node.vendler_class) height += 20;
   height += 22; // Category
-  if (node.frame || node.senses?.some(sense => sense.inchoative || sense.causative || sense.perspectival)) {
+  if (node.concept || node.senses?.some(sense => sense.inchoative || sense.causative || sense.perspectival)) {
     height += 22;
   }
   
@@ -1141,8 +1141,8 @@ export function calculateMainNodeHeight(
   // Always include Roles header height; expand if roles exist and are expanded
   {
     let rolesHeight = 20;
-    if (rolesExpanded && node.roles && node.roles.length > 0) {
-      node.roles.forEach(role => {
+    if (rolesExpanded && node.properties && node.properties.length > 0) {
+      node.properties.forEach(role => {
         const roleText = `${role.label}: ${role.description || 'No description'}`;
         const estimatedLines = Math.ceil(roleText.length / 60);
         const roleHeight = estimatedLines <= 2 ? 45 : 60;

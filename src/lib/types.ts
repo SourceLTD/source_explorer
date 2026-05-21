@@ -34,10 +34,10 @@ export interface LexicalUnit {
   unverifiableReason?: string;
   legal_gloss?: string | null;
   deleted?: boolean;
-  senses?: FrameSenseWithFrame[];
-  frame_id?: string | null;
-  frame_ids?: string[];
-  frame?: Frame | null;
+  senses?: SenseWithConcept[];
+  concept_id?: string | null;
+  concept_ids?: string[];
+  concept?: Concept | null;
   wikidata_id?: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -136,10 +136,10 @@ export interface LexicalUnitWithRelations extends LexicalUnit {
 }
 
 // ============================================
-// Frame Types
+// Concept Types
 // ============================================
 
-export interface FrameRole {
+export interface ConceptProperty {
   id: string;
   description?: string | null;
   notes?: string | null;
@@ -150,14 +150,14 @@ export interface FrameRole {
   fillers?: unknown;
 }
 
-export interface RoleGroup {
+export interface PropertyGroup {
   id: string;
   description?: string | null;
   role_ids: string[];
   require_at_least_one?: boolean;
 }
 
-// Lexical unit snippet for displaying in the frames table
+// Lexical unit snippet for displaying in the concepts table
 export interface LexicalUnitSnippet {
   code: string;
   lemmas: string[];
@@ -173,7 +173,7 @@ export interface LexicalUnitsSample {
   hasMore: boolean;
 }
 
-export interface Frame {
+export interface Concept {
   id: string;
   label: string;
   definition?: string | null;
@@ -185,55 +185,55 @@ export interface Frame {
   unverifiableReason?: string;
   createdAt: Date;
   updatedAt: Date;
-  frame_roles?: FrameRole[];
-  roles_count?: number;
-  /** Distinct lexical units reachable through frame senses (via frame_sense_frames). */
+  properties?: ConceptProperty[];
+  properties_count?: number;
+  /** Distinct lexical units reachable through senses (via sense_concepts). */
   lexical_units_count?: number;
-  /** Number of frame_senses linked to this frame. */
+  /** Number of senses linked to this concept. */
   senses_count?: number;
-  /** Number of senses linked to this frame that ALSO link to another frame (>1). */
-  sensesWithMultipleFrames?: number;
+  /** Number of senses linked to this concept that ALSO link to another concept (>1). */
+  sensesWithMultipleConcepts?: number;
   lexical_units?: LexicalUnitsSample;
   pending?: PendingChangeInfo | null;
-  frame_type?: string | null;
+  archetype?: string | null;
   subtype?: string | null;
   disable_healthcheck?: boolean;
   vendler?: string | null;
   multi_perspective?: boolean | null;
   wikidata_id?: string | null;
-  recipe?: FrameRecipe | null;
+  recipe?: ConceptRecipe | null;
 }
 
-export type FrameRecipe = Record<string, unknown>;
+export type ConceptRecipe = Record<string, unknown>;
 
 // ============================================
-// Frame Sense Types
+// Concept Sense Types
 // ============================================
 
 /**
- * Indicates an anomaly in a sense's frame linkage.
- * - 'none': the sense is linked to zero frames
- * - 'multiple': the sense is linked to more than one frame
- * - null: exactly one frame (the happy path)
+ * Indicates an anomaly in a sense's concept linkage.
+ * - 'none': the sense is linked to zero concepts
+ * - 'multiple': the sense is linked to more than one concept
+ * - null: exactly one concept (the happy path)
  */
-export type FrameSenseWarning = 'none' | 'multiple' | null;
+export type SenseWarning = 'none' | 'multiple' | null;
 
-export interface FrameSenseFrameRef {
+export interface SenseConceptRef {
   id: string;
   label: string;
   code: string | null;
 }
 
 /**
- * A frame_sense row — the intermediate concept between a lexical_unit and a frame.
- * Carries its own POS/definition/frame_type/... and is expected to link to exactly
- * one frame in practice.
+ * A sense row — the intermediate entity between a lexical_unit and a concept.
+ * Carries its own POS/definition/archetype/... and is expected to link to exactly
+ * one concept in practice.
  */
-export interface FrameSense {
+export interface Sense {
   id: string;
   pos: string;
   definition: string;
-  frame_type: string;
+  archetype: string;
   lemmas?: string[];
   confidence?: string | null;
   type_dispute?: string | null;
@@ -245,17 +245,17 @@ export interface FrameSense {
 }
 
 /**
- * Frame sense with its linked frames. `frame` is the canonical single frame
- * (first entry of `frames`), `frames` is the raw list (for drilldown / warning UX),
- * and `frameWarning` signals when the 1:1 invariant is violated.
+ * Sense with its linked concepts. `concept` is the canonical single concept
+ * (first entry of `concepts`), `concepts` is the raw list (for drilldown / warning UX),
+ * and `conceptWarning` signals when the 1:1 invariant is violated.
  */
-export interface FrameSenseWithFrame extends FrameSense {
-  frame: FrameSenseFrameRef | null;
-  frames: FrameSenseFrameRef[];
-  frameWarning: FrameSenseWarning;
+export interface SenseWithConcept extends Sense {
+  concept: SenseConceptRef | null;
+  concepts: SenseConceptRef[];
+  conceptWarning: SenseWarning;
 }
 
-export interface FrameSenseLexicalUnitSnippet {
+export interface SenseLexicalUnitSnippet {
   id: string;
   code: string;
   lemmas: string[];
@@ -264,11 +264,11 @@ export interface FrameSenseLexicalUnitSnippet {
   gloss: string;
 }
 
-export interface FrameSenseTableRow extends Omit<FrameSenseWithFrame, 'createdAt' | 'updatedAt'> {
+export interface SenseTableRow extends Omit<SenseWithConcept, 'createdAt' | 'updatedAt'> {
   createdAt: string | null;
   updatedAt: string | null;
   lexical_units: {
-    entries: FrameSenseLexicalUnitSnippet[];
+    entries: SenseLexicalUnitSnippet[];
     totalCount: number;
     hasMore: boolean;
   };
@@ -323,14 +323,13 @@ export interface GraphNode {
   // Verb-specific fields
   vendler_class?: VendlerClass | null;
 
-  // Senses chain (frame_senses) — each sense links to zero-or-more frames;
-  // the 1:1 happy path is surfaced as `frame` and anomalies via `frameWarning`.
-  senses?: FrameSenseWithFrame[];
-  // Legacy/derived: kept for UI backward compatibility. `frame` / `frame_id`
-  // correspond to the first sense's single frame when present.
-  frame_id?: string | null;
-  frame_ids?: string[];
-  frame?: Frame | null;
+  // Senses chain — each sense links to zero-or-more concepts;
+  // the 1:1 happy path is surfaced as `concept` and anomalies via `conceptWarning`.
+  senses?: SenseWithConcept[];
+  // Legacy/derived: kept for UI backward compatibility.
+  concept_id?: string | null;
+  concept_ids?: string[];
+  concept?: Concept | null;
 
   // Noun-specific fields
   countable?: boolean | null;
@@ -357,9 +356,9 @@ export interface GraphNode {
   causes: GraphNode[];
   alsoSee: GraphNode[];
 
-  // Role fields
-  roles?: FrameRole[];
-  role_groups?: RoleGroup[];
+  // Property fields
+  properties?: ConceptProperty[];
+  property_groups?: PropertyGroup[];
   
   // Pending changes
   pending?: PendingChangeInfo | null;
@@ -379,8 +378,8 @@ export interface SearchResult {
   gloss: string;
   pos: string;
   rank?: number;
-  frameDefinition?: string | null;
-  frameType?: string | null;
+  conceptDefinition?: string | null;
+  archetype?: string | null;
 }
 
 export interface SearchOptions {
@@ -409,15 +408,15 @@ export interface TableEntry {
   gloss: string;
   pos: string;
   lexfile: string;
-  // Senses for this entry (canonical source of frame info going forward).
-  senses?: FrameSenseWithFrame[];
-  // Count of senses with frameWarning !== null — for row-level flagging.
+  // Senses for this entry (canonical source of concept info going forward).
+  senses?: SenseWithConcept[];
+  // Count of senses with conceptWarning !== null — for row-level flagging.
   anomalousSenseCount?: number;
   // Legacy/derived from senses for backward compat.
-  frame_id?: string | null;
-  frame_ids?: string[];
-  frame?: string | null;
-  frames?: FrameSenseFrameRef[];
+  concept_id?: string | null;
+  concept_ids?: string[];
+  concept?: string | null;
+  concepts?: SenseConceptRef[];
 
   // Verb-specific
   vendler_class?: VendlerClass | null;
@@ -481,7 +480,7 @@ export interface PaginationParams {
   // POS filter (new - replaces separate tables)
   pos?: PartOfSpeech | PartOfSpeech[] | string;
   lexfile?: string;
-  frame_id?: string;
+  concept_id?: string;
   flaggedByJobId?: string;
   
   // Text filters
@@ -495,7 +494,7 @@ export interface PaginationParams {
   isMwe?: boolean;
   flagged?: boolean;
   verifiable?: boolean;
-  excludeNullFrame?: boolean;
+  excludeNullConcept?: boolean;
   
   // Pending state filters
   pendingCreate?: boolean;
@@ -515,7 +514,7 @@ export interface PaginationParams {
   updatedBefore?: string;
 }
 
-export interface FramePaginationParams {
+export interface ConceptPaginationParams {
   page?: number;
   limit?: number;
   sortBy?: string;
@@ -579,7 +578,7 @@ export const POS_LABELS: Record<string, string> = {
   'a': 'Adjective',
   'r': 'Adverb',
   's': 'Satellite Adjective',
-  'f': 'Frame'
+  'f': 'Concept'
 };
 
 /**
@@ -587,7 +586,7 @@ export const POS_LABELS: Record<string, string> = {
  * nodes, tag pills). The DB stores the long form (`part_of_speech` enum:
  * `verb / noun / adjective / adverb`); these abbreviations are display-
  * only and intentionally mirror the legacy `n / v / adj / adv` values
- * that frame_sense chips rendered prior to the standardization
+ * that sense chips rendered prior to the standardization
  * migration, so visual real estate and reviewer recognition are
  * preserved. Fall back to `pos.toUpperCase()` for any unknown value.
  */
@@ -603,7 +602,7 @@ export function posShortLabel(pos: string | null | undefined): string {
   return POS_SHORT_LABEL[pos] ?? pos.toUpperCase();
 }
 
-/** Canonical display order for POS when listing frame senses. */
+/** Canonical display order for POS when listing senses. */
 export const POS_ORDER: Record<string, number> = {
   verb: 0,
   noun: 1,
@@ -660,14 +659,14 @@ export interface WithPendingInfo<T> {
 }
 
 // ============================================
-// Frame Graph Types
+// Concept Graph Types
 // ============================================
 
-export type FrameRelationType = 'parent_of';
+export type ConceptRelationType = 'parent_of';
 
-export interface FrameGraphRole {
+export interface ConceptGraphProperty {
   id: string;
-  frame_id: string;
+  concept_id: string;
   description: string | null;
   notes: string | null;
   main: boolean | null;
@@ -676,7 +675,7 @@ export interface FrameGraphRole {
   fillers?: unknown;
 }
 
-export interface FrameGraphLexicalUnit {
+export interface ConceptGraphLexicalUnit {
   id: string;
   code: string;
   legacy_id: string;
@@ -690,29 +689,29 @@ export interface FrameGraphLexicalUnit {
 }
 
 /**
- * A sense attached to a frame, with its expected-single linkage back to that frame
- * (`frameWarning !== null` means the sense links to zero or multiple frames — render
+ * A sense attached to a concept, with its expected-single linkage back to that concept
+ * (`conceptWarning !== null` means the sense links to zero or multiple concepts — render
  * a warning). `lexical_units` lists the LUs attached to this sense.
  */
-export interface FrameGraphSense {
+export interface ConceptGraphSense {
   id: string;
   pos: string;
   definition: string;
-  frame_type: string;
+  archetype: string;
   lemmas?: string[];
   confidence: string | null;
   type_dispute: string | null;
   causative: boolean | null;
   inchoative: boolean | null;
   perspectival: boolean | null;
-  frames: FrameSenseFrameRef[];
-  frameWarning: FrameSenseWarning;
-  lexical_units: FrameGraphLexicalUnit[];
+  concepts: SenseConceptRef[];
+  conceptWarning: SenseWarning;
+  lexical_units: ConceptGraphLexicalUnit[];
 }
 
-export interface FrameGraphRelation {
+export interface ConceptGraphRelation {
   id?: string;
-  type: FrameRelationType;
+  type: ConceptRelationType;
   locked?: boolean;
   direction: 'incoming' | 'outgoing';
   target?: {
@@ -729,33 +728,33 @@ export interface FrameGraphRelation {
   };
 }
 
-export interface FrameGraphNode {
+export interface ConceptGraphNode {
   id: string;
   numericId: string;
-  pos: 'frames';
+  pos: 'concepts';
   label: string;
   gloss?: string | null;
   short_definition?: string | null;
-  roles: FrameGraphRole[];
-  // Senses attached to this frame (senses-first view); each sense carries its LUs.
-  senses: FrameGraphSense[];
+  properties: ConceptGraphProperty[];
+  // Senses attached to this concept (senses-first view); each sense carries its LUs.
+  senses: ConceptGraphSense[];
   // Flattened de-duplicated LUs across all senses — kept for legacy UI paths.
-  lexical_units: FrameGraphLexicalUnit[];
-  relations: FrameGraphRelation[];
+  lexical_units: ConceptGraphLexicalUnit[];
+  relations: ConceptGraphRelation[];
   flagged?: boolean;
   flaggedReason?: string;
   verifiable?: boolean;
   unverifiableReason?: string;
   pending?: PendingChangeInfo | null;
-  frame_type?: string | null;
+  archetype?: string | null;
   vendler?: string | null;
   multi_perspective?: boolean | null;
   wikidata_id?: string | null;
-  recipe?: FrameRecipe | null;
+  recipe?: ConceptRecipe | null;
   recipe_graph?: RecipeGraph | null;
 }
 
-export interface FrameRecipeRole {
+export interface ConceptRecipeProperty {
   id: string;
   label: string | null;
   description: string | null;
@@ -770,7 +769,7 @@ export interface FrameRecipeRole {
   }>;
 }
 
-export interface FrameRecipeLexicalUnit {
+export interface ConceptRecipeLexicalUnit {
   id: string;
   code: string;
   pos: PartOfSpeech;
@@ -779,7 +778,7 @@ export interface FrameRecipeLexicalUnit {
   vendler_class: VendlerClass | null;
 }
 
-export interface FrameRecipeRelatedFrame {
+export interface ConceptRecipeRelatedConcept {
   id: string;
   label: string;
   short_definition?: string | null;
@@ -791,50 +790,50 @@ export interface FrameRecipeRelatedFrame {
   }>;
 }
 
-export interface FrameRecipeSense {
+export interface ConceptRecipeSense {
   id: string;
   pos: string;
   definition: string;
-  frame_type: string;
+  archetype: string;
   confidence: string | null;
   type_dispute: string | null;
   causative: boolean | null;
   inchoative: boolean | null;
   perspectival: boolean | null;
-  frameWarning: FrameSenseWarning;
-  lexical_units: FrameRecipeLexicalUnit[];
+  conceptWarning: SenseWarning;
+  lexical_units: ConceptRecipeLexicalUnit[];
 }
 
-export interface FrameRecipeData {
-  frame: {
+export interface ConceptRecipeData {
+  concept: {
     id: string;
     label: string;
     definition?: string | null;
     short_definition?: string | null;
     flagged: boolean | null;
     flagged_reason: string | null;
-    frame_type?: string | null;
+    archetype?: string | null;
     subtype?: string | null;
     disable_healthcheck?: boolean;
     vendler?: string | null;
     multi_perspective?: boolean | null;
     wikidata_id?: string | null;
-    recipe?: FrameRecipe | null;
+    recipe?: ConceptRecipe | null;
   };
-  roles: FrameRecipeRole[];
-  senses: FrameRecipeSense[];
-  lexical_units: FrameRecipeLexicalUnit[];
+  properties: ConceptRecipeProperty[];
+  senses: ConceptRecipeSense[];
+  lexical_units: ConceptRecipeLexicalUnit[];
   relations: {
-    parent_of: FrameRecipeRelatedFrame[];
-    child_of: FrameRecipeRelatedFrame[];
+    parent_of: ConceptRecipeRelatedConcept[];
+    child_of: ConceptRecipeRelatedConcept[];
   };
 }
 
 // ============================================
-// Role Type Acronyms (max 4 characters)
+// Property Type Acronyms (max 4 characters)
 // ============================================
 
-export const ROLE_TYPE_ACRONYMS: Record<string, string> = {
+export const PROPERTY_TYPE_ACRONYMS: Record<string, string> = {
   'PROTO_AGENT': 'PAG',
   'CONTENT.ENTITY': 'CTENT',
   'CONTENT.CLAUSE': 'CTCLS',
@@ -867,14 +866,14 @@ export const ROLE_TYPE_ACRONYMS: Record<string, string> = {
   'IDIOM': 'IDIOM',
 };
 
-export function getRoleTypeAcronym(roleTypeLabel: string): string {
-  return ROLE_TYPE_ACRONYMS[roleTypeLabel] || roleTypeLabel.substring(0, 5).toUpperCase();
+export function getPropertyTypeAcronym(roleTypeLabel: string): string {
+  return PROPERTY_TYPE_ACRONYMS[roleTypeLabel] || roleTypeLabel.substring(0, 5).toUpperCase();
 }
 
-// Role Precedence (for frame roles display)
+// Property Precedence (for concept properties display)
 // ============================================
 
-export const ROLE_PRECEDENCE: Record<string, number> = {
+export const PROPERTY_PRECEDENCE: Record<string, number> = {
   'PROTO_AGENT': 28,
   'CONTENT.ENTITY': 27,
   'CONTENT.CLAUSE': 26,
@@ -907,7 +906,7 @@ export const ROLE_PRECEDENCE: Record<string, number> = {
   'IDIOM': -1
 };
 
-export function sortRolesByPrecedence<T extends { label?: string | null; main?: boolean | null }>(roles: T[]): T[] {
+export function sortPropertiesByPrecedence<T extends { label?: string | null; main?: boolean | null }>(roles: T[]): T[] {
   return [...roles].sort((a, b) => {
     const mainA = a.main ?? false;
     const mainB = b.main ?? false;
@@ -919,8 +918,8 @@ export function sortRolesByPrecedence<T extends { label?: string | null; main?: 
     const roleA = a.label || '';
     const roleB = b.label || '';
     
-    const precedenceA = ROLE_PRECEDENCE[roleA] ?? -999;
-    const precedenceB = ROLE_PRECEDENCE[roleB] ?? -999;
+    const precedenceA = PROPERTY_PRECEDENCE[roleA] ?? -999;
+    const precedenceB = PROPERTY_PRECEDENCE[roleB] ?? -999;
     
     if (precedenceA !== precedenceB) {
       return precedenceB - precedenceA;
@@ -929,3 +928,60 @@ export function sortRolesByPrecedence<T extends { label?: string | null; main?: 
     return roleA.localeCompare(roleB);
   });
 }
+
+// ============================================
+// Deprecated Aliases (for backward compatibility)
+// ============================================
+
+/** @deprecated Use ConceptProperty */
+export type FrameRole = ConceptProperty;
+/** @deprecated Use PropertyGroup */
+export type RoleGroup = PropertyGroup;
+/** @deprecated Use Concept */
+export type Frame = Concept;
+/** @deprecated Use ConceptRecipe */
+export type FrameRecipe = ConceptRecipe;
+/** @deprecated Use SenseWarning */
+export type FrameSenseWarning = SenseWarning;
+/** @deprecated Use SenseConceptRef */
+export type FrameSenseFrameRef = SenseConceptRef;
+/** @deprecated Use Sense */
+export type FrameSense = Sense;
+/** @deprecated Use SenseWithConcept */
+export type FrameSenseWithFrame = SenseWithConcept;
+/** @deprecated Use SenseLexicalUnitSnippet */
+export type FrameSenseLexicalUnitSnippet = SenseLexicalUnitSnippet;
+/** @deprecated Use SenseTableRow */
+export type FrameSenseTableRow = SenseTableRow;
+/** @deprecated Use ConceptRelationType */
+export type FrameRelationType = ConceptRelationType;
+/** @deprecated Use ConceptGraphProperty */
+export type FrameGraphRole = ConceptGraphProperty;
+/** @deprecated Use ConceptGraphLexicalUnit */
+export type FrameGraphLexicalUnit = ConceptGraphLexicalUnit;
+/** @deprecated Use ConceptGraphSense */
+export type FrameGraphSense = ConceptGraphSense;
+/** @deprecated Use ConceptGraphRelation */
+export type FrameGraphRelation = ConceptGraphRelation;
+/** @deprecated Use ConceptGraphNode */
+export type FrameGraphNode = ConceptGraphNode;
+/** @deprecated Use ConceptRecipeProperty */
+export type FrameRecipeRole = ConceptRecipeProperty;
+/** @deprecated Use ConceptRecipeLexicalUnit */
+export type FrameRecipeLexicalUnit = ConceptRecipeLexicalUnit;
+/** @deprecated Use ConceptRecipeRelatedConcept */
+export type FrameRecipeRelatedFrame = ConceptRecipeRelatedConcept;
+/** @deprecated Use ConceptRecipeSense */
+export type FrameRecipeSense = ConceptRecipeSense;
+/** @deprecated Use ConceptRecipeData */
+export type FrameRecipeData = ConceptRecipeData;
+/** @deprecated Use ConceptPaginationParams */
+export type FramePaginationParams = ConceptPaginationParams;
+/** @deprecated Use PROPERTY_TYPE_ACRONYMS */
+export const ROLE_TYPE_ACRONYMS = PROPERTY_TYPE_ACRONYMS;
+/** @deprecated Use getPropertyTypeAcronym */
+export const getRoleTypeAcronym = getPropertyTypeAcronym;
+/** @deprecated Use PROPERTY_PRECEDENCE */
+export const ROLE_PRECEDENCE = PROPERTY_PRECEDENCE;
+/** @deprecated Use sortPropertiesByPrecedence */
+export const sortRolesByPrecedence = sortPropertiesByPrecedence;

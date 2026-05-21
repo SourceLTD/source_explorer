@@ -50,7 +50,7 @@ function getPreferredKeys(entityType: string): string[] {
     case 'frame':
       return ['label', 'code', 'short_definition', 'definition'];
     case 'lexical_unit':
-      return ['code', 'pos', 'lemmas', 'gloss', 'frame_id', 'lexfile', 'is_mwe'];
+      return ['code', 'pos', 'lemmas', 'gloss', 'concept_id', 'lexfile', 'is_mwe'];
     default:
       return ['label', 'code', 'gloss', 'short_definition', 'definition'];
   }
@@ -148,7 +148,7 @@ export default function FocusEntityCard({
           setRichData(dataCacheRef.current.get(cacheKey));
         } else {
           const url = entityType === 'frame' 
-            ? `/api/frames/${entityId}`
+            ? `/api/concepts/${entityId}`
             : `/api/lexical-units/${entityId}`;
           const res = await fetchJson<any>(url, ac.signal);
           dataCacheRef.current.set(cacheKey, res);
@@ -174,7 +174,7 @@ export default function FocusEntityCard({
     const lus = richData?.lexical_units || [];
     return (
       <NodeCard
-        title={label || 'Frame'}
+        title={label || 'Concept'}
         loading={loading}
         error={error}
         noDivider

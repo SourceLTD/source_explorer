@@ -31,14 +31,14 @@ function formatScopeDescription(scope: JobScope | null, totalItems: number): str
   switch (scope.kind) {
     case 'ids':
       return `${scope.ids.length} ${scope.targetType} by ID selection`;
-    case 'frame_ids': {
-      const frameCount = scope.frameIds?.length ?? 0;
+    case 'concept_ids': {
+      const frameCount = scope.conceptIds?.length ?? 0;
       const target = scope.flagTarget === 'both' 
-        ? 'frames & lexical units' 
-        : scope.flagTarget === 'frame'
-          ? 'frames'
+        ? 'concepts & lexical units' 
+        : scope.flagTarget === 'concept'
+          ? 'concepts'
           : 'lexical units';
-      return `${frameCount} frames (${target})`;
+      return `${frameCount} concepts (${target})`;
     }
     case 'filters':
       return `Filtered ${scope.targetType}${scope.filters?.limit ? ` (limit: ${scope.filters.limit})` : ''}`;
@@ -342,7 +342,7 @@ export function parseJobConfig(config: unknown): ParsedJobConfig | null {
 export function parseJobScope(scope: unknown): JobScope | null {
   if (!scope || typeof scope !== 'object') return null;
   const parsed = scope as { kind?: string };
-  if (!parsed.kind || !['ids', 'frame_ids', 'filters'].includes(parsed.kind)) {
+  if (!parsed.kind || !['ids', 'concept_ids', 'filters'].includes(parsed.kind)) {
     return null;
   }
   return scope as JobScope;
@@ -687,7 +687,7 @@ export const ItemList = memo(function ItemList({
                     <div>
                       <span className="font-semibold">{displayName}</span>
                       <span className="ml-2 uppercase opacity-75">
-                        {item.entry.pos === 'frames' ? 'FRAME' : item.entry.pos}
+                        {item.entry.pos === 'concepts' ? 'CONCEPT' : item.entry.pos}
                       </span>
                     </div>
                     <span className="opacity-75">{item.status}</span>

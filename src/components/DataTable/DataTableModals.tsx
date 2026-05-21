@@ -3,8 +3,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal } from '@/components/ui';
 import LoadingSpinner from '@/components/LoadingSpinner';
-import { TableLexicalUnit, Frame } from '@/lib/types';
-import { FlagModalState, FrameOption } from './types';
+import { TableLexicalUnit, Concept } from '@/lib/types';
+import { FlagModalState, ConceptOption } from './types';
 
 interface ExistingReason {
   id: string;
@@ -16,7 +16,7 @@ interface FlagModalProps {
   isOpen: boolean;
   modalState: FlagModalState;
   selectedCount: number;
-  selectedEntriesOnPage: (TableLexicalUnit | Frame)[];
+  selectedEntriesOnPage: (TableLexicalUnit | Concept)[];
   isLoading: boolean;
   onClose: () => void;
   onConfirm: () => void;
@@ -234,55 +234,54 @@ function ExistingReasonsSection({
   );
 }
 
-interface FrameChangeModalProps {
+interface ConceptChangeModalProps {
   isOpen: boolean;
   selectedCount: number;
-  selectedEntriesOnCurrentPage: (TableLexicalUnit | Frame)[];
-  frameOptions: FrameOption[];
-  filteredFrameOptions: FrameOption[];
-  frameOptionsLoading: boolean;
-  frameOptionsError: string | null;
-  selectedFrameValue: string;
-  frameSearchQuery: string;
-  isFrameUpdating: boolean;
+  selectedEntriesOnCurrentPage: (TableLexicalUnit | Concept)[];
+  conceptOptions: ConceptOption[];
+  filteredConceptOptions: ConceptOption[];
+  conceptOptionsLoading: boolean;
+  conceptOptionsError: string | null;
+  selectedConceptValue: string;
+  conceptSearchQuery: string;
+  isConceptUpdating: boolean;
   onClose: () => void;
   onConfirm: () => void;
-  onFrameValueChange: (value: string) => void;
+  onConceptValueChange: (value: string) => void;
   onSearchQueryChange: (query: string) => void;
   onClearError: () => void;
   onRetryLoad: () => void;
 }
 
-export function FrameChangeModal({
+export function ConceptChangeModal({
   isOpen,
   selectedCount,
   selectedEntriesOnCurrentPage,
-  frameOptions,
-  filteredFrameOptions,
-  frameOptionsLoading,
-  frameOptionsError,
-  selectedFrameValue,
-  frameSearchQuery,
-  isFrameUpdating,
+  conceptOptions,
+  filteredConceptOptions,
+  conceptOptionsLoading,
+  conceptOptionsError,
+  selectedConceptValue,
+  conceptSearchQuery,
+  isConceptUpdating,
   onClose,
   onConfirm,
-  onFrameValueChange,
+  onConceptValueChange,
   onSearchQueryChange,
   onClearError,
   onRetryLoad,
-}: FrameChangeModalProps) {
+}: ConceptChangeModalProps) {
   const hasMultiPageSelection = selectedCount > selectedEntriesOnCurrentPage.length;
-  const [frameDropdownOpen, setFrameDropdownOpen] = useState(false);
-  const frameDropdownContainerRef = useRef<HTMLDivElement>(null);
+  const [conceptDropdownOpen, setConceptDropdownOpen] = useState(false);
+  const conceptDropdownContainerRef = useRef<HTMLDivElement>(null);
   
-  const frameSummary = useMemo(() => {
+  const conceptSummary = useMemo(() => {
     if (selectedEntriesOnCurrentPage.length === 0) return [];
     const counts = new Map<string, { label: string; count: number }>();
-    // Only verbs have frame property
-    const verbEntries = selectedEntriesOnCurrentPage.filter((e): e is TableLexicalUnit => 'frame' in e);
+    const verbEntries = selectedEntriesOnCurrentPage.filter((e): e is TableLexicalUnit => 'concept' in e);
     verbEntries.forEach(entry => {
-      const key = entry.frame ?? '__NONE__';
-      const label = entry.frame ?? 'No frame assigned';
+      const key = entry.concept ?? '__NONE__';
+      const label = entry.concept ?? 'No concept assigned';
       const existing = counts.get(key);
       if (existing) {
         existing.count += 1;
@@ -295,36 +294,36 @@ export function FrameChangeModal({
 
   // Close dropdown when clicking outside
   useEffect(() => {
-    if (!frameDropdownOpen) return;
+    if (!conceptDropdownOpen) return;
     const handleClickOutside = (event: MouseEvent) => {
       if (
-        frameDropdownContainerRef.current &&
-        !frameDropdownContainerRef.current.contains(event.target as Node)
+        conceptDropdownContainerRef.current &&
+        !conceptDropdownContainerRef.current.contains(event.target as Node)
       ) {
-        setFrameDropdownOpen(false);
+        setConceptDropdownOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [frameDropdownOpen]);
+  }, [conceptDropdownOpen]);
 
   if (!isOpen) return null;
 
-  const frameModalFooter = (
+  const conceptModalFooter = (
     <div className="flex justify-end gap-3">
       <button
         onClick={onClose}
         className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-        disabled={isFrameUpdating}
+        disabled={isConceptUpdating}
       >
         Cancel
       </button>
       <button
         onClick={onConfirm}
         className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-xl hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-        disabled={isFrameUpdating || frameOptionsLoading || selectedFrameValue === ''}
+        disabled={isConceptUpdating || conceptOptionsLoading || selectedConceptValue === ''}
       >
-        {isFrameUpdating ? 'Applying...' : 'Apply Frame'}
+        {isConceptUpdating ? 'Applying...' : 'Apply Concept'}
       </button>
     </div>
   );
@@ -332,12 +331,12 @@ export function FrameChangeModal({
   return (
     <Modal
       isOpen={true}
-      onClose={isFrameUpdating ? () => {} : onClose}
-      title="Change Frame"
-      subtitle={`You are about to update the frame for ${selectedCount} ${selectedCount === 1 ? 'entry' : 'entries'}.`}
+      onClose={isConceptUpdating ? () => {} : onClose}
+      title="Change Concept"
+      subtitle={`You are about to update the concept for ${selectedCount} ${selectedCount === 1 ? 'entry' : 'entries'}.`}
       maxWidth="2xl"
-      preventClose={isFrameUpdating}
-      footer={frameModalFooter}
+      preventClose={isConceptUpdating}
+      footer={conceptModalFooter}
     >
       <div className="p-6 space-y-5">
         {/* Warning for multi-page selections */}
@@ -359,13 +358,13 @@ export function FrameChangeModal({
           </div>
         )}
 
-        {frameSummary.length > 0 && (
+        {conceptSummary.length > 0 && (
           <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl">
             <h4 className="text-xs font-semibold text-blue-600 uppercase tracking-wide mb-2">
-              Current Frame Breakdown
+              Current Concept Breakdown
             </h4>
             <ul className="space-y-1 text-sm text-blue-600">
-              {frameSummary.map(({ label, count }) => (
+              {conceptSummary.map(({ label, count }) => (
                 <li key={`${label}-${count}`} className="flex justify-between">
                   <span>{label}</span>
                   <span className="font-medium">{count}</span>
@@ -375,34 +374,34 @@ export function FrameChangeModal({
           </div>
         )}
 
-        <div className="space-y-2" ref={frameDropdownContainerRef}>
-          <label htmlFor="frame-search" className="block text-sm font-medium text-gray-700">
-            Frame ID
+        <div className="space-y-2" ref={conceptDropdownContainerRef}>
+          <label htmlFor="concept-search" className="block text-sm font-medium text-gray-700">
+            Concept ID
           </label>
           <div className="relative">
             <input
-              id="frame-search"
+              id="concept-search"
               type="text"
-              value={frameSearchQuery}
+              value={conceptSearchQuery}
               onChange={(e) => {
                 onClearError();
                 onSearchQueryChange(e.target.value);
               }}
-              onFocus={() => setFrameDropdownOpen(true)}
-              placeholder="Search frames by id, code, or label..."
-              disabled={isFrameUpdating}
+              onFocus={() => setConceptDropdownOpen(true)}
+              placeholder="Search concepts by id, code, or label..."
+              disabled={isConceptUpdating}
               className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-gray-900 disabled:bg-gray-50"
             />
 
-            {frameDropdownOpen && (
+            {conceptDropdownOpen && (
               <div className="absolute z-50 w-full mt-1 max-h-60 overflow-y-auto border border-gray-300 rounded-xl bg-white shadow-sm">
-                {frameOptionsLoading ? (
+                {conceptOptionsLoading ? (
                   <div className="flex items-center justify-center py-6">
                     <LoadingSpinner size="sm" noPadding />
                   </div>
-                ) : frameOptionsError ? (
+                ) : conceptOptionsError ? (
                   <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700 space-y-2 m-2">
-                    <p>{frameOptionsError}</p>
+                    <p>{conceptOptionsError}</p>
                     <button
                       type="button"
                       onClick={onRetryLoad}
@@ -416,40 +415,40 @@ export function FrameChangeModal({
                     <button
                       type="button"
                       onClick={() => {
-                        onFrameValueChange('__CLEAR__');
+                        onConceptValueChange('__CLEAR__');
                         onSearchQueryChange('');
-                        setFrameDropdownOpen(false);
+                        setConceptDropdownOpen(false);
                       }}
                       className="w-full text-left px-3 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
                     >
                       <div className="flex items-center justify-between gap-2">
                         <div className="text-sm font-medium text-gray-900">
-                          No frame (clear existing frame)
+                          No concept (clear existing concept)
                         </div>
-                        {selectedFrameValue === '__CLEAR__' && (
+                        {selectedConceptValue === '__CLEAR__' && (
                           <span className="text-xs text-blue-600 font-medium">Selected</span>
                         )}
                       </div>
                       <div className="text-xs text-gray-500">
-                        Removes the frame assignment from all selected entries.
+                        Removes the concept assignment from all selected entries.
                       </div>
                     </button>
 
-                    {filteredFrameOptions.length === 0 ? (
-                      <div className="px-3 py-2 text-sm text-gray-500">No frames found</div>
+                    {filteredConceptOptions.length === 0 ? (
+                      <div className="px-3 py-2 text-sm text-gray-500">No concepts found</div>
                     ) : (
-                      filteredFrameOptions.map(frame => {
-                        const isSelected = selectedFrameValue === frame.id;
-                        const displayValue = frame.code?.trim() || frame.label;
+                      filteredConceptOptions.map(concept => {
+                        const isSelected = selectedConceptValue === concept.id;
+                        const displayValue = concept.code?.trim() || concept.label;
                         const dotIndex = displayValue.indexOf('.');
                         return (
                           <button
-                            key={frame.id}
+                            key={concept.id}
                             type="button"
                             onClick={() => {
-                              onFrameValueChange(frame.id);
+                              onConceptValueChange(concept.id);
                               onSearchQueryChange('');
-                              setFrameDropdownOpen(false);
+                              setConceptDropdownOpen(false);
                             }}
                             className="w-full text-left px-3 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
                           >
@@ -466,7 +465,7 @@ export function FrameChangeModal({
                                   )}
                                 </div>
                                 <div className="text-xs text-gray-500 font-mono truncate">
-                                  {frame.id}{frame.code ? ` · ${frame.label}` : ''}
+                                  {concept.id}{concept.code ? ` · ${concept.label}` : ''}
                                 </div>
                               </div>
                               {isSelected && <span className="text-xs text-blue-600 font-medium">Selected</span>}
@@ -481,9 +480,9 @@ export function FrameChangeModal({
             )}
           </div>
 
-          {!frameOptionsError && (
+          {!conceptOptionsError && (
             <p className="text-xs text-gray-500">
-              Selecting &quot;No frame&quot; will remove the frame assignment from all selected entries.
+              Selecting &quot;No concept&quot; will remove the concept assignment from all selected entries.
             </p>
           )}
         </div>

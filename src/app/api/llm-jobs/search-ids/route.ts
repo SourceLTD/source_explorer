@@ -23,9 +23,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ results: [] });
     }
 
-    // Handle frame target type
-    if (targetType === 'frames') {
-      const frames = await prisma.frames.findMany({
+    // Handle concept target type
+    if (targetType === 'concepts') {
+      const concepts = await prisma.concepts.findMany({
         where: {
           deleted: false,
           ...(exact
@@ -41,8 +41,8 @@ export async function GET(request: NextRequest) {
         orderBy: { label: 'asc' },
       });
 
-      // For frames, return id as the gloss (to match FilterPanel display format)
-      results = frames.map(f => ({ code: f.label, gloss: String(f.id) }));
+      // For concepts, return id as the gloss (to match FilterPanel display format)
+      results = concepts.map(f => ({ code: f.label, gloss: String(f.id) }));
     } else {
       // Lexical unit search:
       // - If targetType === 'lexical_units': search across ALL POS

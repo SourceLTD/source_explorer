@@ -3,8 +3,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type {
-  FrameSenseFrameRef,
-  FrameSenseWarning,
+  SenseConceptRef,
+  SenseWarning,
   PendingChangeInfo,
 } from '@/lib/types';
 import { posShortLabel } from '@/lib/types';
@@ -21,11 +21,11 @@ interface LexicalUnitSnippet {
   gloss: string;
 }
 
-export interface FrameSenseRow {
+export interface SenseTableRow {
   id: string;
   pos: string;
   definition: string;
-  frame_type: string;
+  archetype: string;
   confidence: string | null;
   lemmas: string[];
   causative: boolean | null;
@@ -33,9 +33,9 @@ export interface FrameSenseRow {
   perspectival: boolean | null;
   createdAt: string | null;
   updatedAt: string | null;
-  frame: FrameSenseFrameRef | null;
-  frames: FrameSenseFrameRef[];
-  frameWarning: FrameSenseWarning;
+  concept: SenseConceptRef | null;
+  concepts: SenseConceptRef[];
+  conceptWarning: SenseWarning;
   lexical_units: {
     entries: LexicalUnitSnippet[];
     totalCount: number;
@@ -45,8 +45,8 @@ export interface FrameSenseRow {
   pending: PendingChangeInfo | null;
 }
 
-interface PaginatedFrameSenses {
-  data: FrameSenseRow[];
+interface PaginatedSenses {
+  data: SenseTableRow[];
   total: number;
   page: number;
   limit: number;
@@ -55,12 +55,12 @@ interface PaginatedFrameSenses {
   hasPrev: boolean;
 }
 
-interface FrameSensesTableProps {
+interface SensesTableProps {
   searchQuery: string;
   refreshTrigger?: number;
 }
 
-type SortField = 'id' | 'pos' | 'definition' | 'frame_type' | 'createdAt' | 'updatedAt';
+type SortField = 'id' | 'pos' | 'definition' | 'archetype' | 'createdAt' | 'updatedAt';
 
 interface SortState {
   field: SortField;
@@ -80,8 +80,8 @@ const COLUMNS: Array<{
   { key: 'pos', label: 'POS', sortable: true, sortField: 'pos', widthClass: 'w-20' },
   { key: 'lemmas', label: 'Lemmas', sortable: false, widthClass: 'w-48' },
   { key: 'definition', label: 'Definition', sortable: true, sortField: 'definition', widthClass: '' },
-  { key: 'frame_type', label: 'Frame Type', sortable: true, sortField: 'frame_type', widthClass: 'w-32' },
-  { key: 'frame', label: 'Frame', sortable: false, widthClass: 'w-48' },
+  { key: 'archetype', label: 'Archetype', sortable: true, sortField: 'archetype', widthClass: 'w-32' },
+  { key: 'frame', label: 'Concept', sortable: false, widthClass: 'w-48' },
   { key: 'lexical_units', label: 'Lexical Units', sortable: false, widthClass: 'w-80' },
   { key: 'warning', label: 'Warning', sortable: false, widthClass: 'w-28' },
   { key: 'createdAt', label: 'Created', sortable: true, sortField: 'createdAt', widthClass: 'w-28' },
@@ -95,11 +95,11 @@ function formatDate(iso: string | null): string {
   return d.toLocaleDateString();
 }
 
-function WarningBadge({ warning }: { warning: FrameSenseWarning }) {
+function WarningBadge({ warning }: { warning: SenseWarning }) {
   if (warning === null) {
     return <span className="text-xs text-gray-400">—</span>;
   }
-  const label = warning === 'none' ? 'No frame' : 'Multiple frames';
+  const label = warning === 'none' ? 'No concept' : 'Multiple concepts';
   return (
     <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
       {label}
@@ -131,10 +131,10 @@ function SortIcon({ active, order }: { active: boolean; order: 'asc' | 'desc' })
   );
 }
 
-export default function FrameSensesTable({ searchQuery, refreshTrigger }: FrameSensesTableProps) {
+export default function SensesTable({ searchQuery, refreshTrigger }: SensesTableProps) {
   const router = useRouter();
 
-  const [data, setData] = useState<PaginatedFrameSenses | null>(null);
+  const [data, setData] = useState<PaginatedSenses | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -155,13 +155,13 @@ export default function FrameSensesTable({ searchQuery, refreshTrigger }: FrameS
         params.set('search', searchQuery.trim());
       }
 
-      const response = await fetch(`/api/frame-senses/paginated?${params.toString()}`, {
+      const response = await fetch(`/api/senses/paginated?${params.toString()}`, {
         cache: 'no-store',
       });
       if (!response.ok) {
         throw new Error(`Failed to load senses (${response.status})`);
       }
-      const result: PaginatedFrameSenses = await response.json();
+      const result: PaginatedSenses = await response.json();
       setData(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load senses');
@@ -286,22 +286,22 @@ export default function FrameSensesTable({ searchQuery, refreshTrigger }: FrameS
                   </td>
                   <td className="px-4 py-3 align-top">
                     <span className="text-xs font-medium text-gray-700">
-                      {row.frame_type || '—'}
+                      {row.archetype || '—'}
                     </span>
                   </td>
                   <td className="px-4 py-3 align-top">
-                    {row.frames.length === 0 ? (
+                    {row.concepts.length === 0 ? (
                       <span className="text-xs text-gray-400">—</span>
                     ) : (
                       <div className="flex flex-wrap gap-1">
-                        {row.frames.map(f => {
+                        {row.concepts.map(f => {
                           const label = f.code ?? f.label ?? f.id;
                           return (
                             <button
                               key={f.id}
                               type="button"
                               onClick={() =>
-                                router.push(`/graph/frames?entry=${encodeURIComponent(f.id)}`)
+                                router.push(`/graph/concepts?entry=${encodeURIComponent(f.id)}`)
                               }
                               className="inline-flex items-center rounded bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-600 hover:bg-blue-100 cursor-pointer transition-colors"
                               title={f.label}
@@ -347,7 +347,7 @@ export default function FrameSensesTable({ searchQuery, refreshTrigger }: FrameS
                     )}
                   </td>
                   <td className="px-4 py-3 align-top">
-                    <WarningBadge warning={row.frameWarning} />
+                    <WarningBadge warning={row.conceptWarning} />
                   </td>
                   <td className="px-4 py-3 align-top text-xs text-gray-600">
                     {formatDate(row.createdAt)}

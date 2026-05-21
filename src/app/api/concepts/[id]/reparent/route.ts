@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { stageFrameRelationReparent } from '@/lib/version-control';
+import { stageConceptRelationReparent } from '@/lib/version-control';
 
 export async function POST(
   request: NextRequest,
@@ -24,7 +24,7 @@ export async function POST(
 
     const newParentBigInt = BigInt(newParentId);
 
-    const result = await stageFrameRelationReparent(
+    const result = await stageConceptRelationReparent(
       frameId,
       newParentBigInt,
       userId,
@@ -43,9 +43,9 @@ export async function POST(
       return NextResponse.json({ error: message }, { status: 400 });
     }
 
-    console.error('[API] Error staging frame reparent:', error);
+    console.error('[API] Error staging concept reparent:', error);
     return NextResponse.json(
-      { error: 'Failed to stage frame reparent' },
+      { error: 'Failed to stage concept reparent' },
       { status: 500 }
     );
   }

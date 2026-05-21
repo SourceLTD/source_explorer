@@ -24,16 +24,16 @@ import { RevisionModal } from '@/components/editing/RevisionModal';
 import { RevisionNavigator } from '@/components/editing/RevisionNavigator';
 import type { RevisionHistoryEntry } from '@/lib/version-control/types';
 import DAGMoveVisualization from '@/components/pending/context/DAGMoveVisualization';
-import FrameRefPopover from '@/components/pending/context/FrameRefPopover';
-import FrameInfoCard, {
+import ConceptRefPopover from '@/components/pending/context/ConceptRefPopover';
+import ConceptInfoCard, {
   type ExtraSense,
-} from '@/components/pending/context/FrameInfoCard';
+} from '@/components/pending/context/ConceptInfoCard';
 import PlanContextPanel from '@/components/pending/context/PlanContextPanel';
 import {
-  fetchFrameSummary,
-  getCachedFrameSummary,
-  type FrameSenseSummary,
-} from '@/components/pending/context/frameSummaryCache';
+  fetchConceptSummary,
+  getCachedConceptSummary,
+  type ConceptSenseSummary,
+} from '@/components/pending/context/conceptSummaryCache';
 
 /**
  * v2: PlanCard renders a single `change_plans` row on the issue page.
@@ -59,11 +59,11 @@ export interface PlanCardProps {
 }
 
 const PLAN_KIND_LABELS: Record<string, string> = {
-  split_frame: 'Split frame',
-  merge_frame: 'Merge frames',
-  merge_sense: 'Merge frame senses',
-  move_frame_sense: 'Move frame sense',
-  move_frame_parent: 'Reparent frame',
+  split_frame: 'Split concept',
+  merge_frame: 'Merge concepts',
+  merge_sense: 'Merge concept senses',
+  move_frame_sense: 'Move concept sense',
+  move_frame_parent: 'Reparent concept',
   detach_parent_relation: 'Detach parent relation',
   upsert_role_mappings: 'Upsert role mappings',
 };
@@ -115,23 +115,23 @@ function snapStr(
  * hover/focus when an id is available. When the id is missing
  * (e.g. a not-yet-created split result) the pill renders plain.
  *
- * Uses the FrameRefPopover wrapper rather than rolling its own
+ * Uses the ConceptRefPopover wrapper rather than rolling its own
  * popover so chips and DAG nodes share the same caching, delay,
  * and dismissal behaviour.
  */
 function FrameChip({
-  frameId,
+  conceptId,
   label,
   className,
 }: {
-  frameId: string | null;
+  conceptId: string | null;
   label: string;
   className: string;
 }) {
   return (
-    <FrameRefPopover frameId={frameId} fallbackLabel={label}>
+    <ConceptRefPopover conceptId={conceptId} fallbackLabel={label}>
       <span className={className}>{label}</span>
-    </FrameRefPopover>
+    </ConceptRefPopover>
   );
 }
 
@@ -158,7 +158,7 @@ function operationBadge(op: string): string {
 /**
  * Right-hand side of the `move_frame_sense` panel.
  *
- * Renders the standard before/after FrameInfoCards but enriches the
+ * Renders the standard before/after ConceptInfoCards but enriches the
  * "new parent" card with an `extraSenses` entry so the moving sense
  * shows up there in green ("Moving in") with the same emphasis the
  * field-diff panel uses for "Proposed" content. The sense's full
@@ -202,11 +202,11 @@ function MoveFrameSensePanel({
 
   return (
     <PlanContextPanel
-      beforeLabel="Current frame"
-      afterLabel="New frame"
+      beforeLabel="Current concept"
+      afterLabel="New concept"
       beforeContent={
-        <FrameInfoCard
-          frameId={fromId}
+        <ConceptInfoCard
+          conceptId={fromId}
           fallbackLabel={fromLabel}
           emphasis="origin"
           excludeSenseIds={excludeFromOld}
@@ -214,8 +214,8 @@ function MoveFrameSensePanel({
         />
       }
       afterContent={
-        <FrameInfoCard
-          frameId={toId}
+        <ConceptInfoCard
+          conceptId={toId}
           fallbackLabel={toLabel}
           emphasis="destination"
           extraSenses={extraSenses}
@@ -238,10 +238,10 @@ function MoveFrameSensePanel({
 function useMovingSense(
   parentFrameId: string | null,
   senseId: string | null,
-): FrameSenseSummary | null {
-  const [sense, setSense] = useState<FrameSenseSummary | null>(() => {
+): ConceptSenseSummary | null {
+  const [sense, setSense] = useState<ConceptSenseSummary | null>(() => {
     if (!parentFrameId || !senseId) return null;
-    const cached = getCachedFrameSummary(parentFrameId);
+    const cached = getCachedConceptSummary(parentFrameId);
     return findSense(cached?.senses, senseId);
   });
 
@@ -250,14 +250,14 @@ function useMovingSense(
       setSense(null);
       return;
     }
-    const cached = getCachedFrameSummary(parentFrameId);
+    const cached = getCachedConceptSummary(parentFrameId);
     const cachedSense = findSense(cached?.senses, senseId);
     if (cachedSense) {
       setSense(cachedSense);
       return;
     }
     const ac = new AbortController();
-    void fetchFrameSummary(parentFrameId, ac.signal).then((summary) => {
+    void fetchConceptSummary(parentFrameId, ac.signal).then((summary) => {
       if (ac.signal.aborted) return;
       setSense(findSense(summary?.senses, senseId));
     });
@@ -268,9 +268,9 @@ function useMovingSense(
 }
 
 function findSense(
-  senses: FrameSenseSummary[] | undefined,
+  senses: ConceptSenseSummary[] | undefined,
   senseId: string,
-): FrameSenseSummary | null {
+): ConceptSenseSummary | null {
   if (!senses) return null;
   const match = senses.find((s) => String(s.id) === String(senseId));
   return match ?? null;
@@ -306,7 +306,7 @@ function PlanKindRenderer({ plan, metadataOverride }: { plan: IssueChangePlanSum
         ? (md.results as Array<Record<string, unknown>>)
         : null;
       const sourceId = snapStr(source, 'id');
-      const sourceLabel = snapStr(source, 'label') ?? 'Source frame';
+      const sourceLabel = snapStr(source, 'label') ?? 'Source concept';
       const sourceDisposition = (md.source_disposition ?? 'delete') as
         | 'delete'
         | 'keep';
@@ -322,7 +322,7 @@ function PlanKindRenderer({ plan, metadataOverride }: { plan: IssueChangePlanSum
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-2 text-sm text-gray-700">
             <FrameChip
-              frameId={sourceId}
+              conceptId={sourceId}
               label={sourceLabel}
               className="font-mono px-2 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-800"
             />
@@ -331,23 +331,23 @@ function PlanKindRenderer({ plan, metadataOverride }: { plan: IssueChangePlanSum
               results.map((r, i) => (
                 <FrameChip
                   key={i}
-                  frameId={snapStr(r, 'id')}
+                  conceptId={snapStr(r, 'id')}
                   label={snapStr(r, 'label') ?? `result ${i + 1}`}
                   className="font-mono px-2 py-0.5 rounded bg-green-50 border border-green-200 text-green-800"
                 />
               ))
             ) : (
               <span className="text-gray-500 italic">
-                {plan.changesets.length} new frames
+                {plan.changesets.length} new concepts
               </span>
             )}
           </div>
           <PlanContextPanel
-            beforeLabel="Source frame"
-            afterLabel={`Result frames (${resultCount})`}
+            beforeLabel="Source concept"
+            afterLabel={`Result concepts (${resultCount})`}
             beforeContent={
-              <FrameInfoCard
-                frameId={sourceId}
+              <ConceptInfoCard
+                conceptId={sourceId}
                 fallbackLabel={sourceLabel}
                 emphasis="origin"
                 withPopover={false}
@@ -367,9 +367,9 @@ function PlanKindRenderer({ plan, metadataOverride }: { plan: IssueChangePlanSum
                       )
                     : [];
                   return (
-                    <FrameInfoCard
+                    <ConceptInfoCard
                       key={i}
-                      frameId={snapStr(r, 'id')}
+                      conceptId={snapStr(r, 'id')}
                       fallbackLabel={snapStr(r, 'label') ?? `Result ${i + 1}`}
                       fallbackDefinition={
                         snapStr(r, 'definition') ?? snapStr(r, 'short_definition')
@@ -421,7 +421,7 @@ function PlanKindRenderer({ plan, metadataOverride }: { plan: IssueChangePlanSum
                 })
               ) : (
                 <div className="text-xs text-gray-500 italic">
-                  {plan.changesets.length} new frames will be created.
+                  {plan.changesets.length} new concepts will be created.
                 </div>
               )
             }
@@ -433,11 +433,11 @@ function PlanKindRenderer({ plan, metadataOverride }: { plan: IssueChangePlanSum
                 <li>
                   {totalSenseRepoints} sense
                   {totalSenseRepoints === 1 ? '' : 's'} will be re-linked
-                  across the new frames per the LLM&apos;s partition.
+                  across the new concepts per the LLM&apos;s partition.
                 </li>
               )}
               <li>
-                New frames are created as <strong>orphans</strong> (no{' '}
+                New concepts are created as <strong>orphans</strong> (no{' '}
                 <code className="font-mono">parent_of</code> edges). Parent
                 attachment is a separate review step driven by the hierarchy
                 health checks on a later run.
@@ -446,13 +446,13 @@ function PlanKindRenderer({ plan, metadataOverride }: { plan: IssueChangePlanSum
                 <li>
                   {staleMappingIds.length} role mapping
                   {staleMappingIds.length === 1 ? '' : 's'} touching the source
-                  frame will be deleted (regenerated by the next health-check
-                  sweep on each new frame).
+                  concept will be deleted (regenerated by the next health-check
+                  sweep on each new concept).
                 </li>
               )}
               {sourceDisposition === 'keep' && (
                 <li>
-                  Source frame is marked{' '}
+                  Source concept is marked{' '}
                   <code className="font-mono">keep</code>: NOT soft-deleted by
                   this plan.
                 </li>
@@ -511,7 +511,7 @@ function PlanKindRenderer({ plan, metadataOverride }: { plan: IssueChangePlanSum
                 return (
                   <FrameChip
                     key={i}
-                    frameId={snapStr(s, 'id')}
+                    conceptId={snapStr(s, 'id')}
                     label={
                       (snapStr(s, 'label') ?? `source ${i + 1}`) +
                       (isKept ? ' (kept)' : '')
@@ -531,7 +531,7 @@ function PlanKindRenderer({ plan, metadataOverride }: { plan: IssueChangePlanSum
             )}
             <span className="text-gray-400">merge into</span>
             <FrameChip
-              frameId={targetId}
+              conceptId={targetId}
               label={targetIsNew ? `${targetLabel} (new)` : targetLabel}
               className="font-mono px-2 py-0.5 rounded bg-green-50 border border-green-200 text-green-800"
             />
@@ -547,14 +547,14 @@ function PlanKindRenderer({ plan, metadataOverride }: { plan: IssueChangePlanSum
                   <li>
                     {senseRepoints.length} sense
                     {senseRepoints.length === 1 ? '' : 's'} will be re-linked
-                    to the target frame.
+                    to the target concept.
                   </li>
                 )}
                 {relRepointCount > 0 && (
                   <li>
                     {relRepointCount} inheritance / relation edge
                     {relRepointCount === 1 ? ' will be' : 's will be'} repointed
-                    at the target frame.
+                    at the target concept.
                   </li>
                 )}
                 {relDeleteCount > 0 && (
@@ -573,7 +573,7 @@ function PlanKindRenderer({ plan, metadataOverride }: { plan: IssueChangePlanSum
                 )}
                 {keptCount > 0 && (
                   <li>
-                    {keptCount} source frame
+                    {keptCount} source concept
                     {keptCount === 1 ? ' is' : 's are'} marked{' '}
                     <code className="font-mono">keep</code>
                     : excluded from structural moves and finalisation.
@@ -605,14 +605,14 @@ function PlanKindRenderer({ plan, metadataOverride }: { plan: IssueChangePlanSum
             </div>
           )}
           <PlanContextPanel
-            beforeLabel={`Source frames (${sourceCount})`}
-            afterLabel="Target frame"
+            beforeLabel={`Source concepts (${sourceCount})`}
+            afterLabel="Target concept"
             beforeContent={
               sources && sources.length > 0 ? (
                 sources.map((s, i) => (
-                  <FrameInfoCard
+                  <ConceptInfoCard
                     key={i}
-                    frameId={snapStr(s, 'id')}
+                    conceptId={snapStr(s, 'id')}
                     fallbackLabel={snapStr(s, 'label') ?? `Source ${i + 1}`}
                     emphasis="origin"
                     withPopover={false}
@@ -620,13 +620,13 @@ function PlanKindRenderer({ plan, metadataOverride }: { plan: IssueChangePlanSum
                 ))
               ) : (
                 <div className="text-xs text-gray-500 italic">
-                  {sourceCount} source frame{sourceCount === 1 ? '' : 's'} will be merged.
+                  {sourceCount} source concept{sourceCount === 1 ? '' : 's'} will be merged.
                 </div>
               )
             }
             afterContent={
-              <FrameInfoCard
-                frameId={targetId}
+              <ConceptInfoCard
+                conceptId={targetId}
                 fallbackLabel={targetLabel}
                 emphasis="destination"
                 withPopover={false}
@@ -653,7 +653,7 @@ function PlanKindRenderer({ plan, metadataOverride }: { plan: IssueChangePlanSum
       const loser = md.loser as Record<string, unknown> | undefined;
       const mergedDefinition = snapStr(md, 'merged_definition');
       const frameId = snapStr(frame, 'id');
-      const frameLabel = snapStr(frame, 'label') ?? `frame ${frameId ?? '?'}`;
+      const frameLabel = snapStr(frame, 'label') ?? `concept ${frameId ?? '?'}`;
       const winnerId = snapStr(winner, 'id');
       const winnerLabel = snapStr(winner, 'label') ?? `sense ${winnerId ?? '?'}`;
       const winnerDefBefore = snapStr(winner, 'definition_before');
@@ -672,7 +672,7 @@ function PlanKindRenderer({ plan, metadataOverride }: { plan: IssueChangePlanSum
             </span>
             <span className="text-gray-400">on</span>
             <FrameChip
-              frameId={frameId}
+              conceptId={frameId}
               label={frameLabel}
               className="font-mono px-2 py-0.5 rounded bg-blue-50 border border-blue-200 text-blue-800"
             />
@@ -727,13 +727,13 @@ function PlanKindRenderer({ plan, metadataOverride }: { plan: IssueChangePlanSum
             </span>
             <span className="text-gray-400">moves</span>
             <FrameChip
-              frameId={fromId}
+              conceptId={fromId}
               label={fromLabel}
               className="font-mono px-2 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-800"
             />
             <span className="text-gray-400">→</span>
             <FrameChip
-              frameId={toId}
+              conceptId={toId}
               label={toLabel}
               className="font-mono px-2 py-0.5 rounded bg-green-50 border border-green-200 text-green-800"
             />
@@ -772,15 +772,15 @@ function PlanKindRenderer({ plan, metadataOverride }: { plan: IssueChangePlanSum
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-2 text-sm text-gray-700">
             <FrameChip
-              frameId={childId}
-              label={childLabel ?? `frame ${childId ?? '?'}`}
+              conceptId={childId}
+              label={childLabel ?? `concept ${childId ?? '?'}`}
               className="font-mono px-2 py-0.5 rounded bg-blue-50 border border-blue-200 text-blue-800"
             />
             <span className="text-gray-400">moves under</span>
             {oldParent ? (
               <>
                 <FrameChip
-                  frameId={oldParentId}
+                  conceptId={oldParentId}
                   label={oldParentLabel ?? `parent ${oldParentId ?? '?'}`}
                   className="font-mono px-2 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-800 line-through"
                 />
@@ -790,15 +790,15 @@ function PlanKindRenderer({ plan, metadataOverride }: { plan: IssueChangePlanSum
               <span className="text-gray-400 italic">(no current parent)</span>
             )}
             <FrameChip
-              frameId={newParentId}
+              conceptId={newParentId}
               label={newParentLabel ?? `parent ${newParentId ?? '?'}`}
               className="font-mono px-2 py-0.5 rounded bg-green-50 border border-green-200 text-green-800"
             />
           </div>
           {childId && newParentId && (
             <DAGMoveVisualization
-              frameId={childId}
-              frameLabel={childLabel}
+              conceptId={childId}
+              conceptLabel={childLabel}
               oldParentId={oldParentId}
               oldParentLabel={oldParentLabel}
               newParentId={newParentId}
@@ -872,8 +872,8 @@ function PlanKindRenderer({ plan, metadataOverride }: { plan: IssueChangePlanSum
                       key={i}
                       className="grid grid-cols-[1fr_auto_1fr] items-stretch gap-3"
                     >
-                      <FrameInfoCard
-                        frameId={sourceId}
+                      <ConceptInfoCard
+                        conceptId={sourceId}
                         fallbackLabel={sourceLabel}
                         emphasis="sibling"
                         hideSenses
@@ -889,8 +889,8 @@ function PlanKindRenderer({ plan, metadataOverride }: { plan: IssueChangePlanSum
                           {accent.arrowGlyph}
                         </span>
                       </div>
-                      <FrameInfoCard
-                        frameId={targetId}
+                      <ConceptInfoCard
+                        conceptId={targetId}
                         fallbackLabel={targetLabel}
                         emphasis="sibling"
                         hideSenses
@@ -947,13 +947,13 @@ function PlanKindRenderer({ plan, metadataOverride }: { plan: IssueChangePlanSum
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-2 text-sm text-gray-700">
             <FrameChip
-              frameId={parentId}
+              conceptId={parentId}
               label={parentLabel}
               className="font-mono px-2 py-0.5 rounded bg-blue-50 border border-blue-200 text-blue-800"
             />
             <span className="text-gray-400">parent_of</span>
             <FrameChip
-              frameId={childId}
+              conceptId={childId}
               label={childLabel}
               className="font-mono px-2 py-0.5 rounded bg-blue-50 border border-blue-200 text-blue-800"
             />

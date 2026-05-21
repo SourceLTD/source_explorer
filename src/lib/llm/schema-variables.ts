@@ -66,32 +66,32 @@ const COMMON_VARIABLES: VariableDefinition[] = [
 const VERB_VARIABLES: VariableDefinition[] = [
   ...COMMON_VARIABLES,
   { key: 'label', label: 'Label', category: 'relation' },
-  { key: 'frame_definition', label: 'Frame Definition', category: 'relation' },
+  { key: 'concept_definition', label: 'Concept Definition', category: 'relation' },
   { key: 'vendler_class', label: 'Vendler Class', category: 'basic' },
   { key: 'concrete', label: 'Concrete', category: 'basic' },
   { key: 'legal_gloss', label: 'Legal Gloss', category: 'basic' },
   { key: 'roles_count', label: 'Roles Count', category: 'computed' },
   { key: 'recipes_count', label: 'Recipes Count', category: 'computed' },
-  // Frame fields (accessible via frame.* notation for simple interpolation)
-  { key: 'frame.id', label: 'Frame Id', category: 'relation' },
-  { key: 'frame.label', label: 'Frame Label', category: 'relation' },
-  { key: 'frame.definition', label: 'Frame Definition', category: 'relation' },
-  { key: 'frame.short_definition', label: 'Frame Short Definition', category: 'relation' },
-  { key: 'frame.roles', label: 'Frame Roles (formatted string)', category: 'relation' },
+  // Concept fields (accessible via concept.* notation for simple interpolation)
+  { key: 'concept.id', label: 'Concept Id', category: 'relation' },
+  { key: 'concept.label', label: 'Concept Label', category: 'relation' },
+  { key: 'concept.definition', label: 'Concept Definition', category: 'relation' },
+  { key: 'concept.short_definition', label: 'Concept Short Definition', category: 'relation' },
+  { key: 'concept.properties', label: 'Concept Roles (formatted string)', category: 'relation' },
   // Iterable collections for {% for %} loops
   {
-    key: 'frame.roles',
-    label: 'Frame Roles (iterable)',
+    key: 'concept.properties',
+    label: 'Concept Roles (iterable)',
     category: 'iterable',
     itemFields: ROLE_ITEM_FIELDS,
-    exampleLoop: '{% for role in frame.roles %}\n{{ role.type }}: {{ role.description }}\n{% endfor %}',
+    exampleLoop: '{% for role in concept.properties %}\n{{ role.type }}: {{ role.description }}\n{% endfor %}',
   } as IterableVariableDefinition,
   {
-    key: 'frame.lexical_units',
-    label: 'Frame Lexical Units (iterable)',
+    key: 'concept.lexical_units',
+    label: 'Concept Lexical Units (iterable)',
     category: 'iterable',
     itemFields: LU_ITEM_FIELDS,
-    exampleLoop: '{% for lu in frame.lexical_units %}\n- {{ lu.code }} ({{ lu.pos }}): {{ lu.gloss }}\n{% endfor %}',
+    exampleLoop: '{% for lu in concept.lexical_units %}\n- {{ lu.code }} ({{ lu.pos }}): {{ lu.gloss }}\n{% endfor %}',
   } as IterableVariableDefinition,
 ];
 
@@ -133,8 +133,8 @@ const ADVERB_VARIABLES: VariableDefinition[] = [
   { key: 'antonyms', label: 'Antonyms', category: 'relation' },
 ];
 
-// Frame-specific variables (regular frames with lexical units)
-const FRAME_VARIABLES: VariableDefinition[] = [
+// Concept-specific variables (regular frames with lexical units)
+const CONCEPT_VARIABLES: VariableDefinition[] = [
   { key: 'id', label: 'Id', category: 'basic' },
   { key: 'code', label: 'Code', category: 'basic' },
   { key: 'pos', label: 'Pos', category: 'computed' },
@@ -150,14 +150,14 @@ const FRAME_VARIABLES: VariableDefinition[] = [
   // Iterable collections for {% for %} loops (when targeting frames directly)
   {
     key: 'roles',
-    label: 'Frame Roles (iterable)',
+    label: 'Concept Roles (iterable)',
     category: 'iterable',
     itemFields: ROLE_ITEM_FIELDS,
     exampleLoop: '{% for role in roles %}\n{{ role.type }}: {{ role.description }}\n{% endfor %}',
   } as IterableVariableDefinition,
   {
     key: 'lexical_units',
-    label: 'Frame Lexical Units (iterable)',
+    label: 'Concept Lexical Units (iterable)',
     category: 'iterable',
     itemFields: LU_ITEM_FIELDS,
     exampleLoop: '{% for lu in lexical_units %}\n- {{ lu.code }} ({{ lu.pos }}): {{ lu.gloss }}\n{% endfor %}',
@@ -176,8 +176,8 @@ export function getVariablesForEntityType(entityType: DataTableMode): VariableDe
         ...ADJECTIVE_VARIABLES,
         ...ADVERB_VARIABLES
       ].map(v => [v.key, v])).values());
-    case 'frames':
-      return FRAME_VARIABLES;
+    case 'concepts':
+      return CONCEPT_VARIABLES;
     default:
       return COMMON_VARIABLES;
   }
@@ -214,6 +214,6 @@ export function getIterableVariablesForEntityType(entityType: DataTableMode): It
 export function getAllEntityVariables(): Record<string, VariableDefinition[]> {
   return {
     lexical_units: getVariablesForEntityType('lexical_units'),
-    frames: FRAME_VARIABLES,
+    concepts: CONCEPT_VARIABLES,
   };
 }

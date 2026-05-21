@@ -14,13 +14,13 @@ import {
   isIssuePriority,
   normalizeCode,
   sanitizeExamples,
-  sanitizeFrameSubtypeList,
-  sanitizeFrameTypeList,
+  sanitizeConceptSubtypeList,
+  sanitizeConceptArchetypeList,
   sanitizeNullableString,
 } from '@/lib/health-checks/validation';
 import type {
-  FrameSubtype,
-  FrameType,
+  ConceptSubtype,
+  ConceptArchetype,
   HealthDiagnosisCode,
   HealthDiagnosisCodeGroup,
   HealthRemediationStrategy,
@@ -45,8 +45,8 @@ type DiagnosisRow = {
   severity: 'low' | 'medium' | 'high' | 'critical';
   category: string | null;
   enabled: boolean;
-  applies_to_frame_types: FrameType[];
-  applies_to_frame_subtypes: FrameSubtype[];
+  applies_to_archetypes: ConceptArchetype[];
+  applies_to_subtypes: ConceptSubtype[];
   match_null_subtype: boolean;
   remediation_strategy: string | null;
   remediation_notes: string | null;
@@ -77,8 +77,8 @@ function serialize(c: DiagnosisRow): HealthDiagnosisCode {
     severity: c.severity,
     category: c.category,
     enabled: c.enabled,
-    applies_to_frame_types: c.applies_to_frame_types ?? [],
-    applies_to_frame_subtypes: c.applies_to_frame_subtypes ?? [],
+    applies_to_archetypes: c.applies_to_archetypes ?? [],
+    applies_to_subtypes: c.applies_to_subtypes ?? [],
     match_null_subtype: c.match_null_subtype ?? false,
     remediation_strategy: isHealthRemediationStrategy(c.remediation_strategy)
       ? c.remediation_strategy
@@ -225,12 +225,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let appliesToFrameTypes: FrameType[];
-    let appliesToFrameSubtypes: FrameSubtype[];
+    let appliesToArchetypes: ConceptArchetype[];
+    let appliesToSubtypes: ConceptSubtype[];
     let remediationStrategy: HealthRemediationStrategy | null | undefined;
     try {
-      appliesToFrameTypes = sanitizeFrameTypeList(body.applies_to_frame_types);
-      appliesToFrameSubtypes = sanitizeFrameSubtypeList(body.applies_to_frame_subtypes);
+      appliesToArchetypes = sanitizeConceptArchetypeList(body.applies_to_archetypes);
+      appliesToSubtypes = sanitizeConceptSubtypeList(body.applies_to_subtypes);
       remediationStrategy = parseRemediationStrategy(body.remediation_strategy);
     } catch (err) {
       return NextResponse.json(
@@ -255,8 +255,8 @@ export async function POST(request: NextRequest) {
               ? body.category.trim()
               : null,
           enabled: body.enabled === undefined ? true : Boolean(body.enabled),
-          applies_to_frame_types: appliesToFrameTypes,
-          applies_to_frame_subtypes: appliesToFrameSubtypes,
+          applies_to_archetypes: appliesToArchetypes,
+          applies_to_subtypes: appliesToSubtypes,
           match_null_subtype: Boolean(body.match_null_subtype),
           remediation_strategy:
             remediationStrategy === undefined ? undefined : remediationStrategy,

@@ -51,7 +51,7 @@ export default function AuthHeader() {
     return null
   }
 
-  const isCustomHeader = pathname?.startsWith('/graph') || pathname?.startsWith('/table') || pathname?.startsWith('/frames')
+  const isCustomHeader = pathname?.startsWith('/graph') || pathname?.startsWith('/table') || pathname?.startsWith('/concepts') || pathname?.startsWith('/claims')
   
   if (isCustomHeader) {
     return null

@@ -136,7 +136,7 @@ export {
   attachPendingInfoToEntities,
   getPendingInfoForEntity,
   applyPendingToEntity,
-  // Frame relation overlay for graph
+  // Concept relation overlay for graph
   getPendingRelationChanges,
 } from './merge';
 
@@ -180,8 +180,8 @@ export {
   stageUpdate,
   stageDelete,
   stageFlagUpdates,
-  stageFrameRolesUpdate,
-  stageFrameRelationReparent,
+  stagePropertiesUpdate,
+  stageConceptRelationReparent,
   stageSenseAttachment,
 } from './stage';
 

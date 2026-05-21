@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import LoadingSpinner from '@/components/LoadingSpinner';
 
-interface FrameRoleMapping {
+interface PropertyRoleMapping {
   id: string;
   parent_role_label: string;
   child_role_label: string | null;
@@ -18,10 +18,10 @@ interface FrameRoleMapping {
 interface MappingResponse {
   parent: { id: string; label: string };
   child: { id: string; label: string };
-  mappings: FrameRoleMapping[];
+  mappings: PropertyRoleMapping[];
 }
 
-interface FrameRoleMappingModalProps {
+interface PropertyMappingModalProps {
   parents: { id: string; label: string }[];
   childId: string;
   childLabel: string;
@@ -39,7 +39,7 @@ interface DisplayRow {
 }
 
 function classifyMapping(
-  m: FrameRoleMapping,
+  m: PropertyRoleMapping,
   isMerged: boolean
 ): RowFate {
   if (m.incorporated_value != null) return 'incorporated';
@@ -60,12 +60,12 @@ const FATE_ORDER: Record<RowFate, number> = {
   dropped: 5,
 };
 
-export default function FrameRoleMappingModal({
+export default function PropertyMappingModal({
   parents,
   childId,
   childLabel,
   onClose,
-}: FrameRoleMappingModalProps) {
+}: PropertyMappingModalProps) {
   const [selectedParentId, setSelectedParentId] = useState<string>(parents[0]?.id ?? '');
   const [data, setData] = useState<MappingResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -78,7 +78,7 @@ export default function FrameRoleMappingModal({
     setLoading(true);
     setError(null);
     fetch(
-      `/api/frame-role-mappings?parent_id=${encodeURIComponent(selectedParentId)}&child_id=${encodeURIComponent(childId)}`,
+      `/api/property-mappings?parent_id=${encodeURIComponent(selectedParentId)}&child_id=${encodeURIComponent(childId)}`,
       { cache: 'no-store', signal: controller.signal }
     )
       .then(async resp => {
@@ -118,8 +118,8 @@ export default function FrameRoleMappingModal({
       }
     }
 
-    const mergedGroups = new Map<string, FrameRoleMapping[]>();
-    const standalone: FrameRoleMapping[] = [];
+    const mergedGroups = new Map<string, PropertyRoleMapping[]>();
+    const standalone: PropertyRoleMapping[] = [];
 
     for (const m of data.mappings) {
       const count =

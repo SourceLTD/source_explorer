@@ -2,21 +2,21 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import LoadingSpinner from '@/components/LoadingSpinner';
-import { FieldEditorProps, FrameOption } from './types';
+import { FieldEditorProps, ConceptOption } from './types';
 
-interface FrameSearchSelectorProps extends FieldEditorProps {
+interface ConceptSearchSelectorProps extends FieldEditorProps {
   value: string;
   onChange: (value: string) => void;
   /**
-   * Max results returned by the frames endpoint per query.
+   * Max results returned by the concepts endpoint per query.
    * Keep small-ish; users should type to refine.
    */
   limit?: number;
   placeholder?: string;
 }
 
-function renderFrameDisplay(frame: FrameOption) {
-  const displayValue = frame.code?.trim() || frame.label;
+function renderConceptDisplay(concept: ConceptOption) {
+  const displayValue = concept.code?.trim() || concept.label;
   const dotIndex = displayValue.indexOf('.');
   if (dotIndex !== -1) {
     return (
@@ -29,26 +29,26 @@ function renderFrameDisplay(frame: FrameOption) {
   return displayValue;
 }
 
-export function FrameSearchSelector({
+export function ConceptSearchSelector({
   value,
   onChange,
   onSave,
   onCancel,
   isSaving,
   limit = 100,
-  placeholder = 'Search frames by id, code, or label...'
-}: FrameSearchSelectorProps) {
-  const [frames, setFrames] = useState<FrameOption[]>([]);
+  placeholder = 'Search concepts by id, code, or label...'
+}: ConceptSearchSelectorProps) {
+  const [concepts, setConcepts] = useState<ConceptOption[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [query, setQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
-  const [selectedFrame, setSelectedFrame] = useState<FrameOption | null>(null);
+  const [selectedConcept, setSelectedConcept] = useState<ConceptOption | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const lastQueryRef = useRef<string>('');
 
   const isNumericId = (v: string) => /^\d+$/.test(v.trim());
 
-  const fetchFrames = async (searchQuery: string) => {
+  const fetchConcepts = async (searchQuery: string) => {
     setIsLoading(true);
     try {
       const queryParams = new URLSearchParams();
@@ -57,37 +57,34 @@ export function FrameSearchSelector({
       if (trimmed) {
         queryParams.set('search', trimmed);
       } else if (value && isNumericId(value)) {
-        // When no search term, prefer showing the currently selected frame
-        // (mimics the lexical-units FilterPanel "Frame ID" UX).
         queryParams.set('ids', value);
       }
 
       queryParams.set('limit', String(limit));
-      const response = await fetch(`/api/frames?${queryParams.toString()}`, { cache: 'no-store' });
+      const response = await fetch(`/api/concepts?${queryParams.toString()}`, { cache: 'no-store' });
       if (!response.ok) {
-        setFrames([]);
+        setConcepts([]);
         return;
       }
-      const data: FrameOption[] = await response.json();
-      setFrames(Array.isArray(data) ? data : []);
+      const data: ConceptOption[] = await response.json();
+      setConcepts(Array.isArray(data) ? data : []);
     } catch (error) {
-      console.error('Failed to fetch frames:', error);
-      setFrames([]);
+      console.error('Failed to fetch concepts:', error);
+      setConcepts([]);
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Fetch frames when opened, when query changes, or when value changes (to keep selected resolvable).
+  // Fetch concepts when opened, when query changes, or when value changes (to keep selected resolvable).
   useEffect(() => {
     if (!isOpen && !value) return;
 
     const timeoutId = setTimeout(() => {
-      // Avoid refetching the same query repeatedly when only focus changes.
       const nextQuery = query;
       if (isOpen || value) {
         lastQueryRef.current = nextQuery;
-        void fetchFrames(nextQuery);
+        void fetchConcepts(nextQuery);
       }
     }, 300);
 
@@ -106,46 +103,46 @@ export function FrameSearchSelector({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen]);
 
-  // Keep a stable selected frame display even when the search results change.
+  // Keep a stable selected concept display even when the search results change.
   useEffect(() => {
     if (!value) {
-      setSelectedFrame(null);
+      setSelectedConcept(null);
       return;
     }
 
-    const inList = frames.find(f => f.id === value) ?? null;
+    const inList = concepts.find(f => f.id === value) ?? null;
     if (inList) {
-      setSelectedFrame(inList);
+      setSelectedConcept(inList);
       return;
     }
 
-    // If we don't have it loaded, fetch just the selected frame.
+    // If we don't have it loaded, fetch just the selected concept.
     if (isNumericId(value)) {
       void (async () => {
         try {
           const params = new URLSearchParams();
           params.set('ids', value);
           params.set('limit', '5');
-          const resp = await fetch(`/api/frames?${params.toString()}`, { cache: 'no-store' });
+          const resp = await fetch(`/api/concepts?${params.toString()}`, { cache: 'no-store' });
           if (!resp.ok) return;
-          const data: FrameOption[] = await resp.json();
+          const data: ConceptOption[] = await resp.json();
           const match = Array.isArray(data) ? data.find(f => f.id === value) ?? null : null;
-          if (match) setSelectedFrame(match);
+          if (match) setSelectedConcept(match);
         } catch (error) {
-          console.error('Failed to resolve selected frame:', error);
+          console.error('Failed to resolve selected concept:', error);
         }
       })();
     }
-  }, [value, frames]);
+  }, [value, concepts]);
 
   const noneSelected = value === '';
 
   const selectionSummary = useMemo(() => {
     if (noneSelected) return null;
-    if (!selectedFrame) return value;
-    const display = selectedFrame.code?.trim() || selectedFrame.label;
-    return `${display} (#${selectedFrame.id})`;
-  }, [noneSelected, selectedFrame, value]);
+    if (!selectedConcept) return value;
+    const display = selectedConcept.code?.trim() || selectedConcept.label;
+    return `${display} (#${selectedConcept.id})`;
+  }, [noneSelected, selectedConcept, value]);
 
   return (
     <div className="space-y-2">
@@ -183,17 +180,17 @@ export function FrameSearchSelector({
                   </div>
                 </button>
 
-                {frames.length === 0 ? (
-                  <div className="px-3 py-2 text-sm text-gray-500">No frames found</div>
+                {concepts.length === 0 ? (
+                  <div className="px-3 py-2 text-sm text-gray-500">No concepts found</div>
                 ) : (
-                  frames.map((frame) => {
-                    const isSelected = frame.id === value;
+                  concepts.map((concept) => {
+                    const isSelected = concept.id === value;
                     return (
                       <button
-                        key={frame.id}
+                        key={concept.id}
                         type="button"
                         onClick={() => {
-                          onChange(frame.id);
+                          onChange(concept.id);
                           setQuery('');
                           setIsOpen(false);
                         }}
@@ -202,10 +199,10 @@ export function FrameSearchSelector({
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex-1 min-w-0">
                             <div className="text-sm font-medium text-gray-900 truncate">
-                              {renderFrameDisplay(frame)}
+                              {renderConceptDisplay(concept)}
                             </div>
                             <div className="text-xs text-gray-500 font-mono truncate">
-                              {frame.id}{frame.code ? ` · ${frame.label}` : ''}
+                              {concept.id}{concept.code ? ` · ${concept.label}` : ''}
                             </div>
                           </div>
                           {isSelected && <span className="text-xs text-blue-600 font-medium">Selected</span>}
@@ -222,7 +219,7 @@ export function FrameSearchSelector({
 
       <div className="text-xs text-gray-600">
         {noneSelected ? (
-          <span className="text-gray-500">No frame selected</span>
+          <span className="text-gray-500">No concept selected</span>
         ) : (
           <>
             Selected: <span className="font-medium text-gray-900">{selectionSummary}</span>

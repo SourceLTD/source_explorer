@@ -1,18 +1,18 @@
 import React from 'react';
 import { GraphNode, PendingChangeInfo, posShortLabel } from '@/lib/types';
-import { Mode, EditableField, FrameOption } from './types';
+import { Mode, EditableField, ConceptOption } from './types';
 import { OverlaySection } from './OverlaySection';
 import { VendlerClassSelector } from './VendlerClassSelector';
 import { LexfileSelector } from './LexfileSelector';
 import { PendingFieldIndicator } from '@/components/PendingChangeIndicator';
-import { SenseFrameWarning } from '@/components/ui';
+import { SenseConceptWarning } from '@/components/ui';
 
 interface LexicalPropertiesSectionProps {
   node: GraphNode;
   mode: Mode;
   editingField: EditableField | null;
   editValue: string;
-  availableFrames: FrameOption[];
+  availableFrames: ConceptOption[];
   isOpen: boolean;
   onToggle: () => void;
   onStartEdit: (field: EditableField) => void;
@@ -53,7 +53,7 @@ export function LexicalPropertiesSection({
   };
 
   // availableFrames is kept in the prop API for backward compatibility but is no
-  // longer used: frames are now read via `node.senses`.
+  // longer used: concepts are now read via `node.senses`.
   void availableFrames;
 
   const getTitle = () => {
@@ -115,7 +115,7 @@ export function LexicalPropertiesSection({
         </div>
       )}
 
-      {/* Senses — each sense carries its own frame link. Frames are no longer
+      {/* Senses — each sense carries its own concept link. Concepts are no longer
           edited directly on the lexical unit; edit via the sense API. */}
       {(mode === 'lexical_units' || mode === 'verbs' || mode === 'nouns' || mode === 'adjectives' || mode === 'adverbs') && (
         <div>
@@ -134,7 +134,7 @@ export function LexicalPropertiesSection({
           ) : (
             <div className="space-y-2">
               {node.senses.map(sense => {
-                const warning = sense.frameWarning;
+                const warning = sense.conceptWarning;
                 return (
                   <div
                     key={sense.id}
@@ -149,18 +149,18 @@ export function LexicalPropertiesSection({
                         {posShortLabel(sense.pos)}
                       </span>
                       <span className="text-[10px] font-medium uppercase bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">
-                        {sense.frame_type}
+                        {sense.archetype}
                       </span>
-                      <SenseFrameWarning
+                      <SenseConceptWarning
                         warning={warning}
-                        frameCount={sense.frames.length}
+                        conceptCount={sense.concepts.length}
                         senseLabel={sense.definition?.slice(0, 32) ?? undefined}
                       />
                       <span className="text-xs text-gray-500 ml-auto">
-                        {warning === null && sense.frame ? (
-                          <>→ <span className="font-medium text-gray-700">{sense.frame.label}</span></>
+                        {warning === null && sense.concept ? (
+                          <>→ <span className="font-medium text-gray-700">{sense.concept.label}</span></>
                         ) : warning === 'multiple' ? (
-                          <span>{sense.frames.length} frames</span>
+                          <span>{sense.concepts.length} concepts</span>
                         ) : null}
                       </span>
                     </div>

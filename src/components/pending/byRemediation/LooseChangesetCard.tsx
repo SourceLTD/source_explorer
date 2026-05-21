@@ -17,11 +17,11 @@ import LoadingSpinner from '@/components/LoadingSpinner';
 import { RevisionButton } from '@/components/editing/RevisionButton';
 import { RevisionModal } from '@/components/editing/RevisionModal';
 import { RevisionNavigator } from '@/components/editing/RevisionNavigator';
-import FrameInfoCard from '@/components/pending/context/FrameInfoCard';
-import FrameRefPopover from '@/components/pending/context/FrameRefPopover';
-import FrameRolePanel, {
+import ConceptInfoCard from '@/components/pending/context/ConceptInfoCard';
+import ConceptRefPopover from '@/components/pending/context/ConceptRefPopover';
+import PropertyPanel, {
   type RoleSnapshot,
-} from '@/components/pending/context/FrameRolePanel';
+} from '@/components/pending/context/PropertyPanel';
 import PlanContextPanel from '@/components/pending/context/PlanContextPanel';
 import {
   formatUserName,
@@ -55,7 +55,7 @@ export interface LooseChangesetCardProps {
  * update (rendered here):
  *
  *   - header with operation badge + entity reference + commit/reject CTAs
- *   - a `FrameInfoCard` for entity context (when the entity is a frame
+ *   - a `ConceptInfoCard` for entity context (when the entity is a frame
  *     or a frame_relation)
  *   - a `PlanContextPanel` showing the field diff for `update` ops
  *   - a coloured callout for `create`, `delete`, `move` ops
@@ -166,8 +166,8 @@ export default function LooseChangesetCard({
           >
             {cs.operation}
           </span>
-          <FrameRefPopover
-            frameId={cs.entity_type === 'frame' ? cs.entity_id : null}
+          <ConceptRefPopover
+            conceptId={cs.entity_type === 'frame' ? cs.entity_id : null}
             fallbackLabel={entityDisplay}
           >
             {onOpen ? (
@@ -187,7 +187,7 @@ export default function LooseChangesetCard({
                 {entityDisplay}
               </span>
             )}
-          </FrameRefPopover>
+          </ConceptRefPopover>
           <span className="text-gray-400">·</span>
           <span className="text-xs text-gray-500">{summary}</span>
           <span className="ml-auto text-[11px] text-gray-400">
@@ -271,11 +271,11 @@ export default function LooseChangesetCard({
 //     in the middle.
 //   - `frame_role` is a row that lives under a parent frame and only
 //     makes sense in the context of its sibling roles, so we render a
-//     dedicated `FrameRolePanel` (parent identity + Before/After role
+//     dedicated `PropertyPanel` (parent identity + Before/After role
 //     diff) and `ChangesetBody` short-circuits the generic field diff.
 //   - `frame_sense` is anchored to a single frame via `frame_id`; the
-//     subject strip names the sense but not the frame, so we surface
-//     a slim parent FrameInfoCard above the field diff.
+//     subject strip names the sense but not the concept, so we surface
+//     a slim parent ConceptInfoCard above the field diff.
 //   - `frame_role_mapping` ties a parent_of edge to a (parent_role,
 //     child_role) pair. We render the parent and child frames at the
 //     ends of an inheritance arrow with the role labels stacked on
@@ -295,8 +295,8 @@ function ChangesetEntityContext({ cs }: { cs: ByRemediationChangeset }) {
     const relType = (snapshot.type as string | undefined) ?? 'relation';
     return (
       <div className="grid grid-cols-[1fr_auto_1fr] items-stretch gap-3">
-        <FrameInfoCard
-          frameId={sourceId}
+        <ConceptInfoCard
+          conceptId={sourceId}
           fallbackLabel={sourceLabel}
           emphasis="origin"
           hideSenses
@@ -307,8 +307,8 @@ function ChangesetEntityContext({ cs }: { cs: ByRemediationChangeset }) {
           </span>
           <span className="text-2xl leading-none text-gray-400">→</span>
         </div>
-        <FrameInfoCard
-          frameId={targetId}
+        <ConceptInfoCard
+          conceptId={targetId}
           fallbackLabel={targetLabel}
           emphasis="destination"
           hideSenses
@@ -324,6 +324,8 @@ function ChangesetEntityContext({ cs }: { cs: ByRemediationChangeset }) {
     const before = readRoleSnapshot(cs.before_snapshot);
     const after = readRoleSnapshot(cs.after_snapshot);
     const frameId =
+      pickIdLike(cs.before_snapshot?.concept_id) ??
+      pickIdLike(cs.after_snapshot?.concept_id) ??
       pickIdLike(cs.before_snapshot?.frame_id) ??
       pickIdLike(cs.after_snapshot?.frame_id);
     // Snapshots usually carry the role row's own id; the entity_id
@@ -332,37 +334,43 @@ function ChangesetEntityContext({ cs }: { cs: ByRemediationChangeset }) {
     const roleId =
       before?.id ?? after?.id ?? (cs.entity_id ? String(cs.entity_id) : null);
     const frameLabelFallback =
+      pickStringLike(cs.before_snapshot?.concept_label) ??
+      pickStringLike(cs.after_snapshot?.concept_label) ??
       pickStringLike(cs.before_snapshot?.frame_label) ??
       pickStringLike(cs.after_snapshot?.frame_label) ??
-      (frameId ? `Frame #${frameId}` : undefined);
+      (frameId ? `Concept #${frameId}` : undefined);
     return (
-      <FrameRolePanel
-        frameId={frameId}
-        frameLabelFallback={frameLabelFallback}
+      <PropertyPanel
+        conceptId={frameId}
+        conceptLabelFallback={frameLabelFallback}
         operation={op}
         before={before}
         after={after}
-        roleId={roleId}
+        propertyId={roleId}
       />
     );
   }
 
   // Senses anchor to a single frame via `frame_id` (see commit.ts
   // CREATE/UPDATE frame_sense). The subject strip already shows the
-  // POS + definition snippet; surface the parent frame here so the
-  // reviewer can see at a glance "this sense lives in <frame>".
+  // POS + definition snippet; surface the parent concept here so the
+  // reviewer can see at a glance "this sense lives in <concept>".
   if (cs.entity_type === 'frame_sense') {
     const snapshot = cs.before_snapshot ?? cs.after_snapshot ?? {};
     const frameId =
+      pickIdLike(snapshot.concept_id) ??
+      pickIdLike(cs.before_snapshot?.concept_id) ??
+      pickIdLike(cs.after_snapshot?.concept_id) ??
       pickIdLike(snapshot.frame_id) ??
       pickIdLike(cs.before_snapshot?.frame_id) ??
       pickIdLike(cs.after_snapshot?.frame_id);
     if (!frameId) return null;
     const frameLabel =
-      pickStringLike(snapshot.frame_label) ?? `Frame #${frameId}`;
+      pickStringLike(snapshot.concept_label) ??
+      pickStringLike(snapshot.frame_label) ?? `Concept #${frameId}`;
     return (
-      <FrameInfoCard
-        frameId={frameId}
+      <ConceptInfoCard
+        conceptId={frameId}
         fallbackLabel={frameLabel}
         emphasis="focus"
         hideSenses
@@ -376,22 +384,22 @@ function ChangesetEntityContext({ cs }: { cs: ByRemediationChangeset }) {
   // which inheritance edge is being touched.
   if (cs.entity_type === 'frame_role_mapping') {
     const snapshot = cs.before_snapshot ?? cs.after_snapshot ?? {};
-    const parentId = pickIdLike(snapshot.parent_frame_id);
-    const childId = pickIdLike(snapshot.child_frame_id);
-    const parentRole = pickStringLike(snapshot.parent_role_label);
-    const childRole = pickStringLike(snapshot.child_role_label);
-    const absorbed = snapshot.absorbed === true;
+    const parentId = pickIdLike(snapshot.parent_concept_id) ?? pickIdLike(snapshot.parent_frame_id);
+    const childId = pickIdLike(snapshot.child_concept_id) ?? pickIdLike(snapshot.child_frame_id);
+    const parentRole = pickStringLike(snapshot.parent_property_label) ?? pickStringLike(snapshot.parent_role_label);
+    const childRole = pickStringLike(snapshot.child_property_label) ?? pickStringLike(snapshot.child_role_label);
+    const absorbed = snapshot.absorbed === true || snapshot.is_absorbed === true;
     if (!parentId && !childId) return null;
     const parentLabel =
       pickStringLike(snapshot.parent_frame_label) ??
-      (parentId ? `Frame #${parentId}` : 'Parent frame');
+      (parentId ? `Concept #${parentId}` : 'Parent concept');
     const childLabel =
       pickStringLike(snapshot.child_frame_label) ??
-      (childId ? `Frame #${childId}` : 'Child frame');
+      (childId ? `Concept #${childId}` : 'Child concept');
     return (
       <div className="grid grid-cols-[1fr_auto_1fr] items-stretch gap-3">
-        <FrameInfoCard
-          frameId={parentId}
+        <ConceptInfoCard
+          conceptId={parentId}
           fallbackLabel={parentLabel}
           emphasis="origin"
           hideSenses
@@ -416,8 +424,8 @@ function ChangesetEntityContext({ cs }: { cs: ByRemediationChangeset }) {
             {absorbed ? '(absorbed)' : childRole ?? '(child role)'}
           </span>
         </div>
-        <FrameInfoCard
-          frameId={childId}
+        <ConceptInfoCard
+          conceptId={childId}
           fallbackLabel={childLabel}
           emphasis="destination"
           hideSenses
@@ -471,7 +479,7 @@ function pickStringLike(value: unknown): string | null {
 // =====================================================================
 // Rich role-grouped panel for `frame` UPDATE changesets whose field
 // changes are all `frame_roles.<roleType>.*` subfields (i.e. from the
-// manual editor). Renders one `FrameRolePanel` per changed role type
+// manual editor). Renders one `PropertyPanel` per changed role type
 // so the reviewer sees the same rich Before/After role cards they get
 // from the LLM remediation path.
 // =====================================================================
@@ -539,30 +547,30 @@ function groupRoleFieldChanges(
   return result.sort((a, b) => a.roleType.localeCompare(b.roleType));
 }
 
-interface FrameRolesChangePanelProps {
-  frameId: string | null;
-  frameLabelFallback?: string;
+interface PropertiesChangePanelProps {
+  conceptId: string | null;
+  conceptLabelFallback?: string;
   fieldChanges: ByRemediationChangeset['field_changes'];
 }
 
-function FrameRolesChangePanel({
-  frameId,
-  frameLabelFallback,
+function PropertiesChangePanel({
+  conceptId,
+  conceptLabelFallback,
   fieldChanges,
-}: FrameRolesChangePanelProps) {
+}: PropertiesChangePanelProps) {
   const groups = groupRoleFieldChanges(fieldChanges);
   if (groups.length === 0) return null;
   return (
     <div className="space-y-3">
       {groups.map((g) => (
-        <FrameRolePanel
+        <PropertyPanel
           key={g.roleType}
-          frameId={frameId}
-          frameLabelFallback={frameLabelFallback}
+          conceptId={conceptId}
+          conceptLabelFallback={conceptLabelFallback}
           operation={g.operation}
           before={g.before}
           after={g.after}
-          roleId={null}
+          propertyId={null}
         />
       ))}
     </div>
@@ -583,7 +591,7 @@ interface ChangesetBodyProps {
 
 function ChangesetBody({ cs, pendingFieldChanges }: ChangesetBodyProps) {
   // `frame_role` changesets render their full Before/After story in
-  // `ChangesetEntityContext` via `FrameRolePanel`, so suppress the
+  // `ChangesetEntityContext` via `PropertyPanel`, so suppress the
   // generic create/update/delete chrome here. The reviewer can still
   // expand the raw field-change list via the toggle below.
   if (cs.entity_type === 'frame_role') return null;
@@ -598,12 +606,12 @@ function ChangesetBody({ cs, pendingFieldChanges }: ChangesetBodyProps) {
     pendingFieldChanges.every((fc) => fc.field_name.toLowerCase().startsWith('frame_roles.'))
   ) {
     return (
-      <FrameRolesChangePanel
-        frameId={cs.entity_id}
-        frameLabelFallback={
+      <PropertiesChangePanel
+        conceptId={cs.entity_id}
+        conceptLabelFallback={
           pickStringLike(cs.before_snapshot?.label) ??
           pickStringLike(cs.after_snapshot?.label) ??
-          (cs.entity_id ? `Frame #${cs.entity_id}` : undefined)
+          (cs.entity_id ? `Concept #${cs.entity_id}` : undefined)
         }
         fieldChanges={pendingFieldChanges}
       />
@@ -723,9 +731,9 @@ function operationIcon(op: string) {
 }
 
 const ENTITY_LABELS: Record<string, string> = {
-  frame: 'frame',
+  frame: 'concept',
   frame_relation: 'relation',
-  frame_role: 'frame role',
+  frame_role: 'concept property',
   frame_role_mapping: 'role mapping',
   frame_sense: 'sense',
   lexical_unit: 'lexical unit',
@@ -740,8 +748,8 @@ const OPERATION_VERB: Record<string, string> = {
 };
 
 /**
- * Human kind label for the card header. Mirrors the `Reparent frame`
- * / `Split frame` titles that `PlanCard` shows for plan-bound rows so
+ * Human kind label for the card header. Mirrors the `Reparent concept`
+ * / `Split concept` titles that `PlanCard` shows for plan-bound rows so
  * loose updates read as the same kind of object.
  */
 function changesetKindLabel(cs: ByRemediationChangeset): string {

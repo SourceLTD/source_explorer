@@ -12,21 +12,21 @@ export async function GET(
     const { id: idParam } = await params;
     const id = BigInt(idParam);
 
-    const frame = await prisma.frames.findUnique({
+    const frame = await prisma.concepts.findUnique({
       where: { id },
       include: {
-        frame_roles: {
+        properties: {
           orderBy: {
             id: 'asc',
           },
         },
-        frame_sense_frames: {
+        sense_concepts: {
           include: {
-            frame_senses: {
+            senses: {
               include: {
-                frame_sense_frames: {
+                sense_concepts: {
                   include: {
-                    frames: { select: { id: true, label: true, code: true } },
+                    concepts: { select: { id: true, label: true, code: true } },
                   },
                 },
                 lexical_unit_senses: {
@@ -53,14 +53,14 @@ export async function GET(
           },
           take: 200,
         },
-        frame_relations_frame_relations_source_idToframes: {
+        concept_relations_concept_relations_parent_idToconcepts: {
           where: {
-            frames_frame_relations_target_idToframes: {
+            concepts_concept_relations_child_idToconcepts: {
               deleted: false,
             },
           },
           include: {
-            frames_frame_relations_target_idToframes: {
+            concepts_concept_relations_child_idToconcepts: {
               select: {
                 id: true,
                 label: true,
@@ -70,14 +70,14 @@ export async function GET(
             },
           },
         },
-        frame_relations_frame_relations_target_idToframes: {
+        concept_relations_concept_relations_child_idToconcepts: {
           where: {
-            frames_frame_relations_source_idToframes: {
+            concepts_concept_relations_parent_idToconcepts: {
               deleted: false,
             },
           },
           include: {
-            frames_frame_relations_source_idToframes: {
+            concepts_concept_relations_parent_idToconcepts: {
               select: {
                 id: true,
                 label: true,
@@ -92,7 +92,7 @@ export async function GET(
 
     if (!frame || frame.deleted) {
       return NextResponse.json(
-        { error: 'Frame not found' },
+        { error: 'Concept not found' },
         { status: 404 }
       );
     }
@@ -100,11 +100,11 @@ export async function GET(
     const graphNode = {
       id: frame.id.toString(),
       numericId: frame.id.toString(),
-      pos: 'frames' as const,
+      pos: 'concepts' as const,
       label: frame.label,
       gloss: frame.definition,
       short_definition: frame.short_definition,
-      frame_type: frame.frame_type,
+      archetype: frame.archetype,
       subtype: frame.subtype,
       disable_healthcheck: frame.disable_healthcheck,
       vendler: frame.vendler,
@@ -112,9 +112,9 @@ export async function GET(
       wikidata_id: frame.wikidata_id,
       recipe: frame.recipe,
       recipe_graph: frame.recipe_graph,
-      roles: frame.frame_roles.map(role => ({
+      properties: frame.properties.map(role => ({
         id: role.id.toString(),
-        frame_id: role.frame_id.toString(),
+        concept_id: role.concept_id.toString(),
         description: role.description,
         notes: role.notes,
         main: role.main,
@@ -122,31 +122,31 @@ export async function GET(
         label: role.label,
         fillers: role.fillers,
       })),
-      senses: frame.frame_sense_frames.map(sfLink => {
-        const sense = sfLink.frame_senses;
-        const senseFrames = (sense.frame_sense_frames ?? []).map(fsf => ({
-          id: fsf.frames.id.toString(),
-          label: fsf.frames.label,
-          code: fsf.frames.code,
+      senses: frame.sense_concepts.map(sfLink => {
+        const sense = sfLink.senses;
+        const senseConcepts = (sense.sense_concepts ?? []).map(sc => ({
+          id: sc.concepts.id.toString(),
+          label: sc.concepts.label,
+          code: sc.concepts.code,
         }));
-        const frameWarning = senseFrames.length === 0
+        const conceptWarning = senseConcepts.length === 0
           ? 'none' as const
-          : senseFrames.length > 1
+          : senseConcepts.length > 1
             ? 'multiple' as const
             : null;
         return {
           id: sense.id.toString(),
           pos: sense.pos,
           definition: sense.definition,
-          frame_type: sense.frame_type,
+          archetype: sense.archetype,
           lemmas: sense.lemmas,
           confidence: sense.confidence,
           type_dispute: sense.type_dispute,
           causative: sense.causative,
           inchoative: sense.inchoative,
           perspectival: sense.perspectival,
-          frames: senseFrames,
-          frameWarning,
+          concepts: senseConcepts,
+          conceptWarning,
           lexical_units: (sense.lexical_unit_senses ?? []).map(lus => ({
             id: lus.lexical_units.id.toString(),
             code: lus.lexical_units.code,
@@ -164,8 +164,8 @@ export async function GET(
       // Legacy flat LUs across senses (deduped), kept for back-compat UIs.
       lexical_units: Array.from(
         new Map(
-          frame.frame_sense_frames
-            .flatMap(sfLink => sfLink.frame_senses.lexical_unit_senses ?? [])
+          frame.sense_concepts
+            .flatMap(sfLink => sfLink.senses.lexical_unit_senses ?? [])
             .map(lus => [lus.lexical_units.id.toString(), lus.lexical_units])
         ).values()
       ).map((lu: any) => ({
@@ -182,8 +182,8 @@ export async function GET(
       })),
       verbs: Array.from(
         new Map(
-          frame.frame_sense_frames
-            .flatMap(sfLink => sfLink.frame_senses.lexical_unit_senses ?? [])
+          frame.sense_concepts
+            .flatMap(sfLink => sfLink.senses.lexical_unit_senses ?? [])
             .filter(lus => lus.lexical_units.pos === 'verb')
             .map(lus => [lus.lexical_units.id.toString(), lus.lexical_units])
         ).values()
@@ -199,28 +199,28 @@ export async function GET(
         flagged_reason: verb.flagged_reason,
       })),
       relations: [
-        ...frame.frame_relations_frame_relations_source_idToframes.map(rel => ({
+        ...frame.concept_relations_concept_relations_parent_idToconcepts.map(rel => ({
           id: rel.id.toString(),
           type: rel.type,
           locked: rel.locked,
           direction: 'outgoing' as const,
           target: {
-            id: rel.frames_frame_relations_target_idToframes.id.toString(),
-            label: rel.frames_frame_relations_target_idToframes.label,
-            short_definition: rel.frames_frame_relations_target_idToframes.short_definition,
-            descendant_count: rel.frames_frame_relations_target_idToframes.descendant_count,
+            id: rel.concepts_concept_relations_child_idToconcepts.id.toString(),
+            label: rel.concepts_concept_relations_child_idToconcepts.label,
+            short_definition: rel.concepts_concept_relations_child_idToconcepts.short_definition,
+            descendant_count: rel.concepts_concept_relations_child_idToconcepts.descendant_count,
           },
         })),
-        ...frame.frame_relations_frame_relations_target_idToframes.map(rel => ({
+        ...frame.concept_relations_concept_relations_child_idToconcepts.map(rel => ({
           id: rel.id.toString(),
           type: rel.type,
           locked: rel.locked,
           direction: 'incoming' as const,
           source: {
-            id: rel.frames_frame_relations_source_idToframes.id.toString(),
-            label: rel.frames_frame_relations_source_idToframes.label,
-            short_definition: rel.frames_frame_relations_source_idToframes.short_definition,
-            descendant_count: rel.frames_frame_relations_source_idToframes.descendant_count,
+            id: rel.concepts_concept_relations_parent_idToconcepts.id.toString(),
+            label: rel.concepts_concept_relations_parent_idToconcepts.label,
+            short_definition: rel.concepts_concept_relations_parent_idToconcepts.short_definition,
+            descendant_count: rel.concepts_concept_relations_parent_idToconcepts.descendant_count,
           },
         })),
       ],
@@ -240,9 +240,9 @@ export async function GET(
       pendingRelationChanges,
     });
   } catch (error) {
-    console.error('[API] Error fetching frame graph:', error);
+    console.error('[API] Error fetching concept graph:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch frame graph' },
+      { error: 'Failed to fetch concept graph' },
       { status: 500 }
     );
   }

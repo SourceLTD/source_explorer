@@ -11,21 +11,21 @@ export async function GET(request: NextRequest) {
     const ids = searchParams.get('ids')?.split(',').filter(Boolean);
 
     // Build where clause
-    const where: Prisma.framesWhereInput = { deleted: false };
+    const where: Prisma.conceptsWhereInput = { deleted: false };
     
     if (search) {
       where.OR = [
         { label: { contains: search, mode: 'insensitive' } },
         { code: { contains: search, mode: 'insensitive' } },
         { id: /^\d+$/.test(search) ? BigInt(search) : undefined }
-      ].filter(condition => condition.id !== undefined || !('id' in condition)) as Prisma.framesWhereInput[];
+      ].filter(condition => condition.id !== undefined || !('id' in condition)) as Prisma.conceptsWhereInput[];
     }
 
     if (ids && ids.length > 0) {
       const numericIds = ids.filter(id => /^\d+$/.test(id)).map(id => BigInt(id));
       const labels = ids.filter(id => !/^\d+$/.test(id));
       
-      const idConditions: Prisma.framesWhereInput[] = [];
+      const idConditions: Prisma.conceptsWhereInput[] = [];
       if (numericIds.length > 0) {
         idConditions.push({ id: { in: numericIds } });
       }
@@ -48,36 +48,36 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Get frames with limit
-    const frames = await withRetry(
-      () => prisma.frames.findMany({
+    // Get concepts with limit
+    const concepts = await withRetry(
+      () => prisma.concepts.findMany({
         where,
         select: {
           id: true,
           label: true,
           code: true,
-        } as Prisma.framesSelect,
+        } as Prisma.conceptsSelect,
         orderBy: {
           label: 'asc'
         },
         take: limit
       }),
       undefined,
-      'GET /api/frames'
+      'GET /api/concepts'
     );
 
-    // Return frames for display
-    const formattedFrames = frames.map(f => ({
+    // Return concepts for display
+    const formattedConcepts = concepts.map(f => ({
       id: f.id.toString(),
       label: f.label,
       code: f.code,
     }));
 
-    return NextResponse.json(formattedFrames);
+    return NextResponse.json(formattedConcepts);
   } catch (error) {
-    console.error('Error fetching frames:', error);
+    console.error('Error fetching concepts:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch frames' },
+      { error: 'Failed to fetch concepts' },
       { status: 500 }
     );
   }

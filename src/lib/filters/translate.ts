@@ -37,9 +37,9 @@ export async function translateFilterASTToPrisma(pos: JobTargetType, root?: Bool
     }
 
     // frame special lookup for lexical_units (all POS)
-    if (cfg.type === 'frame' && pos !== 'frames') {
+    if (cfg.type === 'concept' && pos !== 'concepts') {
       const values = normalizeToArray(rule.value);
-      const ids = await resolveFrameIds(values);
+      const ids = await resolveConceptIds(values);
       if (ids.length === 0) return { id: undefined }; // no matches -> empty set when ANDed
       if (rule.operator === 'equals' && ids.length > 0) {
         return { [cfg.db as string]: ids[0] };
@@ -140,15 +140,15 @@ function normalizeToArray(val: unknown): string[] {
   return s.split(',').map(x => x.trim()).filter(Boolean);
 }
 
-async function resolveFrameIds(values: string[]): Promise<bigint[]> {
+async function resolveConceptIds(values: string[]): Promise<bigint[]> {
   if (values.length === 0) return [];
   const or = values.map(v =>
     v.match(/^\d+$/)
       ? { id: BigInt(v) }
       : { label: { equals: v, mode: 'insensitive' as const } }
   );
-  const frames = await prisma.frames.findMany({ where: { OR: or } as never, select: { id: true } });
-  return frames.map(f => f.id);
+  const concepts = await prisma.concepts.findMany({ where: { OR: or } as never, select: { id: true } });
+  return concepts.map(f => f.id);
 }
 
 

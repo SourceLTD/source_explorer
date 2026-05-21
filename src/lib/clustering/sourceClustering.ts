@@ -1,5 +1,5 @@
-export type SourceClusteringMode = 'frame' | 'lexical_unit';
-export type SourceClusteringIdsKind = 'frame_ids' | 'lexical_unit_ids';
+export type SourceClusteringMode = 'concept' | 'lexical_unit';
+export type SourceClusteringIdsKind = 'concept_ids' | 'lexical_unit_ids';
 export type SourceClusteringDType = 'float32' | 'float64';
 
 export interface SourceClusteringRequest {

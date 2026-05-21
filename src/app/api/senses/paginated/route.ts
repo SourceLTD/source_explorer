@@ -2,22 +2,22 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Prisma, part_of_speech } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { attachPendingInfoToEntities } from '@/lib/version-control';
-import { computeFrameWarning } from '@/lib/db/senses';
-import type { FrameSenseFrameRef } from '@/lib/types';
+import { computeConceptWarning } from '@/lib/db/senses';
+import type { SenseConceptRef } from '@/lib/types';
 
 /**
- * GET /api/frame-senses/paginated
+ * GET /api/senses/paginated
  *
- * Paginated listing of frame_senses for tabular exploration. Each row returns
- * the sense's scalar fields, its linked frame(s), and a display-only snippet
+ * Paginated listing of senses for tabular exploration. Each row returns
+ * the sense's scalar fields, its linked concept(s), and a display-only snippet
  * of lexical units reached via lexical_unit_senses.
  *
  * Query params:
  *   - page (default 1)
  *   - limit (default 10, max 2000)
- *   - search: matched against sense id, definition, lemmas, pos, frame_type,
- *     linked frame label/code, and linked lexical unit code/lemmas
- *   - sortBy: one of id | pos | definition | frame_type | created_at | updated_at
+ *   - search: matched against sense id, definition, lemmas, pos, archetype,
+ *     linked concept label/code, and linked lexical unit code/lemmas
+ *   - sortBy: one of id | pos | definition | archetype | created_at | updated_at
  *   - sortOrder: asc | desc
  */
 
@@ -25,7 +25,7 @@ const VALID_SORT_FIELDS: Record<string, string> = {
   id: 'id',
   pos: 'pos',
   definition: 'definition',
-  frame_type: 'frame_type',
+  archetype: 'archetype',
   confidence: 'confidence',
   causative: 'causative',
   inchoative: 'inchoative',
@@ -107,29 +107,29 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search')?.trim() || '';
     const definition = searchParams.get('definition')?.trim() || '';
     const lemmas = searchParams.get('lemmas')?.trim() || '';
-    const frameType = searchParams.get('frame_type')?.trim() || '';
-    const frameId = searchParams.get('frame_id')?.trim() || '';
+    const frameType = searchParams.get('archetype')?.trim() || '';
+    const frameId = searchParams.get('concept_id')?.trim() || '';
     const pos = searchParams.get('pos')?.trim() || '';
-    const frameWarning = searchParams.get('frameWarning');
+    const conceptWarning = searchParams.get('conceptWarning');
     const createdAfter = searchParams.get('createdAfter')?.trim() || '';
     const createdBefore = searchParams.get('createdBefore')?.trim() || '';
     const updatedAfter = searchParams.get('updatedAfter')?.trim() || '';
     const updatedBefore = searchParams.get('updatedBefore')?.trim() || '';
 
-    const where: Prisma.frame_sensesWhereInput = {};
-    const and: Prisma.frame_sensesWhereInput[] = [];
+    const where: Prisma.sensesWhereInput = {};
+    const and: Prisma.sensesWhereInput[] = [];
 
     if (search) {
       const matchingPosEnums = partOfSpeechValuesMatchingFreeText(search);
-      const or: Prisma.frame_sensesWhereInput[] = [
+      const or: Prisma.sensesWhereInput[] = [
         { definition: { contains: search, mode: 'insensitive' } },
         ...(matchingPosEnums.length > 0 ? [{ pos: { in: matchingPosEnums } }] : []),
-        { frame_type: { contains: search, mode: 'insensitive' } },
+        { archetype: { contains: search, mode: 'insensitive' } },
         { lemmas: { has: search } },
         {
-          frame_sense_frames: {
+          sense_concepts: {
             some: {
-              frames: {
+              concepts: {
                 OR: [
                   { label: { contains: search, mode: 'insensitive' } },
                   { code: { contains: search, mode: 'insensitive' } },
@@ -169,7 +169,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (frameType) {
-      and.push({ frame_type: { contains: frameType, mode: 'insensitive' } });
+      and.push({ archetype: { contains: frameType, mode: 'insensitive' } });
     }
 
     if (pos && pos !== 'none') {
@@ -189,25 +189,25 @@ export async function GET(request: NextRequest) {
         .map(value => BigInt(value));
       if (frameIds.length > 0) {
         and.push({
-          frame_sense_frames: {
+          sense_concepts: {
             some: {
-              frame_id: { in: frameIds },
+              concept_id: { in: frameIds },
             },
           },
         });
       }
     }
 
-    if (frameWarning === 'none') {
-      and.push({ frame_sense_frames: { none: {} } });
-    } else if (frameWarning === 'multiple') {
-      const multiFrameRows = await prisma.frame_sense_frames.groupBy({
-        by: ['frame_sense_id'],
+    if (conceptWarning === 'none') {
+      and.push({ sense_concepts: { none: {} } });
+    } else if (conceptWarning === 'multiple') {
+      const multiFrameRows = await prisma.sense_concepts.groupBy({
+        by: ['sense_id'],
         having: {
-          frame_id: { _count: { gt: 1 } },
+          concept_id: { _count: { gt: 1 } },
         },
       });
-      and.push({ id: { in: multiFrameRows.map(row => row.frame_sense_id) } });
+      and.push({ id: { in: multiFrameRows.map(row => row.sense_id) } });
     }
 
     if (createdAfter) {
@@ -228,16 +228,16 @@ export async function GET(request: NextRequest) {
     }
 
     const [totalCount, senses] = await Promise.all([
-      prisma.frame_senses.count({ where }),
-      prisma.frame_senses.findMany({
+      prisma.senses.count({ where }),
+      prisma.senses.findMany({
         where,
         skip,
         take: limit,
-        orderBy: { [sortBy]: sortOrder } as Prisma.frame_sensesOrderByWithRelationInput,
+        orderBy: { [sortBy]: sortOrder } as Prisma.sensesOrderByWithRelationInput,
         include: {
-          frame_sense_frames: {
+          sense_concepts: {
             include: {
-              frames: {
+              concepts: {
                 select: { id: true, label: true, code: true },
               },
             },
@@ -262,10 +262,10 @@ export async function GET(request: NextRequest) {
     ]);
 
     const serialized = senses.map(sense => {
-      const frames: FrameSenseFrameRef[] = sense.frame_sense_frames.map(link => ({
-        id: link.frames.id.toString(),
-        label: link.frames.label,
-        code: link.frames.code,
+      const concepts: SenseConceptRef[] = sense.sense_concepts.map(link => ({
+        id: link.concepts.id.toString(),
+        label: link.concepts.label,
+        code: link.concepts.code,
       }));
 
       const luEntries = sense.lexical_unit_senses.map(link => ({
@@ -284,7 +284,7 @@ export async function GET(request: NextRequest) {
         id: sense.id.toString(),
         pos: sense.pos,
         definition: sense.definition,
-        frame_type: sense.frame_type,
+        archetype: sense.archetype,
         confidence: sense.confidence,
         type_dispute: sense.type_dispute,
         causative: sense.causative,
@@ -293,9 +293,9 @@ export async function GET(request: NextRequest) {
         lemmas: sense.lemmas ?? [],
         createdAt: sense.created_at?.toISOString() ?? null,
         updatedAt: sense.updated_at?.toISOString() ?? null,
-        frame: frames[0] ?? null,
-        frames,
-        frameWarning: computeFrameWarning(frames),
+        concept: concepts[0] ?? null,
+        concepts,
+        conceptWarning: computeConceptWarning(concepts),
         lexical_units: {
           entries: lexicalUnitSnippets,
           totalCount: lexicalUnitsCount,
@@ -323,9 +323,9 @@ export async function GET(request: NextRequest) {
       hasPrev: page > 1,
     });
   } catch (error) {
-    console.error('[API] GET /api/frame-senses/paginated failed:', error);
+    console.error('[API] GET /api/senses/paginated failed:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch frame senses' },
+      { error: 'Failed to fetch senses' },
       { status: 500 }
     );
   }

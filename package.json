@@ -11,6 +11,10 @@
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
+    "db:seed:claims": "tsx scripts/seed-claims-demo.ts",
+    "db:resolve:glp1-concepts": "tsx scripts/resolve-glp1-concepts.ts",
+    "db:cleanup:claims-demo": "tsx scripts/cleanup-claims-demo.ts",
+    "db:seed:glp1-paper": "tsx scripts/seed-glp1-paper.ts",
     "db:studio": "prisma studio"
   },
   "dependencies": {
@@ -28,6 +32,7 @@
     "@visx/responsive": "^3.12.0",
     "@visx/shape": "^3.12.0",
     "ai": "^6.0.136",
+    "d3": "^7.9.0",
     "date-fns": "^4.1.0",
     "framer-motion": "^12.38.0",
     "next": "15.5.7",
@@ -48,6 +53,7 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
+    "@types/d3": "^7.4.3",
     "@types/node": "^20",
     "@types/nunjucks": "^3.2.6",
     "@types/react": "^18",

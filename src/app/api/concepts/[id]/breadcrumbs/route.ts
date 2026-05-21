@@ -26,7 +26,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       if (seen.has(currentId.toString())) break;
       seen.add(currentId.toString());
 
-      const frame = await prisma.frames.findUnique({
+      const frame = await prisma.concepts.findUnique({
         where: { id: currentId },
         select: { id: true, label: true, short_definition: true, deleted: true },
       });
@@ -41,12 +41,12 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
       if (ROOT_FRAME_IDS.has(frame.id)) break;
 
-      const parentRel: { source_id: bigint } | null = await prisma.frame_relations.findFirst({
-        where: { target_id: currentId, type: 'parent_of' },
-        select: { source_id: true },
+      const parentRel: { parent_id: bigint } | null = await prisma.concept_relations.findFirst({
+        where: { child_id: currentId, type: 'parent_of' },
+        select: { parent_id: true },
       });
 
-      currentId = parentRel?.source_id ?? null;
+      currentId = parentRel?.parent_id ?? null;
     }
 
     path.reverse();
@@ -64,7 +64,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     return NextResponse.json(breadcrumbs, { headers: cacheHeaders });
   } catch (error) {
-    console.error('Error fetching frame breadcrumbs:', error);
+    console.error('Error fetching concept breadcrumbs:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

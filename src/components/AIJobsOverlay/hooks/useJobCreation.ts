@@ -91,8 +91,8 @@ export interface UseJobCreationReturn {
   validatedFrameIds: Set<string>;
   frameIncludeLexicalUnits: boolean;
   setFrameIncludeLexicalUnits: (include: boolean) => void;
-  frameFlagTarget: 'frame' | 'lexical_unit' | 'both';
-  setFrameFlagTarget: (target: 'frame' | 'lexical_unit' | 'both') => void;
+  frameFlagTarget: 'concept' | 'lexical_unit' | 'both';
+  setFrameFlagTarget: (target: 'concept' | 'lexical_unit' | 'both') => void;
   
   // Filter state
   filterGroup: BooleanFilterGroup;
@@ -114,7 +114,7 @@ export interface UseJobCreationReturn {
   handleManualIdKeyDown: (event: React.KeyboardEvent<HTMLTextAreaElement>) => void;
   insertManualId: (code: string) => void;
   
-  // Frame ID autocomplete
+  // Concept ID autocomplete
   frameIdInputRef: React.RefObject<HTMLTextAreaElement>;
   showFrameIdMenu: boolean;
   frameIdSuggestions: Array<{ id: string; label: string }>;
@@ -225,7 +225,7 @@ export function useJobCreation({
   // Scope state
   const [scopeMode, setScopeMode] = useState<ScopeMode>('all');
   const [frameIncludeLexicalUnits, setFrameIncludeLexicalUnits] = useState(false);
-  const [frameFlagTarget, setFrameFlagTarget] = useState<'frame' | 'lexical_unit' | 'both'>('lexical_unit');
+  const [frameFlagTarget, setFrameFlagTarget] = useState<'concept' | 'lexical_unit' | 'both'>('lexical_unit');
   const [validatedManualIds, setValidatedManualIds] = useState<Set<string>>(new Set());
   const [validatedFrameIds, setValidatedFrameIds] = useState<Set<string>>(new Set());
   
@@ -248,7 +248,7 @@ export function useJobCreation({
   const [promptManuallyEdited, setPromptManuallyEdited] = useState(false);
   const promptRef = useRef<HTMLTextAreaElement>(null);
 
-  // Prompt clustering (render-only): group loop lists (lexical_units / child_frames) via source-clustering.
+  // Prompt clustering (render-only): group loop lists (lexical_units / child_concepts) via source-clustering.
   const [clusterLoopListsEnabled, setClusterLoopListsEnabled] = useState(false);
   const [clusterKOverrideText, setClusterKOverrideText] = useState('');
   const clusterKOverride = useMemo(() => {
@@ -365,10 +365,10 @@ export function useJobCreation({
   // Extract stable functions to avoid dependency array issues
   const { setText: setManualIdText, setShowMenu: setManualIdShowMenu } = manualIdAutocomplete;
 
-  // Frame ID autocomplete using the useAutocomplete hook
+  // Concept ID autocomplete using the useAutocomplete hook
   const searchFrameIds = useCallback(async (query: string) => {
     const response = await api.get<{ results: Array<{ id: string; label: string }> }>(
-      `/api/llm-jobs/search-frames?q=${encodeURIComponent(query)}&limit=10`
+      `/api/llm-jobs/search-concepts?q=${encodeURIComponent(query)}&limit=10`
     );
     return response.results;
   }, []);
@@ -504,15 +504,15 @@ export function useJobCreation({
   const isLastStep = stepIndex === STEPPER_STEPS.length - 1;
 
   const isAllocateAllowed = useCallback((tableMode: DataTableMode) => {
-    return tableMode === 'lexical_units' || tableMode === 'frames';
+    return tableMode === 'lexical_units' || tableMode === 'concepts';
   }, []);
 
   const isReallocateAllowed = useCallback((tableMode: DataTableMode) => {
-    return tableMode === 'frames';
+    return tableMode === 'concepts';
   }, []);
 
   const isSplitAllowed = useCallback((tableMode: DataTableMode) => {
-    return tableMode === 'frames';
+    return tableMode === 'concepts';
   }, []);
 
   // Generate dynamic label based on job type, scope, and timestamp
@@ -540,9 +540,9 @@ export function useJobCreation({
         const manualCount = manualIdAutocomplete.text.split(/[\s,;\n]+/).filter(s => s.trim()).length;
         scopeDesc = `${manualCount} ${mode.charAt(0).toUpperCase() + mode.slice(1)}`;
         break;
-      case 'frames':
+      case 'concepts':
         const frameNames = frameIdAutocomplete.text.split(/[\s,;\n]+/).filter(s => s.trim()).slice(0, 2);
-        scopeDesc = frameNames.length > 0 ? frameNames.join(', ') : 'Frames';
+        scopeDesc = frameNames.length > 0 ? frameNames.join(', ') : 'Concepts';
         if (frameIdAutocomplete.text.split(/[\s,;\n]+/).filter(s => s.trim()).length > 2) {
           scopeDesc += '...';
         }
@@ -572,8 +572,8 @@ export function useJobCreation({
         return true;
       case 'manual':
         return manualIds.length > 0 && manualIds.every(id => validatedManualIds.has(id));
-      case 'frames':
-        if (mode !== 'lexical_units' && mode !== 'frames') return false;
+      case 'concepts':
+        if (mode !== 'lexical_units' && mode !== 'concepts') return false;
         return frameIds.length > 0 && frameIds.every(id => validatedFrameIds.has(id));
       default:
         return false;
@@ -595,8 +595,8 @@ export function useJobCreation({
         return false;
       case 'manual':
         return manualIds.length === 0 || !manualIds.every(id => validatedManualIds.has(id));
-      case 'frames':
-        if (mode !== 'lexical_units' && mode !== 'frames') return true;
+      case 'concepts':
+        if (mode !== 'lexical_units' && mode !== 'concepts') return true;
         return frameIds.length === 0 || !frameIds.every(id => validatedFrameIds.has(id));
       default:
         return true;
@@ -627,8 +627,8 @@ export function useJobCreation({
         return 'Advanced filters';
       case 'manual':
         return manualIds.length > 0 ? `${manualIds.length} manual ID${manualIds.length === 1 ? '' : 's'}` : 'No manual IDs provided';
-      case 'frames':
-        return frameIds.length > 0 ? `${frameIds.length} frame ID${frameIds.length === 1 ? '' : 's'}` : 'No frame IDs provided';
+      case 'concepts':
+        return frameIds.length > 0 ? `${frameIds.length} concept ID${frameIds.length === 1 ? '' : 's'}` : 'No concept IDs provided';
       default:
         return '';
     }
@@ -636,7 +636,7 @@ export function useJobCreation({
 
   const scopeExampleList = useMemo(() => {
     if (scopeMode === 'manual') return manualIds.slice(0, 5);
-    if (scopeMode === 'frames') return frameIds.slice(0, 5);
+    if (scopeMode === 'concepts') return frameIds.slice(0, 5);
     return [];
   }, [scopeMode, manualIds, frameIds]);
 
@@ -769,10 +769,10 @@ export function useJobCreation({
           setScopeMode('manual');
           manualIdAutocomplete.setText(idsToText(scopeIds));
         }
-      } else if (scope.kind === 'frame_ids') {
-        if (mode === 'lexical_units' || mode === 'frames') {
-          setScopeMode('frames');
-          frameIdAutocomplete.setText(idsToText(scope.frameIds ?? []));
+      } else if (scope.kind === 'concept_ids') {
+        if (mode === 'lexical_units' || mode === 'concepts') {
+          setScopeMode('concepts');
+          frameIdAutocomplete.setText(idsToText(scope.conceptIds ?? []));
           setFrameIncludeLexicalUnits(scope.includeLexicalUnits ?? false);
           setFrameFlagTarget(scope.flagTarget ?? 'lexical_unit');
         } else {
@@ -1365,9 +1365,9 @@ export function useJobCreation({
     return () => clearTimeout(timeoutId);
   }, [manualIds, scopeMode, mode]);
 
-  // Validate frame IDs
+  // Validate concept IDs
   useEffect(() => {
-    if (scopeMode !== 'frames' || frameIds.length === 0 || (mode !== 'lexical_units' && mode !== 'frames')) {
+    if (scopeMode !== 'concepts' || frameIds.length === 0 || (mode !== 'lexical_units' && mode !== 'concepts')) {
       setValidatedFrameIds(new Set());
       return;
     }
@@ -1376,7 +1376,7 @@ export function useJobCreation({
       for (const id of frameIds) {
         try {
           const response = await api.get<{ results: Array<{ id: string; label: string }> }>(
-            `/api/llm-jobs/search-frames?q=${encodeURIComponent(id)}&limit=1`
+            `/api/llm-jobs/search-concepts?q=${encodeURIComponent(id)}&limit=1`
           );
           const frameResult = response.results.find(r => 
             r.id === id || r.label.toLowerCase() === id.toLowerCase()
@@ -1385,20 +1385,20 @@ export function useJobCreation({
           if (frameResult) {
             if (frameIncludeLexicalUnits && mode === 'lexical_units') {
               try {
-                const frameDetailsResponse = await api.get(`/api/frames/paginated?search=${encodeURIComponent(frameResult.label)}&limit=1`);
+                const frameDetailsResponse = await api.get(`/api/concepts/paginated?search=${encodeURIComponent(frameResult.label)}&limit=1`);
                 const frameData = frameDetailsResponse as { data?: Array<{ lexical_units_count?: number }> };
                 if (frameData.data && frameData.data.length > 0 && frameData.data[0].lexical_units_count && frameData.data[0].lexical_units_count > 0) {
                   validIds.add(id);
                 }
               } catch (error) {
-                console.error(`Failed to check lexical unit count for frame ${id}:`, error);
+                console.error(`Failed to check lexical unit count for concept ${id}:`, error);
               }
             } else {
               validIds.add(id);
             }
           }
         } catch (error) {
-          console.error(`Failed to validate frame ID ${id}:`, error);
+          console.error(`Failed to validate concept ID ${id}:`, error);
         }
       }
       setValidatedFrameIds(validIds);
@@ -1476,7 +1476,7 @@ export function useJobCreation({
       if (item) manualIdAutocomplete.insert(item);
     },
     
-    // Frame ID autocomplete
+    // Concept ID autocomplete
     frameIdInputRef: frameIdAutocomplete.inputRef,
     showFrameIdMenu: frameIdAutocomplete.showMenu,
     frameIdSuggestions: frameIdAutocomplete.suggestions,

@@ -43,7 +43,7 @@ const dateOps: FieldOperator[] = [
   { key: 'between', label: 'between', requiresSecondValue: true },
 ];
 
-const frameOps: FieldOperator[] = [
+const conceptOps: FieldOperator[] = [
   { key: 'equals', label: 'equals' },
   { key: 'in', label: 'in list', requiresArray: true },
 ];
@@ -52,9 +52,9 @@ const computedNumberOps = numberOps;
 
 export function getFieldConfigsForPos(pos: string): FieldConfig[] {
   // Support for frames remains separate
-  if (pos === 'frames') {
+  if (pos === 'concepts') {
     return [
-      { key: 'label', label: 'Frame Name', type: 'text', db: 'label', operators: textOps },
+      { key: 'label', label: 'Concept Name', type: 'text', db: 'label', operators: textOps },
       { key: 'definition', label: 'Definition', type: 'text', db: 'definition', operators: textOps },
       { key: 'short_definition', label: 'Short Definition', type: 'text', db: 'short_definition', operators: textOps },
       { key: 'subtype', label: 'Subtype', type: 'text', db: 'subtype', operators: textOps },
@@ -80,7 +80,7 @@ export function getFieldConfigsForPos(pos: string): FieldConfig[] {
     { key: 'flagged_reason', label: 'Flagged Reason', type: 'text', db: 'flagged_reason', operators: textOps },
     { key: 'unverifiable_reason', label: 'Unverifiable Reason', type: 'text', db: 'unverifiable_reason', operators: textOps },
     { key: 'lexfile', label: 'Lexfile', type: 'enum', db: 'lexfile', operators: enumOps },
-    { key: 'frame_id', label: 'Frame', type: 'frame', db: 'frame_id', operators: frameOps },
+    { key: 'concept_id', label: 'Concept', type: 'concept', db: 'concept_id', operators: conceptOps },
     { key: 'flagged', label: 'Flagged', type: 'boolean', db: 'flagged', operators: booleanOps },
     { key: 'verifiable', label: 'Verifiable', type: 'boolean', db: 'verifiable', operators: booleanOps },
     { key: 'is_mwe', label: 'Is MWE', type: 'boolean', db: 'is_mwe', operators: booleanOps },

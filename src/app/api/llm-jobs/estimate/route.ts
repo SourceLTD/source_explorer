@@ -46,8 +46,8 @@ export async function POST(request: NextRequest) {
     const estimateScope = { ...payload.scope };
     if (estimateScope.kind === 'filters') {
       estimateScope.filters = { ...estimateScope.filters, limit: 5 };
-    } else if (estimateScope.kind === 'frame_ids') {
-      estimateScope.frameIds = estimateScope.frameIds.slice(0, 5);
+    } else if (estimateScope.kind === 'concept_ids') {
+      estimateScope.conceptIds = estimateScope.conceptIds.slice(0, 5);
       estimateScope.limit = 5;
     } else if (estimateScope.kind === 'ids') {
       estimateScope.ids = estimateScope.ids.slice(0, 5);

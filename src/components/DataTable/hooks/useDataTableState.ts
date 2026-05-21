@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
-import { PaginatedResult, PaginationParams, TableLexicalUnit, Frame, FrameSenseTableRow } from '@/lib/types';
+import { PaginatedResult, PaginationParams, TableLexicalUnit, Concept, SenseTableRow } from '@/lib/types';
 import type { FilterState } from '../filterState';
 import { toDeltaFilters, toEffectiveFilters } from '../filterState';
 import { ColumnVisibilityState } from '@/components/ColumnVisibilityPanel';
@@ -18,7 +18,7 @@ import {
 } from '../config';
 import { SortState } from '../types';
 
-type DataTableEntry = TableLexicalUnit | Frame | FrameSenseTableRow;
+type DataTableEntry = TableLexicalUnit | Concept | SenseTableRow;
 
 export interface UseDataTableStateOptions {
   mode: DataTableMode;
@@ -93,31 +93,31 @@ function parseURLParams(
   const filters: FilterState = {};
   
   // Parse text filters
-  ['gloss', 'lemmas', 'examples', 'frames', 'flaggedReason', 'unverifiableReason', 'label', 'definition', 'short_definition', 'frame_type'].forEach(key => {
+  ['gloss', 'lemmas', 'examples', 'frames', 'flaggedReason', 'unverifiableReason', 'label', 'definition', 'short_definition', 'archetype'].forEach(key => {
     const value = searchParams.get(key);
     if (value !== null) {
-      filters[key as 'gloss' | 'lemmas' | 'examples' | 'frames' | 'flaggedReason' | 'unverifiableReason' | 'label' | 'definition' | 'short_definition' | 'frame_type'] = value;
+      filters[key as 'gloss' | 'lemmas' | 'examples' | 'frames' | 'flaggedReason' | 'unverifiableReason' | 'label' | 'definition' | 'short_definition' | 'archetype'] = value;
     }
   });
   
   // Parse categorical filters
-  ['pos', 'lexfile', 'frame_id', 'parent_frame_id', 'flaggedByJobId'].forEach(key => {
+  ['pos', 'lexfile', 'concept_id', 'parent_concept_id', 'flaggedByJobId'].forEach(key => {
     const value = searchParams.get(key);
     if (value !== null) {
-      filters[key as 'pos' | 'lexfile' | 'frame_id' | 'parent_frame_id' | 'flaggedByJobId'] = value;
+      filters[key as 'pos' | 'lexfile' | 'concept_id' | 'parent_concept_id' | 'flaggedByJobId'] = value;
     }
   });
 
-  const frameWarning = searchParams.get('frameWarning');
-  if (frameWarning === 'none' || frameWarning === 'multiple') {
-    filters.frameWarning = frameWarning;
+  const conceptWarning = searchParams.get('conceptWarning');
+  if (conceptWarning === 'none' || conceptWarning === 'multiple') {
+    filters.conceptWarning = conceptWarning;
   }
   
   // Parse boolean filters
-  ['isMwe', 'flagged', 'verifiable', 'pendingCreate', 'pendingUpdate', 'pendingDelete', 'excludeNullFrame'].forEach(key => {
+  ['isMwe', 'flagged', 'verifiable', 'pendingCreate', 'pendingUpdate', 'pendingDelete', 'excludeNullConcept'].forEach(key => {
     const value = searchParams.get(key);
     if (value !== null) {
-      filters[key as 'isMwe' | 'flagged' | 'verifiable' | 'pendingCreate' | 'pendingUpdate' | 'pendingDelete' | 'excludeNullFrame'] = value === 'true';
+      filters[key as 'isMwe' | 'flagged' | 'verifiable' | 'pendingCreate' | 'pendingUpdate' | 'pendingDelete' | 'excludeNullConcept'] = value === 'true';
     }
   });
   
@@ -168,12 +168,12 @@ function parseURLParams(
   const validColumnKeys = modeColumns.map(col => col.key);
   
   // Map between mode-specific column names
-    if (mode === 'frames' && rawSortBy === 'gloss') {
+    if (mode === 'concepts' && rawSortBy === 'gloss') {
     sortBy = 'label';
     } else if (mode === 'lexical_units' && rawSortBy === 'short_definition') {
     sortBy = 'gloss';
   } else if (!validColumnKeys.includes(sortBy)) {
-      sortBy = mode === 'frames' ? 'label' : 'id';
+      sortBy = mode === 'concepts' ? 'label' : 'id';
   }
 
   // Parse pagination
@@ -381,10 +381,10 @@ export function useDataTableState({
     
     // Remove DataTable-managed params to rebuild them
     const managedParams = [
-      'gloss', 'lemmas', 'examples', 'frames', 'flaggedReason', 'unverifiableReason', 'label', 'definition', 'short_definition', 'frame_type',
-      'pos', 'lexfile', 'frame_id', 'parent_frame_id', 'flaggedByJobId',
-      'frameWarning',
-      'isMwe', 'flagged', 'verifiable', 'excludeNullFrame',
+      'gloss', 'lemmas', 'examples', 'frames', 'flaggedReason', 'unverifiableReason', 'label', 'definition', 'short_definition', 'archetype',
+      'pos', 'lexfile', 'concept_id', 'parent_concept_id', 'flaggedByJobId',
+      'conceptWarning',
+      'isMwe', 'flagged', 'verifiable', 'excludeNullConcept',
       'pendingCreate', 'pendingUpdate', 'pendingDelete',
       'parentsCountMin', 'parentsCountMax', 'childrenCountMin', 'childrenCountMax',
       'childrenCountOp', 'childrenCountValue',
@@ -445,7 +445,7 @@ export function useDataTableState({
       // Use a safe default if sortBy is invalid for current mode
       const safeSortBy = validColumnKeys.includes(sortState.field) 
         ? sortState.field 
-        : (mode === 'frames' ? 'label' : 'id');
+        : (mode === 'concepts' ? 'label' : 'id');
       
       const effectiveFilters = toEffectiveFilters(mode, filters);
       const params: PaginationParams = {

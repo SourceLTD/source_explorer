@@ -1,11 +1,11 @@
 'use client';
 
 import React, { useMemo, useState, useCallback, useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
-import { FrameGraphNode, FrameGraphRelation, FrameRelationType, RecipeGraph } from '@/lib/types';
+import { ConceptGraphNode, ConceptGraphRelation, ConceptRelationType, RecipeGraph } from '@/lib/types';
 import type { PendingRelationChange } from '@/lib/version-control';
-import FrameMainNode, { FRAME_MAIN_NODE_FIXED_HEIGHT, calculateFrameNodeHeights } from './FrameMainNode';
+import ConceptMainNode, { CONCEPT_MAIN_NODE_FIXED_HEIGHT, calculateConceptNodeHeights } from './ConceptMainNode';
 import LoadingSpinner from '@/components/LoadingSpinner';
-import FrameRoleMappingModal from './FrameRoleMappingModal';
+import PropertyMappingModal from './PropertyMappingModal';
 
 // Color scheme
 const currentNodeColor = '#3b82f6';
@@ -22,15 +22,15 @@ const pendingDeleteStroke = '#ef4444';
 const pendingCreateColor = '#86efac';
 const pendingCreateStroke = '#22c55e';
 
-interface FrameOption {
+interface ConceptOption {
   id: string;
   label: string;
   code?: string;
 }
 
-interface FrameGraphProps {
-  currentFrame: FrameGraphNode;
-  onFrameClick: (frameId: string, clickedNode?: { rect: { top: number; left: number; width: number; height: number }; label: string; color: string; direction: 'up' | 'down' }) => void;
+interface ConceptGraphProps {
+  currentConcept: ConceptGraphNode;
+  onConceptClick: (frameId: string, clickedNode?: { rect: { top: number; left: number; width: number; height: number }; label: string; color: string; direction: 'up' | 'down' }) => void;
   onEditClick?: () => void;
   onReparentComplete?: () => void;
   onVisualizeRecipeGraph?: (recipeGraph: RecipeGraph) => void;
@@ -66,12 +66,11 @@ function descendantColorIntensity(count: number | undefined): { fill: string; st
   return { fill: fills[idx], stroke: strokes[idx] };
 }
 
-// Relation type display labels - only parent_of is supported
-const RELATION_LABELS: Record<FrameRelationType, string> = {
+const RELATION_LABELS: Record<ConceptRelationType, string> = {
   'parent_of': 'Parent Of',
 };
 
-function dedupeRelationsByRelatedFrame(relations: FrameGraphRelation[], getRelatedId: (relation: FrameGraphRelation) => string | undefined) {
+function dedupeRelationsByRelatedFrame(relations: ConceptGraphRelation[], getRelatedId: (relation: ConceptGraphRelation) => string | undefined) {
   const seen = new Set<string>();
   return relations.filter((relation) => {
     const relatedId = getRelatedId(relation);
@@ -85,12 +84,12 @@ function getPositionedNodeKey(node: PositionedFrameNode) {
   return `${node.type}-${node.id}`;
 }
 
-export interface FrameGraphHandle {
+export interface ConceptGraphHandle {
   openReparentModal: () => void;
   isParentRelationLocked: () => boolean;
 }
 
-function FrameGraphInner({ currentFrame, onFrameClick, onEditClick, onReparentComplete, onVisualizeRecipeGraph, pendingRelationChanges }: FrameGraphProps, ref: React.Ref<FrameGraphHandle>) {
+function ConceptGraphInner({ currentConcept, onConceptClick, onEditClick, onReparentComplete, onVisualizeRecipeGraph, pendingRelationChanges }: ConceptGraphProps, ref: React.Ref<ConceptGraphHandle>) {
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [rolesExpanded, setRolesExpanded] = useState<boolean>(true);
   const [lexicalUnitsExpanded, setLexicalUnitsExpanded] = useState<boolean>(true);
@@ -98,7 +97,7 @@ function FrameGraphInner({ currentFrame, onFrameClick, onEditClick, onReparentCo
   const [recipeGraphExpanded, setRecipeGraphExpanded] = useState<boolean>(false);
   const [reparentModalOpen, setReparentModalOpen] = useState(false);
   const [reparentQuery, setReparentQuery] = useState('');
-  const [reparentFrames, setReparentFrames] = useState<FrameOption[]>([]);
+  const [reparentFrames, setReparentFrames] = useState<ConceptOption[]>([]);
   const [reparentLoading, setReparentLoading] = useState(false);
   const [reparentSubmitting, setReparentSubmitting] = useState(false);
   const [reparentError, setReparentError] = useState<string | null>(null);
@@ -119,7 +118,7 @@ function FrameGraphInner({ currentFrame, onFrameClick, onEditClick, onReparentCo
         const params = new URLSearchParams();
         if (reparentQuery.trim()) params.set('search', reparentQuery.trim());
         params.set('limit', '30');
-        const resp = await fetch(`/api/frames?${params.toString()}`, { cache: 'no-store' });
+        const resp = await fetch(`/api/concepts?${params.toString()}`, { cache: 'no-store' });
         if (resp.ok) {
           const data = await resp.json();
           setReparentFrames(Array.isArray(data) ? data : []);
@@ -137,7 +136,7 @@ function FrameGraphInner({ currentFrame, onFrameClick, onEditClick, onReparentCo
     setReparentSubmitting(true);
     setReparentError(null);
     try {
-      const resp = await fetch(`/api/frames/${currentFrame.id}/reparent`, {
+      const resp = await fetch(`/api/concepts/${currentConcept.id}/reparent`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ newParentId }),
@@ -155,7 +154,7 @@ function FrameGraphInner({ currentFrame, onFrameClick, onEditClick, onReparentCo
     } finally {
       setReparentSubmitting(false);
     }
-  }, [currentFrame.id, onReparentComplete]);
+  }, [currentConcept.id, onReparentComplete]);
 
   // Helper function to calculate node width based on text length
   const calculateNodeWidth = useCallback((text: string, minWidth: number = 80): number => {
@@ -195,11 +194,11 @@ function FrameGraphInner({ currentFrame, onFrameClick, onEditClick, onReparentCo
 
   // Incoming parent_of = another frame is the source (parent) pointing at this frame
   const parentRels = useMemo(() => dedupeRelationsByRelatedFrame(
-    currentFrame.relations.filter(r =>
-      r.direction === 'incoming' && r.type === 'parent_of' && r.source && r.source.id !== currentFrame.id
+    currentConcept.relations.filter(r =>
+      r.direction === 'incoming' && r.type === 'parent_of' && r.source && r.source.id !== currentConcept.id
     ),
     r => r.source?.id
-  ), [currentFrame.id, currentFrame.relations]);
+  ), [currentConcept.id, currentConcept.relations]);
 
   const parentRelationLocked = useMemo(
     () => parentRels.some(r => r.locked),
@@ -208,13 +207,13 @@ function FrameGraphInner({ currentFrame, onFrameClick, onEditClick, onReparentCo
 
   const lockedRelationFrameIds = useMemo(() => {
     const ids = new Set<string>();
-    for (const r of currentFrame.relations) {
+    for (const r of currentConcept.relations) {
       if (!r.locked) continue;
       if (r.direction === 'incoming' && r.source) ids.add(r.source.id);
       if (r.direction === 'outgoing' && r.target) ids.add(r.target.id);
     }
     return ids;
-  }, [currentFrame.relations]);
+  }, [currentConcept.relations]);
 
   useImperativeHandle(ref, () => ({
     openReparentModal: () => {
@@ -230,8 +229,8 @@ function FrameGraphInner({ currentFrame, onFrameClick, onEditClick, onReparentCo
   // Outgoing parent_of = this frame is the source (parent) pointing at children
   const childRels = useMemo(() => {
     const deduped = dedupeRelationsByRelatedFrame(
-      currentFrame.relations.filter(r =>
-        r.direction === 'outgoing' && r.type === 'parent_of' && r.target && r.target.id !== currentFrame.id
+      currentConcept.relations.filter(r =>
+        r.direction === 'outgoing' && r.type === 'parent_of' && r.target && r.target.id !== currentConcept.id
       ),
       r => r.target?.id
     );
@@ -239,32 +238,32 @@ function FrameGraphInner({ currentFrame, onFrameClick, onEditClick, onReparentCo
     return deduped.sort((a, b) =>
       (b.target?.descendant_count ?? 0) - (a.target?.descendant_count ?? 0)
     );
-  }, [currentFrame.id, currentFrame.relations]);
+  }, [currentConcept.id, currentConcept.relations]);
 
   const pendingCreates = useMemo(() => {
     if (!pendingRelationChanges) return [];
     const seen = new Set<string>();
     return pendingRelationChanges.filter(c => {
-      if (!(c.operation === 'create' && c.type === 'parent_of' && c.source_id === currentFrame.id)) return false;
-      const key = `${c.source_id}:${c.target_id}`;
+      if (!(c.operation === 'create' && c.type === 'parent_of' && c.parent_id === currentConcept.id)) return false;
+      const key = `${c.parent_id}:${c.child_id}`;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
     });
-  }, [pendingRelationChanges, currentFrame.id]);
+  }, [pendingRelationChanges, currentConcept.id]);
 
   // Pending creates where this frame is the target (being placed under a new parent)
   const pendingParentCreates = useMemo(() => {
     if (!pendingRelationChanges) return [];
     const seen = new Set<string>();
     return pendingRelationChanges.filter(c => {
-      if (!(c.operation === 'create' && c.type === 'parent_of' && c.target_id === currentFrame.id)) return false;
-      const key = `${c.source_id}:${c.target_id}`;
+      if (!(c.operation === 'create' && c.type === 'parent_of' && c.child_id === currentConcept.id)) return false;
+      const key = `${c.parent_id}:${c.child_id}`;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
     });
-  }, [pendingRelationChanges, currentFrame.id]);
+  }, [pendingRelationChanges, currentConcept.id]);
 
   // Layout calculation
   const layout = useMemo(() => {
@@ -278,9 +277,9 @@ function FrameGraphInner({ currentFrame, onFrameClick, onEditClick, onReparentCo
     const relatedNodeHeight = NODE_HEIGHT_WITH_COUNT;
 
     const mainNodeWidth = 1000;
-    const mainNodeLayoutHeight = FRAME_MAIN_NODE_FIXED_HEIGHT;
-    const dynamicHeights = calculateFrameNodeHeights(currentFrame, rolesExpanded, lexicalUnitsExpanded, recipeGraphExpanded, expandedSenses);
-    const mainNodeRenderHeight = Math.max(FRAME_MAIN_NODE_FIXED_HEIGHT, dynamicHeights.totalHeight);
+    const mainNodeLayoutHeight = CONCEPT_MAIN_NODE_FIXED_HEIGHT;
+    const dynamicHeights = calculateConceptNodeHeights(currentConcept, rolesExpanded, lexicalUnitsExpanded, recipeGraphExpanded, expandedSenses);
+    const mainNodeRenderHeight = Math.max(CONCEPT_MAIN_NODE_FIXED_HEIGHT, dynamicHeights.totalHeight);
     const renderOverflow = mainNodeRenderHeight - mainNodeLayoutHeight;
     
     const nodes: PositionedFrameNode[] = [];
@@ -289,11 +288,11 @@ function FrameGraphInner({ currentFrame, onFrameClick, onEditClick, onReparentCo
     const pendingCreateItems = (pendingCreates ?? []).map(pc => ({
       _isPendingCreate: true as const,
       changeset_id: pc.changeset_id,
-      target_id: pc.target_id,
-      target_label: pc.target_label || `Frame #${pc.target_id}`,
+      target_id: pc.child_id,
+      target_label: pc.target_label || `Concept #${pc.child_id}`,
       target_descendant_count: pc.target_descendant_count,
       direction: 'outgoing' as const,
-      target: { label: pc.target_label || `Frame #${pc.target_id}` },
+      target: { label: pc.target_label || `Concept #${pc.child_id}` },
     })).sort((a, b) => (b.target_descendant_count ?? 0) - (a.target_descendant_count ?? 0));
 
     // Build combined parent items: real parents + pending new parents, row-packed together
@@ -308,11 +307,11 @@ function FrameGraphInner({ currentFrame, onFrameClick, onEditClick, onReparentCo
       ...(pendingParentCreates ?? []).map(pc => ({
         _kind: 'pendingCreate' as const,
         changeset_id: pc.changeset_id,
-        source_id: pc.source_id,
-        label: pc.target_label || `Frame #${pc.source_id}`,
+        source_id: pc.parent_id,
+        label: pc.target_label || `Concept #${pc.parent_id}`,
         descendant_count: pc.target_descendant_count,
         direction: 'incoming' as const,
-        source: { label: pc.target_label || `Frame #${pc.source_id}` },
+        source: { label: pc.target_label || `Concept #${pc.parent_id}` },
       })),
     ];
 
@@ -343,10 +342,10 @@ function FrameGraphInner({ currentFrame, onFrameClick, onEditClick, onReparentCo
     
     // Add current frame at center
     nodes.push({
-      id: currentFrame.id,
+      id: currentConcept.id,
       type: 'current',
-      label: currentFrame.label,
-      sublabel: currentFrame.short_definition ?? undefined,
+      label: currentConcept.label,
+      sublabel: currentConcept.short_definition ?? undefined,
       x: centerX,
       y: centerY,
       width: mainNodeWidth,
@@ -451,7 +450,7 @@ function FrameGraphInner({ currentFrame, onFrameClick, onEditClick, onReparentCo
     }
     
     return { nodes, width, height: totalHeight, renderOverflow, pendingNodePositions, pendingParentNodePositions };
-  }, [currentFrame, parentRels, childRels, pendingCreates, pendingParentCreates, arrangeNodesInRows, calculateNodeWidth, rolesExpanded, lexicalUnitsExpanded, recipeGraphExpanded, expandedSenses]);
+  }, [currentConcept, parentRels, childRels, pendingCreates, pendingParentCreates, arrangeNodesInRows, calculateNodeWidth, rolesExpanded, lexicalUnitsExpanded, recipeGraphExpanded, expandedSenses]);
 
   // Identify pending relation changes for visualization
   const pendingDeletes = useMemo(() => {
@@ -459,9 +458,9 @@ function FrameGraphInner({ currentFrame, onFrameClick, onEditClick, onReparentCo
     return new Set(
       pendingRelationChanges
         .filter(c => c.operation === 'delete' && c.type === 'parent_of')
-        .map(c => c.source_id === currentFrame.id ? c.target_id : c.source_id)
+        .map(c => c.parent_id === currentConcept.id ? c.child_id : c.parent_id)
     );
-  }, [pendingRelationChanges, currentFrame.id]);
+  }, [pendingRelationChanges, currentConcept.id]);
 
   // Render related frame nodes
   const renderRelatedNode = (node: PositionedFrameNode) => {
@@ -488,7 +487,7 @@ function FrameGraphInner({ currentFrame, onFrameClick, onEditClick, onReparentCo
         onMouseLeave={() => setHoveredNodeId(null)}
         onClick={(e) => {
           const rect = (e.currentTarget as SVGGElement).getBoundingClientRect();
-          onFrameClick(node.id, { rect: { top: rect.top, left: rect.left, width: rect.width, height: rect.height }, label: node.label, color: fillColor, direction: node.type === 'parent' ? 'up' : 'down' });
+          onConceptClick(node.id, { rect: { top: rect.top, left: rect.left, width: rect.width, height: rect.height }, label: node.label, color: fillColor, direction: node.type === 'parent' ? 'up' : 'down' });
         }}
       >
         <rect
@@ -651,7 +650,7 @@ function FrameGraphInner({ currentFrame, onFrameClick, onEditClick, onReparentCo
         {pendingCreates.map((pc) => {
           const pos = layout.pendingNodePositions.find(p => p.changeset_id === pc.changeset_id);
           if (!pos) return null;
-          const labelText = pc.target_label || `Frame #${pc.target_id}`;
+          const labelText = pc.target_label || `Concept #${pc.child_id}`;
           const nodeHeight = pos.height;
           const nodeLeft = pos.x - pos.width / 2;
           const nodeTop = pos.y - nodeHeight / 2;
@@ -666,7 +665,7 @@ function FrameGraphInner({ currentFrame, onFrameClick, onEditClick, onReparentCo
               onMouseLeave={() => setHoveredNodeId(null)}
               onClick={(e) => {
                 const rect = (e.currentTarget as SVGGElement).getBoundingClientRect();
-                onFrameClick(pc.target_id, { rect: { top: rect.top, left: rect.left, width: rect.width, height: rect.height }, label: labelText, color: pendingCreateColor, direction: 'down' });
+                onConceptClick(pc.child_id, { rect: { top: rect.top, left: rect.left, width: rect.width, height: rect.height }, label: labelText, color: pendingCreateColor, direction: 'down' });
               }}
             >
               <rect
@@ -716,7 +715,7 @@ function FrameGraphInner({ currentFrame, onFrameClick, onEditClick, onReparentCo
         {pendingParentCreates.map((pc) => {
           const pos = layout.pendingParentNodePositions.find(p => p.changeset_id === pc.changeset_id);
           if (!pos) return null;
-          const labelText = pc.target_label || `Frame #${pc.source_id}`;
+          const labelText = pc.target_label || `Concept #${pc.parent_id}`;
           const nodeHeight = pos.height;
           const nodeLeft = pos.x - pos.width / 2;
           const nodeTop = pos.y - nodeHeight / 2;
@@ -731,7 +730,7 @@ function FrameGraphInner({ currentFrame, onFrameClick, onEditClick, onReparentCo
               onMouseLeave={() => setHoveredNodeId(null)}
               onClick={(e) => {
                 const rect = (e.currentTarget as SVGGElement).getBoundingClientRect();
-                onFrameClick(pc.source_id, { rect: { top: rect.top, left: rect.left, width: rect.width, height: rect.height }, label: labelText, color: pendingCreateColor, direction: 'up' });
+                onConceptClick(pc.parent_id, { rect: { top: rect.top, left: rect.left, width: rect.width, height: rect.height }, label: labelText, color: pendingCreateColor, direction: 'up' });
               }}
             >
               <rect
@@ -782,17 +781,17 @@ function FrameGraphInner({ currentFrame, onFrameClick, onEditClick, onReparentCo
           .filter(n => n.type === 'current')
           .map(node => (
             <g key={node.id} data-main-node="">
-              <FrameMainNode
-              node={currentFrame}
+              <ConceptMainNode
+              node={currentConcept}
               x={node.x}
               y={node.y}
-              onNodeClick={onFrameClick}
+              onNodeClick={onConceptClick}
               onEditClick={onEditClick}
               onVisualizeRecipeGraph={onVisualizeRecipeGraph}
-              controlledRolesExpanded={rolesExpanded}
+              controlledPropertiesExpanded={rolesExpanded}
               controlledLexicalUnitsExpanded={lexicalUnitsExpanded}
               controlledRecipeGraphExpanded={recipeGraphExpanded}
-              onRolesExpandedChange={setRolesExpanded}
+              onPropertiesExpandedChange={setRolesExpanded}
               onLexicalUnitsExpandedChange={setLexicalUnitsExpanded}
               onRecipeGraphExpandedChange={setRecipeGraphExpanded}
               expandedSenses={expandedSenses}
@@ -819,7 +818,7 @@ function FrameGraphInner({ currentFrame, onFrameClick, onEditClick, onReparentCo
           >
             <h3 className="text-lg font-semibold text-gray-900 mb-1">Reparent Frame</h3>
             <p className="text-sm text-gray-500 mb-4">
-              Select a new parent for &ldquo;{currentFrame.label}&rdquo; in the parent_of hierarchy.
+              Select a new parent for &ldquo;{currentConcept.label}&rdquo; in the parent_of hierarchy.
             </p>
 
             <input
@@ -843,10 +842,10 @@ function FrameGraphInner({ currentFrame, onFrameClick, onEditClick, onReparentCo
                   <LoadingSpinner size="sm" noPadding />
                 </div>
               ) : reparentFrames.length === 0 ? (
-                <div className="px-3 py-4 text-sm text-gray-500 text-center">No frames found</div>
+                <div className="px-3 py-4 text-sm text-gray-500 text-center">No concepts found</div>
               ) : (
                 reparentFrames
-                  .filter(f => f.id !== currentFrame.id)
+                  .filter(f => f.id !== currentConcept.id)
                   .map((frame) => (
                     <button
                       key={frame.id}
@@ -875,13 +874,13 @@ function FrameGraphInner({ currentFrame, onFrameClick, onEditClick, onReparentCo
       )}
 
       {roleMappingModalOpen && (
-        <FrameRoleMappingModal
+        <PropertyMappingModal
           parents={parentRels.map(r => ({
             id: r.source!.id,
             label: r.source!.label
           }))}
-          childId={currentFrame.id}
-          childLabel={currentFrame.label}
+          childId={currentConcept.id}
+          childLabel={currentConcept.label}
           onClose={() => setRoleMappingModalOpen(false)}
         />
       )}
@@ -889,5 +888,5 @@ function FrameGraphInner({ currentFrame, onFrameClick, onEditClick, onReparentCo
   );
 }
 
-const FrameGraph = forwardRef(FrameGraphInner);
-export default FrameGraph;
+const ConceptGraph = forwardRef(ConceptGraphInner);
+export default ConceptGraph;

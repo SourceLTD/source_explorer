@@ -3,8 +3,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Frame, FrameGraphNode, RecipeGraph, SearchResult, BreadcrumbItem } from '@/lib/types';
-import FrameGraph, { FrameGraphHandle } from './FrameGraph';
+import { Concept, ConceptGraphNode, RecipeGraph, SearchResult, BreadcrumbItem } from '@/lib/types';
+import ConceptGraph, { ConceptGraphHandle } from './ConceptGraph';
 import Breadcrumbs from './Breadcrumbs';
 import SearchBox from './SearchBox';
 import ViewToggle, { ViewMode } from './ViewToggle';
@@ -13,33 +13,31 @@ import SignOutButton from './SignOutButton';
 import ChatButton from './ChatButton';
 import { EditOverlay } from './editing/EditOverlay';
 import LoadingSpinner from './LoadingSpinner';
-import FrameRootNodesView from './FrameRootNodesView';
+import ConceptRootNodesView from './ConceptRootNodesView';
 import RecipeGraphOverlay from './RecipeGraphOverlay';
 
-interface FrameExplorerProps {
-  initialFrameId?: string;
+interface ConceptExplorerProps {
+  initialConceptId?: string;
 }
 
-export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
+export default function ConceptExplorer({ initialConceptId }: ConceptExplorerProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [currentFrame, setCurrentFrame] = useState<FrameGraphNode | null>(null);
+  const [currentConcept, setCurrentConcept] = useState<ConceptGraphNode | null>(null);
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentView, setCurrentView] = useState<ViewMode>('graph');
   const [isEditOverlayOpen, setIsEditOverlayOpen] = useState(false);
-  const [frameForEdit, setFrameForEdit] = useState<Frame | null>(null);
+  const [conceptForEdit, setConceptForEdit] = useState<Concept | null>(null);
   const [recipeGraphForVisualize, setRecipeGraphForVisualize] = useState<RecipeGraph | null>(null);
   
-  // Track last loaded frame to prevent duplicate calls
-  const lastLoadedFrameRef = useRef<string | null>(null);
-  const frameGraphRef = useRef<FrameGraphHandle>(null);
+  const lastLoadedConceptRef = useRef<string | null>(null);
+  const conceptGraphRef = useRef<ConceptGraphHandle>(null);
 
-  // Prefetch cache for related nodes
-  const prefetchCacheRef = useRef<Map<string, { graph: FrameGraphNode; breadcrumbs: BreadcrumbItem[] }>>(new Map());
+  const prefetchCacheRef = useRef<Map<string, { graph: ConceptGraphNode; breadcrumbs: BreadcrumbItem[] }>>(new Map());
 
-  const prefetchRelatedNodes = useCallback((graphData: FrameGraphNode) => {
+  const prefetchRelatedNodes = useCallback((graphData: ConceptGraphNode) => {
     const MAX_PREFETCH_GROUP = 30;
     const parentIds: string[] = [];
     const childIds: string[] = [];
@@ -53,8 +51,8 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
     for (const id of idsToFetch) {
       if (prefetchCacheRef.current.has(id)) continue;
       Promise.all([
-        fetch(`/api/frames/${id}/graph`),
-        fetch(`/api/frames/${id}/breadcrumbs`),
+        fetch(`/api/concepts/${id}/graph`),
+        fetch(`/api/concepts/${id}/breadcrumbs`),
       ]).then(async ([graphRes, bcRes]) => {
         if (graphRes.ok) {
           const graph = await graphRes.json();
@@ -65,49 +63,45 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
     }
   }, []);
 
-  // Helper function to update URL parameters without page reload
-  const updateUrlParam = (frameId: string) => {
+  const updateUrlParam = (conceptId: string) => {
     const params = new URLSearchParams(searchParams);
-    params.set('entry', frameId);
-    router.push(`/graph/frames?${params.toString()}`, { scroll: false });
+    params.set('entry', conceptId);
+    router.push(`/graph/concepts?${params.toString()}`, { scroll: false });
   };
 
-  // Helper to update view in URL
   const updateViewParam = (view: ViewMode) => {
     const params = new URLSearchParams(searchParams);
     params.set('view', view);
     const qs = params.toString();
-    router.push(qs ? `/graph/frames?${qs}` : '/graph/frames', { scroll: false });
+    router.push(qs ? `/graph/concepts?${qs}` : '/graph/concepts', { scroll: false });
   };
 
-  const loadFrame = useCallback(async (frameId: string, invalidateCache: boolean = false) => {
-    // Prevent duplicate calls for the same frame (unless cache invalidation is requested)
-    if (lastLoadedFrameRef.current === frameId && !invalidateCache) {
+  const loadConcept = useCallback(async (conceptId: string, invalidateCache: boolean = false) => {
+    if (lastLoadedConceptRef.current === conceptId && !invalidateCache) {
       return;
     }
     
-    lastLoadedFrameRef.current = frameId;
+    lastLoadedConceptRef.current = conceptId;
     setIsLoading(true);
     setError(null);
     
     try {
-      // Check prefetch cache first
-      const cached = !invalidateCache ? prefetchCacheRef.current.get(frameId) : undefined;
+      const cached = !invalidateCache ? prefetchCacheRef.current.get(conceptId) : undefined;
       if (cached) {
-        prefetchCacheRef.current.delete(frameId);
-        setCurrentFrame(cached.graph);
+        prefetchCacheRef.current.delete(conceptId);
+        setCurrentConcept(cached.graph);
         setBreadcrumbs(cached.breadcrumbs);
         prefetchRelatedNodes(cached.graph);
         return;
       }
 
       const graphUrl = invalidateCache 
-        ? `/api/frames/${frameId}/graph?invalidate=true&t=${Date.now()}`
-        : `/api/frames/${frameId}/graph`;
+        ? `/api/concepts/${conceptId}/graph?invalidate=true&t=${Date.now()}`
+        : `/api/concepts/${conceptId}/graph`;
 
       const breadcrumbUrl = invalidateCache
-        ? `/api/frames/${frameId}/breadcrumbs?t=${Date.now()}`
-        : `/api/frames/${frameId}/breadcrumbs`;
+        ? `/api/concepts/${conceptId}/breadcrumbs?t=${Date.now()}`
+        : `/api/concepts/${conceptId}/breadcrumbs`;
         
       const [graphResponse, breadcrumbResponse] = await Promise.all([
         fetch(graphUrl, invalidateCache ? { cache: 'no-store' } : {}),
@@ -115,11 +109,11 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
       ]);
 
       if (!graphResponse.ok) {
-        throw new Error('Failed to load frame');
+        throw new Error('Failed to load concept');
       }
 
-      const graphData: FrameGraphNode = await graphResponse.json();
-      setCurrentFrame(graphData);
+      const graphData: ConceptGraphNode = await graphResponse.json();
+      setCurrentConcept(graphData);
 
       if (breadcrumbResponse.ok) {
         const breadcrumbData: BreadcrumbItem[] = await breadcrumbResponse.json();
@@ -130,78 +124,75 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
       prefetchRelatedNodes(graphData);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
-      console.error('Error loading frame:', err);
+      console.error('Error loading concept:', err);
     } finally {
       setIsLoading(false);
     }
   }, [prefetchRelatedNodes]);
 
-  const handleFrameClick = (frameId: string) => {
-    lastLoadedFrameRef.current = null;
-    updateUrlParam(frameId);
+  const handleConceptClick = (conceptId: string) => {
+    lastLoadedConceptRef.current = null;
+    updateUrlParam(conceptId);
   };
 
   const handleSearchResult = (result: SearchResult) => {
-    lastLoadedFrameRef.current = null;
+    lastLoadedConceptRef.current = null;
     updateUrlParam(result.id);
   };
 
   const handleHomeClick = () => {
-    lastLoadedFrameRef.current = null;
-    setCurrentFrame(null);
+    lastLoadedConceptRef.current = null;
+    setCurrentConcept(null);
     setBreadcrumbs([]);
-    // Remove entry from URL but preserve view
     const params = new URLSearchParams(searchParams);
     params.delete('entry');
     const qs = params.toString();
-    router.push(qs ? `/graph/frames?${qs}` : '/graph/frames', { scroll: false });
+    router.push(qs ? `/graph/concepts?${qs}` : '/graph/concepts', { scroll: false });
   };
 
   const handleBreadcrumbNavigate = (id: string) => {
-    lastLoadedFrameRef.current = null;
+    lastLoadedConceptRef.current = null;
     updateUrlParam(id);
   };
 
   const handleRefreshClick = () => {
-    if (currentFrame) {
-      loadFrame(currentFrame.id, true); // Force cache invalidation
+    if (currentConcept) {
+      loadConcept(currentConcept.id, true);
     }
   };
 
-  const loadFrameForEdit = useCallback(async (frameId: string) => {
+  const loadConceptForEdit = useCallback(async (conceptId: string) => {
     try {
-      const response = await fetch(`/api/frames/${frameId}?t=${Date.now()}`, { cache: 'no-store' });
+      const response = await fetch(`/api/concepts/${conceptId}?t=${Date.now()}`, { cache: 'no-store' });
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Failed to load frame details (${response.status}): ${errorText}`);
+        throw new Error(`Failed to load concept details (${response.status}): ${errorText}`);
       }
-      const data: Frame = await response.json();
-      setFrameForEdit(data);
+      const data: Concept = await response.json();
+      setConceptForEdit(data);
     } catch (err) {
-      console.error('Error loading frame details for edit overlay:', err);
-      // Keep overlay open, but it will continue showing the loading spinner.
-      // Users can close/reopen if needed.
+      console.error('Error loading concept details for edit overlay:', err);
     }
   }, []);
 
   const handleUpdate = async () => {
-    if (currentFrame) {
-      lastLoadedFrameRef.current = null;
-      setFrameForEdit(null); // show loading spinner while we refresh
-      await loadFrame(currentFrame.id, true);
+    if (currentConcept) {
+      lastLoadedConceptRef.current = null;
+      setConceptForEdit(null);
+      await loadConcept(currentConcept.id, true);
     }
   };
 
   const handleFlagToggle = async () => {
-    if (!currentFrame) return;
+    if (!currentConcept) return;
     try {
-      await fetch('/api/frames/flag', {
+      await fetch('/api/concepts/flag', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ids: [currentFrame.id],
+          ids: [currentConcept.id],
           updates: {
-            flagged: !currentFrame.flagged,
+            flagged: !currentConcept.flagged,
           },
         }),
       });
@@ -212,15 +203,15 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
   };
 
   const handleVerifiableToggle = async () => {
-    if (!currentFrame) return;
+    if (!currentConcept) return;
     try {
-      await fetch('/api/frames/flag', {
+      await fetch('/api/concepts/flag', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ids: [currentFrame.id],
+          ids: [currentConcept.id],
           updates: {
-            verifiable: currentFrame.verifiable === false ? true : false,
+            verifiable: currentConcept.verifiable === false ? true : false,
           },
         }),
       });
@@ -230,25 +221,23 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
     }
   };
 
-  // Load frame based on URL params or initial prop and sync view from URL
   useEffect(() => {
     const viewParam = searchParams.get('view');
     if (viewParam === 'graph' || viewParam === 'table') {
       setCurrentView(viewParam as ViewMode);
     }
-    const currentFrameId = searchParams.get('entry') || initialFrameId;
-    if (currentFrameId) {
-      loadFrame(currentFrameId);
+    const currentConceptId = searchParams.get('entry') || initialConceptId;
+    if (currentConceptId) {
+      loadConcept(currentConceptId);
     }
-  }, [searchParams, initialFrameId, loadFrame]);
+  }, [searchParams, initialConceptId, loadConcept]);
 
-  // When opening the overlay, fetch the full Frame payload used by the editor.
   useEffect(() => {
     if (!isEditOverlayOpen) return;
-    if (!currentFrame) return;
-    setFrameForEdit(null); // show loading spinner inside EditOverlay
-    void loadFrameForEdit(currentFrame.id);
-  }, [isEditOverlayOpen, currentFrame?.id, currentFrame, loadFrameForEdit]);
+    if (!currentConcept) return;
+    setConceptForEdit(null);
+    void loadConceptForEdit(currentConcept.id);
+  }, [isEditOverlayOpen, currentConcept?.id, currentConcept, loadConceptForEdit]);
 
   return (
     <div className="h-screen flex flex-col bg-gray-50">
@@ -263,15 +252,22 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
               Source Console
             </button>
             <div className="flex items-center gap-1 ml-2">
-              <button className="px-4 py-2 text-base font-medium transition-colors relative cursor-default text-blue-600 border-b-2 border-blue-600">
-                Frames
-              </button>
               <button
                 type="button"
                 onClick={() => router.push('/table')}
                 className="px-4 py-2 text-base font-medium transition-colors relative cursor-pointer text-gray-600 hover:text-gray-900 hover:bg-gray-50"
               >
                 Senses
+              </button>
+              <button className="px-4 py-2 text-base font-medium transition-colors relative cursor-default text-blue-600 border-b-2 border-blue-600">
+                Concepts
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push('/claims')}
+                className="px-4 py-2 text-base font-medium transition-colors relative cursor-pointer text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+              >
+                Claims
               </button>
             </div>
           </div>
@@ -281,15 +277,15 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
               <SearchBox 
                 onSelectResult={handleSearchResult}
                 onSearchChange={() => {}}
-                placeholder="Search frames..."
-                mode="frames"
+                placeholder="Search concepts..."
+                mode="concepts"
               />
             </div>
             <ViewToggle 
               currentView={currentView}
               onViewChange={(view: ViewMode) => {
                 if (view === 'table') {
-                  router.push('/table/frames');
+                  router.push('/table/concepts');
                 } else {
                   setCurrentView(view);
                   updateViewParam(view);
@@ -307,7 +303,7 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
       <main className="flex-1 flex flex-col">
         {/* Loading progress bar — flush against header border */}
         <AnimatePresence>
-          {isLoading && currentFrame && (
+          {isLoading && currentConcept && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -325,7 +321,7 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
         <div className="flex-1 flex">
         {/* Main Graph/Recipe Area */}
         <div className="flex-1 p-6 bg-white">
-          {currentFrame ? (
+          {currentConcept ? (
             <div className="h-full flex flex-col relative">
 
               {/* Breadcrumbs + Badges */}
@@ -337,12 +333,12 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
                     onHomeClick={handleHomeClick}
                     onRefreshClick={handleRefreshClick}
                   />
-                  {currentFrame.flagged && (
+                  {currentConcept.flagged && (
                     <span className="px-2 py-0.5 text-xs font-medium bg-orange-100 text-orange-800 rounded-full">
                       Flagged
                     </span>
                   )}
-                  {currentFrame.verifiable === false && (
+                  {currentConcept.verifiable === false && (
                     <span className="px-2 py-0.5 text-xs font-medium bg-gray-200 text-gray-800 rounded-full">
                       Unverifiable
                     </span>
@@ -352,30 +348,30 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
                   <button
                     onClick={handleFlagToggle}
                     className={`px-3 py-1 text-sm font-medium rounded-lg transition-colors ${
-                      currentFrame.flagged 
+                      currentConcept.flagged 
                         ? 'bg-orange-100 text-orange-700 hover:bg-orange-200' 
                         : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                     }`}
                   >
-                    {currentFrame.flagged ? 'Unflag' : 'Flag'}
+                    {currentConcept.flagged ? 'Unflag' : 'Flag'}
                   </button>
                   <button
                     onClick={handleVerifiableToggle}
                     className={`px-3 py-1 text-sm font-medium rounded-lg transition-colors ${
-                      currentFrame.verifiable === false 
+                      currentConcept.verifiable === false 
                         ? 'bg-gray-200 text-gray-700 hover:bg-gray-300' 
                         : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                     }`}
                   >
-                    {currentFrame.verifiable === false ? 'Mark Verifiable' : 'Mark Unverifiable'}
+                    {currentConcept.verifiable === false ? 'Mark Verifiable' : 'Mark Unverifiable'}
                   </button>
                   <button
-                    onClick={() => frameGraphRef.current?.openReparentModal()}
-                    disabled={frameGraphRef.current?.isParentRelationLocked()}
-                    title={frameGraphRef.current?.isParentRelationLocked() ? 'Parent relation is locked' : undefined}
+                    onClick={() => conceptGraphRef.current?.openReparentModal()}
+                    disabled={conceptGraphRef.current?.isParentRelationLocked()}
+                    title={conceptGraphRef.current?.isParentRelationLocked() ? 'Parent relation is locked' : undefined}
                     className="px-3 py-1 text-sm font-medium bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Reparent Frame
+                    Reparent Concept
                   </button>
                 </div>
               </div>
@@ -383,19 +379,19 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
               {/* Graph Content */}
               <div className="flex-1 overflow-hidden relative">
                 <div className="h-full">
-                  <FrameGraph 
-                    ref={frameGraphRef}
-                    currentFrame={currentFrame}
-                    onFrameClick={handleFrameClick}
+                  <ConceptGraph 
+                    ref={conceptGraphRef}
+                    currentConcept={currentConcept}
+                    onConceptClick={handleConceptClick}
                     onEditClick={() => setIsEditOverlayOpen(true)}
                     onVisualizeRecipeGraph={(rg) => setRecipeGraphForVisualize(rg)}
                     onReparentComplete={() => {
-                      if (currentFrame?.id) {
-                        lastLoadedFrameRef.current = null;
-                        loadFrame(currentFrame.id, true);
+                      if (currentConcept?.id) {
+                        lastLoadedConceptRef.current = null;
+                        loadConcept(currentConcept.id, true);
                       }
                     }}
-                    pendingRelationChanges={(currentFrame as any)?.pendingRelationChanges}
+                    pendingRelationChanges={(currentConcept as any)?.pendingRelationChanges}
                   />
                 </div>
               </div>
@@ -403,14 +399,14 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
           ) : (
             <div className="h-full flex items-center justify-center bg-white rounded-xl">
               {isLoading ? (
-                <LoadingSpinner size="page" label="Loading frame..." className="py-12" />
+                <LoadingSpinner size="page" label="Loading concept..." className="py-12" />
               ) : error ? (
                 <div className="text-center text-red-500">
                   <p className="text-lg font-medium">Error</p>
                   <p className="text-sm">{error}</p>
                 </div>
               ) : (
-              <FrameRootNodesView onNodeClick={handleFrameClick} />
+              <ConceptRootNodesView onNodeClick={handleConceptClick} />
               )}
             </div>
           )}
@@ -419,23 +415,23 @@ export default function FrameExplorer({ initialFrameId }: FrameExplorerProps) {
         {/* Edit Overlay */}
         {isEditOverlayOpen && (
           <EditOverlay
-            node={frameForEdit}
-            nodeId={currentFrame?.id || ""}
-            mode="frames"
+            node={conceptForEdit}
+            nodeId={currentConcept?.id || ""}
+            mode="concepts"
             isOpen={isEditOverlayOpen}
             onClose={() => {
               setIsEditOverlayOpen(false);
-              setFrameForEdit(null);
+              setConceptForEdit(null);
             }}
             onUpdate={handleUpdate}
           />
         )}
 
         {/* Recipe Graph Visualization Overlay */}
-        {recipeGraphForVisualize && currentFrame && (
+        {recipeGraphForVisualize && currentConcept && (
           <RecipeGraphOverlay
             recipeGraph={recipeGraphForVisualize}
-            frameLabel={currentFrame.label}
+            frameLabel={currentConcept.label}
             onClose={() => setRecipeGraphForVisualize(null)}
           />
         )}

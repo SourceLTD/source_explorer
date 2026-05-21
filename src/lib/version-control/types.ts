@@ -16,10 +16,10 @@ export type EntityType =
   | 'lexical_unit'           // Unified type
   | 'frame'
   | 'frame_role'
-  | 'frame_sense'            // Intermediate sense entity between LUs and frames
+  | 'frame_sense'            // Intermediate sense entity between LUs and concepts
   | 'recipe'
   | 'frame_relation'
-  | 'frame_role_mapping';    // Inheritance role mapping (Phase 2 cascading remediations)
+  | 'frame_role_mapping';    // Inheritance property mapping (Phase 2 cascading remediations)
 
 export type ChangeOperation = 'create' | 'update' | 'delete' | 'merge';
 
@@ -314,12 +314,12 @@ export interface UnreadChangesetInfo {
  */
 export const ENTITY_TYPE_TO_TABLE: Record<EntityType, string> = {
   lexical_unit: 'lexical_units',
-  frame: 'frames',
-  frame_role: 'frame_roles',
-  frame_sense: 'frame_senses',
+  frame: 'concepts',
+  frame_role: 'properties',
+  frame_sense: 'senses',
   recipe: 'recipes',
-  frame_relation: 'frame_relations',
-  frame_role_mapping: 'frame_role_mappings',
+  frame_relation: 'concept_relations',
+  frame_role_mapping: 'property_mappings',
 };
 
 /**
@@ -327,12 +327,12 @@ export const ENTITY_TYPE_TO_TABLE: Record<EntityType, string> = {
  */
 export const TABLE_TO_ENTITY_TYPE: Record<string, EntityType> = {
   lexical_units: 'lexical_unit',
-  frames: 'frame',
-  frame_roles: 'frame_role',
-  frame_senses: 'frame_sense',
+  concepts: 'frame',
+  properties: 'frame_role',
+  senses: 'frame_sense',
   recipes: 'recipe',
-  frame_relations: 'frame_relation',
-  frame_role_mappings: 'frame_role_mapping',
+  concept_relations: 'frame_relation',
+  property_mappings: 'frame_role_mapping',
 };
 
 /**

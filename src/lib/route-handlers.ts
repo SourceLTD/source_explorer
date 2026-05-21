@@ -46,7 +46,7 @@ function parsePaginationParams(searchParams: URLSearchParams): {
   if (sortBy === 'src_id') {
     sortBy = 'legacy_id';
   }
-  if (sortBy === 'frame' || sortBy === 'frame_id') {
+  if (sortBy === 'concept' || sortBy === 'concept_id') {
     // Sorting by frame is no longer a top-level concept on lexical_units; fall back to id order.
     sortBy = 'id';
   }
@@ -87,7 +87,7 @@ function parsePaginationParams(searchParams: URLSearchParams): {
       // Basic filters
       pos: searchParams.get('pos') || undefined,
       lexfile: searchParams.get('lexfile') || undefined,
-      frame_id: searchParams.get('frame_id') || undefined,
+      concept_id: searchParams.get('concept_id') || undefined,
       
       // Advanced filters
       gloss: searchParams.get('gloss') || undefined,
@@ -103,7 +103,7 @@ function parsePaginationParams(searchParams: URLSearchParams): {
       isMwe: searchParams.get('isMwe') === 'true' ? true : searchParams.get('isMwe') === 'false' ? false : undefined,
       flagged: searchParams.get('flagged') === 'true' ? true : searchParams.get('flagged') === 'false' ? false : undefined,
       verifiable: searchParams.get('verifiable') === 'true' ? true : searchParams.get('verifiable') === 'false' ? false : undefined,
-      excludeNullFrame: searchParams.get('excludeNullFrame') === 'true',
+      excludeNullConcept: searchParams.get('excludeNullConcept') === 'true',
       
       // Pending state filters
       pendingCreate: searchParams.get('pendingCreate') === 'true' ? true : undefined,
@@ -208,8 +208,8 @@ export async function handleGetById(
  * Get allowed fields for each entity type
  */
 function getAllowedFieldsForType(lexicalType: LexicalType | 'lexical_units'): string[] {
-  // NB: `frame_id` is intentionally absent — frames now live behind frame_senses.
-  // Use `/api/frame-senses` + `/api/lexical-units/[id]/senses` to change a unit's frame.
+  // NB: `concept_id` is intentionally absent — frames now live behind senses.
+  // Use `/api/senses` + `/api/lexical-units/[id]/senses` to change a unit's frame.
   const commonFields = ['id', 'gloss', 'lemmas', 'src_lemmas', 'examples', 'lexfile', 'flagged', 'flaggedReason'];
   
   return [...commonFields, 'vendler_class', 'countable', 'proper', 'collective', 'concrete', 'predicate', 'isMwe', 'gradable', 'predicative', 'attributive', 'subjective', 'relational', 'isSatellite'];

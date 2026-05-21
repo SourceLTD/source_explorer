@@ -5,7 +5,7 @@ import React from 'react';
 export interface PlanContextPanelProps {
   /**
    * Content for the "before" column. Pass a single block or a list
-   * of `FrameInfoCard`s. Wrap multiple items in your own
+   * of `ConceptInfoCard`s. Wrap multiple items in your own
    * flex/grid — the panel only adds outer chrome.
    */
   beforeContent: React.ReactNode;
@@ -27,7 +27,7 @@ export interface PlanContextPanelProps {
  * diagram, which only makes sense for hierarchy moves.
  *
  * Each column accepts arbitrary children so callers can stack
- * `FrameInfoCard`s, lists of edges, or a single hero card. The
+ * `ConceptInfoCard`s, lists of edges, or a single hero card. The
  * panel deliberately has no warning/footnote slot; cascading-effect
  * copy (the old "Heads up" notes) was removed because reviewers
  * found it noisy and the Before/After diff already communicates the

@@ -1,7 +1,7 @@
 import type { SerializedJob } from '@/lib/llm/types';
 import type { DataTableMode } from '../DataTable/types';
 
-export type ScopeMode = 'selection' | 'manual' | 'frames' | 'all' | 'filters';
+export type ScopeMode = 'selection' | 'manual' | 'concepts' | 'all' | 'filters';
 
 export interface AIJobsOverlayProps {
   isOpen: boolean;

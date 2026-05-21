@@ -3,7 +3,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { Modal } from '@/components/ui';
 import LoadingSpinner from '@/components/LoadingSpinner';
-import { TableLexicalUnit, Frame } from '@/lib/types';
+import { TableLexicalUnit, Concept } from '@/lib/types';
 import { api } from '@/lib/api-client';
 import { showGlobalAlert } from '@/lib/alerts';
 import type { SerializedJob } from '@/lib/llm/types';
@@ -15,21 +15,21 @@ import { createClient } from '@/utils/supabase/client';
 interface AIAgentQuickEditModalProps {
   isOpen: boolean;
   onClose: () => void;
-  entry: TableLexicalUnit | Frame;
+  entry: TableLexicalUnit | Concept;
   mode: DataTableMode;
   onJobSubmitted?: (jobId: string) => void;
 }
 
 // Helper to get editable fields by entity type
-function getEditableFields(entry: TableLexicalUnit | Frame, mode: DataTableMode): string[] {
+function getEditableFields(entry: TableLexicalUnit | Concept, mode: DataTableMode): string[] {
   const excludeKeys = new Set(['id', 'pos', 'flagged', 'flagged_reason']);
   const toTargetFields = (variables: Array<{ key: string; category?: string }>) =>
     variables
       .filter(v => v.category === 'basic' && !excludeKeys.has(v.key))
       .map(v => v.key);
 
-  if (mode === 'frames') {
-    return toTargetFields(getVariablesForEntityType('frames'));
+  if (mode === 'concepts') {
+    return toTargetFields(getVariablesForEntityType('concepts'));
   }
 
   const pos = (entry as TableLexicalUnit).pos as 'verb' | 'noun' | 'adjective' | 'adverb' | 'lexical_units';
@@ -37,8 +37,8 @@ function getEditableFields(entry: TableLexicalUnit | Frame, mode: DataTableMode)
 }
 
 // Helper to get entry identifier for display
-function getEntryDisplayId(entry: TableLexicalUnit | Frame, mode: DataTableMode): string {
-  if (mode === 'frames' && 'label' in entry) {
+function getEntryDisplayId(entry: TableLexicalUnit | Concept, mode: DataTableMode): string {
+  if (mode === 'concepts' && 'label' in entry) {
     return entry.label;
   }
   return entry.id;
@@ -107,7 +107,7 @@ export function AIAgentQuickEditModal({
       // Simple system prompt for quick edits - just do what the user asks
       const quickEditSystemPrompt = `You are editing a lexical database unit. Follow the user's instructions exactly. Only make the changes they request - do not add extra improvements or modifications beyond what was asked. Be concise and precise.`;
 
-      const isFrameMode = mode === 'frames';
+      const isConceptMode = mode === 'concepts';
 
       // Map mode/entry to targetType (must match how the backend resolves scopes)
       const rawPos = (entry as TableLexicalUnit).pos;
@@ -116,7 +116,7 @@ export function AIAgentQuickEditModal({
           ? rawPos
           : 'lexical_units';
 
-      const targetType: JobTargetType = isFrameMode ? 'frames' : lexicalPos;
+      const targetType: JobTargetType = isConceptMode ? 'concepts' : lexicalPos;
 
       // Create job with single item scope
       const jobPayload = {

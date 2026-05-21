@@ -3,13 +3,13 @@
  */
 
 import {
-  FRAME_SUBTYPES,
-  FRAME_TYPES,
+  CONCEPT_SUBTYPES,
+  CONCEPT_ARCHETYPES,
   HEALTH_CHECK_ENTITY_TYPES,
   HEALTH_CHECK_RUN_STATUSES,
   HEALTH_REMEDIATION_STRATEGIES,
-  type FrameSubtype,
-  type FrameType,
+  type ConceptSubtype,
+  type ConceptArchetype,
   type HealthCheckEntityType,
   type HealthCheckRunStatus,
   type HealthRemediationStrategy,
@@ -76,30 +76,30 @@ export function sanitizeTargetTypes(value: unknown): HealthCheckEntityType[] {
   return out;
 }
 
-export function isFrameType(value: unknown): value is FrameType {
+export function isConceptArchetype(value: unknown): value is ConceptArchetype {
   return typeof value === 'string'
-    && (FRAME_TYPES as readonly string[]).includes(value);
+    && (CONCEPT_ARCHETYPES as readonly string[]).includes(value);
 }
 
-export function isFrameSubtype(value: unknown): value is FrameSubtype {
+export function isConceptSubtype(value: unknown): value is ConceptSubtype {
   return typeof value === 'string'
-    && (FRAME_SUBTYPES as readonly string[]).includes(value);
+    && (CONCEPT_SUBTYPES as readonly string[]).includes(value);
 }
 
 /**
- * Validate and de-duplicate a list of `frame_type_enum` values. Throws
+ * Validate and de-duplicate a list of `concept_archetype_enum` values. Throws
  * when an unknown value is encountered so the caller can surface a 400.
  */
-export function sanitizeFrameTypeList(value: unknown): FrameType[] {
+export function sanitizeConceptArchetypeList(value: unknown): ConceptArchetype[] {
   if (!Array.isArray(value)) return [];
-  const out: FrameType[] = [];
-  const seen = new Set<FrameType>();
+  const out: ConceptArchetype[] = [];
+  const seen = new Set<ConceptArchetype>();
   for (const item of value) {
     if (typeof item !== 'string') continue;
     const trimmed = item.trim();
     if (!trimmed) continue;
-    if (!isFrameType(trimmed)) {
-      throw new Error(`Unsupported frame_type: ${trimmed}`);
+    if (!isConceptArchetype(trimmed)) {
+      throw new Error(`Unsupported archetype: ${trimmed}`);
     }
     if (seen.has(trimmed)) continue;
     seen.add(trimmed);
@@ -109,19 +109,19 @@ export function sanitizeFrameTypeList(value: unknown): FrameType[] {
 }
 
 /**
- * Validate and de-duplicate a list of `frame_subtype_enum` values. Throws
+ * Validate and de-duplicate a list of `concept_subtype_enum` values. Throws
  * when an unknown value is encountered so the caller can surface a 400.
  */
-export function sanitizeFrameSubtypeList(value: unknown): FrameSubtype[] {
+export function sanitizeConceptSubtypeList(value: unknown): ConceptSubtype[] {
   if (!Array.isArray(value)) return [];
-  const out: FrameSubtype[] = [];
-  const seen = new Set<FrameSubtype>();
+  const out: ConceptSubtype[] = [];
+  const seen = new Set<ConceptSubtype>();
   for (const item of value) {
     if (typeof item !== 'string') continue;
     const trimmed = item.trim();
     if (!trimmed) continue;
-    if (!isFrameSubtype(trimmed)) {
-      throw new Error(`Unsupported frame_subtype: ${trimmed}`);
+    if (!isConceptSubtype(trimmed)) {
+      throw new Error(`Unsupported concept_subtype: ${trimmed}`);
     }
     if (seen.has(trimmed)) continue;
     seen.add(trimmed);

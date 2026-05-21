@@ -67,7 +67,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'lexical_units'
   const addRoleGroup = (..._args: any[]) => {}; // Inline editing disabled
   const availableRoles: any[] = []; // Inline editing disabled
   const toggleRoleInGroup = (..._args: any[]) => {}; // Inline editing disabled
-  const sortRolesByPrecedence = (..._args: any[]): Array<{ id: string; [key: string]: any }> => []; // Inline editing disabled
+  const sortPropertiesByPrecedence = (..._args: any[]): Array<{ id: string; [key: string]: any }> => []; // Inline editing disabled
   
   // Track last loaded entry to prevent duplicate calls
   const lastLoadedEntryRef = useRef<string | null>(null);
@@ -295,10 +295,10 @@ export default function WordNetExplorer({ initialEntryId, mode = 'lexical_units'
             </button>
             <div className="flex items-center gap-1 ml-2">
               <button
-                onClick={() => router.push('/graph/frames?view=graph')}
+                onClick={() => router.push('/graph/concepts?view=graph')}
                 className="px-4 py-2 text-base font-medium transition-colors relative cursor-pointer text-gray-600 hover:text-gray-900 hover:bg-gray-50"
               >
-                Frames
+                Concepts
               </button>
             </div>
           </div>
@@ -674,7 +674,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'lexical_units'
               </div>
 
               {/* Roles */}
-              {((currentNode.roles && currentNode.roles.length > 0) || editingField === 'roles') && (
+              {((currentNode.properties && currentNode.properties.length > 0) || editingField === 'roles') && (
                 <div>
                   <h3 className="text-sm font-medium text-gray-700 mb-2">Roles</h3>
                   {editingField === 'roles' ? (
@@ -867,18 +867,18 @@ export default function WordNetExplorer({ initialEntryId, mode = 'lexical_units'
                       onDoubleClick={() => startEditing('roles')}
                       title="Double-click to edit"
                     >
-                      {currentNode.roles && currentNode.roles.length > 0 ? (
+                      {currentNode.properties && currentNode.properties.length > 0 ? (
                         <div className="space-y-2">
                           {(() => {
                             // Create a map of role IDs to check which roles are in groups
                             const rolesInGroups = new Set<string>();
-                            const roleGroups = currentNode.role_groups || [];
-                            roleGroups.forEach(group => {
-                              group.role_ids.forEach(roleId => rolesInGroups.add(roleId));
+                            const roleGroups = currentNode.property_groups || [];
+                            roleGroups.forEach((group: { role_ids: string[]; description?: string | null }) => {
+                              group.role_ids.forEach((roleId: string) => rolesInGroups.add(roleId));
                             });
                             
                             // Separate roles that are not in groups
-                            const sortedRoles = sortRolesByPrecedence(currentNode.roles);
+                            const sortedRoles = sortPropertiesByPrecedence(currentNode.properties);
                             const ungroupedRoles = sortedRoles.filter(role => !rolesInGroups.has(role.id));
                             
                             return (
@@ -899,8 +899,8 @@ export default function WordNetExplorer({ initialEntryId, mode = 'lexical_units'
                                 ))}
                                 
                                 {/* Render role groups with OR indicators */}
-                                {roleGroups.map((group, groupIdx) => {
-                                  const groupRoles = currentNode.roles!.filter(role => group.role_ids.includes(role.id));
+                                {roleGroups.map((group: { role_ids: string[]; description?: string | null }, groupIdx: number) => {
+                                  const groupRoles = currentNode.properties!.filter((role: { id: string }) => group.role_ids.includes(role.id));
                                   if (groupRoles.length === 0) return null;
                                   
                                   return (
@@ -909,7 +909,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'lexical_units'
                                       className="border border-black rounded px-3 py-2 bg-gray-50"
                                       title={group.description || 'OR group: one of these roles is required'}
                                     >
-                                      {groupRoles.map((role, roleIdx) => (
+                                      {groupRoles.map((role: { id: string; main?: boolean | null; label?: string | null; description?: string | null }, roleIdx: number) => (
                                         <React.Fragment key={`group-${groupIdx}-role-${roleIdx}`}>
                                           {roleIdx > 0 && (
                                             <span className="mx-2 text-sm font-bold text-gray-700">OR</span>

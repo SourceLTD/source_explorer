@@ -8,7 +8,7 @@
  * The whole plan executes inside a single `prisma.$transaction`. If any
  * child changeset fails (validation error, version conflict, FK
  * violation, etc.), the transaction rolls back and NO partial state is
- * left behind on `frames`, `frame_relations`, `frame_senses`, etc. The
+ * left behind on `frames`, `frame_relations`, `senses`, etc. The
  * `change_plans` row is then updated OUTSIDE the rolled-back tx with a
  * `conflict_report` JSON column so the UI can render the failure
  * without a follow-up round trip.

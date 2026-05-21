@@ -14,13 +14,13 @@ import {
   isIssuePriority,
   normalizeCode,
   sanitizeExamples,
-  sanitizeFrameSubtypeList,
-  sanitizeFrameTypeList,
+  sanitizeConceptSubtypeList,
+  sanitizeConceptArchetypeList,
   sanitizeNullableString,
 } from '@/lib/health-checks/validation';
 import type {
-  FrameSubtype,
-  FrameType,
+  ConceptSubtype,
+  ConceptArchetype,
   HealthDiagnosisCode,
   HealthDiagnosisCodeGroup,
 } from '@/lib/health-checks/types';
@@ -58,8 +58,8 @@ function serialize(c: {
   severity: 'low' | 'medium' | 'high' | 'critical';
   category: string | null;
   enabled: boolean;
-  applies_to_frame_types: FrameType[];
-  applies_to_frame_subtypes: FrameSubtype[];
+  applies_to_archetypes: ConceptArchetype[];
+  applies_to_subtypes: ConceptSubtype[];
   match_null_subtype: boolean;
   remediation_strategy: string | null;
   remediation_notes: string | null;
@@ -78,8 +78,8 @@ function serialize(c: {
     severity: c.severity,
     category: c.category,
     enabled: c.enabled,
-    applies_to_frame_types: c.applies_to_frame_types ?? [],
-    applies_to_frame_subtypes: c.applies_to_frame_subtypes ?? [],
+    applies_to_archetypes: c.applies_to_archetypes ?? [],
+    applies_to_subtypes: c.applies_to_subtypes ?? [],
     match_null_subtype: c.match_null_subtype ?? false,
     remediation_strategy: isHealthRemediationStrategy(c.remediation_strategy)
       ? c.remediation_strategy
@@ -160,22 +160,22 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     if ('enabled' in body) {
       updates.enabled = Boolean(body.enabled);
     }
-    if ('applies_to_frame_types' in body) {
+    if ('applies_to_archetypes' in body) {
       try {
-        updates.applies_to_frame_types = sanitizeFrameTypeList(body.applies_to_frame_types);
+        updates.applies_to_archetypes = sanitizeConceptArchetypeList(body.applies_to_archetypes);
       } catch (err) {
         return NextResponse.json(
-          { error: err instanceof Error ? err.message : 'Invalid applies_to_frame_types' },
+          { error: err instanceof Error ? err.message : 'Invalid applies_to_archetypes' },
           { status: 400 },
         );
       }
     }
-    if ('applies_to_frame_subtypes' in body) {
+    if ('applies_to_subtypes' in body) {
       try {
-        updates.applies_to_frame_subtypes = sanitizeFrameSubtypeList(body.applies_to_frame_subtypes);
+        updates.applies_to_subtypes = sanitizeConceptSubtypeList(body.applies_to_subtypes);
       } catch (err) {
         return NextResponse.json(
-          { error: err instanceof Error ? err.message : 'Invalid applies_to_frame_subtypes' },
+          { error: err instanceof Error ? err.message : 'Invalid applies_to_subtypes' },
           { status: 400 },
         );
       }

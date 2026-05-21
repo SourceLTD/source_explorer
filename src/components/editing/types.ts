@@ -1,4 +1,4 @@
-export type Mode = 'lexical_units' | 'frames' | 'verbs' | 'nouns' | 'adjectives' | 'adverbs';
+export type Mode = 'lexical_units' | 'concepts' | 'verbs' | 'nouns' | 'adjectives' | 'adverbs';
 
 export type EditableField =
   | 'code'
@@ -8,15 +8,15 @@ export type EditableField =
   | 'examples'
   | 'lexfile'
   | 'vendler_class'
-  | 'frame'
+  | 'concept'
   | 'label'
   | 'definition'
   | 'short_definition'
   | 'subtype'
-  | 'frame_roles'
+  | 'properties'
   | 'parent_of';
 
-export interface EditableFrameRole {
+export interface EditableConceptProperty {
   id: string;
   clientId: string;
   label: string;
@@ -25,6 +25,9 @@ export interface EditableFrameRole {
   main: boolean;
   examples: string[];
 }
+
+/** @deprecated Use EditableConceptProperty instead */
+export type EditableFrameRole = EditableConceptProperty;
 
 export interface FieldEditorProps {
   onSave: () => void;
@@ -45,13 +48,16 @@ export interface OverlaySectionsState {
   basicInfo: boolean;
   lexicalProperties: boolean;
   relations: boolean;
-  frameProperties: boolean;
-  frameRoles: boolean;
-  frameRelations: boolean;
+  conceptProperties: boolean;
+  properties: boolean;
+  conceptRelations: boolean;
 }
 
-export interface FrameOption {
+export interface ConceptOption {
   id: string;
   label: string;
   code?: string | null;
 }
+
+/** @deprecated Use ConceptOption instead */
+export type FrameOption = ConceptOption;

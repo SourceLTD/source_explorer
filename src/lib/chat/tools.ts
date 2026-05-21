@@ -70,16 +70,16 @@ const searchFramesParams = z.object({
   query: z.string().describe('Natural language search text'),
   limit: z.number().int().min(1).max(50).default(20).describe('Max results to return'),
   similarity_threshold: z.number().min(0).max(1).default(0.3).describe('Minimum similarity score (0-1)'),
-  include_roles: z.boolean().default(false).describe('Whether to include frame roles in the response'),
+  include_roles: z.boolean().default(false).describe('Whether to include concept properties in the response'),
 });
 
 const selectFramesParams = z.object({
-  ids: z.array(z.number().int()).optional().describe('Filter by specific frame IDs'),
-  label: z.string().optional().describe('Substring match on frame label (case-insensitive)'),
+  ids: z.array(z.number().int()).optional().describe('Filter by specific concept IDs'),
+  label: z.string().optional().describe('Substring match on concept label (case-insensitive)'),
   definition: z.string().optional().describe('Substring match on definition (case-insensitive)'),
   flagged: z.boolean().optional().describe('Filter by flagged status'),
   verifiable: z.boolean().optional().describe('Filter by verifiable status'),
-  include_roles: z.boolean().default(false).describe('Include frame roles in the response'),
+  include_roles: z.boolean().default(false).describe('Include concept properties in the response'),
   limit: z.number().int().min(1).max(100).default(100).describe('Max results'),
 });
 
@@ -89,15 +89,15 @@ const selectLexicalUnitsParams = z.object({
   pos: z.array(z.enum(['verb', 'noun', 'adjective', 'adverb'])).optional().describe('Filter by part of speech'),
   lemma: z.string().optional().describe('Substring match in lemmas array (case-insensitive)'),
   gloss: z.string().optional().describe('Substring match on gloss (case-insensitive)'),
-  frame_id: z.number().int().optional().describe('Filter by assigned frame ID'),
+  concept_id: z.number().int().optional().describe('Filter by assigned concept ID'),
   flagged: z.boolean().optional().describe('Filter by flagged status'),
-  include_frame: z.boolean().default(false).describe('Include frame info in the response'),
+  include_frame: z.boolean().default(false).describe('Include concept info in the response'),
   limit: z.number().int().min(1).max(100).default(100).describe('Max results'),
 });
 
 const reparentFrameParams = z.object({
-  frame_id: z.number().int().describe('ID of the frame to reparent'),
-  new_parent_frame_id: z.number().int().describe('ID of the new parent frame in the parent_of hierarchy'),
+  concept_id: z.number().int().describe('ID of the concept to reparent'),
+  new_parent_frame_id: z.number().int().describe('ID of the new parent concept in the parent_of hierarchy'),
   author: z.string().default('chat').describe('Author of the change'),
 });
 
@@ -124,28 +124,28 @@ type ReparentFrameInput = z.infer<typeof reparentFrameParams>;
 export const chatTools = {
   search_frames: tool<SearchFramesInput, any>({
     description:
-      'Search for semantic frames using natural language. Uses vector embeddings to find frames semantically similar to the query.',
+      'Search for semantic concepts using natural language. Uses vector embeddings to find concepts semantically similar to the query.',
     inputSchema: searchFramesParams,
     execute: async (params) => callMcpTool('search_frames', params),
   }),
 
   select_frames: tool<SelectFramesInput, any>({
     description:
-      'Look up frames by specific criteria: IDs, label substring, definition substring, or flag states. Use this when you know the exact frame you want or need to filter by properties.',
+      'Look up concepts by specific criteria: IDs, label substring, definition substring, or flag states. Use this when you know the exact concept you want or need to filter by properties.',
     inputSchema: selectFramesParams,
     execute: async (params) => callMcpTool('select_frames', params),
   }),
 
   select_lexical_units: tool<SelectLexicalUnitsInput, any>({
     description:
-      'Look up lexical units (word senses) by specific criteria: IDs, codes (e.g. "run.v.01"), part of speech, lemma, gloss, frame assignment, or flags. Returns detailed linguistic properties.',
+      'Look up lexical units (word senses) by specific criteria: IDs, codes (e.g. "run.v.01"), part of speech, lemma, gloss, concept assignment, or flags. Returns detailed linguistic properties.',
     inputSchema: selectLexicalUnitsParams,
     execute: async (params) => callMcpTool('select_lexical_units', params),
   }),
 
   reparent_frame: tool<ReparentFrameInput, any>({
     description:
-      'Move a frame to a new parent in the parent_of DAG hierarchy. Stages a pending changeset that removes the old parent_of relation and creates a new one. Validates that both frames exist and that the reparent does not create a cycle. The change requires human approval before taking effect.',
+      'Move a concept to a new parent in the parent_of DAG hierarchy. Stages a pending changeset that removes the old parent_of relation and creates a new one. Validates that both concepts exist and that the reparent does not create a cycle. The change requires human approval before taking effect.',
     inputSchema: reparentFrameParams,
     execute: async (params) => callMcpTool('reparent_frame', params),
   }),

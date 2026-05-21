@@ -15,8 +15,8 @@ function PendingChangesContent() {
   const router = useRouter();
 
   const handleSearchResult = (result: SearchResult) => {
-    // Navigate to the graph mode with this frame
-    router.push(`/graph/frames?entry=${result.id}`);
+    // Navigate to the graph mode with this concept
+    router.push(`/graph/concepts?entry=${result.id}`);
   };
 
   return (
@@ -38,18 +38,18 @@ function PendingChangesContent() {
               <SearchBox 
                 onSelectResult={handleSearchResult}
                 onSearchChange={() => {}}
-                placeholder="Search frames..."
-                mode="frames"
+                placeholder="Search concepts..."
+                mode="concepts"
               />
             </div>
             <ViewToggle 
-              currentView="table" // Keep it as table or something neutral
+              currentView="table"
               grayscale={true}
               onViewChange={(view: ViewMode) => {
                 if (view === 'graph') {
-                  router.push('/graph/frames?view=graph');
+                  router.push('/graph/concepts?view=graph');
                 } else if (view === 'table') {
-                  router.push('/table/frames');
+                  router.push('/table/concepts');
                 }
               }}
             />

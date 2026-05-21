@@ -4,15 +4,15 @@ import React, { useEffect, useRef, useState } from 'react';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import { posShortLabel } from '@/lib/types';
 import {
-  fetchFrameSummary,
-  getCachedFrameSummary,
-  type FrameSummary,
-} from './frameSummaryCache';
+  fetchConceptSummary,
+  getCachedConceptSummary,
+  type ConceptSummary,
+} from './conceptSummaryCache';
 
-// Re-export so existing imports of `FrameSummary` from this module keep
-// working. The cache + fetcher live in `frameSummaryCache.ts` so the
-// new always-visible `FrameInfoCard` can share state with this popover.
-export type { FrameSummary };
+// Re-export so existing imports of `ConceptSummary` from this module keep
+// working. The cache + fetcher live in `conceptSummaryCache.ts` so the
+// new always-visible `ConceptInfoCard` can share state with this popover.
+export type { ConceptSummary };
 
 const OPEN_DELAY_MS = 220;
 const CLOSE_DELAY_MS = 160;
@@ -24,8 +24,8 @@ const TRIGGER_GAP = 6;
 // comfortably on either side via `maxHeight` + internal scroll.
 const MIN_COMFORTABLE_HEIGHT = 200;
 
-interface FrameRefPopoverProps {
-  frameId: string | null | undefined;
+interface ConceptRefPopoverProps {
+  conceptId: string | null | undefined;
   /** Shown briefly on first hover before the summary lands. */
   fallbackLabel?: string;
   /**
@@ -41,7 +41,7 @@ interface FrameRefPopoverProps {
 }
 
 /**
- * Wraps any UI that mentions a frame and reveals a small identity
+ * Wraps any UI that mentions a concept and reveals a small identity
  * card on hover/focus. Pure presentation: callers don't need to
  * know about the summary endpoint or its caching.
  *
@@ -53,14 +53,14 @@ interface FrameRefPopoverProps {
  *  - Closes on Escape and on outside scroll/resize to avoid
  *    floating off the trigger.
  */
-export default function FrameRefPopover({
-  frameId,
+export default function ConceptRefPopover({
+  conceptId,
   fallbackLabel,
   as = 'span',
   className,
   disabled,
   children,
-}: FrameRefPopoverProps) {
+}: ConceptRefPopoverProps) {
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState<{
     /**
@@ -74,8 +74,8 @@ export default function FrameRefPopover({
     placement: 'below' | 'above';
     maxHeight: number;
   } | null>(null);
-  const [summary, setSummary] = useState<FrameSummary | null>(() =>
-    frameId ? getCachedFrameSummary(frameId) : null,
+  const [summary, setSummary] = useState<ConceptSummary | null>(() =>
+    conceptId ? getCachedConceptSummary(conceptId) : null,
   );
   const [loading, setLoading] = useState(false);
 
@@ -84,7 +84,7 @@ export default function FrameRefPopover({
   const closeTimerRef = useRef<NodeJS.Timeout | null>(null);
   const acRef = useRef<AbortController | null>(null);
 
-  const isVirtualId = !frameId || !/^\d+$/.test(frameId);
+  const isVirtualId = !conceptId || !/^\d+$/.test(conceptId);
   const inactive = Boolean(disabled || isVirtualId);
 
   useEffect(() => {
@@ -97,10 +97,10 @@ export default function FrameRefPopover({
 
   // Cache might warm up while we're mounted — surface it.
   useEffect(() => {
-    if (!frameId) return;
-    const cached = getCachedFrameSummary(frameId);
+    if (!conceptId) return;
+    const cached = getCachedConceptSummary(conceptId);
     if (cached) setSummary(cached);
-  }, [frameId]);
+  }, [conceptId]);
 
   // Keep the popover anchored on scroll/resize by closing it; the
   // user can re-trigger by hovering. Cheaper than recomputing.
@@ -159,8 +159,8 @@ export default function FrameRefPopover({
   };
 
   const load = async () => {
-    if (!frameId) return;
-    const cached = getCachedFrameSummary(frameId);
+    if (!conceptId) return;
+    const cached = getCachedConceptSummary(conceptId);
     if (cached) {
       setSummary(cached);
       return;
@@ -168,7 +168,7 @@ export default function FrameRefPopover({
     setLoading(true);
     if (acRef.current) acRef.current.abort();
     acRef.current = new AbortController();
-    const data = await fetchFrameSummary(frameId, acRef.current.signal);
+    const data = await fetchConceptSummary(conceptId, acRef.current.signal);
     if (data) setSummary(data);
     setLoading(false);
   };
@@ -253,14 +253,14 @@ export default function FrameRefPopover({
           {loading && !summary ? (
             <div className="flex items-center gap-2 text-xs text-gray-500">
               <LoadingSpinner size="sm" noPadding />
-              Loading {fallbackLabel ?? 'frame'}…
-            </div>
-          ) : summary ? (
-            <FrameSummaryBody summary={summary} />
-          ) : (
-            <div className="text-xs text-gray-500">
-              {fallbackLabel ?? 'Frame'}{' '}
-              <span className="font-mono">#{frameId}</span> — could not load.
+            Loading {fallbackLabel ?? 'concept'}…
+          </div>
+        ) : summary ? (
+          <ConceptSummaryBody summary={summary} />
+        ) : (
+          <div className="text-xs text-gray-500">
+            {fallbackLabel ?? 'Concept'}{' '}
+            <span className="font-mono">#{conceptId}</span> — could not load.
             </div>
           )}
         </div>
@@ -269,7 +269,7 @@ export default function FrameRefPopover({
   );
 }
 
-const FRAME_TYPE_BADGE: Record<string, string> = {
+const CONCEPT_TYPE_BADGE: Record<string, string> = {
   event: 'bg-blue-50 text-blue-700 border-blue-200',
   state: 'bg-amber-50 text-amber-700 border-amber-200',
   entity: 'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -277,12 +277,12 @@ const FRAME_TYPE_BADGE: Record<string, string> = {
   relation: 'bg-pink-50 text-pink-700 border-pink-200',
 };
 
-function frameTypeBadgeClass(t: string | null): string {
+function conceptTypeBadgeClass(t: string | null): string {
   if (!t) return 'bg-gray-100 text-gray-700 border-gray-200';
-  return FRAME_TYPE_BADGE[t] ?? 'bg-gray-100 text-gray-700 border-gray-200';
+  return CONCEPT_TYPE_BADGE[t] ?? 'bg-gray-100 text-gray-700 border-gray-200';
 }
 
-function FrameSummaryBody({ summary }: { summary: FrameSummary }) {
+function ConceptSummaryBody({ summary }: { summary: ConceptSummary }) {
   const def = summary.short_definition ?? summary.definition_excerpt;
   const hiddenSenses = Math.max(summary.senses_total - summary.senses.length, 0);
   return (
@@ -306,16 +306,16 @@ function FrameSummaryBody({ summary }: { summary: FrameSummary }) {
             )}
           </div>
         </div>
-        {summary.frame_type && (
+        {summary.archetype && (
           <span
-            className={`shrink-0 inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-medium uppercase tracking-wide ${frameTypeBadgeClass(summary.frame_type)}`}
+            className={`shrink-0 inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-medium uppercase tracking-wide ${conceptTypeBadgeClass(summary.archetype)}`}
             title={
               summary.subtype
-                ? `${summary.frame_type} · ${summary.subtype}`
-                : summary.frame_type
+                ? `${summary.archetype} · ${summary.subtype}`
+                : summary.archetype
             }
           >
-            {summary.frame_type}
+            {summary.archetype}
             {summary.subtype && (
               <span className="ml-1 opacity-70 normal-case">
                 / {summary.subtype}

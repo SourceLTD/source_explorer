@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
-type FrameCandidate = {
+type ConceptCandidate = {
   id: bigint;
   label: string;
   definition: string | null;
   short_definition: string | null;
-  frame_type: string | null;
+  archetype: string | null;
 };
 
-type ScoredFrame = {
-  frame: FrameCandidate;
+type ScoredConcept = {
+  concept: ConceptCandidate;
   score: number;
   matchPosition: number;
 };
@@ -20,7 +20,7 @@ const SELECT_FIELDS = {
   label: true,
   definition: true,
   short_definition: true,
-  frame_type: true,
+  archetype: true,
 } as const;
 
 /**
@@ -44,7 +44,7 @@ function fuzzyScore(a: string, b: string): number {
 }
 
 /**
- * Score a frame's relevance against the normalized lowercase query tokens.
+ * Score a concept's relevance against the normalized lowercase query tokens.
  *
  * Score tiers (higher = ranked first):
  *   1000 – exact label match
@@ -61,7 +61,7 @@ function fuzzyScore(a: string, b: string): number {
  *
  * Ties broken by matchPosition → label length → alphabetical.
  */
-function scoreFrame(frame: FrameCandidate, q: string, qTokens: string[]): ScoredFrame | null {
+function scoreFrame(frame: ConceptCandidate, q: string, qTokens: string[]): ScoredConcept | null {
   const label = frame.label ?? '';
   const labelLower = label.toLowerCase();
   const definition = (frame.definition ?? '').toLowerCase();
@@ -169,7 +169,7 @@ function scoreFrame(frame: FrameCandidate, q: string, qTokens: string[]): Scored
     }
   }
 
-  return { frame, score, matchPosition };
+  return { concept: frame, score, matchPosition };
 }
 
 export async function GET(request: NextRequest) {
@@ -191,10 +191,10 @@ export async function GET(request: NextRequest) {
     // Run two queries in parallel:
     //   1. A broad pool based on substring/definition matches (may miss exact
     //      label hits if the pool fills up with definition matches first).
-    //   2. A guaranteed exact-label-match query so a frame named exactly what
+    //   2. A guaranteed exact-label-match query so a concept named exactly what
     //      the user typed is always present in the candidate set.
     const [poolFrames, exactFrames] = await Promise.all([
-      prisma.frames.findMany({
+      prisma.concepts.findMany({
         where: {
           deleted: false,
           OR: [
@@ -211,7 +211,7 @@ export async function GET(request: NextRequest) {
         take: candidatePoolSize,
       }),
       // Guaranteed exact-label pin — runs even when the pool is saturated.
-      prisma.frames.findMany({
+      prisma.concepts.findMany({
         where: {
           deleted: false,
           label: { equals: q, mode: 'insensitive' },
@@ -222,7 +222,7 @@ export async function GET(request: NextRequest) {
 
     // Merge, deduplicating by id (exact matches take precedence).
     const seenIds = new Set<bigint>();
-    const merged: FrameCandidate[] = [];
+    const merged: ConceptCandidate[] = [];
     for (const frame of [...exactFrames, ...poolFrames]) {
       if (!seenIds.has(frame.id)) {
         seenIds.add(frame.id);
@@ -232,34 +232,34 @@ export async function GET(request: NextRequest) {
 
     const scored = merged
       .map(frame => scoreFrame(frame, q, qTokens))
-      .filter((item): item is ScoredFrame => item !== null);
+      .filter((item): item is ScoredConcept => item !== null);
 
     scored.sort((a, b) => {
       if (b.score !== a.score) return b.score - a.score;
       if (a.matchPosition !== b.matchPosition) return a.matchPosition - b.matchPosition;
-      if (a.frame.label.length !== b.frame.label.length) {
-        return a.frame.label.length - b.frame.label.length;
+      if (a.concept.label.length !== b.concept.label.length) {
+        return a.concept.label.length - b.concept.label.length;
       }
-      return a.frame.label.localeCompare(b.frame.label);
+      return a.concept.label.localeCompare(b.concept.label);
     });
 
-    const results = scored.slice(0, limit).map(({ frame }) => ({
-      id: frame.id.toString(),
-      label: frame.label,
-      gloss: frame.short_definition || frame.definition || '',
+    const results = scored.slice(0, limit).map(({ concept }) => ({
+      id: concept.id.toString(),
+      label: concept.label,
+      gloss: concept.short_definition || concept.definition || '',
       pos: 'f',
       lemmas: [],
       src_lemmas: [],
       legacy_id: '',
-      frameDefinition: frame.definition || frame.short_definition || '',
-      frameType: frame.frame_type,
+      conceptDefinition: concept.definition || concept.short_definition || '',
+      archetype: concept.archetype,
     }));
 
     return NextResponse.json(results);
   } catch (error) {
-    console.error('[API] Error searching frames:', error);
+    console.error('[API] Error searching concepts:', error);
     return NextResponse.json(
-      { error: 'Failed to search frames' },
+      { error: 'Failed to search concepts' },
       { status: 500 }
     );
   }

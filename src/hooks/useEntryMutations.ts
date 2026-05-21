@@ -1,9 +1,9 @@
 import { useCallback } from 'react';
-import { Mode, EditableFrameRole } from '@/components/editing/types';
+import { Mode, EditableConceptProperty } from '@/components/editing/types';
 import { refreshPendingChangesCount } from './usePendingChangesCount';
 
 function getApiPrefix(mode: Mode): string {
-  if (mode === 'frames') return '/api/frames';
+  if (mode === 'concepts') return '/api/concepts';
   return '/api/lexical-units';
 }
 
@@ -163,34 +163,30 @@ export function useEntryMutations(mode: Mode) {
     refreshPendingChangesCount();
   }, [apiPrefix]);
 
-  const updateFrameRoles = useCallback(async (
-    frameId: string,
-    frameRoles: EditableFrameRole[]
+  const updateProperties = useCallback(async (
+    conceptId: string,
+    properties: EditableConceptProperty[]
   ): Promise<void> => {
-    // Filter out roles without a label and clean up examples array
-    const filteredRoles = frameRoles
+    const filteredProperties = properties
       .filter(role => role.label.trim())
       .map(role => ({
         ...role,
-        // Normalize label (per-frame display name)
         label: role.label?.trim?.() ?? '',
-        // Remove empty/whitespace-only examples when saving
         examples: role.examples.filter(ex => ex.trim())
       }));
 
-    const response = await fetch(`${apiPrefix}/${frameId}/roles`, {
+    const response = await fetch(`${apiPrefix}/${conceptId}/roles`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        roles: filteredRoles
+        roles: filteredProperties
       })
     });
 
     if (!response.ok) {
-      throw new Error('Failed to update frame roles');
+      throw new Error('Failed to update concept properties');
     }
     
-    // Refresh pending changes count since this stages a change
     refreshPendingChangesCount();
   }, [apiPrefix]);
 
@@ -215,7 +211,7 @@ export function useEntryMutations(mode: Mode) {
     updateCode,
     updateHypernym,
     updateField,
-    updateFrameRoles,
+    updateProperties,
     deleteEntry,
     toggleFlag,
     toggleVerifiable,

@@ -1,21 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { stageFrameRolesUpdate } from '@/lib/version-control';
+import { stagePropertiesUpdate } from '@/lib/version-control';
 import { getCurrentUserName } from '@/utils/supabase/server';
 import { sortRolesByPrecedence } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
 /**
- * GET /api/frames/[id]/roles
+ * GET /api/concepts/[id]/roles
  *
- * Lightweight roles list for a frame, designed to back the frame-role
+ * Lightweight properties list for a concept, designed to back the property
  * Before/After panel in the pending-changes inbox. Returns the parent
- * frame's identity (so the panel header can render without a second
+ * concept's identity (so the panel header can render without a second
  * round-trip to `/summary`) and an ordered, precedence-sorted list of
- * the frame's roles with the editable user-facing fields.
+ * the concept's properties with the editable user-facing fields.
  *
- * Intentionally separate from `/api/frames/[id]/route.ts` (which is
+ * Intentionally separate from `/api/concepts/[id]/route.ts` (which is
  * the heavy editor payload that also bakes in pending overlays); this
  * one is a tight read with bounded fan-out and short-lived cache.
  */
@@ -27,28 +27,28 @@ export async function GET(
     const { id: idParam } = await params;
 
     if (!/^\d+$/.test(idParam)) {
-      return NextResponse.json({ error: 'Invalid frame id' }, { status: 400 });
+      return NextResponse.json({ error: 'Invalid concept id' }, { status: 400 });
     }
 
     const id = BigInt(idParam);
 
-    const frame = await prisma.frames.findUnique({
+    const frame = await prisma.concepts.findUnique({
       where: { id },
       select: {
         id: true,
         label: true,
         code: true,
-        frame_type: true,
+        archetype: true,
         deleted: true,
       },
     });
 
     if (!frame || frame.deleted) {
-      return NextResponse.json({ error: 'Frame not found' }, { status: 404 });
+      return NextResponse.json({ error: 'Concept not found' }, { status: 404 });
     }
 
-    const rolesRaw = await prisma.frame_roles.findMany({
-      where: { frame_id: id },
+    const rolesRaw = await prisma.properties.findMany({
+      where: { concept_id: id },
       select: {
         id: true,
         label: true,
@@ -77,7 +77,7 @@ export async function GET(
         id: frame.id.toString(),
         label: frame.label,
         code: frame.code,
-        frame_type: frame.frame_type,
+        archetype: frame.archetype,
         roles,
       },
       {
@@ -90,9 +90,9 @@ export async function GET(
       },
     );
   } catch (error) {
-    console.error('[API] Error fetching frame roles:', error);
+    console.error('[API] Error fetching concept properties:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch frame roles' },
+      { error: 'Failed to fetch concept properties' },
       { status: 500 },
     );
   }
@@ -116,21 +116,21 @@ export async function PATCH(
       );
     }
 
-    // Check if frame exists
-    const existingFrame = await prisma.frames.findUnique({
+    // Check if concept exists
+    const existingFrame = await prisma.concepts.findUnique({
       where: { id: frameId },
     });
 
     if (!existingFrame) {
       return NextResponse.json(
-        { error: 'Frame not found' },
+        { error: 'Concept not found' },
         { status: 404 }
       );
     }
 
     const userId = await getCurrentUserName();
 
-    const response = await stageFrameRolesUpdate(idParam, roles, userId);
+    const response = await stagePropertiesUpdate(idParam, roles, userId);
 
     return NextResponse.json(response, {
       headers: {
@@ -139,9 +139,9 @@ export async function PATCH(
       },
     });
   } catch (error) {
-    console.error('[API] Error staging frame roles update:', error);
+    console.error('[API] Error staging concept properties update:', error);
     return NextResponse.json(
-      { error: 'Failed to stage frame roles update' },
+      { error: 'Failed to stage concept properties update' },
       { status: 500 }
     );
   }

@@ -20,8 +20,8 @@ export async function POST(request: NextRequest) {
     const validateScope = { ...payload.scope };
     if (validateScope.kind === 'filters') {
       validateScope.filters = { ...validateScope.filters, limit: 5 };
-    } else if (validateScope.kind === 'frame_ids') {
-      validateScope.frameIds = validateScope.frameIds.slice(0, 5);
+    } else if (validateScope.kind === 'concept_ids') {
+      validateScope.conceptIds = validateScope.conceptIds.slice(0, 5);
       validateScope.limit = 5;
     } else if (validateScope.kind === 'ids') {
       validateScope.ids = validateScope.ids.slice(0, 5);

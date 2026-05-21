@@ -59,15 +59,15 @@ export type HealthFindingStatus =
  * union of string literals so it can be used freely on the client.
  */
 export type HealthCheckEntityType =
-  | 'frame'
-  | 'frame_role'
-  | 'frame_role_mapping'
+  | 'concept'
+  | 'property'
+  | 'property_mapping'
   | 'role'
-  | 'role_group'
-  | 'role_group_member'
-  | 'frame_relation'
-  | 'frame_sense'
-  | 'frame_sense_frame'
+  | 'property_group'
+  | 'property_group_member'
+  | 'concept_relation'
+  | 'sense'
+  | 'sense_concept'
   | 'lexical_unit'
   | 'lexical_unit_sense';
 
@@ -95,35 +95,158 @@ export const HEALTH_FINDING_STATUSES: HealthFindingStatus[] = [
 ];
 
 export const HEALTH_CHECK_ENTITY_TYPES: HealthCheckEntityType[] = [
-  'frame',
-  'frame_role',
-  'frame_role_mapping',
+  'concept',
+  'property',
+  'property_mapping',
   'role',
-  'role_group',
-  'role_group_member',
-  'frame_relation',
-  'frame_sense',
-  'frame_sense_frame',
+  'property_group',
+  'property_group_member',
+  'concept_relation',
+  'sense',
+  'sense_concept',
   'lexical_unit',
   'lexical_unit_sense',
 ];
 
 /**
- * Mirrors the Postgres `frame_type_enum` enum (frames.frame_type column).
+ * Mirrors the Postgres `concept_archetype_enum` enum (frames.archetype column).
  *
- * Kept in sync with the Prisma `frame_type_enum` so it can be imported
+ * Kept in sync with the Prisma `concept_archetype_enum` so it can be imported
  * freely by client components without dragging in `@prisma/client`.
  */
-export type FrameType = 'Event' | 'State' | 'Entity' | 'Measure';
+export type ConceptArchetype = 'Event' | 'State' | 'Entity' | 'Measure';
 
-export const FRAME_TYPES: FrameType[] = ['Event', 'State', 'Entity', 'Measure'];
+export const CONCEPT_ARCHETYPES: ConceptArchetype[] = ['Event', 'State', 'Entity', 'Measure'];
 
 /**
- * Mirrors the Postgres `frame_subtype_enum` enum (frames.subtype column).
+ * Mirrors the Postgres `concept_subtype_enum` enum (concepts.subtype column).
  */
-export type FrameSubtype = 'communication' | 'relation';
+export type ConceptSubtype =
+  | 'communication'
+  | 'relation'
+  | 'acquire'
+  | 'assist'
+  | 'attachment'
+  | 'attempt'
+  | 'avoidance'
+  | 'bearing'
+  | 'beginning'
+  | 'body_process'
+  | 'characterization'
+  | 'combination'
+  | 'competition'
+  | 'compulsion'
+  | 'concealment'
+  | 'conduct'
+  | 'conflict'
+  | 'consumption'
+  | 'contact'
+  | 'control_access'
+  | 'creation'
+  | 'delay'
+  | 'deprivation'
+  | 'emission'
+  | 'ending'
+  | 'enrol'
+  | 'expose'
+  | 'failure'
+  | 'give_care'
+  | 'group_action'
+  | 'host'
+  | 'legal_proceeding'
+  | 'mental_process'
+  | 'motion'
+  | 'natural_process'
+  | 'officiate'
+  | 'ordering'
+  | 'participation'
+  | 'persistence'
+  | 'prevention'
+  | 'procedure'
+  | 'progress'
+  | 'protection'
+  | 'put'
+  | 'reach'
+  | 'recreation'
+  | 'resumption'
+  | 'separation'
+  | 'sexual_intercourse'
+  | 'subtraction'
+  | 'termination'
+  | 'transfer'
+  | 'transformation'
+  | 'work_up'
+  | 'quality'
+  | 'configuration'
+  | 'experience'
+  | 'capacity'
+  | 'tendency'
+  | 'susceptibility'
+  | 'status';
 
-export const FRAME_SUBTYPES: FrameSubtype[] = ['communication', 'relation'];
+export const CONCEPT_SUBTYPES: ConceptSubtype[] = [
+  'communication',
+  'relation',
+  'acquire',
+  'assist',
+  'attachment',
+  'attempt',
+  'avoidance',
+  'bearing',
+  'beginning',
+  'body_process',
+  'characterization',
+  'combination',
+  'competition',
+  'compulsion',
+  'concealment',
+  'conduct',
+  'conflict',
+  'consumption',
+  'contact',
+  'control_access',
+  'creation',
+  'delay',
+  'deprivation',
+  'emission',
+  'ending',
+  'enrol',
+  'expose',
+  'failure',
+  'give_care',
+  'group_action',
+  'host',
+  'legal_proceeding',
+  'mental_process',
+  'motion',
+  'natural_process',
+  'officiate',
+  'ordering',
+  'participation',
+  'persistence',
+  'prevention',
+  'procedure',
+  'progress',
+  'protection',
+  'put',
+  'reach',
+  'recreation',
+  'resumption',
+  'separation',
+  'sexual_intercourse',
+  'subtraction',
+  'termination',
+  'transfer',
+  'transformation',
+  'work_up',
+  'quality',
+  'configuration',
+  'experience',
+  'capacity',
+  'tendency',
+  'susceptibility',
+  'status',
+];
 
 /**
  * Controlled remediation categories for diagnosis codes. Keys deliberately use
@@ -133,35 +256,35 @@ export const FRAME_SUBTYPES: FrameSubtype[] = ['communication', 'relation'];
  * are not inherited from diagnosis-code groups.
  */
 export type HealthRemediationStrategy =
-  | 'update_frame_label'
-  | 'update_frame_definition'
-  | 'update_frame_short_definition'
-  | 'update_frame_type'
-  | 'update_frame_subtype'
-  | 'split_frame'
+  | 'update_concept_label'
+  | 'update_concept_definition'
+  | 'update_concept_short_definition'
+  | 'update_concept_type'
+  | 'update_concept_subtype'
+  | 'split_concept'
   | 'split_pos_alternation'
-  | 'merge_frame'
-  | 'delete_frame'
-  | 'create_frame_role'
-  | 'update_frame_role_label'
-  | 'update_frame_role_description'
-  | 'delete_frame_role'
-  | 'create_role_group'
-  | 'update_role_group'
-  | 'create_role_group_member'
-  | 'delete_role_group_member'
-  | 'update_frame_role_mapping'
-  | 'delete_frame_role_mapping'
-  | 'upsert_role_mappings'
-  | 'create_frame_relation'
-  | 'update_frame_relation_type'
-  | 'delete_frame_relation'
+  | 'merge_concept'
+  | 'delete_concept'
+  | 'create_property'
+  | 'update_property_label'
+  | 'update_property_description'
+  | 'delete_property'
+  | 'create_property_group'
+  | 'update_property_group'
+  | 'create_property_group_member'
+  | 'delete_property_group_member'
+  | 'update_property_mapping'
+  | 'delete_property_mapping'
+  | 'upsert_property_mappings'
+  | 'create_concept_relation'
+  | 'update_concept_relation_type'
+  | 'delete_concept_relation'
   | 'detach_parent_relation'
-  | 'reparent_frame'
-  | 'create_frame_sense'
-  | 'update_frame_sense'
-  | 'delete_frame_sense'
-  | 'move_frame_sense'
+  | 'reparent_concept'
+  | 'create_sense'
+  | 'update_sense'
+  | 'delete_sense'
+  | 'move_sense'
   | 'merge_sense'
   | 'create_lexical_unit'
   | 'update_lexical_unit'
@@ -174,35 +297,35 @@ export type HealthRemediationStrategy =
   | 'manual_review';
 
 export const HEALTH_REMEDIATION_STRATEGIES: HealthRemediationStrategy[] = [
-  'update_frame_label',
-  'update_frame_definition',
-  'update_frame_short_definition',
-  'update_frame_type',
-  'update_frame_subtype',
-  'split_frame',
+  'update_concept_label',
+  'update_concept_definition',
+  'update_concept_short_definition',
+  'update_concept_type',
+  'update_concept_subtype',
+  'split_concept',
   'split_pos_alternation',
-  'merge_frame',
-  'delete_frame',
-  'create_frame_role',
-  'update_frame_role_label',
-  'update_frame_role_description',
-  'delete_frame_role',
-  'create_role_group',
-  'update_role_group',
-  'create_role_group_member',
-  'delete_role_group_member',
-  'update_frame_role_mapping',
-  'delete_frame_role_mapping',
-  'upsert_role_mappings',
-  'create_frame_relation',
-  'update_frame_relation_type',
-  'delete_frame_relation',
+  'merge_concept',
+  'delete_concept',
+  'create_property',
+  'update_property_label',
+  'update_property_description',
+  'delete_property',
+  'create_property_group',
+  'update_property_group',
+  'create_property_group_member',
+  'delete_property_group_member',
+  'update_property_mapping',
+  'delete_property_mapping',
+  'upsert_property_mappings',
+  'create_concept_relation',
+  'update_concept_relation_type',
+  'delete_concept_relation',
   'detach_parent_relation',
-  'reparent_frame',
-  'create_frame_sense',
-  'update_frame_sense',
-  'delete_frame_sense',
-  'move_frame_sense',
+  'reparent_concept',
+  'create_sense',
+  'update_sense',
+  'delete_sense',
+  'move_sense',
   'merge_sense',
   'create_lexical_unit',
   'update_lexical_unit',
@@ -216,36 +339,36 @@ export const HEALTH_REMEDIATION_STRATEGIES: HealthRemediationStrategy[] = [
 ];
 
 export const HEALTH_REMEDIATION_STRATEGY_LABELS: Record<HealthRemediationStrategy, string> = {
-  update_frame_label: 'Update frame label',
-  update_frame_definition: 'Update frame definition',
-  update_frame_short_definition: 'Update frame short definition',
-  update_frame_type: 'Update frame type',
-  update_frame_subtype: 'Update frame subtype',
-  split_frame: 'Split frame',
-  split_pos_alternation: 'Split frame by POS alternation',
-  merge_frame: 'Merge frame',
-  delete_frame: 'Delete frame',
-  create_frame_role: 'Create frame role',
-  update_frame_role_label: 'Update frame role label',
-  update_frame_role_description: 'Update frame role description',
-  delete_frame_role: 'Delete frame role',
-  create_role_group: 'Create role group',
-  update_role_group: 'Update role group',
-  create_role_group_member: 'Create role group member',
-  delete_role_group_member: 'Delete role group member',
-  update_frame_role_mapping: 'Update frame role mapping',
-  delete_frame_role_mapping: 'Delete frame role mapping',
-  upsert_role_mappings: 'Upsert role mappings',
-  create_frame_relation: 'Create frame relation',
-  update_frame_relation_type: 'Update frame relation type',
-  delete_frame_relation: 'Delete frame relation',
+  update_concept_label: 'Update concept label',
+  update_concept_definition: 'Update concept definition',
+  update_concept_short_definition: 'Update concept short definition',
+  update_concept_type: 'Update concept type',
+  update_concept_subtype: 'Update concept subtype',
+  split_concept: 'Split concept',
+  split_pos_alternation: 'Split concept by POS alternation',
+  merge_concept: 'Merge concept',
+  delete_concept: 'Delete concept',
+  create_property: 'Create property',
+  update_property_label: 'Update property label',
+  update_property_description: 'Update property description',
+  delete_property: 'Delete property',
+  create_property_group: 'Create property group',
+  update_property_group: 'Update property group',
+  create_property_group_member: 'Create property group member',
+  delete_property_group_member: 'Delete property group member',
+  update_property_mapping: 'Update property mapping',
+  delete_property_mapping: 'Delete property mapping',
+  upsert_property_mappings: 'Upsert property mappings',
+  create_concept_relation: 'Create concept relation',
+  update_concept_relation_type: 'Update concept relation type',
+  delete_concept_relation: 'Delete concept relation',
   detach_parent_relation: 'Detach parent relation',
-  reparent_frame: 'Reparent frame',
-  create_frame_sense: 'Create frame sense',
-  update_frame_sense: 'Update frame sense',
-  delete_frame_sense: 'Delete frame sense',
-  move_frame_sense: 'Move frame sense',
-  merge_sense: 'Merge frame senses',
+  reparent_concept: 'Reparent concept',
+  create_sense: 'Create sense',
+  update_sense: 'Update sense',
+  delete_sense: 'Delete sense',
+  move_sense: 'Move sense',
+  merge_sense: 'Merge senses',
   create_lexical_unit: 'Create lexical unit',
   update_lexical_unit: 'Update lexical unit',
   delete_lexical_unit: 'Delete lexical unit',
@@ -290,7 +413,7 @@ export interface HealthDiagnosisCodeGroup {
   id: string;
   /** Machine slug, e.g. `fs_001`, `dr_032`. Unique. */
   key: string;
-  /** Human-readable family heading, e.g. "Wrong Frame Sense". */
+  /** Human-readable family heading, e.g. "Wrong Concept Sense". */
   label: string;
   description: string | null;
   created_at: string;
@@ -308,19 +431,19 @@ export interface HealthDiagnosisCode {
   category: string | null;
   enabled: boolean;
   /**
-   * Optional allowlist of `frames.frame_type` values this code applies to.
-   * Empty = no constraint (matches any frame_type, including NULL).
+   * Optional allowlist of `frames.archetype` values this code applies to.
+   * Empty = no constraint (matches any archetype, including NULL).
    */
-  applies_to_frame_types: FrameType[];
+  applies_to_archetypes: ConceptArchetype[];
   /**
    * Optional allowlist of `frames.subtype` values this code applies to.
    * Combined with `match_null_subtype` (see below). Empty + flag=false
    * means "no constraint"; non-empty + flag=true means "listed values OR NULL".
    */
-  applies_to_frame_subtypes: FrameSubtype[];
+  applies_to_subtypes: ConceptSubtype[];
   /**
    * When true, frames whose `subtype IS NULL` also match — even when
-   * `applies_to_frame_subtypes` is empty (in which case ONLY NULL matches).
+   * `applies_to_subtypes` is empty (in which case ONLY NULL matches).
    */
   match_null_subtype: boolean;
   /**

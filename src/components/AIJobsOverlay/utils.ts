@@ -99,22 +99,22 @@ export function serviceTierToPriority(tier?: string | null): 'flex' | 'normal' |
 
 export function buildScope(
   mode: ScopeMode,
-  pos: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames' | 'lexical_units',
+  pos: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'concepts' | 'lexical_units',
   selectedIds: string[],
   manualIdsText: string,
   frameIdsText: string,
   filterGroup?: BooleanFilterGroup,
   filterLimit?: number,
   frameIncludeLexicalUnits?: boolean,
-  frameFlagTarget?: 'frame' | 'lexical_unit' | 'both'
+  frameFlagTarget?: 'concept' | 'lexical_unit' | 'both'
 ): JobScope {
   // Map POS to JobTargetType
   const targetType: JobTargetType = pos === 'verbs' ? 'verb' : 
                                    pos === 'nouns' ? 'noun' : 
                                    pos === 'adjectives' ? 'adjective' : 
                                    pos === 'adverbs' ? 'adverb' :
-                                   pos === 'frames' ? 'frames' :
-                                   pos === 'lexical_units' ? 'lexical_units' : 'frames';
+                                   pos === 'concepts' ? 'concepts' :
+                                   pos === 'lexical_units' ? 'lexical_units' : 'concepts';
 
   switch (mode) {
     case 'selection':
@@ -144,10 +144,10 @@ export function buildScope(
         targetType,
         ids: parseIds(manualIdsText).map(normalizeLexicalCode),
       };
-    case 'frames':
+    case 'concepts':
       return {
-        kind: 'frame_ids',
-        frameIds: parseIds(frameIdsText),
+        kind: 'concept_ids',
+        conceptIds: parseIds(frameIdsText),
         includeLexicalUnits: frameIncludeLexicalUnits,
         flagTarget: frameFlagTarget,
       };
@@ -169,7 +169,7 @@ export function normalizeLexicalCode(input: string): string {
   return `${lemma}.${pos}.${padded}`;
 }
 
-export function getManualIdPlaceholder(pos: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'frames' | 'lexical_units'): string {
+export function getManualIdPlaceholder(pos: 'verbs' | 'nouns' | 'adjectives' | 'adverbs' | 'concepts' | 'lexical_units'): string {
   switch (pos) {
     case 'verbs':
       return 'e.g., say.v.01, run.v.02';
@@ -181,7 +181,7 @@ export function getManualIdPlaceholder(pos: 'verbs' | 'nouns' | 'adjectives' | '
       return 'e.g., quickly.r.01, slowly.r.02';
     case 'lexical_units':
       return 'e.g., say.v.01, dog.n.01';
-    case 'frames':
+    case 'concepts':
       return 'e.g., COMMUNICATION, MOTION';
     default:
       return 'e.g., word.pos.01';
@@ -267,8 +267,8 @@ export function addOffsetAndLimitToScope(
       ids: scope.ids.slice(offset, offset + limit),
     };
   }
-  // For frame_ids, use offset and limit fields
-  if (scope.kind === 'frame_ids') {
+  // For concept_ids, use offset and limit fields
+  if (scope.kind === 'concept_ids') {
     return {
       ...scope,
       offset,
@@ -286,8 +286,8 @@ export function estimateScopeSize(scope: JobScope): number | null {
   if (scope.kind === 'ids') {
     return scope.ids.length;
   }
-  if (scope.kind === 'frame_ids') {
-    // Frame IDs might expand to multiple lexical units if includeLexicalUnits is true
+  if (scope.kind === 'concept_ids') {
+    // Concept IDs might expand to multiple lexical units if includeLexicalUnits is true
     // Can't accurately estimate without backend call
     return null;
   }

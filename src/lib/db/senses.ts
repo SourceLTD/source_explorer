@@ -1,20 +1,20 @@
 /**
- * Frame sense service — CRUD and attach/detach helpers.
+ * Concept sense service — CRUD and attach/detach helpers.
  *
  * Data model:
- *   lexical_units ─┬─ lexical_unit_senses ─┬─ frame_senses ─┬─ frame_sense_frames ─┬─ frames
+ *   lexical_units ─┬─ lexical_unit_senses ─┬─ senses ─┬─ sense_concepts ─┬─ frames
  * A frame_sense is the intermediate concept between a lexical unit and a frame.
  * In practice each sense should link to exactly one frame; UI surfaces a warning
- * when a sense has 0 or >1 frames (see `frameWarning`).
+ * when a sense has 0 or >1 frames (see `conceptWarning`).
  */
 
 import { prisma } from '../prisma';
 import type { part_of_speech } from '@prisma/client';
 import type {
-  FrameSense,
-  FrameSenseFrameRef,
-  FrameSenseWarning,
-  FrameSenseWithFrame,
+  Sense,
+  SenseConceptRef,
+  SenseWarning,
+  SenseWithConcept,
 } from '../types';
 
 // ============================================
@@ -25,10 +25,10 @@ import type {
  * Include fragment to hydrate a frame_sense with its frames.
  * Reusable in any query that needs sense metadata + frame resolution.
  */
-export const senseWithFramesInclude = {
-  frame_sense_frames: {
+export const senseWithConceptsInclude = {
+  sense_concepts: {
     include: {
-      frames: {
+      concepts: {
         select: { id: true, label: true, code: true },
       },
     },
@@ -42,8 +42,8 @@ export const senseWithFramesInclude = {
 export const lexicalUnitSensesInclude = {
   lexical_unit_senses: {
     include: {
-      frame_senses: {
-        include: senseWithFramesInclude,
+      senses: {
+        include: senseWithConceptsInclude,
       },
     },
   },
@@ -53,13 +53,13 @@ export const lexicalUnitSensesInclude = {
 // Transforms
 // ============================================
 
-type RawFrameRef = { id: bigint; label: string; code: string | null };
-type RawSenseFrameLink = { frames: RawFrameRef };
-type RawFrameSense = {
+type RawConceptRef = { id: bigint; label: string; code: string | null };
+type RawSenseConceptLink = { concepts: RawConceptRef };
+type RawSense = {
   id: number;
   pos: string;
   definition: string;
-  frame_type: string;
+  archetype: string;
   confidence: string | null;
   type_dispute: string | null;
   causative: boolean | null;
@@ -67,10 +67,10 @@ type RawFrameSense = {
   perspectival: boolean | null;
   created_at: Date | null;
   updated_at: Date | null;
-  frame_sense_frames: RawSenseFrameLink[];
+  sense_concepts: RawSenseConceptLink[];
 };
 
-function toFrameRef(ref: RawFrameRef): FrameSenseFrameRef {
+function toConceptRef(ref: RawConceptRef): SenseConceptRef {
   return {
     id: ref.id.toString(),
     label: ref.label,
@@ -78,24 +78,24 @@ function toFrameRef(ref: RawFrameRef): FrameSenseFrameRef {
   };
 }
 
-export function computeFrameWarning(frames: FrameSenseFrameRef[]): FrameSenseWarning {
+export function computeConceptWarning(frames: SenseConceptRef[]): SenseWarning {
   if (frames.length === 0) return 'none';
   if (frames.length > 1) return 'multiple';
   return null;
 }
 
 /**
- * Transform a raw frame_senses row (with its frame_sense_frames include) into
- * a UI-ready FrameSenseWithFrame.
+ * Transform a raw senses row (with its sense_concepts include) into
+ * a UI-ready SenseWithConcept.
  */
-export function transformFrameSense(raw: RawFrameSense): FrameSenseWithFrame {
-  const frames = (raw.frame_sense_frames ?? []).map(link => toFrameRef(link.frames));
-  const warning = computeFrameWarning(frames);
+export function transformSense(raw: RawSense): SenseWithConcept {
+  const concepts = (raw.sense_concepts ?? []).map(link => toConceptRef(link.concepts));
+  const warning = computeConceptWarning(concepts);
   return {
     id: raw.id.toString(),
     pos: raw.pos,
     definition: raw.definition,
-    frame_type: raw.frame_type,
+    archetype: raw.archetype,
     confidence: raw.confidence,
     type_dispute: raw.type_dispute,
     causative: raw.causative,
@@ -103,26 +103,26 @@ export function transformFrameSense(raw: RawFrameSense): FrameSenseWithFrame {
     perspectival: raw.perspectival,
     createdAt: raw.created_at,
     updatedAt: raw.updated_at,
-    frame: frames[0] ?? null,
-    frames,
-    frameWarning: warning,
+    concept: concepts[0] ?? null,
+    concepts: concepts,
+    conceptWarning: warning,
   };
 }
 
-type RawLuSenseLink = { frame_senses: RawFrameSense };
+type RawLuSenseLink = { senses: RawSense };
 
 /**
  * Transform the `lexical_unit_senses` include on a lexical_units row into
- * a sorted, de-duplicated array of FrameSenseWithFrame.
+ * a sorted, de-duplicated array of SenseWithConcept.
  */
 export function transformLexicalUnitSenses(
   rawLinks: RawLuSenseLink[] | undefined | null,
-): FrameSenseWithFrame[] {
+): SenseWithConcept[] {
   if (!rawLinks) return [];
   const seen = new Set<string>();
-  const out: FrameSenseWithFrame[] = [];
+  const out: SenseWithConcept[] = [];
   for (const link of rawLinks) {
-    const sense = transformFrameSense(link.frame_senses);
+    const sense = transformSense(link.senses);
     if (seen.has(sense.id)) continue;
     seen.add(sense.id);
     out.push(sense);
@@ -133,38 +133,38 @@ export function transformLexicalUnitSenses(
 /**
  * Derive the "primary" frame of an LU from its senses (first sense's single frame,
  * when the 1:1 invariant holds). Returns null when the LU has no senses or the
- * first sense has no frame.
+ * first sense has no concept.
  */
-export function derivePrimaryFrame(
-  senses: FrameSenseWithFrame[],
-): FrameSenseFrameRef | null {
+export function derivePrimaryConcept(
+  senses: SenseWithConcept[],
+): SenseConceptRef | null {
   for (const sense of senses) {
-    if (sense.frame) return sense.frame;
+    if (sense.concept) return sense.concept;
   }
   return null;
 }
 
 /**
- * Flatten all unique frames reachable via the given senses (deduplicated by id).
+ * Flatten all unique concepts reachable via the given senses (deduplicated by id).
  */
-export function flattenFrames(senses: FrameSenseWithFrame[]): FrameSenseFrameRef[] {
+export function flattenConcepts(senses: SenseWithConcept[]): SenseConceptRef[] {
   const seen = new Set<string>();
-  const out: FrameSenseFrameRef[] = [];
+  const out: SenseConceptRef[] = [];
   for (const sense of senses) {
-    for (const frame of sense.frames) {
-      if (seen.has(frame.id)) continue;
-      seen.add(frame.id);
-      out.push(frame);
+    for (const concept of sense.concepts) {
+      if (seen.has(concept.id)) continue;
+      seen.add(concept.id);
+      out.push(concept);
     }
   }
   return out;
 }
 
 /**
- * Count senses whose frameWarning !== null (for row-level flagging).
+ * Count senses whose conceptWarning !== null (for row-level flagging).
  */
-export function countAnomalousSenses(senses: FrameSenseWithFrame[]): number {
-  return senses.reduce((n, s) => n + (s.frameWarning !== null ? 1 : 0), 0);
+export function countAnomalousSenses(senses: SenseWithConcept[]): number {
+  return senses.reduce((n, s) => n + (s.conceptWarning !== null ? 1 : 0), 0);
 }
 
 // ============================================
@@ -173,24 +173,24 @@ export function countAnomalousSenses(senses: FrameSenseWithFrame[]): number {
 
 export async function getSensesForLexicalUnit(
   lexicalUnitId: bigint,
-): Promise<FrameSenseWithFrame[]> {
+): Promise<SenseWithConcept[]> {
   const links = await prisma.lexical_unit_senses.findMany({
     where: { lexical_unit_id: lexicalUnitId },
-    include: { frame_senses: { include: senseWithFramesInclude } },
-    orderBy: { frame_sense_id: 'asc' },
+    include: { senses: { include: senseWithConceptsInclude } },
+    orderBy: { sense_id: 'asc' },
   });
   return transformLexicalUnitSenses(links);
 }
 
-export async function getSensesForFrame(frameId: bigint): Promise<
-  Array<FrameSenseWithFrame & { lexical_unit_ids: string[] }>
+export async function getSensesForFrame(conceptId: bigint): Promise<
+  Array<SenseWithConcept & { lexical_unit_ids: string[] }>
 > {
-  const links = await prisma.frame_sense_frames.findMany({
-    where: { frame_id: frameId },
+  const links = await prisma.sense_concepts.findMany({
+    where: { concept_id: conceptId },
     include: {
-      frame_senses: {
+      senses: {
         include: {
-          ...senseWithFramesInclude,
+          ...senseWithConceptsInclude,
           lexical_unit_senses: {
             select: { lexical_unit_id: true },
           },
@@ -200,34 +200,34 @@ export async function getSensesForFrame(frameId: bigint): Promise<
   });
 
   return links.map(link => {
-    const raw = link.frame_senses as unknown as RawFrameSense & {
+    const raw = link.senses as unknown as RawSense & {
       lexical_unit_senses: Array<{ lexical_unit_id: bigint }>;
     };
-    const base = transformFrameSense(raw);
+    const base = transformSense(raw);
     const lexical_unit_ids = raw.lexical_unit_senses.map(lu => lu.lexical_unit_id.toString());
     return { ...base, lexical_unit_ids };
   });
 }
 
-export async function getFrameSenseById(id: number): Promise<FrameSenseWithFrame | null> {
-  const raw = await prisma.frame_senses.findUnique({
+export async function getSenseById(id: number): Promise<SenseWithConcept | null> {
+  const raw = await prisma.senses.findUnique({
     where: { id },
-    include: senseWithFramesInclude,
+    include: senseWithConceptsInclude,
   });
   if (!raw) return null;
-  return transformFrameSense(raw as unknown as RawFrameSense);
+  return transformSense(raw as unknown as RawSense);
 }
 
 // ============================================
 // Write operations
 // ============================================
 
-export interface CreateFrameSenseInput {
+export interface CreateSenseInput {
   pos: part_of_speech;
   definition: string;
-  frame_type: string;
-  /** Required frame_id — senses must anchor to exactly one frame. */
-  frame_id: bigint;
+  archetype: string;
+  /** Required concept_id — senses must anchor to exactly one frame. */
+  concept_id: bigint;
   confidence?: string | null;
   type_dispute?: string | null;
   causative?: boolean | null;
@@ -237,16 +237,16 @@ export interface CreateFrameSenseInput {
   lexical_unit_ids?: bigint[];
 }
 
-export async function createFrameSense(
-  input: CreateFrameSenseInput,
-): Promise<FrameSense> {
+export async function createSense(
+  input: CreateSenseInput,
+): Promise<Sense> {
   const luIds = input.lexical_unit_ids ?? [];
   const sense = await prisma.$transaction(async tx => {
-    const created = await tx.frame_senses.create({
+    const created = await tx.senses.create({
       data: {
         pos: input.pos,
         definition: input.definition,
-        frame_type: input.frame_type,
+        archetype: input.archetype,
         confidence: input.confidence ?? null,
         type_dispute: input.type_dispute ?? null,
         causative: input.causative ?? null,
@@ -254,12 +254,12 @@ export async function createFrameSense(
         perspectival: input.perspectival ?? null,
       },
     });
-    await tx.frame_sense_frames.create({
-      data: { frame_sense_id: created.id, frame_id: input.frame_id },
+    await tx.sense_concepts.create({
+      data: { sense_id: created.id, concept_id: input.concept_id },
     });
     if (luIds.length > 0) {
       await tx.lexical_unit_senses.createMany({
-        data: luIds.map(lu => ({ lexical_unit_id: lu, frame_sense_id: created.id })),
+        data: luIds.map(lu => ({ lexical_unit_id: lu, sense_id: created.id })),
         skipDuplicates: true,
       });
     }
@@ -269,7 +269,7 @@ export async function createFrameSense(
     id: sense.id.toString(),
     pos: sense.pos,
     definition: sense.definition,
-    frame_type: sense.frame_type,
+    archetype: sense.archetype,
     confidence: sense.confidence,
     type_dispute: sense.type_dispute,
     causative: sense.causative,
@@ -280,10 +280,10 @@ export async function createFrameSense(
   };
 }
 
-export interface UpdateFrameSenseInput {
+export interface UpdateSenseInput {
   pos?: part_of_speech;
   definition?: string;
-  frame_type?: string;
+  archetype?: string;
   confidence?: string | null;
   type_dispute?: string | null;
   causative?: boolean | null;
@@ -294,39 +294,39 @@ export interface UpdateFrameSenseInput {
    * 1:1 invariant — callers who need multi-frame behaviour should use
    * `attachSenseToFrame` / `detachSenseFromFrame` directly.
    */
-  frame_id?: bigint | null;
+  concept_id?: bigint | null;
 }
 
-export async function updateFrameSense(
+export async function updateSense(
   id: number,
-  patch: UpdateFrameSenseInput,
+  patch: UpdateSenseInput,
 ): Promise<void> {
   await prisma.$transaction(async tx => {
     const data: Record<string, unknown> = {};
     if (patch.pos !== undefined) data.pos = patch.pos;
     if (patch.definition !== undefined) data.definition = patch.definition;
-    if (patch.frame_type !== undefined) data.frame_type = patch.frame_type;
+    if (patch.archetype !== undefined) data.archetype = patch.archetype;
     if (patch.confidence !== undefined) data.confidence = patch.confidence;
     if (patch.type_dispute !== undefined) data.type_dispute = patch.type_dispute;
     if (patch.causative !== undefined) data.causative = patch.causative;
     if (patch.inchoative !== undefined) data.inchoative = patch.inchoative;
     if (patch.perspectival !== undefined) data.perspectival = patch.perspectival;
     data.updated_at = new Date();
-    await tx.frame_senses.update({ where: { id }, data });
+    await tx.senses.update({ where: { id }, data });
 
-    if (patch.frame_id !== undefined) {
-      await tx.frame_sense_frames.deleteMany({ where: { frame_sense_id: id } });
-      if (patch.frame_id !== null) {
-        await tx.frame_sense_frames.create({
-          data: { frame_sense_id: id, frame_id: patch.frame_id },
+    if (patch.concept_id !== undefined) {
+      await tx.sense_concepts.deleteMany({ where: { sense_id: id } });
+      if (patch.concept_id !== null) {
+        await tx.sense_concepts.create({
+          data: { sense_id: id, concept_id: patch.concept_id },
         });
       }
     }
   });
 }
 
-export async function deleteFrameSense(id: number): Promise<void> {
-  await prisma.frame_senses.delete({ where: { id } });
+export async function deleteSense(id: number): Promise<void> {
+  await prisma.senses.delete({ where: { id } });
 }
 
 export async function attachSenseToLexicalUnit(
@@ -335,12 +335,12 @@ export async function attachSenseToLexicalUnit(
 ): Promise<void> {
   await prisma.lexical_unit_senses.upsert({
     where: {
-      lexical_unit_id_frame_sense_id: {
+      lexical_unit_id_sense_id: {
         lexical_unit_id: lexicalUnitId,
-        frame_sense_id: senseId,
+        sense_id: senseId,
       },
     },
-    create: { lexical_unit_id: lexicalUnitId, frame_sense_id: senseId },
+    create: { lexical_unit_id: lexicalUnitId, sense_id: senseId },
     update: {},
   });
 }
@@ -350,16 +350,16 @@ export async function detachSenseFromLexicalUnit(
   lexicalUnitId: bigint,
 ): Promise<void> {
   await prisma.lexical_unit_senses.deleteMany({
-    where: { lexical_unit_id: lexicalUnitId, frame_sense_id: senseId },
+    where: { lexical_unit_id: lexicalUnitId, sense_id: senseId },
   });
 }
 
 /** Replace the sense's single frame link atomically. */
-export async function setSenseFrame(senseId: number, frameId: bigint): Promise<void> {
+export async function setSenseFrame(senseId: number, conceptId: bigint): Promise<void> {
   await prisma.$transaction(async tx => {
-    await tx.frame_sense_frames.deleteMany({ where: { frame_sense_id: senseId } });
-    await tx.frame_sense_frames.create({
-      data: { frame_sense_id: senseId, frame_id: frameId },
+    await tx.sense_concepts.deleteMany({ where: { sense_id: senseId } });
+    await tx.sense_concepts.create({
+      data: { sense_id: senseId, concept_id: conceptId },
     });
   });
 }

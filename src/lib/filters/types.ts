@@ -27,7 +27,7 @@ export type FieldType =
   | 'boolean'
   | 'number'
   | 'date'
-  | 'frame'
+  | 'concept'
   | 'computed_number';
 
 export interface FieldOperator {

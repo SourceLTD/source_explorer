@@ -21,16 +21,16 @@ import {
   PendingChangeOperation,
 } from '@/lib/types';
 import {
-  applyFrameRolesSubChanges,
-  type NormalizedFrameRole,
-} from './frameRolesSubfields';
+  applyPropertiesSubChanges,
+  type NormalizedProperty,
+} from './propertiesSubfields';
 import {
   isSensesExistsFieldName,
   parseSensesExistsFieldName,
 } from './sensesSubfields';
 import {
-  senseWithFramesInclude,
-  transformFrameSense,
+  senseWithConceptsInclude,
+  transformSense,
 } from '@/lib/db/senses';
 
 // ============================================
@@ -442,7 +442,7 @@ const isRecord = (v: unknown): v is Record<string, unknown> =>
 function extractRoleTypeLabel(v: unknown): string {
   if (!isRecord(v)) return '';
   const label =
-    (typeof v.roleType === 'string' ? v.roleType.trim() : '') ||
+    (typeof v.propertyType === 'string' ? v.propertyType.trim() : '') ||
     (typeof v.role_type_label === 'string' ? v.role_type_label.trim() : '') ||
     (isRecord(v.role_type) && typeof v.role_type.label === 'string' ? v.role_type.label.trim() : '') ||
     (typeof v.label === 'string' ? v.label.trim() : '');
@@ -450,9 +450,9 @@ function extractRoleTypeLabel(v: unknown): string {
   return label || '';
 }
 
-function normalizeFrameRolesFromApiValue(rawValue: unknown): NormalizedFrameRole[] {
+function normalizePropertiesFromApiValue(rawValue: unknown): NormalizedProperty[] {
   if (!Array.isArray(rawValue)) return [];
-  const normalized: NormalizedFrameRole[] = [];
+  const normalized: NormalizedProperty[] = [];
   for (const role of rawValue) {
     const obj = isRecord(role) ? role : {};
     const roleType = extractRoleTypeLabel(obj);
@@ -463,7 +463,7 @@ function normalizeFrameRolesFromApiValue(rawValue: unknown): NormalizedFrameRole
       : [];
 
     normalized.push({
-      roleType,
+      propertyType: roleType,
       description: typeof obj.description === 'string' ? obj.description : null,
       notes: typeof obj.notes === 'string' ? obj.notes : null,
       main: typeof obj.main === 'boolean' ? obj.main : Boolean(obj.main),
@@ -471,13 +471,13 @@ function normalizeFrameRolesFromApiValue(rawValue: unknown): NormalizedFrameRole
       label: typeof obj.label === 'string' ? obj.label : null,
     });
   }
-  normalized.sort((a, b) => a.roleType.localeCompare(b.roleType));
+  normalized.sort((a, b) => a.propertyType.localeCompare(b.propertyType));
   return normalized;
 }
 
-function normalizedFrameRolesToClientPayload(roles: NormalizedFrameRole[]): Array<Record<string, unknown>> {
+function normalizedPropertiesToClientPayload(roles: NormalizedProperty[]): Array<Record<string, unknown>> {
   return roles.map(r => ({
-    roleType: r.roleType,
+    propertyType: r.propertyType,
     description: r.description,
     notes: r.notes,
     main: r.main,
@@ -486,13 +486,13 @@ function normalizedFrameRolesToClientPayload(roles: NormalizedFrameRole[]): Arra
   }));
 }
 
-function hydratePendingFrameRolesForApi(
+function hydratePendingPropertiesForApi(
   entity: Record<string, unknown>,
   rawValue: unknown,
 ): unknown {
   if (!Array.isArray(rawValue)) return rawValue;
 
-  const existingRoles = Array.isArray((entity as any).frame_roles) ? (entity as any).frame_roles : [];
+  const existingRoles = Array.isArray((entity as any).properties) ? (entity as any).properties : [];
   const existingByLabel = new Map<string, any>();
   for (const r of existingRoles) {
     const roleLabel = isRecord(r) && typeof (r as any).label === 'string'
@@ -565,21 +565,21 @@ export async function attachPendingInfoToEntities<T extends object>(
 
     // Apply pending field values to entity for preview
     const updatedEntity = { ...entity };
-    const pendingFrameRoleSubChanges: Array<{ field_name: string; new_value: unknown }> = [];
+    const pendingPropertySubChanges: Array<{ field_name: string; new_value: unknown }> = [];
     for (const fc of changeset.field_changes) {
       // Apply all pending changes (not just approved) for preview
       if (fc.status === 'pending' || fc.status === 'approved') {
         if (entityType === 'frame') {
-          if (fc.field_name === 'frame_roles') {
-            (updatedEntity as Record<string, unknown>).frame_roles = hydratePendingFrameRolesForApi(
+          if (fc.field_name === 'properties') {
+            (updatedEntity as Record<string, unknown>).properties = hydratePendingPropertiesForApi(
               updatedEntity as unknown as Record<string, unknown>,
               fc.new_value,
             );
             continue;
           }
 
-          if (fc.field_name.startsWith('frame_roles.')) {
-            pendingFrameRoleSubChanges.push({ field_name: fc.field_name, new_value: fc.new_value });
+          if (fc.field_name.startsWith('properties.')) {
+            pendingPropertySubChanges.push({ field_name: fc.field_name, new_value: fc.new_value });
             continue;
           }
         }
@@ -588,13 +588,13 @@ export async function attachPendingInfoToEntities<T extends object>(
       }
     }
 
-    // Apply granular frame_roles.* patches on top of the current preview frame_roles.
-    if (entityType === 'frame' && pendingFrameRoleSubChanges.length > 0) {
-      const baseRoles = normalizeFrameRolesFromApiValue((updatedEntity as any).frame_roles);
-      const patched = applyFrameRolesSubChanges(baseRoles, pendingFrameRoleSubChanges);
-      (updatedEntity as Record<string, unknown>).frame_roles = hydratePendingFrameRolesForApi(
+    // Apply granular properties.* patches on top of the current preview properties.
+    if (entityType === 'frame' && pendingPropertySubChanges.length > 0) {
+      const baseRoles = normalizePropertiesFromApiValue((updatedEntity as any).properties);
+      const patched = applyPropertiesSubChanges(baseRoles, pendingPropertySubChanges);
+      (updatedEntity as Record<string, unknown>).properties = hydratePendingPropertiesForApi(
         updatedEntity as unknown as Record<string, unknown>,
-        normalizedFrameRolesToClientPayload(patched),
+        normalizedPropertiesToClientPayload(patched),
       );
     }
 
@@ -689,23 +689,23 @@ export async function applyPendingToEntity<T extends object>(
 
   // Apply pending field values to entity for preview
   const updatedEntity = { ...entity };
-  const pendingFrameRoleSubChanges: Array<{ field_name: string; new_value: unknown }> = [];
+  const pendingPropertySubChanges: Array<{ field_name: string; new_value: unknown }> = [];
   const pendingSensesSubChanges: Array<{ field_name: string; new_value: unknown }> = [];
 
   for (const fc of changeset.field_changes) {
     // Apply all pending changes (not just approved) for preview
     if (fc.status === 'pending' || fc.status === 'approved') {
       if (entityType === 'frame') {
-        if (fc.field_name === 'frame_roles') {
-          (updatedEntity as Record<string, unknown>).frame_roles = hydratePendingFrameRolesForApi(
+        if (fc.field_name === 'properties') {
+          (updatedEntity as Record<string, unknown>).properties = hydratePendingPropertiesForApi(
             updatedEntity as unknown as Record<string, unknown>,
             fc.new_value,
           );
           continue;
         }
 
-        if (fc.field_name.startsWith('frame_roles.')) {
-          pendingFrameRoleSubChanges.push({ field_name: fc.field_name, new_value: fc.new_value });
+        if (fc.field_name.startsWith('properties.')) {
+          pendingPropertySubChanges.push({ field_name: fc.field_name, new_value: fc.new_value });
           continue;
         }
       }
@@ -721,12 +721,12 @@ export async function applyPendingToEntity<T extends object>(
     }
   }
 
-  if (entityType === 'frame' && pendingFrameRoleSubChanges.length > 0) {
-    const baseRoles = normalizeFrameRolesFromApiValue((updatedEntity as any).frame_roles);
-    const patched = applyFrameRolesSubChanges(baseRoles, pendingFrameRoleSubChanges);
-    (updatedEntity as Record<string, unknown>).frame_roles = hydratePendingFrameRolesForApi(
+  if (entityType === 'frame' && pendingPropertySubChanges.length > 0) {
+    const baseRoles = normalizePropertiesFromApiValue((updatedEntity as any).properties);
+    const patched = applyPropertiesSubChanges(baseRoles, pendingPropertySubChanges);
+    (updatedEntity as Record<string, unknown>).properties = hydratePendingPropertiesForApi(
       updatedEntity as unknown as Record<string, unknown>,
-      normalizedFrameRolesToClientPayload(patched),
+      normalizedPropertiesToClientPayload(patched),
     );
   }
 
@@ -814,12 +814,12 @@ async function applyPendingSensesToLexicalUnit(
 
   let attachedHydrated: Array<Record<string, unknown>> = [];
   if (attachIds.length > 0) {
-    const rows = await prisma.frame_senses.findMany({
+    const rows = await prisma.senses.findMany({
       where: { id: { in: attachIds } },
-      include: senseWithFramesInclude,
+      include: senseWithConceptsInclude,
     });
     attachedHydrated = rows.map(r => ({
-      ...transformFrameSense(r as unknown as Parameters<typeof transformFrameSense>[0]),
+      ...transformSense(r as unknown as Parameters<typeof transformSense>[0]),
       _pending: 'attach' as const,
     }));
   }
@@ -828,14 +828,14 @@ async function applyPendingSensesToLexicalUnit(
 }
 
 // ============================================
-// Pending Frame Relation Overlays (for Graph)
+// Pending Concept Relation Overlays (for Graph)
 // ============================================
 
 export interface PendingRelationChange {
   changeset_id: string;
   operation: 'create' | 'delete';
-  source_id: string;
-  target_id: string;
+  parent_id: string;
+  child_id: string;
   type: string;
   /** Label of the related frame (resolved from snapshot or DB) */
   target_label?: string;
@@ -849,9 +849,9 @@ export interface PendingRelationChange {
  * for the graph to render pending reparents.
  */
 export async function getPendingRelationChanges(
-  frameId: bigint
+  conceptId: bigint
 ): Promise<PendingRelationChange[]> {
-  const frameIdStr = frameId.toString();
+  const conceptIdStr = conceptId.toString();
 
   // Find pending frame_relation changesets where this frame is involved
   const pendingChangesets = await prisma.changesets.findMany({
@@ -869,39 +869,39 @@ export async function getPendingRelationChanges(
   for (const cs of pendingChangesets) {
     if (cs.operation === 'delete' && cs.before_snapshot) {
       const snap = cs.before_snapshot as Record<string, unknown>;
-      const srcId = String(snap.source_id ?? '');
-      const tgtId = String(snap.target_id ?? '');
+      const srcId = String(snap.parent_id ?? '');
+      const tgtId = String(snap.child_id ?? '');
 
-      if (srcId === frameIdStr || tgtId === frameIdStr) {
+      if (srcId === conceptIdStr || tgtId === conceptIdStr) {
         results.push({
           changeset_id: cs.id.toString(),
           operation: 'delete',
-          source_id: srcId,
-          target_id: tgtId,
+          parent_id: srcId,
+          child_id: tgtId,
           type: String(snap.type ?? ''),
         });
       }
     } else if (cs.operation === 'create' && cs.after_snapshot) {
       const snap = cs.after_snapshot as Record<string, unknown>;
-      const srcId = String(snap.source_id ?? '');
-      const tgtId = String(snap.target_id ?? '');
+      const srcId = String(snap.parent_id ?? '');
+      const tgtId = String(snap.child_id ?? '');
 
-      if (srcId === frameIdStr || tgtId === frameIdStr) {
+      if (srcId === conceptIdStr || tgtId === conceptIdStr) {
         // Resolve label for the other frame
-        const otherFrameId = srcId === frameIdStr ? tgtId : srcId;
+        const otherConceptId = srcId === conceptIdStr ? tgtId : srcId;
         let targetLabel: string | undefined;
         let targetShortDef: string | null | undefined;
         let targetDescendantCount: number | undefined;
 
         try {
-          const otherFrame = await prisma.frames.findUnique({
-            where: { id: BigInt(otherFrameId) },
+          const otherConcept = await prisma.concepts.findUnique({
+            where: { id: BigInt(otherConceptId) },
             select: { label: true, short_definition: true, descendant_count: true },
           });
-          if (otherFrame) {
-            targetLabel = otherFrame.label;
-            targetShortDef = otherFrame.short_definition;
-            targetDescendantCount = otherFrame.descendant_count ?? undefined;
+          if (otherConcept) {
+            targetLabel = otherConcept.label;
+            targetShortDef = otherConcept.short_definition;
+            targetDescendantCount = otherConcept.descendant_count ?? undefined;
           }
         } catch {
           // Non-critical: label resolution failure
@@ -910,8 +910,8 @@ export async function getPendingRelationChanges(
         results.push({
           changeset_id: cs.id.toString(),
           operation: 'create',
-          source_id: srcId,
-          target_id: tgtId,
+          parent_id: srcId,
+          child_id: tgtId,
           type: String(snap.type ?? ''),
           target_label: targetLabel,
           target_short_definition: targetShortDef,

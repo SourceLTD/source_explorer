@@ -69,12 +69,12 @@ export async function POST(request: NextRequest, context: Context) {
     const preparedJobItemsData = await Promise.all(entries.map(async (entry) => {
       const { prompt, variables } = await renderPromptAsync(promptTemplate, entry, { metadata: config?.metadata });
 
-      const frameInfo = entry.frame ? {
-        name: entry.frame.label,
-        id: entry.frame.id,
-        definition: entry.frame.definition,
-        short_definition: entry.frame.short_definition,
-        roles: entry.frame.roles,
+      const conceptInfo = entry.concept ? {
+        name: entry.concept.label,
+        id: entry.concept.id,
+        definition: entry.concept.definition,
+        short_definition: entry.concept.short_definition,
+        roles: entry.concept.roles,
       } : null;
 
       const requestPayload = {
@@ -94,14 +94,14 @@ export async function POST(request: NextRequest, context: Context) {
           definition: entry.definition ?? null,
           short_definition: entry.short_definition ?? null,
         },
-        frameInfo,
+        conceptInfo,
       } satisfies Record<string, unknown>;
 
       return {
         job_id: jobId,
         status: 'queued' as const,
-        lexical_unit_id: entry.pos !== 'frames' ? entry.dbId : null,
-        frame_id: entry.pos === 'frames' ? entry.dbId : null,
+        lexical_unit_id: entry.pos !== 'concepts' ? entry.dbId : null,
+        concept_id: entry.pos === 'concepts' ? entry.dbId : null,
         request_payload: requestPayload as Prisma.InputJsonObject,
       };
     }));

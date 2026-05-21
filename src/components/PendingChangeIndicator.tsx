@@ -49,16 +49,16 @@ export function getPendingCellClasses(operation: PendingChangeOperation): string
 }
 
 /**
- * Frame role changes are represented as granular `frame_roles.<ROLETYPE>.*` fields, but are
- * still part of an entity-level UPDATE changeset. For role-level highlighting we keep the
+ * Property changes are represented as granular `properties.<ROLETYPE>.*` fields, but are
+ * still part of an entity-level UPDATE changeset. For property-level highlighting we keep the
  * classic orange "update" styling (instead of yellow).
  */
-export function getFrameRolePendingCellClasses(operation: PendingChangeOperation): string {
+export function getPropertyPendingCellClasses(operation: PendingChangeOperation): string {
   switch (operation) {
     case 'create':
       return getPendingCellClasses('create');
     case 'delete':
-      // No strikethrough for deleted role previews (we still want the old values readable).
+      // No strikethrough for deleted property previews (we still want the old values readable).
       return 'ring-2 ring-red-400 ring-inset bg-red-200';
     case 'update':
     default:
@@ -67,13 +67,19 @@ export function getFrameRolePendingCellClasses(operation: PendingChangeOperation
   }
 }
 
-export type FrameRoleChangeSummary = {
+/** @deprecated Use getPropertyPendingCellClasses instead */
+export const getFrameRolePendingCellClasses = getPropertyPendingCellClasses;
+
+export type PropertyChangeSummary = {
   created: string[];
   updated: string[];
   deleted: string[];
 };
 
-export type FrameRoleSnapshot = {
+/** @deprecated Use PropertyChangeSummary instead */
+export type FrameRoleChangeSummary = PropertyChangeSummary;
+
+export type PropertySnapshot = {
   roleType: string;
   label: string | null;
   description: string | null;
@@ -81,6 +87,9 @@ export type FrameRoleSnapshot = {
   main: boolean;
   examples: string[];
 };
+
+/** @deprecated Use PropertySnapshot instead */
+export type FrameRoleSnapshot = PropertySnapshot;
 
 function isTruthyBoolean(v: unknown): boolean {
   return v === true || v === 1 || v === 'true';
@@ -98,17 +107,17 @@ function asStringArray(v: unknown): string[] {
 }
 
 /**
- * Reconstruct the OLD (pre-change) values for a specific frame role from pending fields.
- * Useful for displaying deletions, since deleted roles are removed from the preview `frame_roles` array.
+ * Reconstruct the OLD (pre-change) values for a specific property from pending fields.
+ * Useful for displaying deletions, since deleted properties are removed from the preview `properties` array.
  */
-export function getFrameRoleOldSnapshot(
+export function getPropertyOldSnapshot(
   pending: PendingChangeInfo | null | undefined,
   roleTypeLabel: string
-): FrameRoleSnapshot | null {
+): PropertySnapshot | null {
   if (!pending?.pending_fields) return null;
   if (!roleTypeLabel) return null;
 
-  const key = (field: string) => `frame_roles.${roleTypeLabel}.${field}`;
+  const key = (field: string) => `properties.${roleTypeLabel}.${field}`;
   const fields = pending.pending_fields;
 
   const label = fields[key('label')] ? asNullableString(fields[key('label')].old_value) : null;
@@ -120,17 +129,20 @@ export function getFrameRoleOldSnapshot(
   return { roleType: roleTypeLabel, label, description, notes, main, examples };
 }
 
+/** @deprecated Use getPropertyOldSnapshot instead */
+export const getFrameRoleOldSnapshot = getPropertyOldSnapshot;
+
 /**
- * Determine whether a specific frame role (by role type label) is being created/updated/deleted.
+ * Determine whether a specific property (by role type label) is being created/updated/deleted.
  */
-export function getFrameRoleOperation(
+export function getPropertyOperation(
   pending: PendingChangeInfo | null | undefined,
   roleTypeLabel: string
 ): PendingChangeOperation | null {
   if (!pending?.pending_fields) return null;
   if (!roleTypeLabel) return null;
 
-  const existsKey = `frame_roles.${roleTypeLabel}.__exists`;
+  const existsKey = `properties.${roleTypeLabel}.__exists`;
   const existsChange = pending.pending_fields[existsKey];
 
   if (existsChange) {
@@ -140,26 +152,29 @@ export function getFrameRoleOperation(
     if (oldExists && !newExists) return 'delete';
   }
 
-  const prefix = `frame_roles.${roleTypeLabel}.`;
+  const prefix = `properties.${roleTypeLabel}.`;
   const hasAnyRoleSubfieldChange = Object.keys(pending.pending_fields).some((k) => (
     k.startsWith(prefix) && k !== existsKey
   ));
   return hasAnyRoleSubfieldChange ? 'update' : null;
 }
 
+/** @deprecated Use getPropertyOperation instead */
+export const getFrameRoleOperation = getPropertyOperation;
+
 /**
- * Summarize create/update/delete operations across all frame roles in a changeset.
+ * Summarize create/update/delete operations across all properties in a changeset.
  */
-export function getFrameRoleChangeSummary(
+export function getPropertyChangeSummary(
   pending: PendingChangeInfo | null | undefined
-): FrameRoleChangeSummary {
+): PropertyChangeSummary {
   if (!pending?.pending_fields) {
     return { created: [], updated: [], deleted: [] };
   }
 
   const roleTypes = new Set<string>();
   for (const key of Object.keys(pending.pending_fields)) {
-    if (!key.startsWith('frame_roles.')) continue;
+    if (!key.startsWith('properties.')) continue;
     const parts = key.split('.');
     if (parts.length < 3) continue;
     const roleType = parts[1];
@@ -171,7 +186,7 @@ export function getFrameRoleChangeSummary(
   const deleted: string[] = [];
 
   for (const rt of Array.from(roleTypes).sort((a, b) => a.localeCompare(b))) {
-    const op = getFrameRoleOperation(pending, rt);
+    const op = getPropertyOperation(pending, rt);
     if (op === 'create') created.push(rt);
     else if (op === 'delete') deleted.push(rt);
     else if (op === 'update') updated.push(rt);
@@ -180,19 +195,25 @@ export function getFrameRoleChangeSummary(
   return { created, updated, deleted };
 }
 
+/** @deprecated Use getPropertyChangeSummary instead */
+export const getFrameRoleChangeSummary = getPropertyChangeSummary;
+
 /**
- * Choose a single operation to represent the `frame_roles` field at the cell/section level.
+ * Choose a single operation to represent the `properties` field at the cell/section level.
  * Priority: delete > create > update.
  */
-export function getFrameRolesAggregateOperation(
+export function getPropertiesAggregateOperation(
   pending: PendingChangeInfo | null | undefined
 ): PendingChangeOperation | null {
-  const summary = getFrameRoleChangeSummary(pending);
+  const summary = getPropertyChangeSummary(pending);
   if (summary.deleted.length > 0) return 'delete';
   if (summary.created.length > 0) return 'create';
   if (summary.updated.length > 0) return 'update';
   return null;
 }
+
+/** @deprecated Use getPropertiesAggregateOperation instead */
+export const getFrameRolesAggregateOperation = getPropertiesAggregateOperation;
 
 /**
  * Get SVG stroke color for graph nodes based on operation type.
@@ -243,13 +264,13 @@ interface PendingFieldIndicatorProps {
   className?: string;
   /** Whether this is a table cell (uses different styling) */
   isTableCell?: boolean;
-  /** Optional override for styling operation (useful for nested granular fields like frame_roles.*). */
+  /** Optional override for styling operation (useful for nested granular fields like properties.*). */
   operationOverride?: PendingChangeOperation;
   /** Optional override for CSS class mapping by operation. */
   getCellClasses?: (operation: PendingChangeOperation) => string;
   /**
    * Optional formatter override for values shown in the click-to-open tooltip.
-   * Useful for foreign keys like `frame_id` to show codes instead of raw ids.
+   * Useful for foreign keys like `concept_id` to show codes instead of raw ids.
    */
   formatTooltipValue?: (value: unknown, which: 'old' | 'new') => string | null | undefined;
 }
@@ -274,7 +295,7 @@ export function PendingFieldIndicator({
 
   // Check if this field has a pending change.
   // Some complex fields (e.g. frame_roles) are stored as granular sub-field changes like
-  // "frame_roles.ASSET.description" rather than a single "frame_roles" change.
+  // "properties.ASSET.description" rather than a single "properties" change.
   const pendingFields = pending?.pending_fields ?? {};
   const directChange = pendingFields[fieldName] ?? null;
   const prefix = `${fieldName}.`;

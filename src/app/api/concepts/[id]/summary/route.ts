@@ -4,23 +4,23 @@ import { prisma } from '@/lib/prisma';
 export const dynamic = 'force-dynamic';
 
 /**
- * GET /api/frames/[id]/summary
+ * GET /api/concepts/[id]/summary
  *
- * Lightweight identity card for a frame, designed to back hover
+ * Lightweight identity card for a concept, designed to back hover
  * popovers in pending-changes and issue review surfaces. Returns:
- *  - the frame's identity (label, code, type/subtype)
+ *  - the concept's identity (label, code, type/subtype)
  *  - a short definition (or a definition excerpt fallback)
- *  - the frame's senses (pos, definition, up to 4 lemmas each)
+ *  - the concept's senses (pos, definition, up to 4 lemmas each)
  *
- * Intentionally NOT cached as a Prisma include because the wider
- * `/api/frames/[id]` endpoint is heavy and pulls pending-overlay
- * logic; this one is a tight read with bounded fan-out.
+ * Intentionally separate from `/api/concepts/[id]/route.ts` (which is
+ * the heavy editor payload that also bakes in pending overlays); this
+ * one is a tight read with bounded fan-out and short-lived cache.
  *
  * NOTE: hierarchy / DAG counts and lexical-unit aggregates were
  * removed from this response on purpose — reviewers found that level
- * of detail noisy in tooltips. If they're needed elsewhere (e.g. the
- * legacy frame detail page), pull them straight from `frame_relations`
- * and `lexical_unit_senses` rather than re-adding them here.
+ * of detail noisy in tooltips. If they're needed elsewhere, pull them
+ * straight from `concept_relations` and `lexical_unit_senses` rather
+ * than re-adding them here.
  */
 const MAX_LEMMAS_PER_SENSE = 4;
 const MAX_SENSES = 6;
@@ -34,12 +34,12 @@ export async function GET(
     const { id: idParam } = await params;
 
     if (!/^\d+$/.test(idParam)) {
-      return NextResponse.json({ error: 'Invalid frame id' }, { status: 400 });
+      return NextResponse.json({ error: 'Invalid concept id' }, { status: 400 });
     }
 
     const id = BigInt(idParam);
 
-    const frame = await prisma.frames.findUnique({
+    const frame = await prisma.concepts.findUnique({
       where: { id },
       select: {
         id: true,
@@ -47,7 +47,7 @@ export async function GET(
         code: true,
         short_definition: true,
         definition: true,
-        frame_type: true,
+        archetype: true,
         subtype: true,
         verifiable: true,
         deleted: true,
@@ -55,13 +55,13 @@ export async function GET(
     });
 
     if (!frame || frame.deleted) {
-      return NextResponse.json({ error: 'Frame not found' }, { status: 404 });
+      return NextResponse.json({ error: 'Concept not found' }, { status: 404 });
     }
 
-    const senseLinks = await prisma.frame_sense_frames.findMany({
-      where: { frame_id: id },
+    const senseLinks = await prisma.sense_concepts.findMany({
+      where: { concept_id: id },
       select: {
-        frame_senses: {
+        senses: {
           select: {
             id: true,
             pos: true,
@@ -74,9 +74,9 @@ export async function GET(
 
     // Stable order: by pos (alpha) then by id so the popover renders
     // the same list on every fetch. Cap at MAX_SENSES with a count
-    // hint so very productive frames don't blow up the tooltip.
+    // hint so very productive concepts don't blow up the tooltip.
     const sensesAll = senseLinks
-      .map((link) => link.frame_senses)
+      .map((link) => link.senses)
       .filter((s): s is NonNullable<typeof s> => Boolean(s))
       .sort((a, b) => {
         if (a.pos !== b.pos) return a.pos.localeCompare(b.pos);
@@ -112,7 +112,7 @@ export async function GET(
         id: frame.id.toString(),
         label: frame.label,
         code: frame.code,
-        frame_type: frame.frame_type,
+        archetype: frame.archetype,
         subtype: frame.subtype,
         short_definition: frame.short_definition,
         definition_excerpt: definitionExcerpt,
@@ -129,9 +129,9 @@ export async function GET(
       },
     );
   } catch (error) {
-    console.error('[API] Error fetching frame summary:', error);
+    console.error('[API] Error fetching concept summary:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch frame summary' },
+      { error: 'Failed to fetch concept summary' },
       { status: 500 },
     );
   }

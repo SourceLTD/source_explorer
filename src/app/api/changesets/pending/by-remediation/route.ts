@@ -22,7 +22,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import {
   PENDING_CHANGESET_INCLUDE,
-  buildFrameRefLookup,
+  buildConceptRefLookup,
   shapePendingChangeset,
   type ShapedChangeset,
 } from '@/lib/changesets/pending-shape';
@@ -64,20 +64,20 @@ export interface PendingByRemediationResponse {
 // ---------------------------------------------------------------------------
 
 const PLAN_KIND_LABELS: Record<string, string> = {
-  split_frame: 'Split frame',
-  merge_frame: 'Merge frames',
-  merge_sense: 'Merge frame senses',
-  move_frame_sense: 'Move frame sense',
-  move_frame_parent: 'Reparent frame',
+  split_frame: 'Split concept',
+  merge_frame: 'Merge concepts',
+  merge_sense: 'Merge senses',
+  move_frame_sense: 'Move sense',
+  move_frame_parent: 'Reparent concept',
   detach_parent_relation: 'Detach parent relation',
-  upsert_role_mappings: 'Upsert role mappings',
+  upsert_role_mappings: 'Upsert property mappings',
 };
 
 const ENTITY_LABELS: Record<string, string> = {
-  frame: 'frame',
+  frame: 'concept',
   frame_relation: 'relation',
-  frame_role: 'frame role',
-  frame_role_mapping: 'role mapping',
+  frame_role: 'property',
+  frame_role_mapping: 'property mapping',
   frame_sense: 'sense',
 };
 
@@ -115,7 +115,7 @@ export async function GET(_request: NextRequest) {
       include: PENDING_CHANGESET_INCLUDE,
     });
 
-    const lookup = await buildFrameRefLookup(changesets);
+    const lookup = await buildConceptRefLookup(changesets);
 
     // Fetch plans for plan-bound changesets.
     const allPlanIds = Array.from(

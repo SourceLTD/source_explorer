@@ -19,10 +19,10 @@ import { getChangeset, createChangesetFromUpdate } from './create';
 import { addComment } from './comments';
 import { setRowHistoryContext } from './rowHistoryContext';
 import {
-  applyFrameRolesSubChanges,
-  isFrameRolesFieldName,
-  type NormalizedFrameRole,
-} from './frameRolesSubfields';
+  applyPropertiesSubChanges,
+  isPropertiesFieldName,
+  type NormalizedProperty,
+} from './propertiesSubfields';
 import {
   isSensesFieldName,
   parseSensesExistsFieldName,
@@ -62,8 +62,8 @@ function toBigIntSafe(v: unknown): bigint | null {
  * by `commitCreateInTx` when the row is INSERTed).
  *
  * Used by:
- *   - Phase 5 `merge_frame`     (frame_sense.frame_id, frame.merged_into)
- *   - Phase 6 `split_frame`     (frame_sense.frame_id, frame_relation.{source_id,target_id})
+ *   - Phase 5 `merge_frame`     (frame_sense.concept_id, frame.merged_into)
+ *   - Phase 6 `split_frame`     (frame_sense.concept_id, frame_relation.{parent_id,child_id})
  *   - Future plan kinds with cross-changeset FK references.
  *
  * Returns the resolved bigint, OR throws if the referenced CREATE
@@ -371,42 +371,42 @@ async function commitCreateInTx(
       });
       newEntityId = lu.id;
     } else if (changeset.entity_type === 'frame') {
-      // Support optional `frame_roles` in after_snapshot for CREATE operations.
-      // This is used by AI split jobs (and some MCP tooling) to propose roles for new frames.
-      const frameData: Record<string, unknown> = { ...(entityData as Record<string, unknown>) };
-      const frameRolesRaw = (frameData as { frame_roles?: unknown }).frame_roles;
-      delete (frameData as { frame_roles?: unknown }).frame_roles;
+      // Support optional `properties` in after_snapshot for CREATE operations.
+      // This is used by AI split jobs (and some MCP tooling) to propose roles for new concepts.
+      const conceptData: Record<string, unknown> = { ...(entityData as Record<string, unknown>) };
+      const propertiesRaw = (conceptData as { properties?: unknown }).properties;
+      delete (conceptData as { properties?: unknown }).properties;
 
-      const frame = await tx.frames.create({
-        data: frameData as Prisma.framesCreateInput,
+      const concept = await tx.concepts.create({
+        data: conceptData as Prisma.conceptsCreateInput,
       });
-      newEntityId = frame.id;
+      newEntityId = concept.id;
 
-      if (Array.isArray(frameRolesRaw) && frameRolesRaw.length > 0) {
-        const roles = frameRolesRaw as Array<Record<string, unknown>>;
+      if (Array.isArray(propertiesRaw) && propertiesRaw.length > 0) {
+        const roles = propertiesRaw as Array<Record<string, unknown>>;
 
-        const createManyData: Prisma.frame_rolesCreateManyInput[] = [];
+        const createManyData: Prisma.propertiesCreateManyInput[] = [];
         const seenLabels = new Set<string>();
 
         for (const role of roles) {
           const label = typeof role.label === 'string' ? role.label
             : typeof role.role_type_code === 'string' ? role.role_type_code
-            : typeof role.roleType === 'string' ? role.roleType
+            : typeof role.propertyType === 'string' ? role.propertyType
             : null;
 
           if (!label) {
             throw new Error(
-              `CREATE frame_roles failed: no label provided for role`
+              `CREATE properties failed: no label provided for role`
             );
           }
 
           if (seenLabels.has(label)) {
-            throw new Error(`CREATE frame_roles failed: duplicate label for new frame ("${label}")`);
+            throw new Error(`CREATE properties failed: duplicate label for new concept ("${label}")`);
           }
           seenLabels.add(label);
 
           createManyData.push({
-            frame_id: frame.id,
+            concept_id: concept.id,
             description: (role.description as string) ?? null,
             notes: (role.notes as string) ?? null,
             main: (role.main as boolean) ?? false,
@@ -416,40 +416,40 @@ async function commitCreateInTx(
         }
 
         if (createManyData.length > 0) {
-          await tx.frame_roles.createMany({
+          await tx.properties.createMany({
             data: createManyData,
             skipDuplicates: false,
           });
         }
       }
     } else if (changeset.entity_type === 'frame_sense') {
-      // CREATE frame_sense:
-      //   after_snapshot = { pos, definition, frame_type, [confidence], [type_dispute],
+      // CREATE sense:
+      //   after_snapshot = { pos, definition, archetype, [confidence], [type_dispute],
       //                      [causative], [inchoative], [perspectival],
-      //                      frame_id, [lexical_unit_ids] }
+      //                      concept_id, [lexical_unit_ids] }
       const senseData = entityData as Record<string, unknown>;
       const pos = typeof senseData.pos === 'string' ? senseData.pos : null;
       const definition = typeof senseData.definition === 'string' ? senseData.definition : null;
-      const frameType = typeof senseData.frame_type === 'string' ? senseData.frame_type : null;
-      const frameIdRaw = senseData.frame_id;
-      if (!pos || !definition || !frameType) {
-        throw new Error('CREATE frame_sense requires pos, definition, frame_type');
+      const archetype = typeof senseData.archetype === 'string' ? senseData.archetype : null;
+      const conceptIdRaw = senseData.concept_id;
+      if (!pos || !definition || !archetype) {
+        throw new Error('CREATE sense requires pos, definition, archetype');
       }
       if (!PART_OF_SPEECH_VALUES.has(pos)) {
-        // `frame_senses.pos` is the `part_of_speech` enum
+        // `senses.pos` is the `part_of_speech` enum
         // (`verb | noun | adjective | adverb`) after the standardization
         // migration. Reject anything else loudly so a stale runner /
         // upstream producer can't silently corrupt the column.
         throw new Error(
-          `CREATE frame_sense: pos must be one of ${Object.values(part_of_speech).join(', ')}; got "${pos}"`,
+          `CREATE sense: pos must be one of ${Object.values(part_of_speech).join(', ')}; got "${pos}"`,
         );
       }
-      if (frameIdRaw === undefined || frameIdRaw === null) {
-        throw new Error('CREATE frame_sense requires frame_id (senses anchor to exactly one frame)');
+      if (conceptIdRaw === undefined || conceptIdRaw === null) {
+        throw new Error('CREATE sense requires concept_id (senses anchor to exactly one frame)');
       }
-      const frameId = toBigIntSafe(frameIdRaw);
-      if (!frameId) {
-        throw new Error(`CREATE frame_sense: invalid frame_id (${String(frameIdRaw)})`);
+      const conceptId = toBigIntSafe(conceptIdRaw);
+      if (!conceptId) {
+        throw new Error(`CREATE sense: invalid concept_id (${String(conceptIdRaw)})`);
       }
       const luIdsRaw = Array.isArray(senseData.lexical_unit_ids) ? senseData.lexical_unit_ids : [];
       const luIds: bigint[] = [];
@@ -458,11 +458,11 @@ async function commitCreateInTx(
         if (b) luIds.push(b);
       }
 
-      const sense = await tx.frame_senses.create({
+      const sense = await tx.senses.create({
         data: {
           pos: pos as part_of_speech,
           definition,
-          frame_type: frameType,
+          archetype: archetype,
           confidence: (senseData.confidence as string | null | undefined) ?? null,
           type_dispute: (senseData.type_dispute as string | null | undefined) ?? null,
           causative: (senseData.causative as boolean | null | undefined) ?? null,
@@ -470,20 +470,20 @@ async function commitCreateInTx(
           perspectival: (senseData.perspectival as boolean | null | undefined) ?? null,
         },
       });
-      await tx.frame_sense_frames.create({
-        data: { frame_sense_id: sense.id, frame_id: frameId },
+      await tx.sense_concepts.create({
+        data: { sense_id: sense.id, concept_id: conceptId },
       });
       if (luIds.length > 0) {
         await tx.lexical_unit_senses.createMany({
-          data: luIds.map(lu => ({ lexical_unit_id: lu, frame_sense_id: sense.id })),
+          data: luIds.map(lu => ({ lexical_unit_id: lu, sense_id: sense.id })),
           skipDuplicates: true,
         });
       }
-      // frame_senses.id is Int, but audit_log.entity_id is BigInt. Safe to cast.
+      // senses.id is Int, but audit_log.entity_id is BigInt. Safe to cast.
       newEntityId = BigInt(sense.id);
-    } else if (changeset.entity_type === 'frame_relation') {
+    } else if (changeset.entity_type === 'frame_relation' || changeset.entity_type === 'concept_relation') {
       const relData = entityData as Record<string, unknown>;
-      // V2 plan source_id / target_id may be placeholder strings
+      // V2 plan parent_id / child_id may be placeholder strings
       // (e.g. "-3") referencing a sibling CREATE-frame changeset
       // staged earlier in the same plan. (Phase 8: `split_frame`
       // no longer emits parent_of edges for brand-new frames -
@@ -492,24 +492,24 @@ async function commitCreateInTx(
       // or both endpoints can legitimately be a placeholder.)
       const sourceId = await resolveVirtualOrBigInt(
         tx,
-        relData.source_id,
-        `frame_relation.source_id (changeset ${changeset.id.toString()})`,
+        relData.parent_id,
+        `concept_relation.parent_id (changeset ${changeset.id.toString()})`,
       );
       const targetId = await resolveVirtualOrBigInt(
         tx,
-        relData.target_id,
-        `frame_relation.target_id (changeset ${changeset.id.toString()})`,
+        relData.child_id,
+        `concept_relation.child_id (changeset ${changeset.id.toString()})`,
       );
       const relType = relData.type as string;
 
       if (!sourceId || !targetId || !relType) {
-        throw new Error('CREATE frame_relation requires source_id, target_id, and type');
+        throw new Error('CREATE concept_relation requires parent_id, child_id, and type');
       }
 
-      const rel = await tx.frame_relations.create({
+      const rel = await tx.concept_relations.create({
         data: {
-          source_id: sourceId,
-          target_id: targetId,
+          parent_id: sourceId,
+          child_id: targetId,
           type: relType as any,
           locked: relData.locked === true,
         },
@@ -519,44 +519,44 @@ async function commitCreateInTx(
       // Auto-create the inverse relation for bidirectional pairs
       const inverse = INVERSE_RELATION_TYPE[relType];
       if (inverse) {
-        await tx.frame_relations.upsert({
+        await tx.concept_relations.upsert({
           where: {
-            source_id_type_target_id: {
-              source_id: targetId,
+            parent_id_type_child_id: {
+              parent_id: targetId,
               type: inverse as any,
-              target_id: sourceId,
+              child_id: sourceId,
             },
           },
           create: {
-            source_id: targetId,
-            target_id: sourceId,
+            parent_id: targetId,
+            child_id: sourceId,
             type: inverse as any,
           },
           update: {},
         });
       }
-    } else if (changeset.entity_type === 'frame_role_mapping') {
-      // CREATE frame_role_mapping (Phase 2 cascading remediations).
+    } else if (changeset.entity_type === 'frame_role_mapping' || changeset.entity_type === 'property_mapping') {
+      // CREATE property_mapping (Phase 2 cascading remediations).
       //
       // Used by the v2 `upsert_role_mappings` plan kind. The
       // strategy LLM emits one entry per parent role; the runner
       // lowers each into a CREATE on `frame_role_mappings` with a
       // negative placeholder entity_id so the writer treats it as
       // a create. We accept either direct columns
-      // (parent_frame_id / child_frame_id / parent_role_label /
-      // child_role_label) or denormalised aliases for forward
+      // (parent_concept_id / child_concept_id / parent_property_label /
+      // child_property_label) or denormalised aliases for forward
       // compatibility.
       const mappingData = entityData as Record<string, unknown>;
-      const parentFrameId = toBigIntSafe(mappingData.parent_frame_id);
-      const childFrameId = toBigIntSafe(mappingData.child_frame_id);
+      const parentConceptId = toBigIntSafe(mappingData.parent_concept_id);
+      const childConceptId = toBigIntSafe(mappingData.child_concept_id);
       const parentRoleLabel =
-        typeof mappingData.parent_role_label === 'string'
-          ? mappingData.parent_role_label
+        typeof mappingData.parent_property_label === 'string'
+          ? mappingData.parent_property_label
           : null;
       const childRoleLabel =
-        typeof mappingData.child_role_label === 'string'
-          ? mappingData.child_role_label
-          : mappingData.child_role_label === null
+        typeof mappingData.child_property_label === 'string'
+          ? mappingData.child_property_label
+          : mappingData.child_property_label === null
             ? null
             : undefined;
       const runId =
@@ -564,46 +564,46 @@ async function commitCreateInTx(
       const model =
         typeof mappingData.model === 'string' ? mappingData.model : null;
 
-      if (!parentFrameId || !childFrameId) {
+      if (!parentConceptId || !childConceptId) {
         throw new Error(
-          'CREATE frame_role_mapping requires parent_frame_id and child_frame_id',
+          'CREATE property_mapping requires parent_concept_id and child_concept_id',
         );
       }
       if (!parentRoleLabel) {
         throw new Error(
-          'CREATE frame_role_mapping requires parent_role_label (non-empty string)',
+          'CREATE property_mapping requires parent_property_label (non-empty string)',
         );
       }
       if (childRoleLabel === undefined) {
         throw new Error(
-          'CREATE frame_role_mapping requires child_role_label (string or explicit null)',
+          'CREATE property_mapping requires child_property_label (string or explicit null)',
         );
       }
 
-      // The (parent_frame_id, child_frame_id, parent_role_label,
-      // child_role_label, run_id) tuple is unique. Use upsert-by-
+      // The (parent_concept_id, child_concept_id, parent_property_label,
+      // child_property_label, run_id) tuple is unique. Use upsert-by-
       // composite-key to make the commit idempotent on retry: if a
       // sibling changeset (or a concurrent run) already inserted
       // the row, we no-op rather than blowing the plan tx up. The
       // plan-writer's per-changeset ordering keeps the audit trail
       // intact even when the underlying INSERT becomes a no-op.
-      const existing = await tx.frame_role_mappings.findFirst({
+      const existing = await tx.property_mappings.findFirst({
         where: {
-          parent_frame_id: parentFrameId,
-          child_frame_id: childFrameId,
-          parent_role_label: parentRoleLabel,
-          child_role_label: childRoleLabel,
+          parent_concept_id: parentConceptId,
+          child_concept_id: childConceptId,
+          parent_property_label: parentRoleLabel,
+          child_property_label: childRoleLabel,
           run_id: runId,
         },
       });
       const mapping = existing
         ? existing
-        : await tx.frame_role_mappings.create({
+        : await tx.property_mappings.create({
             data: {
-              parent_frame_id: parentFrameId,
-              child_frame_id: childFrameId,
-              parent_role_label: parentRoleLabel,
-              child_role_label: childRoleLabel,
+              parent_concept_id: parentConceptId,
+              child_concept_id: childConceptId,
+              parent_property_label: parentRoleLabel,
+              child_property_label: childRoleLabel,
               run_id: runId,
               model,
             },
@@ -611,39 +611,39 @@ async function commitCreateInTx(
       newEntityId = mapping.id;
     } else if (changeset.entity_type === 'frame_role') {
       // Standalone CREATE frame_role (Phase 10 - 100% remediation
-      // coverage). Frame-create already supports inlined roles via
-      // the `frame_roles` array on the frame's after_snapshot; this
+      // coverage). Concept-create already supports inlined roles via
+      // the `properties` array on the frame's after_snapshot; this
       // branch handles the case where the runner emits a single
       // role-create against an *existing* frame (the
       // `create_frame_role` strategy for DR-018, DR-029 family,
       // DR-033 family, DR-035 family - "Missing core/peripheral/
       // scalar role" diagnoses on an already-created frame).
       const roleData = entityData as Record<string, unknown>;
-      const frameId = toBigIntSafe(roleData.frame_id);
+      const conceptId = toBigIntSafe(roleData.concept_id);
       const label = typeof roleData.label === 'string' ? roleData.label : null;
-      if (!frameId) {
-        throw new Error('CREATE frame_role requires frame_id');
+      if (!conceptId) {
+        throw new Error('CREATE property requires concept_id');
       }
       if (!label) {
-        throw new Error('CREATE frame_role requires a non-empty label');
+        throw new Error('CREATE property requires a non-empty label');
       }
       // Sibling-label uniqueness pre-check. The schema does not
       // enforce label uniqueness per frame, but every health check
       // that consumes role labels assumes it - and the LLM
       // validator on the runner side enforces it too. Guard here
       // so a stale plan doesn't slip a duplicate through.
-      const dup = await tx.frame_roles.findFirst({
-        where: { frame_id: frameId, label },
+      const dup = await tx.properties.findFirst({
+        where: { concept_id: conceptId, label },
         select: { id: true },
       });
       if (dup) {
         throw new Error(
-          `CREATE frame_role: label "${label}" already exists on frame ${frameId.toString()}`,
+          `CREATE frame_role: label "${label}" already exists on frame ${conceptId.toString()}`,
         );
       }
-      const role = await tx.frame_roles.create({
+      const role = await tx.properties.create({
         data: {
-          frame_id: frameId,
+          concept_id: conceptId,
           label,
           description:
             typeof roleData.description === 'string' ? roleData.description : null,
@@ -696,33 +696,33 @@ async function commitCreateInTx(
 function isComplexField(fieldName: string): boolean {
   return (
     fieldName === 'hypernym' ||
-    isFrameRolesFieldName(fieldName) ||
+    isPropertiesFieldName(fieldName) ||
     isSensesFieldName(fieldName)
   );
 }
 
-async function commitFrameRolesSubChanges(
+async function commitPropertiesSubChanges(
   tx: Prisma.TransactionClient,
   changeset: ChangesetWithFieldChanges,
   approvedRoleChanges: ChangesetWithFieldChanges['field_changes'],
 ): Promise<void> {
   if (changeset.entity_type !== 'frame') {
-    throw new Error(`frame_roles.* changes are only supported for frames (got ${changeset.entity_type})`);
+    throw new Error(`properties.* changes are only supported for frames (got ${changeset.entity_type})`);
   }
   const entityId = changeset.entity_id!;
 
   // Fetch current roles and normalize to the same shape as staging
-  const currentRolesRaw = await tx.frame_roles.findMany({
-    where: { frame_id: entityId },
+  const currentRolesRaw = await tx.properties.findMany({
+    where: { concept_id: entityId },
     orderBy: { id: 'asc' },
   });
 
-  const baseRoles: NormalizedFrameRole[] = [];
+  const baseRoles: NormalizedProperty[] = [];
   for (const r of currentRolesRaw as any[]) {
     const roleLabel = typeof r?.label === 'string' ? r.label : '';
     if (!roleLabel) continue;
     baseRoles.push({
-      roleType: roleLabel,
+      propertyType: roleLabel,
       description: typeof r.description === 'string' ? r.description : null,
       notes: typeof r.notes === 'string' ? r.notes : null,
       main: typeof r.main === 'boolean' ? r.main : Boolean(r.main),
@@ -731,30 +731,30 @@ async function commitFrameRolesSubChanges(
     });
   }
 
-  const finalRoles = applyFrameRolesSubChanges(
+  const finalRoles = applyPropertiesSubChanges(
     baseRoles,
     approvedRoleChanges.map(fc => ({ field_name: fc.field_name, new_value: fc.new_value }))
   );
 
-  await tx.frame_roles.deleteMany({ where: { frame_id: entityId } });
+  await tx.properties.deleteMany({ where: { concept_id: entityId } });
 
   if (finalRoles.length === 0) {
     return;
   }
 
-  const createManyData: Prisma.frame_rolesCreateManyInput[] = [];
+  const createManyData: Prisma.propertiesCreateManyInput[] = [];
   for (const r of finalRoles) {
     createManyData.push({
-      frame_id: entityId,
+      concept_id: entityId,
       description: r.description ?? null,
       notes: r.notes ?? null,
       main: r.main ?? false,
       examples: r.examples ?? [],
-      label: r.label ?? r.roleType,
+      label: r.label ?? r.propertyType,
     });
   }
 
-  await tx.frame_roles.createMany({ data: createManyData });
+  await tx.properties.createMany({ data: createManyData });
 }
 
 async function commitUpdate(
@@ -787,8 +787,8 @@ async function commitUpdateInTx(
   // Separate complex fields from simple fields
   const simpleChanges = approvedChanges.filter(fc => !isComplexField(fc.field_name));
   const complexChanges = approvedChanges.filter(fc => isComplexField(fc.field_name));
-  const frameRolesLegacy = complexChanges.find(fc => fc.field_name === 'frame_roles');
-  const frameRolesSub = complexChanges.filter(fc => fc.field_name.startsWith('frame_roles.'));
+  const propertiesLegacy = complexChanges.find(fc => fc.field_name === 'properties');
+  const propertiesSub = complexChanges.filter(fc => fc.field_name.startsWith('properties.'));
   const hypernymChanges = complexChanges.filter(fc => fc.field_name === 'hypernym');
   // Sense attach/detach on a lexical_unit: `senses.<senseId>.__exists = true|false`.
   const sensesSubChanges = complexChanges.filter(
@@ -798,15 +798,15 @@ async function commitUpdateInTx(
   // Build the update data for simple fields only, resolving virtual IDs (negative IDs = -changeset_id)
   const updateData: Record<string, unknown> = {};
 
-  // For frame_sense updates, `frame_id` is not a scalar column — it's stored via
-  // frame_sense_frames. Pull it out and apply as a complex change after simple fields.
+  // For frame_sense updates, `concept_id` is not a scalar column — it's stored via
+  // sense_concepts. Pull it out and apply as a complex change after simple fields.
   const senseFrameIdChange =
     changeset.entity_type === 'frame_sense'
-      ? simpleChanges.find(fc => fc.field_name === 'frame_id') ?? null
+      ? simpleChanges.find(fc => fc.field_name === 'concept_id') ?? null
       : null;
   const senseSimpleChanges =
     changeset.entity_type === 'frame_sense'
-      ? simpleChanges.filter(fc => fc.field_name !== 'frame_id')
+      ? simpleChanges.filter(fc => fc.field_name !== 'concept_id')
       : simpleChanges;
 
   await setRowHistoryContext(tx, {
@@ -818,14 +818,14 @@ async function commitUpdateInTx(
     for (const fc of senseSimpleChanges) {
       let nextValue: unknown = fc.new_value;
 
-      // `frame_id` is no longer a scalar column on lexical_units — frames are routed
-      // through frame_senses. Skip any legacy staged field changes targeting it on a
+      // `concept_id` is no longer a scalar column on lexical_units — frames are routed
+      // through senses. Skip any legacy staged field changes targeting it on a
       // lexical unit; these changesets came from the pre-sense era and committing them
-      // would fail at the Prisma layer. Frame-level frame_id (e.g. on frame_roles) is
+      // would fail at the Prisma layer. Concept-level concept_id (e.g. on properties) is
       // unaffected and still committed normally.
-      if (fc.field_name === 'frame_id' && isLexicalUnitType(changeset.entity_type)) {
+      if (fc.field_name === 'concept_id' && isLexicalUnitType(changeset.entity_type)) {
         console.warn(
-          `[commit] Skipping legacy frame_id field change on lexical_unit ${changeset.entity_id} — use frame_senses instead.`
+          `[commit] Skipping legacy concept_id field change on lexical_unit ${changeset.entity_id} — use senses instead.`
         );
         continue;
       }
@@ -839,7 +839,7 @@ async function commitUpdateInTx(
       // Known FK fields that may need virtual-id resolution + bigint
       // coercion when staged from the runner:
       //
-      //   - `frame_id`     on `frame_sense`  (move_frame_sense /
+      //   - `concept_id`     on `frame_sense`  (move_frame_sense /
       //                                       merge_frame sense
       //                                       repoints; can target a
       //                                       newly-created merge
@@ -850,7 +850,7 @@ async function commitUpdateInTx(
       //                                       new target frame when
       //                                       `target.kind === 'new'`)
       const isFkField =
-        fc.field_name === 'frame_id' ||
+        fc.field_name === 'concept_id' ||
         (changeset.entity_type === 'frame' && fc.field_name === 'merged_into');
 
       if (isFkField) {
@@ -889,8 +889,8 @@ async function commitUpdateInTx(
     // Update simple fields on the entity using optimistic locking, and bump version
     const hasSimpleChanges = Object.keys(updateData).length > 0;
     const hasComplexChanges =
-      !!frameRolesLegacy ||
-      frameRolesSub.length > 0 ||
+      !!propertiesLegacy ||
+      propertiesSub.length > 0 ||
       hypernymChanges.length > 0 ||
       sensesSubChanges.length > 0;
 
@@ -930,7 +930,7 @@ async function commitUpdateInTx(
         }
       } else if (changeset.entity_type === 'frame') {
         if (useOptimisticLock) {
-          const result = await tx.frames.updateMany({
+          const result = await tx.concepts.updateMany({
             where: {
               id: changeset.entity_id!,
               version: changeset.entity_version!,
@@ -939,19 +939,19 @@ async function commitUpdateInTx(
           });
           updateCount = result.count;
         } else {
-          await tx.frames.update({
+          await tx.concepts.update({
             where: { id: changeset.entity_id! },
             data: versionedData,
           });
           updateCount = 1;
         }
       } else if (changeset.entity_type === 'frame_sense') {
-        // frame_senses has no `version` column — skip optimistic locking here.
+        // senses has no `version` column — skip optimistic locking here.
         if (hasSimpleChanges) {
           const senseUpdateData = { ...updateData };
           // Int PK — entity_id is stored as BigInt in the changeset.
           const senseId = Number(changeset.entity_id!);
-          await tx.frame_senses.update({
+          await tx.senses.update({
             where: { id: senseId },
             data: {
               ...senseUpdateData,
@@ -979,29 +979,29 @@ async function commitUpdateInTx(
       // result frame is brand-new, and senses repoint at it via
       // its placeholder). Resolve via the shared helper so we
       // get the same semantics as the simple-field code path.
-      const newFrameId = await resolveVirtualOrBigInt(
+      const newConceptId = await resolveVirtualOrBigInt(
         tx,
         raw,
-        `frame_sense.frame_id (changeset ${changeset.id.toString()})`,
+        `frame_sense.concept_id (changeset ${changeset.id.toString()})`,
       );
-      if (!newFrameId) {
+      if (!newConceptId) {
         throw new Error(
-          `Invalid frame_id for frame_sense update: ${String(raw)} (must resolve to a BigInt)`
+          `Invalid concept_id for frame_sense update: ${String(raw)} (must resolve to a BigInt)`
         );
       }
-      await tx.frame_sense_frames.deleteMany({ where: { frame_sense_id: senseId } });
-      await tx.frame_sense_frames.create({
-        data: { frame_sense_id: senseId, frame_id: newFrameId },
+      await tx.sense_concepts.deleteMany({ where: { sense_id: senseId } });
+      await tx.sense_concepts.create({
+        data: { sense_id: senseId, concept_id: newConceptId },
       });
     }
 
-    // Handle complex field changes (frame_roles.*, hypernym)
-    if (frameRolesLegacy) {
+    // Handle complex field changes (properties.*, hypernym)
+    if (propertiesLegacy) {
       // Backward-compatible full replacement
-      await commitComplexFieldChange(tx, changeset, frameRolesLegacy);
-    } else if (frameRolesSub.length > 0) {
+      await commitComplexFieldChange(tx, changeset, propertiesLegacy);
+    } else if (propertiesSub.length > 0) {
       // Apply approved granular role changes in one pass
-      await commitFrameRolesSubChanges(tx, changeset, frameRolesSub);
+      await commitPropertiesSubChanges(tx, changeset, propertiesSub);
     }
 
     for (const fc of hypernymChanges) {
@@ -1028,7 +1028,7 @@ async function commitUpdateInTx(
         if (shouldExist) {
           // Validate the sense still exists before linking (defensive — keeps
           // the audit log honest if the sense was deleted after staging).
-          const exists = await tx.frame_senses.findUnique({
+          const exists = await tx.senses.findUnique({
             where: { id: senseId },
             select: { id: true },
           });
@@ -1039,17 +1039,17 @@ async function commitUpdateInTx(
           }
           await tx.lexical_unit_senses.upsert({
             where: {
-              lexical_unit_id_frame_sense_id: {
+              lexical_unit_id_sense_id: {
                 lexical_unit_id: luId,
-                frame_sense_id: senseId,
+                sense_id: senseId,
               },
             },
-            create: { lexical_unit_id: luId, frame_sense_id: senseId },
+            create: { lexical_unit_id: luId, sense_id: senseId },
             update: {},
           });
         } else {
           await tx.lexical_unit_senses.deleteMany({
-            where: { lexical_unit_id: luId, frame_sense_id: senseId },
+            where: { lexical_unit_id: luId, sense_id: senseId },
           });
         }
       }
@@ -1104,7 +1104,7 @@ async function commitUpdateInTx(
 
 /**
  * Commit a complex field change that requires updates to related tables.
- * Handles: frame_roles, hypernym
+ * Handles: properties, hypernym
  */
 async function commitComplexFieldChange(
   tx: Prisma.TransactionClient,
@@ -1115,32 +1115,32 @@ async function commitComplexFieldChange(
   const newValue = fc.new_value as Array<Record<string, unknown>> | null;
 
   switch (fc.field_name) {
-    case 'frame_roles':
+    case 'properties':
       // Delete existing frame roles for this frame
-      await tx.frame_roles.deleteMany({
-        where: { frame_id: entityId },
+      await tx.properties.deleteMany({
+        where: { concept_id: entityId },
       });
       
       // Insert new frame roles
       if (newValue && Array.isArray(newValue)) {
-        for (const frameRole of newValue) {
-          const label = typeof frameRole.roleType === 'string'
-            ? frameRole.roleType
-            : typeof frameRole.label === 'string'
-              ? frameRole.label
+        for (const property of newValue) {
+          const label = typeof property.propertyType === 'string'
+            ? property.propertyType
+            : typeof property.label === 'string'
+              ? property.label
               : null;
 
           if (!label) {
-            throw new Error(`Frame role missing label/roleType`);
+            throw new Error(`Concept role missing label/roleType`);
           }
 
-          await tx.frame_roles.create({
+          await tx.properties.create({
             data: {
-              frame_id: entityId,
-              description: (frameRole.description as string | undefined) ?? null,
-              notes: (frameRole.notes as string | undefined) ?? null,
-              main: (frameRole.main as boolean | undefined) ?? false,
-              examples: (frameRole.examples as string[] | undefined) ?? [],
+              concept_id: entityId,
+              description: (property.description as string | undefined) ?? null,
+              notes: (property.notes as string | undefined) ?? null,
+              main: (property.main as boolean | undefined) ?? false,
+              examples: (property.examples as string[] | undefined) ?? [],
               label,
             },
           });
@@ -1257,7 +1257,7 @@ async function commitDeleteInTx(
         },
       });
     } else if (changeset.entity_type === 'frame') {
-      await tx.frames.update({
+      await tx.concepts.update({
         where: { id: changeset.entity_id! },
         data: {
           deleted: true,
@@ -1267,59 +1267,58 @@ async function commitDeleteInTx(
         },
       });
     } else if (changeset.entity_type === 'frame_sense') {
-      // Hard-delete (frame_senses has no soft-delete column).
+      // Hard-delete (senses has no soft-delete column).
       //
       // FK cascade map (see prisma/schema.prisma):
-      //   frame_sense_frames        -> onDelete: Cascade  (cleaned up automatically)
+      //   sense_concepts        -> onDelete: Cascade  (cleaned up automatically)
       //   lexical_unit_senses       -> onDelete: Cascade  (cleaned up automatically)
       //   frame_sense_contrasts     -> onDelete: Cascade  (cleaned up automatically)
-      //   frame_sense_definition_revisions -> onDelete: NoAction (BLOCKING)
+      //   sense_definition_revisions -> onDelete: NoAction (BLOCKING)
       //
       // We refuse to delete a sense that still has revision history rather
       // than silently dropping the audit trail. Callers can prune/archive the
       // revisions first (a deliberate, separate action).
       const senseId = Number(changeset.entity_id!);
-      const revisionCount = await tx.frame_sense_definition_revisions.count({
-        where: { frame_sense_id: senseId },
+      const revisionCount = await tx.sense_definition_revisions.count({
+        where: { sense_id: senseId },
       });
       if (revisionCount > 0) {
         throw new Error(
           `Cannot delete frame_sense ${senseId}: ${revisionCount} definition revision(s) still reference it ` +
-            `(frame_sense_definition_revisions.onDelete = NoAction). Archive or remove the revision history first.`
+            `(sense_definition_revisions.onDelete = NoAction). Archive or remove the revision history first.`
         );
       }
-      await tx.frame_senses.delete({ where: { id: senseId } });
-    } else if (changeset.entity_type === 'frame_relation') {
-      // Hard-delete (frame_relations has no soft-delete column)
-      const rel = await tx.frame_relations.findUnique({
+      await tx.senses.delete({ where: { id: senseId } });
+    } else if (changeset.entity_type === 'frame_relation' || changeset.entity_type === 'concept_relation') {
+      const rel = await tx.concept_relations.findUnique({
         where: { id: changeset.entity_id! },
       });
 
       if (rel) {
         if (rel.locked) {
           throw new Error(
-            `Cannot delete frame_relation ${changeset.entity_id}: relation is locked`,
+            `Cannot delete concept_relation ${changeset.entity_id}: relation is locked`,
           );
         }
 
-        await tx.frame_relations.delete({
+        await tx.concept_relations.delete({
           where: { id: changeset.entity_id! },
         });
 
         // Auto-delete the inverse relation for bidirectional pairs
         const inverse = INVERSE_RELATION_TYPE[rel.type];
         if (inverse) {
-          await tx.frame_relations.deleteMany({
+          await tx.concept_relations.deleteMany({
             where: {
-              source_id: rel.target_id,
-              target_id: rel.source_id,
+              parent_id: rel.child_id,
+              child_id: rel.parent_id,
               type: inverse as any,
             },
           });
         }
       }
-    } else if (changeset.entity_type === 'frame_role_mapping') {
-      // Hard-delete (frame_role_mappings has no soft-delete column).
+    } else if (changeset.entity_type === 'frame_role_mapping' || changeset.entity_type === 'property_mapping') {
+      // Hard-delete (property_mappings has no soft-delete column).
       //
       // Used by Phase 2 of the cascading-remediations plan: when a
       // reparent (`move_frame_parent`) commits, the runner appends
@@ -1333,16 +1332,16 @@ async function commitDeleteInTx(
       // delete elsewhere in the same plan) already removed the row,
       // we no-op rather than blowing the whole transaction up.
       const mappingId = changeset.entity_id!;
-      const existing = await tx.frame_role_mappings.findUnique({
+      const existing = await tx.property_mappings.findUnique({
         where: { id: mappingId },
       });
       if (existing) {
-        await tx.frame_role_mappings.delete({
+        await tx.property_mappings.delete({
           where: { id: mappingId },
         });
       }
     } else if (changeset.entity_type === 'frame_role') {
-      // Hard-delete (frame_roles has no soft-delete column).
+      // Hard-delete (properties has no soft-delete column).
       //
       // FK cascade map (see prisma/schema.prisma):
       //   role_group_members.role_id -> ON DELETE CASCADE
@@ -1357,11 +1356,11 @@ async function commitDeleteInTx(
       // pass (eventual-consistency model). `findUnique` keeps the
       // delete idempotent on retry.
       const roleId = changeset.entity_id!;
-      const existing = await tx.frame_roles.findUnique({
+      const existing = await tx.properties.findUnique({
         where: { id: roleId },
       });
       if (existing) {
-        await tx.frame_roles.delete({ where: { id: roleId } });
+        await tx.properties.delete({ where: { id: roleId } });
       }
     } else {
       throw new Error(`DELETE not implemented for entity type: ${changeset.entity_type}`);
@@ -1404,7 +1403,7 @@ async function commitDeleteInTx(
 // ============================================
 
 /**
- * Commits a `merge` operation. Currently only `entity_type='frame_sense'`
+ * Commits a `merge` operation. Currently only `entity_type='sense'`
  * is supported (Phase 1 - merge_sense plan kind). Phase 5 will add the
  * `frame` case for merge_frame.
  *
@@ -1412,8 +1411,8 @@ async function commitDeleteInTx(
  *
  *   - `entity_id` points at the LOSER sense (the row that gets DELETEd
  *     at the tail of the merge).
- *   - `before_snapshot.__merge_target_id` is the WINNER sense id.
- *   - `before_snapshot.__merge_context.frame_id` is the frame both
+ *   - `before_snapshot.__merge_child_id` is the WINNER sense id.
+ *   - `before_snapshot.__merge_context.concept_id` is the frame both
  *     senses currently belong to (drift-detection: if either sense
  *     moved away, the merge aborts).
  *   - `before_snapshot.__merge_payload.merged_definition` is the
@@ -1421,19 +1420,19 @@ async function commitDeleteInTx(
  *
  * Sequence (all under the outer plan tx):
  *
- *   1. DRIFT CHECK: re-read both senses + their `frame_sense_frames`
- *      links; abort if either sense is gone, the winner's frame_id
+ *   1. DRIFT CHECK: re-read both senses + their `sense_concepts`
+ *      links; abort if either sense is gone, the winner's concept_id
  *      no longer matches, or the loser doesn't link to the same
  *      frame anymore.
  *   2. B3 (relink lexical_unit_senses): UPDATE rows where
- *      frame_sense_id=loser to use winner; deduplicate by deleting
+ *      sense_id=loser to use winner; deduplicate by deleting
  *      collisions on (lexical_unit_id, winner) before the move.
- *   3. B4 (relink frame_sense_frames): same pattern keyed on frame_id.
+ *   3. B4 (relink sense_concepts): same pattern keyed on concept_id.
  *   4. B5 (relink frame_sense_contrasts): same pattern keyed on
- *      (frame_sense_id, contrasted_sense_id) and on the inverse
+ *      (sense_id, contrasted_sense_id) and on the inverse
  *      column. Self-contrasts (contrasted_sense_id == winner) are
  *      dropped.
- *   5. UPDATE `frame_senses.definition = merged_definition` on winner.
+ *   5. UPDATE `senses.definition = merged_definition` on winner.
  *   6. DELETE loser. Cascades automatically clean any link rows we
  *      didn't repoint (e.g. residuals after dedup).
  *   7. AUDIT: write one audit_log row keyed on the loser id with
@@ -1462,11 +1461,11 @@ async function commitMergeInTx(
     );
   }
 
-  const targetIdRaw = before.__merge_target_id;
+  const targetIdRaw = before.__merge_child_id;
   const winnerSenseId = toBigIntSafe(targetIdRaw);
   if (!winnerSenseId) {
     throw new Error(
-      `MERGE before_snapshot missing __merge_target_id on changeset ${changeset.id.toString()}`,
+      `MERGE before_snapshot missing __merge_child_id on changeset ${changeset.id.toString()}`,
     );
   }
   const loserSenseId = changeset.entity_id;
@@ -1477,11 +1476,11 @@ async function commitMergeInTx(
   }
 
   const ctx = (before.__merge_context ?? {}) as Record<string, unknown>;
-  const expectedFrameIdRaw = ctx.frame_id;
-  const expectedFrameId = toBigIntSafe(expectedFrameIdRaw);
-  if (!expectedFrameId) {
+  const expectedConceptIdRaw = ctx.concept_id;
+  const expectedConceptId = toBigIntSafe(expectedConceptIdRaw);
+  if (!expectedConceptId) {
     throw new Error(
-      `MERGE before_snapshot missing __merge_context.frame_id on changeset ${changeset.id.toString()}`,
+      `MERGE before_snapshot missing __merge_context.concept_id on changeset ${changeset.id.toString()}`,
     );
   }
 
@@ -1498,14 +1497,14 @@ async function commitMergeInTx(
     changesetId: changeset.id,
   });
 
-  // 1) DRIFT CHECK: reload winner + loser rows. frame_senses uses Int
+  // 1) DRIFT CHECK: reload winner + loser rows. senses uses Int
   //    PKs, BigInt in the changeset.
   const winnerIdInt = Number(winnerSenseId);
   const loserIdInt = Number(loserSenseId);
 
   const [winnerRow, loserRow] = await Promise.all([
-    tx.frame_senses.findUnique({ where: { id: winnerIdInt } }),
-    tx.frame_senses.findUnique({ where: { id: loserIdInt } }),
+    tx.senses.findUnique({ where: { id: winnerIdInt } }),
+    tx.senses.findUnique({ where: { id: loserIdInt } }),
   ]);
   if (!winnerRow) {
     throw new Error(
@@ -1518,65 +1517,65 @@ async function commitMergeInTx(
     );
   }
 
-  // Both senses must currently link to the expected frame_id.
+  // Both senses must currently link to the expected concept_id.
   const [winnerLink, loserLink] = await Promise.all([
-    tx.frame_sense_frames.findFirst({
-      where: { frame_sense_id: winnerIdInt, frame_id: expectedFrameId },
+    tx.sense_concepts.findFirst({
+      where: { sense_id: winnerIdInt, concept_id: expectedConceptId },
     }),
-    tx.frame_sense_frames.findFirst({
-      where: { frame_sense_id: loserIdInt, frame_id: expectedFrameId },
+    tx.sense_concepts.findFirst({
+      where: { sense_id: loserIdInt, concept_id: expectedConceptId },
     }),
   ]);
   if (!winnerLink) {
     throw new Error(
-      `MERGE drift: winner frame_sense ${winnerIdInt} no longer linked to frame ${expectedFrameId.toString()}`,
+      `MERGE drift: winner frame_sense ${winnerIdInt} no longer linked to frame ${expectedConceptId.toString()}`,
     );
   }
   if (!loserLink) {
     throw new Error(
-      `MERGE drift: loser frame_sense ${loserIdInt} no longer linked to frame ${expectedFrameId.toString()}`,
+      `MERGE drift: loser frame_sense ${loserIdInt} no longer linked to frame ${expectedConceptId.toString()}`,
     );
   }
 
   // 2) B3 relink lexical_unit_senses with dedup.
   await tx.$executeRaw(Prisma.sql`
     DELETE FROM lexical_unit_senses
-    WHERE frame_sense_id = ${loserIdInt}
+    WHERE sense_id = ${loserIdInt}
       AND lexical_unit_id IN (
         SELECT lexical_unit_id FROM lexical_unit_senses
-        WHERE frame_sense_id = ${winnerIdInt}
+        WHERE sense_id = ${winnerIdInt}
       )
   `);
   await tx.$executeRaw(Prisma.sql`
     UPDATE lexical_unit_senses
-    SET frame_sense_id = ${winnerIdInt}
-    WHERE frame_sense_id = ${loserIdInt}
+    SET sense_id = ${winnerIdInt}
+    WHERE sense_id = ${loserIdInt}
   `);
 
-  // 3) B4 relink frame_sense_frames with dedup.
+  // 3) B4 relink sense_concepts with dedup.
   await tx.$executeRaw(Prisma.sql`
-    DELETE FROM frame_sense_frames
-    WHERE frame_sense_id = ${loserIdInt}
-      AND frame_id IN (
-        SELECT frame_id FROM frame_sense_frames
-        WHERE frame_sense_id = ${winnerIdInt}
+    DELETE FROM sense_concepts
+    WHERE sense_id = ${loserIdInt}
+      AND concept_id IN (
+        SELECT concept_id FROM sense_concepts
+        WHERE sense_id = ${winnerIdInt}
       )
   `);
   await tx.$executeRaw(Prisma.sql`
-    UPDATE frame_sense_frames
-    SET frame_sense_id = ${winnerIdInt}
-    WHERE frame_sense_id = ${loserIdInt}
+    UPDATE sense_concepts
+    SET sense_id = ${winnerIdInt}
+    WHERE sense_id = ${loserIdInt}
   `);
 
   // 4) B5 relink frame_sense_contrasts.
   //
   // The table has TWO non-trivial integrity rules we must respect:
   //
-  //   (a) CHECK (frame_sense_id < contrasted_sense_id) — rows are
+  //   (a) CHECK (sense_id < contrasted_sense_id) — rows are
   //       always stored with the lower id in the first column. A
   //       naïve UPDATE that swaps one column to the winner can flip
   //       the inequality and abort the whole merge.
-  //   (b) UNIQUE (frame_sense_id, contrasted_sense_id) — repointing a
+  //   (b) UNIQUE (sense_id, contrasted_sense_id) — repointing a
   //       loser-referencing row to the winner can collide with an
   //       existing winner row.
   //
@@ -1594,7 +1593,7 @@ async function commitMergeInTx(
   // the winner's (the winner's text would already be on the existing
   // row, so this is the only way to surface loser-side annotations).
   await tx.$executeRaw(Prisma.sql`
-    INSERT INTO frame_sense_contrasts (frame_sense_id, contrasted_sense_id, contrast_text)
+    INSERT INTO frame_sense_contrasts (sense_id, contrasted_sense_id, contrast_text)
     SELECT
       LEAST(${winnerIdInt}, other_id) AS lo,
       GREATEST(${winnerIdInt}, other_id) AS hi,
@@ -1602,25 +1601,25 @@ async function commitMergeInTx(
     FROM (
       SELECT contrasted_sense_id AS other_id, contrast_text
       FROM frame_sense_contrasts
-      WHERE frame_sense_id = ${loserIdInt}
+      WHERE sense_id = ${loserIdInt}
       UNION ALL
-      SELECT frame_sense_id AS other_id, contrast_text
+      SELECT sense_id AS other_id, contrast_text
       FROM frame_sense_contrasts
       WHERE contrasted_sense_id = ${loserIdInt}
     ) loser_rows
     WHERE other_id <> ${winnerIdInt}
       AND other_id <> ${loserIdInt}
     GROUP BY other_id
-    ON CONFLICT (frame_sense_id, contrasted_sense_id) DO NOTHING
+    ON CONFLICT (sense_id, contrasted_sense_id) DO NOTHING
   `);
   await tx.$executeRaw(Prisma.sql`
     DELETE FROM frame_sense_contrasts
-    WHERE frame_sense_id = ${loserIdInt}
+    WHERE sense_id = ${loserIdInt}
        OR contrasted_sense_id = ${loserIdInt}
   `);
 
   // 5) UPDATE winner.definition.
-  await tx.frame_senses.update({
+  await tx.senses.update({
     where: { id: winnerIdInt },
     data: {
       definition: mergedDefinition,
@@ -1630,15 +1629,15 @@ async function commitMergeInTx(
 
   // 6) DELETE loser. Refuse if revision history blocks it (mirrors
   //    `commitDeleteInTx`'s frame_sense behaviour).
-  const revisionCount = await tx.frame_sense_definition_revisions.count({
-    where: { frame_sense_id: loserIdInt },
+  const revisionCount = await tx.sense_definition_revisions.count({
+    where: { sense_id: loserIdInt },
   });
   if (revisionCount > 0) {
     throw new Error(
       `MERGE refuses to delete loser frame_sense ${loserIdInt}: ${revisionCount} definition revision(s) still reference it. Archive or remove the revision history first.`,
     );
   }
-  await tx.frame_senses.delete({ where: { id: loserIdInt } });
+  await tx.senses.delete({ where: { id: loserIdInt } });
 
   // 7) AUDIT + mark changeset committed.
   await tx.changesets.update({
@@ -1657,7 +1656,7 @@ async function commitMergeInTx(
       old_value: before as Prisma.InputJsonValue,
       new_value: {
         merged_into: winnerSenseId.toString(),
-        frame_id: expectedFrameId.toString(),
+        concept_id: expectedConceptId.toString(),
         merged_definition: mergedDefinition,
       } as Prisma.InputJsonValue,
       changed_by: committedBy,
@@ -1790,7 +1789,7 @@ async function checkVersionConflictInTx(
     return null;
   }
 
-  // frame_senses has no version column — cannot perform optimistic-locking check.
+  // senses has no version column — cannot perform optimistic-locking check.
   if (changeset.entity_type === 'frame_sense') {
     return null;
   }
@@ -1804,13 +1803,13 @@ async function checkVersionConflictInTx(
     });
     currentVersion = lu?.version ?? null;
   } else if (changeset.entity_type === 'frame') {
-    const frame = await client.frames.findUnique({
+    const concept = await client.concepts.findUnique({
       where: { id: changeset.entity_id },
       select: { version: true },
     });
-    currentVersion = frame?.version ?? null;
-  } else if (changeset.entity_type === 'frame_relation') {
-    const rel = await client.frame_relations.findUnique({
+    currentVersion = concept?.version ?? null;
+  } else if (changeset.entity_type === 'frame_relation' || changeset.entity_type === 'concept_relation') {
+    const rel = await client.concept_relations.findUnique({
       where: { id: changeset.entity_id },
       select: { version: true },
     });

@@ -12,8 +12,8 @@ export interface FilterState {
   // Categorical filters
   pos?: string;
   lexfile?: string;
-  frame_id?: string; // Comma-separated frame IDs
-  parent_frame_id?: string; // Parent frame ID (via parent_of relation)
+  concept_id?: string; // Comma-separated concept IDs
+  parent_concept_id?: string; // Parent concept ID (via parent_of relation)
   // AI jobs filters
   flaggedByJobId?: string;
 
@@ -21,7 +21,7 @@ export interface FilterState {
   isMwe?: boolean;
   flagged?: boolean;
   verifiable?: boolean;
-  excludeNullFrame?: boolean;
+  excludeNullConcept?: boolean;
 
   // Pending state filters
   pendingCreate?: boolean;
@@ -33,7 +33,7 @@ export interface FilterState {
   parentsCountMax?: number;
   childrenCountMin?: number;
   childrenCountMax?: number;
-  // Frames children-count filter (operator + value)
+  // Concepts children-count filter (operator + value)
   childrenCountOp?: 'gt' | 'lt' | 'eq';
   childrenCountValue?: number;
 
@@ -43,19 +43,19 @@ export interface FilterState {
   updatedAfter?: string;
   updatedBefore?: string;
 
-  // Frame-specific text filters
+  // Concept-specific text filters
   label?: string;
   definition?: string;
   short_definition?: string;
-  frame_type?: string;
-  frameWarning?: 'none' | 'multiple';
+  archetype?: string;
+  conceptWarning?: 'none' | 'multiple';
 }
 
 export const DEFAULT_LEXICAL_POS = ['verb', 'noun', 'adjective', 'adverb'] as const;
 
 export function getDefaultFilters(mode: DataTableRenderMode): FilterState {
   if (mode === 'lexical_units') {
-    return { excludeNullFrame: true };
+    return { excludeNullConcept: true };
   }
   return {};
 }

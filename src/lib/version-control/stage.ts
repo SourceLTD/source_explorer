@@ -16,7 +16,7 @@ import {
   getChangeset,
 } from './create';
 import { randomUUID } from 'crypto';
-import { parseFrameRolesFieldName } from './frameRolesSubfields';
+import { parsePropertiesFieldName } from './propertiesSubfields';
 import { sensesExistsFieldName } from './sensesSubfields';
 import {
   EntityType,
@@ -65,20 +65,20 @@ async function fetchEntityByCode(
       },
     }) as Record<string, unknown> | null;
   } else if (normalizedType === 'frame_sense') {
-    // frame_senses uses Int PK and has no string "code". Fetch the row and
-    // flatten the single linked frame_id onto the pseudo-entity so staged field
-    // changes to `frame_id` have an accurate before_value.
+    // senses uses Int PK and has no string "code". Fetch the row and
+    // flatten the single linked concept_id onto the pseudo-entity so staged field
+    // changes to `concept_id` have an accurate before_value.
     if (!isNumericId(code)) return null;
     const senseId = Number(code);
-    const sense = await prisma.frame_senses.findUnique({
+    const sense = await prisma.senses.findUnique({
       where: { id: senseId },
-      include: { frame_sense_frames: { select: { frame_id: true } } },
+      include: { sense_concepts: { select: { concept_id: true } } },
     });
     if (!sense) return null;
-    const linkedFrameId = sense.frame_sense_frames[0]?.frame_id ?? null;
-    const { frame_sense_frames: _omit, ...senseRest } = sense;
+    const linkedFrameId = sense.sense_concepts[0]?.concept_id ?? null;
+    const { sense_concepts: _omit, ...senseRest } = sense;
     void _omit;
-    entity = { ...senseRest, frame_id: linkedFrameId } as Record<string, unknown>;
+    entity = { ...senseRest, concept_id: linkedFrameId } as Record<string, unknown>;
     return { entity, numericId: BigInt(sense.id) };
   } else {
     // Standard numeric ID lookup for other tables
@@ -266,9 +266,9 @@ export async function stageSenseAttachment(
 
   const existingLink = await prisma.lexical_unit_senses.findUnique({
     where: {
-      lexical_unit_id_frame_sense_id: {
+      lexical_unit_id_sense_id: {
         lexical_unit_id: numericId,
-        frame_sense_id: senseId,
+        sense_id: senseId,
       },
     },
     select: { lexical_unit_id: true },
@@ -354,21 +354,21 @@ export async function stageFlagUpdates(
 /**
  * Stage updates to frame roles.
  * 
- * @param frameId - The frame ID
- * @param newFrameRoles - The new frame roles array
+ * @param conceptId - The frame ID
+ * @param newProperties - The new frame roles array
  * @param userId - The user making the changes
  * @param comment - Optional justification for the changes
  */
-export async function stageFrameRolesUpdate(
-  frameId: string,
-  newFrameRoles: unknown[],
+export async function stagePropertiesUpdate(
+  conceptId: string,
+  newProperties: unknown[],
   userId: string,
   comment?: string
 ): Promise<StagedResponse> {
-  const numericId = BigInt(frameId);
+  const numericId = BigInt(conceptId);
 
-  type NormalizedFrameRole = {
-    roleType: string;
+  type NormalizedProperty = {
+    propertyType: string;
     description: string | null;
     notes: string | null;
     main: boolean;
@@ -392,20 +392,20 @@ export async function stageFrameRolesUpdate(
       .filter(Boolean);
   };
 
-  const normalizeFrameRoles = (roles: unknown[]): NormalizedFrameRole[] => {
-    const normalized: NormalizedFrameRole[] = [];
+  const normalizeProperties = (roles: unknown[]): NormalizedProperty[] => {
+    const normalized: NormalizedProperty[] = [];
     for (const r of roles) {
       if (!isRecord(r)) continue;
 
       const roleType =
-        (typeof r.roleType === 'string' ? r.roleType.trim() : '') ||
+        (typeof r.propertyType === 'string' ? r.propertyType.trim() : '') ||
         (isRecord(r.role_type) && typeof r.role_type.label === 'string' ? r.role_type.label.trim() : '') ||
         (typeof r.label === 'string' ? r.label.trim() : '');
 
       if (!roleType) continue;
 
       normalized.push({
-        roleType,
+        propertyType: roleType,
         description: normalizeNullableString(r.description),
         notes: normalizeNullableString(r.notes),
         main: Boolean(r.main),
@@ -415,11 +415,11 @@ export async function stageFrameRolesUpdate(
     }
 
     // Order-insensitive comparison/storage: keep stable ordering by role type label
-    normalized.sort((a, b) => a.roleType.localeCompare(b.roleType));
+    normalized.sort((a, b) => a.propertyType.localeCompare(b.propertyType));
     return normalized;
   };
   
-  const getRoleDefaults = (): Omit<NormalizedFrameRole, 'roleType'> => ({
+  const getRoleDefaults = (): Omit<NormalizedProperty, 'propertyType'> => ({
     description: null,
     notes: null,
     main: false,
@@ -427,41 +427,41 @@ export async function stageFrameRolesUpdate(
     label: null,
   });
   
-  // Fetch current frame
-  const frame = await prisma.frames.findUnique({
+  // Fetch current concept
+  const concept = await prisma.concepts.findUnique({
     where: { id: numericId },
   });
 
-  if (!frame) {
-    throw new Error(`Frame not found: ${frameId}`);
+  if (!concept) {
+    throw new Error(`Concept not found: ${conceptId}`);
   }
 
-  // Fetch current frame roles
-  const currentFrameRolesRaw = await prisma.frame_roles.findMany({
-    where: { frame_id: numericId },
+  // Fetch current properties
+  const currentPropertiesRaw = await prisma.properties.findMany({
+    where: { concept_id: numericId },
     orderBy: { id: 'asc' },
   });
 
-  // Check if frame roles actually changed
-  const currentFrameRoles = normalizeFrameRoles(currentFrameRolesRaw as unknown[]);
-  let normalizedNewFrameRoles = normalizeFrameRoles(newFrameRoles);
+  // Check if properties actually changed
+  const currentProperties = normalizeProperties(currentPropertiesRaw as unknown[]);
+  let normalizedNewProperties = normalizeProperties(newProperties);
 
   // Preserve non-editable fields (like `label`) if the client didn't send them.
   // This prevents staging a no-op change that would otherwise wipe labels on commit.
-  const labelByRoleType = new Map(currentFrameRoles.map(r => [r.roleType, r.label]));
-  normalizedNewFrameRoles = normalizedNewFrameRoles.map(r => ({
+  const labelByRoleType = new Map(currentProperties.map(r => [r.propertyType, r.label]));
+  normalizedNewProperties = normalizedNewProperties.map(r => ({
     ...r,
-    label: r.label ?? labelByRoleType.get(r.roleType) ?? null,
+    label: r.label ?? labelByRoleType.get(r.propertyType) ?? null,
   }));
   
-  const currentByRoleType = new Map(currentFrameRoles.map(r => [r.roleType, r]));
-  const newByRoleType = new Map(normalizedNewFrameRoles.map(r => [r.roleType, r]));
+  const currentByRoleType = new Map(currentProperties.map(r => [r.propertyType, r]));
+  const newByRoleType = new Map(normalizedNewProperties.map(r => [r.propertyType, r]));
   const roleTypes = Array.from(new Set<string>([
     ...Array.from(currentByRoleType.keys()),
     ...Array.from(newByRoleType.keys()),
   ])).sort((a, b) => a.localeCompare(b));
   
-  const roleFields: Array<keyof Omit<NormalizedFrameRole, 'roleType'>> = [
+  const roleFields: Array<keyof Omit<NormalizedProperty, 'propertyType'>> = [
     'label',
     'description',
     'notes',
@@ -483,14 +483,14 @@ export async function stageFrameRolesUpdate(
     return count;
   };
 
-  // Check if there's already a pending changeset for this frame
+  // Check if there's already a pending changeset for this concept
   const changeset = await findPendingChangeset('frame', numericId);
 
   if (changeset) {
     // If a legacy full-field change exists, delete it so we only track granular sub-changes.
-    // This avoids double-applying frame_roles edits at commit time.
+    // This avoids double-applying properties edits at commit time.
     await prisma.field_changes.deleteMany({
-      where: { changeset_id: changeset.id, field_name: 'frame_roles' },
+      where: { changeset_id: changeset.id, field_name: 'properties' },
     });
 
     // Important: role types may exist only in the pending changeset (not in DB)
@@ -499,8 +499,8 @@ export async function stageFrameRolesUpdate(
     // touch those pending-only role types and their field_changes would remain.
     const pendingRoleTypes = new Set<string>();
     for (const fc of changeset.field_changes) {
-      const parsed = parseFrameRolesFieldName(fc.field_name);
-      if (parsed?.roleType) pendingRoleTypes.add(parsed.roleType);
+      const parsed = parsePropertiesFieldName(fc.field_name);
+      if (parsed?.propertyType) pendingRoleTypes.add(parsed.propertyType);
     }
 
     const roleTypesToUpsert = Array.from(new Set<string>([
@@ -517,7 +517,7 @@ export async function stageFrameRolesUpdate(
 
       await upsertFieldChange(
         changeset.id,
-        `frame_roles.${rt}.__exists`,
+        `properties.${rt}.__exists`,
         oldExists,
         newExists
       );
@@ -528,7 +528,7 @@ export async function stageFrameRolesUpdate(
 
         await upsertFieldChange(
           changeset.id,
-          `frame_roles.${rt}.${String(f)}`,
+          `properties.${rt}.${String(f)}`,
           oldValue,
           newValue
         );
@@ -548,24 +548,24 @@ export async function stageFrameRolesUpdate(
     return {
       staged: true,
       changeset_id: changeset.id.toString(),
-      message: 'Frame role changes staged for review',
+      message: 'Concept role changes staged for review',
       field_changes_count: fieldChangesCount,
     };
   }
 
   // Create new changeset
   const entityWithRoles = {
-    ...frame,
-    frame_roles: currentFrameRoles,
+    ...concept,
+    properties: currentProperties,
   };
 
-  // Create changeset via a legacy `frame_roles` change (so we get a real changeset row),
+  // Create changeset via a legacy `properties` change (so we get a real changeset row),
   // then immediately delete that field change and replace with granular sub-changes.
   const newChangeset = await createChangesetFromUpdate(
     'frame',
     numericId,
     entityWithRoles as Record<string, unknown>,
-    { frame_roles: normalizedNewFrameRoles },
+    { properties: normalizedNewProperties },
     userId,
     undefined,
   );
@@ -575,14 +575,14 @@ export async function stageFrameRolesUpdate(
     return {
       staged: true,
       changeset_id: '',
-      message: 'No changes detected - frame roles are the same',
+      message: 'No changes detected - properties are the same',
       field_changes_count: 0,
     };
   }
 
   // Delete the legacy full-field change so only granular sub-changes remain.
   await prisma.field_changes.deleteMany({
-    where: { changeset_id: newChangeset.id, field_name: 'frame_roles' },
+    where: { changeset_id: newChangeset.id, field_name: 'properties' },
   });
 
   for (const rt of roleTypes) {
@@ -593,7 +593,7 @@ export async function stageFrameRolesUpdate(
 
     await upsertFieldChange(
       newChangeset.id,
-      `frame_roles.${rt}.__exists`,
+      `properties.${rt}.__exists`,
       oldExists,
       newExists
     );
@@ -604,7 +604,7 @@ export async function stageFrameRolesUpdate(
 
       await upsertFieldChange(
         newChangeset.id,
-        `frame_roles.${rt}.${String(f)}`,
+        `properties.${rt}.${String(f)}`,
         oldValue,
         newValue
       );
@@ -616,7 +616,7 @@ export async function stageFrameRolesUpdate(
     return {
       staged: true,
       changeset_id: '',
-      message: 'No changes detected - frame roles are the same',
+      message: 'No changes detected - properties are the same',
       field_changes_count: 0,
     };
   }
@@ -624,13 +624,13 @@ export async function stageFrameRolesUpdate(
   return {
     staged: true,
     changeset_id: newChangeset.id.toString(),
-    message: 'Frame role changes staged for review',
+    message: 'Concept role changes staged for review',
     field_changes_count: fieldChangesCount,
   };
 }
 
 // ============================================
-// Frame Relation Reparent Staging
+// Concept Relation Reparent Staging
 // ============================================
 
 export interface ReparentResult {
@@ -648,48 +648,48 @@ export interface ReparentResult {
  *
  * Also validates that the reparent does not create a cycle.
  */
-export async function stageFrameRelationReparent(
-  frameId: bigint,
-  newParentFrameId: bigint,
+export async function stageConceptRelationReparent(
+  conceptId: bigint,
+  newParentConceptId: bigint,
   userId: string,
   llmJobId?: bigint,
 ): Promise<ReparentResult> {
   // Validate frames exist and are not deleted
-  const [frame, newParent] = await Promise.all([
-    prisma.frames.findUnique({ where: { id: frameId }, select: { id: true, label: true, deleted: true } }),
-    prisma.frames.findUnique({ where: { id: newParentFrameId }, select: { id: true, label: true, deleted: true } }),
+  const [concept, newParent] = await Promise.all([
+    prisma.concepts.findUnique({ where: { id: conceptId }, select: { id: true, label: true, deleted: true } }),
+    prisma.concepts.findUnique({ where: { id: newParentConceptId }, select: { id: true, label: true, deleted: true } }),
   ]);
 
-  if (!frame || frame.deleted) {
-    throw new Error(`Frame ${frameId} not found or deleted`);
+  if (!concept || concept.deleted) {
+    throw new Error(`Concept ${conceptId} not found or deleted`);
   }
   if (!newParent || newParent.deleted) {
-    throw new Error(`Target parent frame ${newParentFrameId} not found or deleted`);
+    throw new Error(`Target parent concept ${newParentConceptId} not found or deleted`);
   }
-  if (frameId === newParentFrameId) {
-    throw new Error('A frame cannot inherit from itself');
+  if (conceptId === newParentConceptId) {
+    throw new Error('A concept cannot inherit from itself');
   }
 
-  // Cycle detection: walk up from newParentFrameId following parent_of edges
-  await assertNoCycle(frameId, newParentFrameId);
+  // Cycle detection: walk up from newParentConceptId following parent_of edges
+  await assertNoCycle(conceptId, newParentConceptId);
 
-  // Convention: parent_of source_id = parent, target_id = child.
+  // Convention: parent_of parent_id = parent, child_id = child.
   // Find the current parent_of relation for this frame (where the
   // frame is the child).
-  const existingRelation = await prisma.frame_relations.findFirst({
+  const existingRelation = await prisma.concept_relations.findFirst({
     where: {
-      target_id: frameId,
+      child_id: conceptId,
       type: 'parent_of',
     },
   });
 
   // If already pointing at the requested parent, no-op
-  if (existingRelation && existingRelation.source_id === newParentFrameId) {
+  if (existingRelation && existingRelation.parent_id === newParentConceptId) {
     return {
       staged: true,
       deleteChangesetId: null,
       createChangesetId: '',
-      message: 'Frame already inherits from the specified parent',
+      message: 'Concept already inherits from the specified parent',
     };
   }
 
@@ -705,21 +705,21 @@ export async function stageFrameRelationReparent(
   // Stage DELETE for the old relation
   if (existingRelation) {
     // Resolve old parent label for richer snapshots (parent is at
-    // source_id under the source=parent / target=child convention).
-    const oldParent = await prisma.frames.findUnique({
-      where: { id: existingRelation.source_id },
+    // parent_id under the source=parent / target=child convention).
+    const oldParent = await prisma.concepts.findUnique({
+      where: { id: existingRelation.parent_id },
       select: { label: true },
     });
 
     const relSnapshot = {
       id: existingRelation.id,
-      source_id: existingRelation.source_id,
-      target_id: existingRelation.target_id,
+      parent_id: existingRelation.parent_id,
+      child_id: existingRelation.child_id,
       type: existingRelation.type,
       version: existingRelation.version,
       move_group_id: moveGroupId,
       source_label: oldParent?.label ?? null,
-      target_label: frame.label,
+      target_label: concept.label,
     } as unknown as Record<string, unknown>;
 
     const deleteChangeset = await createChangesetFromDelete(
@@ -732,17 +732,17 @@ export async function stageFrameRelationReparent(
     deleteChangesetId = deleteChangeset.id.toString();
   }
 
-  // Stage CREATE for the new relation. Convention: source_id = parent,
-  // target_id = child.
+  // Stage CREATE for the new relation. Convention: parent_id = parent,
+  // child_id = child.
   const createChangeset = await createChangesetFromCreate(
     'frame_relation',
     {
-      source_id: newParentFrameId,
-      target_id: frameId,
+      parent_id: newParentConceptId,
+      child_id: conceptId,
       type: 'parent_of',
       move_group_id: moveGroupId,
       source_label: newParent.label,
-      target_label: frame.label,
+      target_label: concept.label,
     } as unknown as Record<string, unknown>,
     userId,
     llmJobId,
@@ -759,37 +759,37 @@ export async function stageFrameRelationReparent(
 }
 
 /**
- * Walk up the parent_of chain from `startFrameId` and throw if `targetFrameId` is encountered,
+ * Walk up the parent_of chain from `startConceptId` and throw if `targetConceptId` is encountered,
  * which would indicate a cycle.
  *
- * Convention: parent_of source_id = parent, target_id = child. To
+ * Convention: parent_of parent_id = parent, child_id = child. To
  * walk UP from a node X (find its parent), look for the row where
- * `target_id = X` and follow `source_id`.
+ * `child_id = X` and follow `parent_id`.
  */
-async function assertNoCycle(targetFrameId: bigint, startFrameId: bigint): Promise<void> {
+async function assertNoCycle(targetConceptId: bigint, startConceptId: bigint): Promise<void> {
   const visited = new Set<string>();
-  let current = startFrameId;
+  let current = startConceptId;
 
   while (true) {
     const key = current.toString();
     if (visited.has(key)) break;
     visited.add(key);
 
-    if (current === targetFrameId) {
+    if (current === targetConceptId) {
       throw new Error(
         'Reparenting would create a cycle in the parent_of hierarchy'
       );
     }
 
-    const parentRel = await prisma.frame_relations.findFirst({
+    const parentRel = await prisma.concept_relations.findFirst({
       where: {
-        target_id: current,
+        child_id: current,
         type: 'parent_of',
       },
-      select: { source_id: true },
+      select: { parent_id: true },
     });
 
     if (!parentRel) break;
-    current = parentRel.source_id;
+    current = parentRel.parent_id;
   }
 }

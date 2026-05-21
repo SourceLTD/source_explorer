@@ -1,8 +1,8 @@
 import React from 'react';
-import { FieldEditorProps, EditableFrameRole } from './types';
+import { FieldEditorProps, EditableConceptProperty } from './types';
 
 interface FrameRoleEditorProps extends FieldEditorProps {
-  roles: EditableFrameRole[];
+  roles: EditableConceptProperty[];
   onRoleChange: (clientId: string, field: 'label' | 'description' | 'notes' | 'main' | 'examples', value: string | boolean | string[]) => void;
   onRoleAdd: (main: boolean) => void;
   onRoleRemove: (clientId: string) => void;

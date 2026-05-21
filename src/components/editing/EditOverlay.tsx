@@ -1,17 +1,17 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { GraphNode, Frame } from '@/lib/types';
-import { Mode, OverlaySectionsState, FrameOption } from './types';
+import { GraphNode, Concept } from '@/lib/types';
+import { Mode, OverlaySectionsState, ConceptOption } from './types';
 import { EditOverlayModal } from './EditOverlayModal';
 import { FlagButtons } from './FlagButtons';
 import { DeleteConfirmDialog } from './DeleteConfirmDialog';
 import { BasicInfoSection } from './BasicInfoSection';
 import { LexicalPropertiesSection } from './LexicalPropertiesSection';
 import { RelationsSection } from './RelationsSection';
-import { FramePropertiesSection } from './FramePropertiesSection';
-import { FrameRolesSection } from './FrameRolesSection';
-import { FrameRelationsSection } from './FrameRelationsSection';
+import { ConceptPropertiesSection } from './ConceptPropertiesSection';
+import { PropertiesSection } from './PropertiesSection';
+import { ConceptRelationsSection } from './ConceptRelationsSection';
 import { AIRemediationPanel } from './AIRemediationPanel';
 import { useEntryEditor } from '@/hooks/useEntryEditor';
 import { useEntryMutations } from '@/hooks/useEntryMutations';
@@ -21,7 +21,7 @@ import LoadingSpinner from '@/components/LoadingSpinner';
 type EditTab = 'ai' | 'manual';
 
 interface EditOverlayProps {
-  node: GraphNode | Frame | null;
+  node: GraphNode | Concept | null;
   nodeId: string;
   mode: Mode;
   isOpen: boolean;
@@ -33,7 +33,7 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
-  const [availableFrames, setAvailableFrames] = useState<FrameOption[]>([]);
+  const [availableConcepts, setAvailableConcepts] = useState<ConceptOption[]>([]);
   const [activeTab, setActiveTab] = useState<EditTab>('ai');
   
   // Overlay section expansion state
@@ -41,30 +41,30 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
     basicInfo: true,
     lexicalProperties: false,
     relations: false,
-    frameProperties: mode === 'frames',
-    frameRoles: false,
-    frameRelations: false,
+    conceptProperties: mode === 'concepts',
+    properties: false,
+    conceptRelations: false,
   });
 
   // Use the custom hooks
   const editor = useEntryEditor(node, mode);
   const mutations = useEntryMutations(mode);
 
-  // Fetch frames when overlay opens (lexical units)
+  // Fetch concepts when overlay opens (lexical units)
   useEffect(() => {
     if (isOpen && (mode === 'lexical_units' || mode === 'verbs' || mode === 'nouns' || mode === 'adjectives' || mode === 'adverbs')) {
-      const fetchFrames = async () => {
+      const fetchConcepts = async () => {
         try {
-          const response = await fetch('/api/frames');
+          const response = await fetch('/api/concepts');
           if (response.ok) {
             const data = await response.json();
-            setAvailableFrames(data);
+            setAvailableConcepts(data);
           }
         } catch (error) {
-          console.error('Failed to fetch frames:', error);
+          console.error('Failed to fetch concepts:', error);
         }
       };
-      fetchFrames();
+      fetchConcepts();
     }
   }, [isOpen, mode]);
 
@@ -171,10 +171,10 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
         return;
       }
 
-      // Handle frame_roles
-      if (editor.editingField === 'frame_roles') {
-        await mutations.updateFrameRoles(node.id, editor.editFrameRoles);
-        editor.setCodeValidationMessage('✓ Frame roles updated successfully');
+      // Handle properties
+      if (editor.editingField === 'properties') {
+        await mutations.updateProperties(node.id, editor.editProperties);
+        editor.setCodeValidationMessage('✓ Properties updated successfully');
         await onUpdate();
         editor.cancelEditing();
         editor.setCodeValidationMessage('');
@@ -201,13 +201,9 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
         case 'lexfile':
           value = editor.editValue;
           break;
-        case 'frame':
-          // Frame editing on lexical units is no longer supported — frames now live
-          // behind frame_senses. Callers should use /api/frame-senses and
-          // /api/lexical-units/[id]/senses instead. Swallow the edit here rather
-          // than firing a stale request.
+        case 'concept':
           editor.setCodeValidationMessage(
-            'Frame assignment moved to senses. Use the sense editor.'
+            'Concept assignment moved to senses. Use the sense editor.'
           );
           editor.cancelEditing();
           editor.setCodeValidationMessage('');
@@ -363,8 +359,8 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
             </div>
           )}
 
-          {/* Tab Bar (frames mode only) */}
-          {mode === 'frames' && (
+          {/* Tab Bar (concepts mode only) */}
+          {mode === 'concepts' && (
             <div className="flex border-b border-gray-200 mb-5 mt-1 mx-1">
               <button
                 onClick={() => setActiveTab('ai')}
@@ -395,18 +391,18 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
             </div>
           )}
 
-          {/* AI Remediation Panel (frames mode, AI tab) */}
-          {mode === 'frames' && activeTab === 'ai' && 'label' in node && (
+          {/* AI Remediation Panel (concepts mode, AI tab) */}
+          {mode === 'concepts' && activeTab === 'ai' && 'label' in node && (
             <div className="px-2 pb-4">
               <AIRemediationPanel
-                frame={node as Frame}
+                concept={node as Concept}
                 onUpdate={onUpdate}
               />
             </div>
           )}
 
-          {/* Manual editing content (non-frames always show; frames only on manual tab) */}
-          {(mode !== 'frames' || activeTab === 'manual') && (
+          {/* Manual editing content (non-concepts always show; concepts only on manual tab) */}
+          {(mode !== 'concepts' || activeTab === 'manual') && (
             <>
               {/* Flagging Section */}
               <FlagButtons
@@ -416,8 +412,8 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
             onVerifiableToggle={handleVerifiableToggle}
           />
 
-          {/* Basic Info Section (for non-frame modes) */}
-          {mode !== 'frames' && 'gloss' in node && (
+          {/* Basic Info Section (for non-concept modes) */}
+          {mode !== 'concepts' && 'gloss' in node && (
             <BasicInfoSection
               node={node as GraphNode}
               mode={mode}
@@ -439,14 +435,14 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
             />
           )}
 
-          {/* Frame Properties Section (for frames mode) */}
-          {mode === 'frames' && 'label' in node && (
-            <FramePropertiesSection
-              frame={node as Frame}
+          {/* Concept Properties Section (for concepts mode) */}
+          {mode === 'concepts' && 'label' in node && (
+            <ConceptPropertiesSection
+              concept={node as Concept}
               editingField={editor.editingField}
               editValue={editor.editValue}
-              isOpen={overlaySections.frameProperties}
-              onToggle={() => setOverlaySections(prev => ({ ...prev, frameProperties: !prev.frameProperties }))}
+              isOpen={overlaySections.conceptProperties}
+              onToggle={() => setOverlaySections(prev => ({ ...prev, conceptProperties: !prev.conceptProperties }))}
               onStartEdit={editor.startEditing}
               onValueChange={editor.setEditValue}
               onSave={handleSave}
@@ -460,14 +456,14 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
             />
           )}
 
-          {/* Lexical Properties Section (for non-frame modes) */}
-          {mode !== 'frames' && 'gloss' in node && (
+          {/* Lexical Properties Section (for non-concept modes) */}
+          {mode !== 'concepts' && 'gloss' in node && (
             <LexicalPropertiesSection
               node={node as GraphNode}
               mode={mode}
               editingField={editor.editingField}
               editValue={editor.editValue}
-              availableFrames={availableFrames}
+              availableFrames={availableConcepts}
               isOpen={overlaySections.lexicalProperties}
               onToggle={() => setOverlaySections(prev => ({ ...prev, lexicalProperties: !prev.lexicalProperties }))}
               onStartEdit={editor.startEditing}
@@ -479,36 +475,36 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
             />
           )}
 
-          {/* Frame Roles Section (Frames only) */}
-          {mode === 'frames' && 'label' in node && (
-            <FrameRolesSection
-              frame={node as Frame}
+          {/* Properties Section (Concepts only) */}
+          {mode === 'concepts' && 'label' in node && (
+            <PropertiesSection
+              concept={node as Concept}
               editingField={editor.editingField}
-              editFrameRoles={editor.editFrameRoles}
-              isOpen={overlaySections.frameRoles}
-              onToggle={() => setOverlaySections(prev => ({ ...prev, frameRoles: !prev.frameRoles }))}
+              editProperties={editor.editProperties}
+              isOpen={overlaySections.properties}
+              onToggle={() => setOverlaySections(prev => ({ ...prev, properties: !prev.properties }))}
               onStartEdit={editor.startEditing}
-              onFrameRoleChange={editor.updateFrameRole}
-              onFrameRoleAdd={editor.addFrameRole}
-              onFrameRoleRemove={editor.removeFrameRole}
+              onPropertyChange={editor.updateProperty}
+              onPropertyAdd={editor.addProperty}
+              onPropertyRemove={editor.removeProperty}
               onSave={handleSave}
               onCancel={editor.cancelEditing}
               isSaving={editor.isSaving}
             />
           )}
 
-          {/* Frame Relations Section (Frames only) */}
-          {mode === 'frames' && 'label' in node && (
-            <FrameRelationsSection
-              frame={node as Frame}
-              isOpen={overlaySections.frameRelations}
-              onToggle={() => setOverlaySections(prev => ({ ...prev, frameRelations: !prev.frameRelations }))}
+          {/* Concept Relations Section (Concepts only) */}
+          {mode === 'concepts' && 'label' in node && (
+            <ConceptRelationsSection
+              concept={node as Concept}
+              isOpen={overlaySections.conceptRelations}
+              onToggle={() => setOverlaySections(prev => ({ ...prev, conceptRelations: !prev.conceptRelations }))}
               onUpdate={onUpdate}
             />
           )}
 
-          {/* Relations Section (non-frames only) */}
-          {mode !== 'frames' && 'gloss' in node && (
+          {/* Relations Section (non-concepts only) */}
+          {mode !== 'concepts' && 'gloss' in node && (
             <RelationsSection
               node={node as GraphNode}
               mode={mode}

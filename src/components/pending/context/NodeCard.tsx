@@ -19,8 +19,8 @@ export interface NodeCardProps {
    * When true, the title and subtitle wrap to multiple lines instead
    * of being truncated with an ellipsis, and the title auto-shrinks
    * to `text-xs` once it crosses a length threshold so unusually long
-   * frame labels still fit without overflowing the card. Use this on
-   * "hero" cards (the focused frame, its parents) where preserving
+   * concept labels still fit without overflowing the card. Use this on
+   * "hero" cards (the focused concept, its parents) where preserving
    * the full label matters more than a tidy single-line look.
    */
   wrap?: boolean;

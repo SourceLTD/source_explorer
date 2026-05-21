@@ -16,21 +16,21 @@ async function getHierarchyCountsUncached(rootIds: string[]): Promise<HierarchyC
   const rootIdValues = rootIds.map(id => BigInt(id));
 
   const rows = await prisma.$queryRaw<HierarchyCountRow[]>(Prisma.sql`
-    WITH RECURSIVE hierarchy(root_id, frame_id) AS (
+    WITH RECURSIVE hierarchy(root_id, concept_id) AS (
       SELECT f.id, f.id
-      FROM frames f
+      FROM concepts f
       WHERE f.id IN (${Prisma.join(rootIdValues)})
         AND f.deleted = false
 
       UNION
 
-      SELECT h.root_id, fr.target_id
+      SELECT h.root_id, fr.child_id
       FROM hierarchy h
-      JOIN frame_relations fr
-        ON fr.source_id = h.frame_id
-        AND fr.type = 'parent_of'::frame_relation_type
-      JOIN frames child
-        ON child.id = fr.target_id
+      JOIN concept_relations fr
+        ON fr.parent_id = h.concept_id
+        AND fr.type = 'parent_of'::concept_relation_type
+      JOIN concepts child
+        ON child.id = fr.child_id
         AND child.deleted = false
     )
     SELECT root_id::text AS "rootId", COUNT(*)::int AS count
@@ -48,8 +48,8 @@ async function getHierarchyCountsUncached(rootIds: string[]): Promise<HierarchyC
 
 const getHierarchyCounts = unstable_cache(
   async (rootIds: string[]) => getHierarchyCountsUncached(rootIds),
-  ['frame-hierarchy-counts'],
-  { revalidate: 3600, tags: ['frame-hierarchy-counts'] }
+  ['concept-hierarchy-counts'],
+  { revalidate: 3600, tags: ['concept-hierarchy-counts'] }
 );
 
 export async function GET(request: NextRequest) {
@@ -84,9 +84,9 @@ export async function GET(request: NextRequest) {
       }
     );
   } catch (error) {
-    console.error('Error fetching frame hierarchy counts:', error);
+    console.error('Error fetching concept hierarchy counts:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch frame hierarchy counts' },
+      { error: 'Failed to fetch concept hierarchy counts' },
       { status: 500 }
     );
   }

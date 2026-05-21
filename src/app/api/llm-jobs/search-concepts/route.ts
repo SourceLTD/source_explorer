@@ -14,8 +14,8 @@ export async function GET(request: NextRequest) {
   const searchTerm = query.trim().toLowerCase();
 
   try {
-    // Only search by label or numeric id (not framebank_id or code)
-    const frames = await prisma.frames.findMany({
+    // Only search by label or numeric id
+    const concepts = await prisma.concepts.findMany({
       where: {
         deleted: false,
         OR: [
@@ -33,9 +33,9 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    const results = frames.map(frame => ({
-      id: frame.id.toString(),
-      label: frame.label,
+    const results = concepts.map(concept => ({
+      id: concept.id.toString(),
+      label: concept.label,
       pos: 'f',
       gloss: '', // Basic search doesn't include definition here
       lemmas: [],
@@ -45,9 +45,9 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ results });
   } catch (error) {
-    console.error('[LLM] Failed to search frames:', error);
+    console.error('[LLM] Failed to search concepts:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to search frames' },
+      { error: error instanceof Error ? error.message : 'Failed to search concepts' },
       { status: 500 }
     );
   }

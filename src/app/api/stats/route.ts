@@ -3,14 +3,14 @@ import { prisma } from '@/lib/prisma'
 
 export async function GET() {
   try {
-    const [entriesCount, relationsCount, framesCount] = await Promise.all([
+    const [entriesCount, relationsCount, conceptsCount] = await Promise.all([
       prisma.lexical_units.count({ 
         where: { 
           deleted: false
         } 
       }),
       prisma.lexical_unit_relations.count(),
-      prisma.frames.count({
+      prisma.concepts.count({
         where: {
           deleted: false
         }
@@ -32,7 +32,7 @@ export async function GET() {
     const stats = {
       entries: entriesCount,
       relations: relationsCount,
-      frames: framesCount,
+      concepts: conceptsCount,
       by_pos: posStats,
     }
     

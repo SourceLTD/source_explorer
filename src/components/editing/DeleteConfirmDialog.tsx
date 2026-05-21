@@ -1,9 +1,9 @@
 import React from 'react';
-import { GraphNode, Frame } from '@/lib/types';
+import { GraphNode, Concept } from '@/lib/types';
 import { ConfirmDialog } from '@/components/ui';
 
 interface DeleteConfirmDialogProps {
-  node: GraphNode | Frame;
+  node: GraphNode | Concept;
   isOpen: boolean;
   isDeleting: boolean;
   onConfirm: () => void;

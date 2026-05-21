@@ -18,7 +18,7 @@ export interface VirtualIndexChangeset {
   field_changes: VirtualIndexFieldChange[];
 }
 
-export interface VirtualFrameSummary {
+export interface VirtualConceptSummary {
   id: string;
   label: string;
   code?: string | null;
@@ -35,7 +35,7 @@ export interface VirtualLexicalUnitSummary {
 }
 
 export interface VirtualIndex {
-  virtualFramesByRef: Map<string, VirtualFrameSummary>;
+  virtualConceptsByRef: Map<string, VirtualConceptSummary>;
   lexicalUnitsByFrameRef: Map<string, VirtualLexicalUnitSummary[]>;
 }
 
@@ -74,7 +74,7 @@ function getSnapshotValue(snapshot: JsonRecord | null, key: string): unknown {
   return snapshot[key];
 }
 
-function summarizeFrame(ref: string, snapshot: JsonRecord | null): VirtualFrameSummary | null {
+function summarizeFrame(ref: string, snapshot: JsonRecord | null): VirtualConceptSummary | null {
   if (!snapshot) return null;
   const label = pickString(snapshot.label) || pickString(snapshot.code) || 'Untitled';
   return {
@@ -120,7 +120,7 @@ function getEffectiveParentRef(cs: VirtualIndexChangeset, fieldName: string): st
 }
 
 export function buildVirtualIndex(changesets: VirtualIndexChangeset[]): VirtualIndex {
-  const virtualFramesByRef = new Map<string, VirtualFrameSummary>();
+  const virtualConceptsByRef = new Map<string, VirtualConceptSummary>();
   const lexicalUnitsByFrameRef = new Map<string, VirtualLexicalUnitSummary[]>();
 
   for (const cs of changesets) {
@@ -128,7 +128,7 @@ export function buildVirtualIndex(changesets: VirtualIndexChangeset[]): VirtualI
       const virtualRef = `-${cs.id}`;
       const summary = summarizeFrame(virtualRef, cs.after_snapshot);
       if (summary) {
-        virtualFramesByRef.set(virtualRef, summary);
+        virtualConceptsByRef.set(virtualRef, summary);
       }
     }
   }
@@ -150,7 +150,7 @@ export function buildVirtualIndex(changesets: VirtualIndexChangeset[]): VirtualI
   }
 
   return {
-    virtualFramesByRef,
+    virtualConceptsByRef,
     lexicalUnitsByFrameRef,
   };
 }

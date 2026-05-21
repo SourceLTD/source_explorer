@@ -9,11 +9,11 @@ export function getEntityDisplayName(cs: ByRemediationChangeset): string {
   if (snapshot) {
     if (cs.entity_type === 'frame_relation') {
       const relType = String(snapshot.type ?? 'relation');
-      const srcLabel = snapshot.source_label ? String(snapshot.source_label) : null;
-      const tgtLabel = snapshot.target_label ? String(snapshot.target_label) : null;
+      const srcLabel = (snapshot.parent_label || snapshot.source_label) ? String(snapshot.parent_label || snapshot.source_label) : null;
+      const tgtLabel = (snapshot.child_label || snapshot.target_label) ? String(snapshot.child_label || snapshot.target_label) : null;
       if (srcLabel && tgtLabel) return `${srcLabel} → ${tgtLabel} (${relType})`;
-      const srcId = snapshot.source_id ? `#${snapshot.source_id}` : '?';
-      const tgtId = snapshot.target_id ? `#${snapshot.target_id}` : '?';
+      const srcId = (snapshot.parent_id || snapshot.source_id) ? `#${snapshot.parent_id || snapshot.source_id}` : '?';
+      const tgtId = (snapshot.child_id || snapshot.target_id) ? `#${snapshot.child_id || snapshot.target_id}` : '?';
       return `${srcId} → ${tgtId} (${relType})`;
     }
     if (cs.entity_type === 'frame') {
@@ -51,13 +51,13 @@ export function getEntityDisplayName(cs: ByRemediationChangeset): string {
       }
     }
     if (cs.entity_type === 'frame_role_mapping') {
-      const parentRole = snapshot.parent_role_label
-        ? String(snapshot.parent_role_label)
+      const parentRole = (snapshot.parent_property_label || snapshot.parent_role_label)
+        ? String(snapshot.parent_property_label || snapshot.parent_role_label)
         : null;
-      const childRole = snapshot.child_role_label
-        ? String(snapshot.child_role_label)
+      const childRole = (snapshot.child_property_label || snapshot.child_role_label)
+        ? String(snapshot.child_property_label || snapshot.child_role_label)
         : null;
-      const absorbed = snapshot.absorbed === true;
+      const absorbed = snapshot.absorbed === true || snapshot.is_absorbed === true;
       if (parentRole && (childRole || absorbed)) {
         return `${parentRole} → ${absorbed ? '(absorbed)' : childRole}`;
       }
@@ -135,11 +135,10 @@ const ROLE_SUBFIELD_LABELS: Record<string, string> = {
 
 export function formatFieldNameShort(fieldName: string): string {
   const lower = fieldName.toLowerCase();
-  if (lower === 'frame_id') return 'frame';
-  if (lower.startsWith('frame_roles.')) {
+  if (lower === 'concept_id' || lower === 'frame_id') return 'concept';
+  if (lower.startsWith('properties.') || lower.startsWith('frame_roles.')) {
     const parts = lower.split('.');
     if (parts.length >= 3) {
-      // Preserve original casing for the role type (e.g. "Doer", "Done_to")
       const originalParts = fieldName.split('.');
       const roleType = originalParts[1];
       const subfield = parts[parts.length - 1];

@@ -1,13 +1,13 @@
 import React from 'react';
-import { FieldEditorProps, FrameOption } from './types';
+import { FieldEditorProps, ConceptOption } from './types';
 
-interface FrameSelectorProps extends FieldEditorProps {
+interface ConceptSelectorProps extends FieldEditorProps {
   value: string;
   onChange: (value: string) => void;
-  availableFrames: FrameOption[];
+  availableConcepts: ConceptOption[];
 }
 
-export function FrameSelector({ value, onChange, availableFrames, onSave, onCancel, isSaving }: FrameSelectorProps) {
+export function ConceptSelector({ value, onChange, availableConcepts, onSave, onCancel, isSaving }: ConceptSelectorProps) {
   return (
     <div className="space-y-2">
       <select
@@ -16,9 +16,9 @@ export function FrameSelector({ value, onChange, availableFrames, onSave, onCanc
         className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
       >
         <option value="">None</option>
-        {availableFrames.map(frame => (
-          <option key={frame.id} value={frame.id}>
-            {frame.code?.trim() || frame.label}
+        {availableConcepts.map(concept => (
+          <option key={concept.id} value={concept.id}>
+            {concept.code?.trim() || concept.label}
           </option>
         ))}
       </select>

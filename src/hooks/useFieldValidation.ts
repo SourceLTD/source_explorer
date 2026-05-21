@@ -3,7 +3,7 @@ import { Mode } from '@/components/editing/types';
 
 function getApiPrefix(mode: Mode): string {
   switch (mode) {
-    case 'frames': return '/api/frames';
+    case 'concepts': return '/api/concepts';
     case 'lexical_units':
     case 'verbs':
     case 'nouns':

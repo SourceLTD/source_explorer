@@ -1,35 +1,35 @@
-import type { FrameSenseWarning } from '@/lib/types';
+import type { SenseWarning } from '@/lib/types';
 
-interface SenseFrameWarningProps {
-  warning: FrameSenseWarning;
-  frameCount?: number;
+interface SenseConceptWarningProps {
+  warning: SenseWarning;
+  conceptCount?: number;
   /** When provided, shown inside the tooltip to explain the anomaly. */
   senseLabel?: string;
   className?: string;
 }
 
 /**
- * Small inline badge surfaced next to a frame_sense whose frame cardinality
+ * Small inline badge surfaced next to a sense whose concept cardinality
  * breaks the expected 1:1 invariant. Intended to be unobtrusive — it should
  * not dominate the sense row, just draw attention.
  *
- *   - `'none'`     → sense has no linked frame
- *   - `'multiple'` → sense has more than one linked frame
+ *   - `'none'`     → sense has no linked concept
+ *   - `'multiple'` → sense has more than one linked concept
  */
-export function SenseFrameWarning({
+export function SenseConceptWarning({
   warning,
-  frameCount,
+  conceptCount,
   senseLabel,
   className,
-}: SenseFrameWarningProps) {
+}: SenseConceptWarningProps) {
   if (warning === null) return null;
 
   const title =
     warning === 'none'
-      ? `${senseLabel ? `Sense "${senseLabel}" has ` : ''}no frame — expected exactly one.`
-      : `${senseLabel ? `Sense "${senseLabel}" has ` : ''}${frameCount ?? 'multiple'} frames — expected exactly one.`;
+      ? `${senseLabel ? `Sense "${senseLabel}" has ` : ''}no concept — expected exactly one.`
+      : `${senseLabel ? `Sense "${senseLabel}" has ` : ''}${conceptCount ?? 'multiple'} concepts — expected exactly one.`;
 
-  const label = warning === 'none' ? 'no frame' : `${frameCount ?? '>1'} frames`;
+  const label = warning === 'none' ? 'no concept' : `${conceptCount ?? '>1'} concepts`;
 
   return (
     <span
@@ -59,4 +59,4 @@ export function SenseFrameWarning({
   );
 }
 
-export default SenseFrameWarning;
+export default SenseConceptWarning;

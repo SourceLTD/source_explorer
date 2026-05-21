@@ -1,11 +1,11 @@
 import React from 'react';
-import { Frame, PendingChangeInfo } from '@/lib/types';
+import { Concept, PendingChangeInfo } from '@/lib/types';
 import { EditableField } from './types';
 import { OverlaySection } from './OverlaySection';
 import { PendingFieldIndicator } from '@/components/PendingChangeIndicator';
 
-interface FramePropertiesSectionProps {
-  frame: Frame;
+interface ConceptPropertiesSectionProps {
+  concept: Concept;
   editingField: EditableField | null;
   editValue: string;
   isOpen: boolean;
@@ -23,8 +23,8 @@ interface FramePropertiesSectionProps {
   onToggleDisableHealthcheck?: (next: boolean) => Promise<void> | void;
 }
 
-export function FramePropertiesSection({
-  frame,
+export function ConceptPropertiesSection({
+  concept,
   editingField,
   editValue,
   isOpen,
@@ -36,7 +36,7 @@ export function FramePropertiesSection({
   isSaving,
   pending,
   onToggleDisableHealthcheck,
-}: FramePropertiesSectionProps) {
+}: ConceptPropertiesSectionProps) {
   const [togglingHealthcheck, setTogglingHealthcheck] = React.useState(false);
   const hasPendingField = (fieldName: string) => {
     return !!pending?.pending_fields?.[fieldName];
@@ -53,7 +53,7 @@ export function FramePropertiesSection({
 
   return (
     <OverlaySection
-      title="Frame Properties"
+      title="Concept Properties"
       icon={
         <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
@@ -62,11 +62,11 @@ export function FramePropertiesSection({
       isOpen={isOpen}
       onToggle={onToggle}
     >
-      {/* Frame Name */}
+      {/* Concept Name */}
       <div>
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-sm font-medium text-gray-700">
-            Frame Name
+            Concept Name
             {hasPendingField('label') && (
               <span className="ml-2 text-xs text-orange-600 font-normal">(pending)</span>
             )}
@@ -87,7 +87,7 @@ export function FramePropertiesSection({
               value={editValue}
               onChange={(e) => onValueChange(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-              placeholder="Frame name"
+              placeholder="Concept name"
               autoFocus
             />
             <div className="flex space-x-2">
@@ -108,7 +108,7 @@ export function FramePropertiesSection({
           </div>
         ) : (
           <PendingFieldIndicator fieldName="label" pending={pending}>
-            <span className="text-gray-900 text-sm font-semibold">{getDisplayValue('label', frame.label)}</span>
+            <span className="text-gray-900 text-sm font-semibold">{getDisplayValue('label', concept.label)}</span>
           </PendingFieldIndicator>
         )}
       </div>
@@ -138,7 +138,7 @@ export function FramePropertiesSection({
               onChange={(e) => onValueChange(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-vertical"
               rows={4}
-              placeholder="Frame definition"
+              placeholder="Concept definition"
               autoFocus
             />
             <div className="flex space-x-2">
@@ -159,7 +159,7 @@ export function FramePropertiesSection({
           </div>
         ) : (
           <PendingFieldIndicator fieldName="definition" pending={pending}>
-            <span className="text-gray-900 text-sm">{getDisplayValue('definition', frame.definition)}</span>
+            <span className="text-gray-900 text-sm">{getDisplayValue('definition', concept.definition)}</span>
           </PendingFieldIndicator>
         )}
       </div>
@@ -210,7 +210,7 @@ export function FramePropertiesSection({
           </div>
         ) : (
           <PendingFieldIndicator fieldName="short_definition" pending={pending}>
-            <span className="text-gray-900 text-sm">{getDisplayValue('short_definition', frame.short_definition)}</span>
+            <span className="text-gray-900 text-sm">{getDisplayValue('short_definition', concept.short_definition)}</span>
           </PendingFieldIndicator>
         )}
       </div>
@@ -261,9 +261,9 @@ export function FramePropertiesSection({
           </div>
         ) : (
           <PendingFieldIndicator fieldName="subtype" pending={pending}>
-            {getDisplayValue('subtype', frame.subtype) ? (
+            {getDisplayValue('subtype', concept.subtype) ? (
               <span className="inline-flex px-2 py-0.5 rounded-full border text-xs font-medium bg-indigo-50 text-indigo-700 border-indigo-200">
-                {getDisplayValue('subtype', frame.subtype)}
+                {getDisplayValue('subtype', concept.subtype)}
               </span>
             ) : (
               <span className="text-gray-400 text-sm italic">none</span>
@@ -284,13 +284,13 @@ export function FramePropertiesSection({
             </h3>
           </div>
           <p className="text-xs text-gray-500 mb-2">
-            Skip this frame when running health checks.
+            Skip this concept when running health checks.
           </p>
           <PendingFieldIndicator fieldName="disable_healthcheck" pending={pending}>
             <label className="inline-flex items-center cursor-pointer gap-2">
               <input
                 type="checkbox"
-                checked={Boolean(getDisplayValue('disable_healthcheck', frame.disable_healthcheck))}
+                checked={Boolean(getDisplayValue('disable_healthcheck', concept.disable_healthcheck))}
                 disabled={togglingHealthcheck}
                 onChange={async (e) => {
                   setTogglingHealthcheck(true);
@@ -303,7 +303,7 @@ export function FramePropertiesSection({
                 className="rounded border-gray-300"
               />
               <span className="text-sm text-gray-700">
-                {getDisplayValue('disable_healthcheck', frame.disable_healthcheck)
+                {getDisplayValue('disable_healthcheck', concept.disable_healthcheck)
                   ? 'Disabled'
                   : 'Enabled'}
               </span>

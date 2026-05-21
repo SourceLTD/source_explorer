@@ -18,11 +18,11 @@ type HoverData =
   | null;
 
 interface ReferenceHoverPopupProps {
-  // `frame_senses` renders the lexical units that sit inside any sense of the
-  // referenced frame (frame → frame_sense_frames → frame_senses →
-  // lexical_unit_senses → lexical_units). The legacy 'frame_lexical_units'
+  // `senses renders the lexical units that sit inside any sense of the
+  // referenced concept (concept → sense_concepts → senses →
+  // lexical_unit_senses → lexical_units). The legacy 'concept_lexical_units'
   // tag is accepted for back-compat and behaves identically.
-  mode: 'frame_senses' | 'frame_lexical_units';
+  mode: 'senses' | 'frame_lexical_units';
   entityId: string | null;
   virtualIndex?: VirtualIndex;
   children: React.ReactNode;
@@ -69,7 +69,7 @@ export default function ReferenceHoverPopup({
     labelAcRef.current = new AbortController();
 
     try {
-      const res = await fetch(`/api/frames/${encodeURIComponent(entityId)}`, { signal: labelAcRef.current.signal });
+      const res = await fetch(`/api/concepts/${encodeURIComponent(entityId)}`, { signal: labelAcRef.current.signal });
       if (!res.ok) return;
       const json = await res.json();
       const code = typeof json?.code === 'string' ? json.code.trim() : '';
@@ -94,7 +94,7 @@ export default function ReferenceHoverPopup({
     setLoading(true);
     setError(null);
     try {
-      const url = `/api/lexical-units/paginated?frame_id=${encodeURIComponent(entityId)}&page=${p}&limit=${pageSize}&sortBy=code&sortOrder=asc`;
+      const url = `/api/lexical-units/paginated?concept_id=${encodeURIComponent(entityId)}&page=${p}&limit=${pageSize}&sortBy=code&sortOrder=asc`;
 
       const res = await fetch(url, { signal: acRef.current.signal });
       if (!res.ok) throw new Error('Failed to load reference details');
@@ -155,7 +155,7 @@ export default function ReferenceHoverPopup({
 
   const virtualParent = useMemo(() => {
     if (!isVirtualRef || !entityId) return null;
-    return virtualIndex?.virtualFramesByRef.get(entityId) ?? null;
+    return virtualIndex?.virtualConceptsByRef.get(entityId) ?? null;
   }, [entityId, isVirtualRef, virtualIndex]);
 
   const totalCount = isVirtualRef

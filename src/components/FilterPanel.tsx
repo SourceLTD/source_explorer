@@ -18,7 +18,7 @@ import { POS_LABELS } from '@/lib/types';
 import type { DataTableRenderMode } from './DataTable/types';
 import type { FilterState } from './DataTable/filterState';
 
-interface Frame {
+interface Concept {
   id: string;
   label: string;
   code?: string | null;
@@ -76,11 +76,11 @@ export default function FilterPanel({
   mode = 'lexical_units'
 }: FilterPanelProps) {
   const [openSections, setOpenSections] = useState<Set<string>>(new Set(['categories']));
-  const [frames, setFrames] = useState<Frame[]>([]);
-  const [loadingFrames, setLoadingFrames] = useState(false);
-  const [frameSearchQuery, setFrameSearchQuery] = useState('');
+  const [concepts, setConcepts] = useState<Concept[]>([]);
+  const [loadingConcepts, setLoadingConcepts] = useState(false);
+  const [conceptSearchQuery, setConceptSearchQuery] = useState('');
   const [lexfileSearchQuery, setLexfileSearchQuery] = useState('');
-  const [frameDropdownOpen, setFrameDropdownOpen] = useState(false);
+  const [conceptDropdownOpen, setConceptDropdownOpen] = useState(false);
   const [lexfileDropdownOpen, setLexfileDropdownOpen] = useState(false);
   const [jobs, setJobs] = useState<Array<{ id: string; label: string | null; status: string; flagged_items: number; created_at: string }>>([]);
   const [jobsLoading, setJobsLoading] = useState(false);
@@ -88,11 +88,11 @@ export default function FilterPanel({
   const [jobDropdownOpen, setJobDropdownOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
-  const frameDropdownContainerRef = useRef<HTMLDivElement>(null);
+  const conceptDropdownContainerRef = useRef<HTMLDivElement>(null);
   const jobDropdownContainerRef = useRef<HTMLDivElement>(null);
-  const isFramesMode = mode === 'frames';
-  const isFrameSensesMode = mode === 'frame_senses';
-  const canFilterByParentFrameId = mode === 'frames';
+  const isConceptsMode = mode === 'concepts';
+  const isSensesMode = mode === 'senses';
+  const canFilterByParentConceptId = mode === 'concepts';
   
   const toggleSection = (section: string) => {
     setOpenSections(prev => {
@@ -106,20 +106,19 @@ export default function FilterPanel({
     });
   };
 
-  // If a deep link sets a parent_frame_id, make sure the relevant section is visible when opening the panel.
   useEffect(() => {
-    if (!canFilterByParentFrameId) return;
-    if (!filters.parent_frame_id) return;
+    if (!canFilterByParentConceptId) return;
+    if (!filters.parent_concept_id) return;
     setOpenSections(prev => {
       if (prev.has('hierarchy')) return prev;
       const next = new Set(prev);
       next.add('hierarchy');
       return next;
     });
-  }, [canFilterByParentFrameId, filters.parent_frame_id]);
+  }, [canFilterByParentConceptId, filters.parent_concept_id]);
 
   useEffect(() => {
-    if (!isFramesMode) return;
+    if (!isConceptsMode) return;
     if (filters.childrenCountValue === undefined) return;
     setOpenSections(prev => {
       if (prev.has('relationships')) return prev;
@@ -127,42 +126,40 @@ export default function FilterPanel({
       next.add('relationships');
       return next;
     });
-  }, [isFramesMode, filters.childrenCountValue]);
+  }, [isConceptsMode, filters.childrenCountValue]);
 
-  // Fetch frames when searching or when dropdown opens
   useEffect(() => {
-    const fetchFrames = async () => {
-      if (!frameDropdownOpen && !filters.frame_id) return;
+    const fetchConcepts = async () => {
+      if (!conceptDropdownOpen && !filters.concept_id) return;
 
-      setLoadingFrames(true);
+      setLoadingConcepts(true);
       try {
         const queryParams = new URLSearchParams();
-        if (frameSearchQuery) {
-          queryParams.set('search', frameSearchQuery);
+        if (conceptSearchQuery) {
+          queryParams.set('search', conceptSearchQuery);
         }
         
-        // Always include selected frames so they show up in the list
-        if (filters.frame_id) {
-          queryParams.set('ids', filters.frame_id);
+        if (filters.concept_id) {
+          queryParams.set('ids', filters.concept_id);
         }
         
         queryParams.set('limit', '100');
 
-        const response = await fetch(`/api/frames?${queryParams.toString()}`);
+        const response = await fetch(`/api/concepts?${queryParams.toString()}`);
         if (response.ok) {
           const data = await response.json();
-          setFrames(data);
+          setConcepts(data);
         }
       } catch (error) {
-        console.error('Error fetching frames:', error);
+        console.error('Error fetching concepts:', error);
       } finally {
-        setLoadingFrames(false);
+        setLoadingConcepts(false);
       }
     };
 
-    const debounceTimer = setTimeout(fetchFrames, 300);
+    const debounceTimer = setTimeout(fetchConcepts, 300);
     return () => clearTimeout(debounceTimer);
-  }, [frameSearchQuery, frameDropdownOpen, filters.frame_id]);
+  }, [conceptSearchQuery, conceptDropdownOpen, filters.concept_id]);
 
   // Fetch recent AI jobs for the 'Flagged by' filter
   useEffect(() => {
@@ -226,7 +223,7 @@ export default function FilterPanel({
       normalizedValue = undefined;
     }
 
-    if (key === 'parent_frame_id' && typeof normalizedValue === 'string') {
+    if (key === 'parent_concept_id' && typeof normalizedValue === 'string') {
       normalizedValue = normalizedValue.replace(/[^\d]/g, '');
       if (normalizedValue === '') {
         normalizedValue = undefined;
@@ -257,13 +254,13 @@ export default function FilterPanel({
     });
   };
 
-  const toggleFrameId = (frameId: string) => {
-    const currentIds = selectedFrameIds;
+  const toggleConceptId = (frameId: string) => {
+    const currentIds = selectedConceptIds;
     const newIds = currentIds.includes(frameId)
       ? currentIds.filter(id => id !== frameId)
       : [...currentIds, frameId];
     
-    updateFilter('frame_id', newIds.length > 0 ? newIds.join(',') : undefined);
+    updateFilter('concept_id', newIds.length > 0 ? newIds.join(',') : undefined);
   };
 
   const toggleLexfile = (lexfile: string) => {
@@ -286,54 +283,54 @@ export default function FilterPanel({
     updateFilter('pos', isAllSelected ? undefined : (newPos.length > 0 ? newPos.join(',') : 'none'));
   };
 
-  const selectedFrameIds = useMemo(() => {
-    if (!filters.frame_id) return [] as string[];
-    return filters.frame_id
+  const selectedConceptIds = useMemo(() => {
+    if (!filters.concept_id) return [] as string[];
+    return filters.concept_id
       .split(',')
       .map(id => id.trim())
       .filter(Boolean);
-  }, [filters.frame_id]);
+  }, [filters.concept_id]);
 
   const selectedLexfiles = filters.lexfile ? filters.lexfile.split(',') : [];
   const selectedPos = filters.pos === 'none' ? [] : (filters.pos ? filters.pos.split(',') : ['verb', 'noun', 'adjective', 'adverb']);
   
-  const filteredFrames = frames;
+  const filteredConcepts = concepts;
 
-  // Resolve labels to IDs when frames are loaded
+  // Resolve labels to IDs when concepts are loaded
   useEffect(() => {
-    if (frames.length === 0 || !filters.frame_id) return;
+    if (concepts.length === 0 || !filters.concept_id) return;
 
-    const rawValues = filters.frame_id.split(',').map(id => id.trim()).filter(Boolean);
+    const rawValues = filters.concept_id.split(',').map(id => id.trim()).filter(Boolean);
     const hasLabels = rawValues.some(id => !/^\d+$/.test(id));
     if (!hasLabels) return;
 
     const resolved = rawValues.map(value => {
       if (/^\d+$/.test(value)) return value;
-      const match = frames.find(f => f.label.toLowerCase() === value.toLowerCase());
+      const match = concepts.find(f => f.label.toLowerCase() === value.toLowerCase());
       return match ? match.id : value;
     });
 
     const resolvedValue = resolved.join(',');
-    if (resolvedValue !== filters.frame_id) {
-      onFiltersChange({ ...filters, frame_id: resolvedValue });
+    if (resolvedValue !== filters.concept_id) {
+      onFiltersChange({ ...filters, concept_id: resolvedValue });
     }
-  }, [frames, filters, onFiltersChange]);
+  }, [concepts, filters, onFiltersChange]);
 
   useEffect(() => {
-    if (!frameDropdownOpen) return;
+    if (!conceptDropdownOpen) return;
 
     const handleClickOutside = (event: MouseEvent) => {
       if (
-        frameDropdownContainerRef.current &&
-        !frameDropdownContainerRef.current.contains(event.target as Node)
+        conceptDropdownContainerRef.current &&
+        !conceptDropdownContainerRef.current.contains(event.target as Node)
       ) {
-        setFrameDropdownOpen(false);
+        setConceptDropdownOpen(false);
       }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [frameDropdownOpen]);
+  }, [conceptDropdownOpen]);
 
   useEffect(() => {
     if (!jobDropdownOpen) return;
@@ -446,7 +443,7 @@ export default function FilterPanel({
           {/* Filter Sections */}
           <div className="max-h-[32rem] overflow-y-auto">
             {/* Category Filters */}
-            {(mode === 'lexical_units' || isFrameSensesMode) && (
+            {(mode === 'lexical_units' || isSensesMode) && (
               <FilterSection
                 title="Categories"
                 icon={<HashtagIcon className="w-4 h-4 text-gray-600" />}
@@ -538,40 +535,40 @@ export default function FilterPanel({
                     )}
                   </div>
                 )}
-                <div className="relative" ref={frameDropdownContainerRef}>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Frame ID</label>
+                <div className="relative" ref={conceptDropdownContainerRef}>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Concept ID</label>
                   <input
                     type="text"
-                    value={frameSearchQuery}
-                    onChange={(e) => setFrameSearchQuery(e.target.value)}
-                    onFocus={() => setFrameDropdownOpen(true)}
-                    placeholder="Search frames..."
+                    value={conceptSearchQuery}
+                    onChange={(e) => setConceptSearchQuery(e.target.value)}
+                    onFocus={() => setConceptDropdownOpen(true)}
+                    placeholder="Search concepts..."
                     className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 mb-2"
                   />
-                  {frameDropdownOpen && (
+                  {conceptDropdownOpen && (
                     <div className="max-h-48 overflow-y-auto border border-gray-300 rounded-xl bg-white">
-                      {loadingFrames ? (
+                      {loadingConcepts ? (
                         <div className="flex items-center justify-center py-6">
                           <LoadingSpinner size="sm" noPadding />
                         </div>
-                      ) : filteredFrames.length === 0 ? (
-                        <div className="px-3 py-2 text-sm text-gray-500">No frames found</div>
+                      ) : filteredConcepts.length === 0 ? (
+                        <div className="px-3 py-2 text-sm text-gray-500">No concepts found</div>
                       ) : (
-                        filteredFrames.map((frame) => (
+                        filteredConcepts.map((concept) => (
                           <label
-                            key={frame.id}
+                            key={concept.id}
                             className="flex items-start px-3 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
                           >
                             <input
                               type="checkbox"
-                              checked={selectedFrameIds.includes(frame.id)}
-                              onChange={() => toggleFrameId(frame.id)}
+                              checked={selectedConceptIds.includes(concept.id)}
+                              onChange={() => toggleConceptId(concept.id)}
                               className="mt-0.5 mr-3 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                             />
                             <div className="flex-1 min-w-0">
                               <div className="text-sm font-medium text-gray-900 truncate">
                               {(() => {
-                                const displayValue = frame.code || frame.label;
+                                const displayValue = concept.code || concept.label;
                                 const dotIndex = displayValue.indexOf('.');
                                 if (dotIndex !== -1) {
                                   return (
@@ -585,7 +582,7 @@ export default function FilterPanel({
                               })()}
                             </div>
                               <div className="text-xs text-gray-500 font-mono truncate">
-                                {frame.id}{frame.code ? ` · ${frame.label}` : ''}
+                                {concept.id}{concept.code ? ` · ${concept.label}` : ''}
                               </div>
                             </div>
                           </label>
@@ -593,9 +590,9 @@ export default function FilterPanel({
                       )}
                     </div>
                   )}
-                  {selectedFrameIds.length > 0 && (
+                  {selectedConceptIds.length > 0 && (
                     <div className="mt-2 text-xs text-gray-600">
-                      {selectedFrameIds.length} frame{selectedFrameIds.length !== 1 ? 's' : ''} selected
+                      {selectedConceptIds.length} concept{selectedConceptIds.length !== 1 ? 's' : ''} selected
                     </div>
                   )}
                 </div>
@@ -603,7 +600,7 @@ export default function FilterPanel({
             )}
 
             {/* Frame hierarchy filters */}
-            {canFilterByParentFrameId && (
+            {canFilterByParentConceptId && (
               <FilterSection
                 title="Hierarchy"
                 icon={<HashtagIcon className="w-4 h-4 text-gray-600" />}
@@ -611,18 +608,18 @@ export default function FilterPanel({
                 onToggle={() => toggleSection('hierarchy')}
               >
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Parent Frame ID</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Parent Concept ID</label>
                   <input
                     type="text"
                     inputMode="numeric"
                     pattern="[0-9]*"
-                    value={filters.parent_frame_id || ''}
-                    onChange={(e) => updateFilter('parent_frame_id', e.target.value)}
+                    value={filters.parent_concept_id || ''}
+                    onChange={(e) => updateFilter('parent_concept_id', e.target.value)}
                     placeholder="e.g., 12345"
                     className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
                   />
                   <p className="mt-1 text-xs text-gray-500">
-                    Show only frames that inherit from this frame.
+                    Show only concepts that inherit from this concept.
                   </p>
                 </div>
               </FilterSection>
@@ -635,15 +632,15 @@ export default function FilterPanel({
               isOpen={openSections.has('text')}
               onToggle={() => toggleSection('text')}
             >
-              {isFramesMode ? (
+              {isConceptsMode ? (
                 <>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Frame Name</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Concept Name</label>
                     <input
                       type="text"
                       value={filters.label || ''}
                       onChange={(e) => updateFilter('label', e.target.value)}
-                      placeholder="Search in frame names..."
+                      placeholder="Search in concept names..."
                       className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
                     />
                   </div>
@@ -668,7 +665,7 @@ export default function FilterPanel({
                     />
                   </div>
                 </>
-              ) : isFrameSensesMode ? (
+              ) : isSensesMode ? (
                 <>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Definition</label>
@@ -691,12 +688,12 @@ export default function FilterPanel({
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Frame Type</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Archetype</label>
                     <input
                       type="text"
-                      value={filters.frame_type || ''}
-                      onChange={(e) => updateFilter('frame_type', e.target.value)}
-                      placeholder="Search frame types..."
+                      value={filters.archetype || ''}
+                      onChange={(e) => updateFilter('archetype', e.target.value)}
+                      placeholder="Search archetypes..."
                       className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
                     />
                   </div>
@@ -734,18 +731,18 @@ export default function FilterPanel({
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Frames</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Concepts</label>
                     <input
                       type="text"
                       value={filters.frames || ''}
                       onChange={(e) => updateFilter('frames', e.target.value)}
-                      placeholder="Search in frames..."
+                      placeholder="Search in concepts..."
                       className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
                     />
                   </div>
                 </>
               )}
-              {!isFrameSensesMode && (
+              {!isSensesMode && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Flagged Reason</label>
                 <input
@@ -757,7 +754,7 @@ export default function FilterPanel({
                 />
               </div>
               )}
-              {!isFrameSensesMode && (
+              {!isSensesMode && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Unverifiable Reason</label>
                 <input
@@ -772,7 +769,7 @@ export default function FilterPanel({
             </FilterSection>
 
             {/* AI Jobs Filters */}
-            {!isFrameSensesMode && (
+            {!isSensesMode && (
             <FilterSection
               title="AI Jobs"
               icon={<SparklesIcon className="w-4 h-4 shrink-0 text-gray-600" />}
@@ -853,31 +850,31 @@ export default function FilterPanel({
               isOpen={openSections.has('properties')}
               onToggle={() => toggleSection('properties')}
             >
-              {mode === 'frames' ? (
-                <div className="text-sm text-gray-500 italic">No frame properties to filter.</div>
-              ) : isFrameSensesMode ? (
+              {mode === 'concepts' ? (
+                <div className="text-sm text-gray-500 italic">No concept properties to filter.</div>
+              ) : isSensesMode ? (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Frame Link Warning</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Concept Link Warning</label>
                   <div className="flex gap-2">
                     <button
-                      onClick={() => updateFilter('frameWarning', filters.frameWarning === 'none' ? undefined : 'none')}
+                      onClick={() => updateFilter('conceptWarning', filters.conceptWarning === 'none' ? undefined : 'none')}
                       className={`px-3 py-1 rounded-xl text-sm font-medium transition-colors cursor-pointer ${
-                        filters.frameWarning === 'none'
+                        filters.conceptWarning === 'none'
                           ? 'bg-amber-100 text-amber-800 border border-amber-200'
                           : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
                       }`}
                     >
-                      No frame
+                      No concept
                     </button>
                     <button
-                      onClick={() => updateFilter('frameWarning', filters.frameWarning === 'multiple' ? undefined : 'multiple')}
+                      onClick={() => updateFilter('conceptWarning', filters.conceptWarning === 'multiple' ? undefined : 'multiple')}
                       className={`px-3 py-1 rounded-xl text-sm font-medium transition-colors cursor-pointer ${
-                        filters.frameWarning === 'multiple'
+                        filters.conceptWarning === 'multiple'
                           ? 'bg-amber-100 text-amber-800 border border-amber-200'
                           : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
                       }`}
                     >
-                      Multiple frames
+                      Multiple concepts
                     </button>
                   </div>
                 </div>
@@ -912,7 +909,7 @@ export default function FilterPanel({
                   )}
                 </>
               )}
-              {!isFrameSensesMode && (
+              {!isSensesMode && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Flagged</label>
                 <div className="flex gap-2">
@@ -939,7 +936,7 @@ export default function FilterPanel({
                 </div>
               </div>
               )}
-              {!isFrameSensesMode && (
+              {!isSensesMode && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Verifiable</label>
                 <div className="flex gap-2">
@@ -968,7 +965,7 @@ export default function FilterPanel({
               )}
               
               {/* Pending State Filters */}
-              {!isFrameSensesMode && (
+              {!isSensesMode && (
               <div className="pt-3 border-t border-gray-200">
                 <label className="block text-sm font-medium text-gray-700 mb-2">Pending Changes</label>
                 <div className="flex flex-wrap gap-2">
@@ -1060,7 +1057,7 @@ export default function FilterPanel({
               </FilterSection>
             )}
 
-            {isFramesMode && (
+            {isConceptsMode && (
               <FilterSection
                 title="Words"
                 icon={<HashtagIcon className="w-4 h-4 text-gray-600" />}
@@ -1151,11 +1148,11 @@ export default function FilterPanel({
                   <label className="flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer">
                     <input
                       type="checkbox"
-                      checked={filters.excludeNullFrame !== false} // Default to true
-                      onChange={(e) => updateFilter('excludeNullFrame', e.target.checked ? true : false)}
+                      checked={filters.excludeNullConcept !== false} // Default to true
+                      onChange={(e) => updateFilter('excludeNullConcept', e.target.checked ? true : false)}
                       className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                     />
-                    <span>Exclude entries without frames</span>
+                    <span>Exclude entries without concepts</span>
                   </label>
                 </div>
               </FilterSection>

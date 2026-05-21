@@ -45,7 +45,7 @@ interface DataTableToolbarProps {
   selectedCount: number;
   flagState: FlagState;
   onOpenFlagModal: (action: 'flag' | 'unflag' | 'forbid' | 'allow') => void;
-  onOpenFrameModal: () => void;
+  onOpenConceptModal: () => void;
   
   // Page size
   isPageSizePanelOpen: boolean;
@@ -84,7 +84,7 @@ interface FlagActionsProps {
   selectedCount: number;
   flagState: FlagState;
   onOpenFlagModal: (action: 'flag' | 'unflag' | 'forbid' | 'allow') => void;
-  onOpenFrameModal: () => void;
+  onOpenConceptModal: () => void;
 }
 
 function FlagActions({
@@ -92,7 +92,7 @@ function FlagActions({
   selectedCount,
   flagState,
   onOpenFlagModal,
-  onOpenFrameModal,
+  onOpenConceptModal,
 }: FlagActionsProps) {
   const { allFlagged, noneFlagged, allUnverifiable, noneUnverifiable } = flagState;
   const mixedFlagged = !allFlagged && !noneFlagged;
@@ -152,13 +152,13 @@ function FlagActions({
       )}
       {mode === 'lexical_units' && (
         <button
-          onClick={onOpenFrameModal}
+          onClick={onOpenConceptModal}
           className="flex items-center gap-1 px-3 py-1 text-sm font-medium text-blue-600 bg-blue-100 border border-blue-200 rounded-xl hover:bg-blue-200 transition-colors cursor-pointer"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7h11m-2-3 3 3-3 3M20 17H9m2-3-3 3 3 3" />
           </svg>
-          Change Frame
+          Change Concept
         </button>
       )}
     </div>
@@ -183,7 +183,7 @@ export function DataTableToolbar({
   selectedCount,
   flagState,
   onOpenFlagModal,
-  onOpenFrameModal,
+  onOpenConceptModal,
   isPageSizePanelOpen,
   onPageSizePanelToggle,
   pageSize,
@@ -243,7 +243,7 @@ export function DataTableToolbar({
               selectedCount={selectedCount}
               flagState={flagState}
               onOpenFlagModal={onOpenFlagModal}
-              onOpenFrameModal={onOpenFrameModal}
+              onOpenConceptModal={onOpenConceptModal}
             />
           )}
         </div>

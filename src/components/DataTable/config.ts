@@ -11,7 +11,7 @@ export const LEXICAL_UNITS_DEFAULT_COLUMNS: ColumnConfig[] = [
   { key: 'legacy_id', label: 'Legacy ID', visible: false, sortable: true },
   { key: 'code', label: 'Code', visible: true, sortable: true },
   { key: 'pos', label: 'Part of Speech', visible: true, sortable: true },
-  { key: 'frame', label: 'Frame Code', visible: true, sortable: false },
+  { key: 'frame', label: 'Concept Code', visible: true, sortable: false },
   { key: 'senses', label: 'Senses', visible: true, sortable: false },
   { key: 'lemmas', label: 'Lemmas', visible: true, sortable: true },
   { key: 'gloss', label: 'Gloss', visible: true, sortable: true },
@@ -29,15 +29,15 @@ export const LEXICAL_UNITS_DEFAULT_COLUMNS: ColumnConfig[] = [
   { key: 'actions', label: 'Actions', visible: true, sortable: false },
 ];
 
-// Frames-specific columns
-export const FRAMES_COLUMNS: ColumnConfig[] = [
+// Concepts-specific columns
+export const CONCEPTS_COLUMNS: ColumnConfig[] = [
   { key: 'id', label: 'ID', visible: false, sortable: true },
   { key: 'code', label: 'Code', visible: true, sortable: true },
-  { key: 'label', label: 'Frame Name', visible: false, sortable: true },
+  { key: 'label', label: 'Concept Name', visible: false, sortable: true },
   { key: 'definition', label: 'Definition', visible: true, sortable: false },
   { key: 'short_definition', label: 'Short Definition', visible: false, sortable: false },
-  { key: 'frame_roles', label: 'Frame Roles', visible: true, sortable: false },
-  { key: 'roles_count', label: 'Roles', visible: false, sortable: false },
+  { key: 'properties', label: 'Properties', visible: true, sortable: false },
+  { key: 'roles_count', label: 'Properties', visible: false, sortable: false },
   { key: 'lexical_units_count', label: 'Word Count', visible: false, sortable: false },
   { key: 'lexical_units', label: 'Words', visible: true, sortable: false },
   { key: 'flagged', label: 'Flagged', visible: false, sortable: true },
@@ -46,7 +46,7 @@ export const FRAMES_COLUMNS: ColumnConfig[] = [
   { key: 'unverifiableReason', label: 'Unverifiable Reason', visible: false, sortable: false },
   { key: 'createdAt', label: 'Created', visible: false, sortable: true },
   { key: 'updatedAt', label: 'Updated', visible: false, sortable: true },
-  { key: 'frame_type', label: 'Frame Type', visible: false, sortable: false },
+  { key: 'archetype', label: 'Archetype', visible: false, sortable: false },
   { key: 'subtype', label: 'Subtype', visible: false, sortable: true },
   { key: 'disable_healthcheck', label: 'Disable Health Check', visible: false, sortable: true },
   { key: 'vendler', label: 'Vendler', visible: false, sortable: false },
@@ -56,15 +56,15 @@ export const FRAMES_COLUMNS: ColumnConfig[] = [
   { key: 'actions', label: 'Actions', visible: true, sortable: false },
 ];
 
-export const FRAME_SENSES_COLUMNS: ColumnConfig[] = [
+export const SENSES_COLUMNS: ColumnConfig[] = [
   { key: 'id', label: 'ID', visible: false, sortable: true },
   { key: 'pos', label: 'POS', visible: true, sortable: true },
   { key: 'lemmas', label: 'Lemmas', visible: true, sortable: false },
   { key: 'definition', label: 'Definition', visible: true, sortable: true },
-  { key: 'frame_type', label: 'Frame Type', visible: true, sortable: true },
-  { key: 'frame', label: 'Frame', visible: true, sortable: false },
+  { key: 'archetype', label: 'Archetype', visible: true, sortable: true },
+  { key: 'frame', label: 'Concept', visible: true, sortable: false },
   { key: 'lexical_units', label: 'Lexical Units', visible: true, sortable: false },
-  { key: 'frameWarning', label: 'Warning', visible: true, sortable: false },
+  { key: 'conceptWarning', label: 'Warning', visible: true, sortable: false },
   { key: 'confidence', label: 'Confidence', visible: false, sortable: false },
   { key: 'causative', label: 'Causative', visible: false, sortable: true },
   { key: 'inchoative', label: 'Inchoative', visible: false, sortable: true },
@@ -105,16 +105,16 @@ export const DEFAULT_COLUMN_WIDTHS: ColumnWidthState = {
   label: 200,
   definition: 350,
   short_definition: 250,
-  frame_roles: 400,
+  properties: 400,
   roles_count: 80,
   lexical_units_count: 80,
   lexical_units: 400,
-  frameWarning: 120,
+  conceptWarning: 120,
   confidence: 120,
   causative: 110,
   inchoative: 110,
   perspectival: 120,
-  frame_type: 120,
+  archetype: 120,
   subtype: 120,
   disable_healthcheck: 150,
   vendler: 120,
@@ -128,10 +128,10 @@ export const DEFAULT_COLUMN_WIDTHS: ColumnWidthState = {
  */
 export function getColumnsForMode(mode: DataTableRenderMode): ColumnConfig[] {
   switch (mode) {
-    case 'frame_senses':
-      return FRAME_SENSES_COLUMNS;
-    case 'frames':
-      return FRAMES_COLUMNS;
+    case 'senses':
+      return SENSES_COLUMNS;
+    case 'concepts':
+      return CONCEPTS_COLUMNS;
     case 'lexical_units':
     default:
       return LEXICAL_UNITS_DEFAULT_COLUMNS;
@@ -184,8 +184,8 @@ export function sanitizeColumnVisibility(
  * Get the API prefix
  */
 export function getApiPrefix(mode: DataTableRenderMode): string {
-  if (mode === 'frame_senses') return '/api/frame-senses';
-  if (mode === 'frames') return '/api/frames';
+  if (mode === 'senses') return '/api/senses';
+  if (mode === 'concepts') return '/api/concepts';
   return '/api/lexical-units';
 }
 
@@ -193,8 +193,8 @@ export function getApiPrefix(mode: DataTableRenderMode): string {
  * Get the graph base path
  */
 export function getGraphBasePath(mode: DataTableRenderMode): string {
-  if (mode === 'frames') return '/graph/frames';
-  if (mode === 'frame_senses') return '/table';
+  if (mode === 'concepts') return '/graph/concepts';
+  if (mode === 'senses') return '/table';
   return '/table';
 }
 
@@ -202,7 +202,7 @@ export function getGraphBasePath(mode: DataTableRenderMode): string {
  * Map column keys to actual field names for pending change detection
  */
 export const FIELD_NAME_MAP: Record<string, string> = {
-  // NB: `frame` is intentionally absent — frames are now edited via frame_senses,
+  // NB: `frame` is intentionally absent — frames are now edited via senses,
   // not as a direct field on lexical_units. The `frame` column is read-only.
   'label': 'label',
   'code': 'code',
@@ -235,12 +235,12 @@ export interface NestedColumnConfig {
   subFields: NestedFieldConfig[];
 }
 
-// Sub-fields for frame_roles column
-export const FRAME_ROLES_SUBFIELDS: NestedFieldConfig[] = [
+// Sub-fields for properties column
+export const PROPERTIES_SUBFIELDS: NestedFieldConfig[] = [
   { key: 'label', label: 'Label', defaultSelected: true },
   { key: 'description', label: 'Description', defaultSelected: true },
   { key: 'notes', label: 'Notes', defaultSelected: false },
-  { key: 'main', label: 'Main Role', defaultSelected: false },
+  { key: 'main', label: 'Main Property', defaultSelected: false },
   { key: 'fillers', label: 'Fillers', defaultSelected: false },
   { key: 'examples', label: 'Examples', defaultSelected: false },
 ];
@@ -256,7 +256,7 @@ export const LEXICAL_ENTRIES_SUBFIELDS: NestedFieldConfig[] = [
 
 // Map of column keys to their nested field configurations
 export const NESTED_FIELD_CONFIGS: Record<string, NestedFieldConfig[]> = {
-  'frame_roles': FRAME_ROLES_SUBFIELDS,
+  'properties': PROPERTIES_SUBFIELDS,
   'lexical_units': LEXICAL_ENTRIES_SUBFIELDS,
 };
 

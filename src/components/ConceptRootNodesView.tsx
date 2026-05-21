@@ -2,37 +2,37 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 
-interface RootFrame {
+interface RootConcept {
   id: string;
   label: string;
 }
 
-interface FrameRootNodesViewProps {
+interface ConceptRootNodesViewProps {
   onNodeClick: (nodeId: string) => void;
 }
 
-const rootFrames: RootFrame[] = [
+const rootConcepts: RootConcept[] = [
   { id: '280229', label: 'Event' },
   { id: '85483', label: 'Entity' },
   { id: '319610', label: 'State' },
 ];
 
-const auxiliaryFrames: RootFrame[] = [
+const auxiliaryConcepts: RootConcept[] = [
   { id: '257773', label: 'Measure' },
 ];
 
-const allRootFrames = [...rootFrames, ...auxiliaryFrames];
+const allRootConcepts = [...rootConcepts, ...auxiliaryConcepts];
 
 function formatHierarchyCount(count: number) {
-  return `${count.toLocaleString()} ${count === 1 ? 'frame' : 'frames'} in hierarchy`;
+  return `${count.toLocaleString()} ${count === 1 ? 'concept' : 'concepts'} in hierarchy`;
 }
 
-export default function FrameRootNodesView({ onNodeClick }: FrameRootNodesViewProps) {
+export default function ConceptRootNodesView({ onNodeClick }: ConceptRootNodesViewProps) {
   const [hierarchyCounts, setHierarchyCounts] = useState<Record<string, number>>({});
   const [isLoadingCounts, setIsLoadingCounts] = useState(true);
 
   const rootIdsQuery = useMemo(
-    () => allRootFrames.map(frame => `rootId=${encodeURIComponent(frame.id)}`).join('&'),
+    () => allRootConcepts.map(concept => `rootId=${encodeURIComponent(concept.id)}`).join('&'),
     []
   );
 
@@ -42,7 +42,7 @@ export default function FrameRootNodesView({ onNodeClick }: FrameRootNodesViewPr
     async function loadHierarchyCounts() {
       try {
         setIsLoadingCounts(true);
-        const response = await fetch(`/api/frames/hierarchy-counts?${rootIdsQuery}`, {
+        const response = await fetch(`/api/concepts/hierarchy-counts?${rootIdsQuery}`, {
           signal: controller.signal,
         });
         if (!response.ok) {
@@ -52,7 +52,7 @@ export default function FrameRootNodesView({ onNodeClick }: FrameRootNodesViewPr
         setHierarchyCounts(data.counts ?? {});
       } catch (error) {
         if ((error as Error).name !== 'AbortError') {
-          console.error('Error loading frame hierarchy counts:', error);
+          console.error('Error loading concept hierarchy counts:', error);
         }
       } finally {
         if (!controller.signal.aborted) {
@@ -71,27 +71,27 @@ export default function FrameRootNodesView({ onNodeClick }: FrameRootNodesViewPr
       <div className="max-w-5xl w-full px-8">
         <div className="text-center mb-12">
           <h2 className="text-3xl font-bold text-gray-900 mb-3">
-            Explore Frame Types
+            Explore Concept Types
           </h2>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {rootFrames.map((frame) => (
+          {rootConcepts.map((concept) => (
             <button
-              key={frame.id}
-              onClick={() => onNodeClick(frame.id)}
+              key={concept.id}
+              onClick={() => onNodeClick(concept.id)}
               className="group relative bg-white p-8 rounded-xl transition-all duration-300 transform hover:-translate-y-1 border-2 border-gray-200 hover:border-blue-400 cursor-pointer"
             >
               <div className="flex flex-col items-start text-left">
                 <div className="w-full mb-4">
                   <div className="flex-1">
                     <h3 className="text-2xl font-bold text-gray-900 mb-2 group-hover:text-blue-600 transition-colors">
-                      {frame.label}
+                      {concept.label}
                     </h3>
                     <p className="text-sm font-medium text-gray-500">
                       {isLoadingCounts
-                        ? 'Counting frames...'
-                        : formatHierarchyCount(hierarchyCounts[frame.id] ?? 0)}
+                        ? 'Counting concepts...'
+                        : formatHierarchyCount(hierarchyCounts[concept.id] ?? 0)}
                     </p>
                   </div>
                 </div>
@@ -122,21 +122,21 @@ export default function FrameRootNodesView({ onNodeClick }: FrameRootNodesViewPr
             Auxiliary:
           </p>
           <div className="flex flex-wrap gap-3">
-            {auxiliaryFrames.map((frame) => (
+            {auxiliaryConcepts.map((concept) => (
               <button
-                key={frame.id}
-                onClick={() => onNodeClick(frame.id)}
+                key={concept.id}
+                onClick={() => onNodeClick(concept.id)}
                 className="group rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-left transition-all hover:-translate-y-0.5 hover:border-blue-400 hover:bg-blue-100"
               >
                 <div className="flex items-center gap-4">
                   <div>
                     <h3 className="text-base font-semibold text-blue-900 group-hover:text-blue-700 transition-colors">
-                      {frame.label}
+                      {concept.label}
                     </h3>
                     <p className="text-xs font-medium text-blue-700">
                       {isLoadingCounts
-                        ? 'Counting frames...'
-                        : formatHierarchyCount(hierarchyCounts[frame.id] ?? 0)}
+                        ? 'Counting concepts...'
+                        : formatHierarchyCount(hierarchyCounts[concept.id] ?? 0)}
                     </p>
                   </div>
                   <svg
@@ -164,7 +164,7 @@ export default function FrameRootNodesView({ onNodeClick }: FrameRootNodesViewPr
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <p className="text-sm font-medium text-blue-600">
-              These are the root frame types from which all frames in the ontology derive
+              These are the root concept types from which all concepts in the ontology derive
             </p>
           </div>
         </div>

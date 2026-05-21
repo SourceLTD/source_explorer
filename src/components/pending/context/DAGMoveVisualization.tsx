@@ -3,13 +3,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import NodeCard from './NodeCard';
 import LoadingSpinner from '@/components/LoadingSpinner';
-import FrameRefPopover from './FrameRefPopover';
+import ConceptRefPopover from './ConceptRefPopover';
 
 // ============================================
 // Types
 // ============================================
 
-interface FrameSummary {
+interface ConceptSummary {
   id: string;
   label: string;
   short_definition?: string | null;
@@ -26,23 +26,23 @@ interface DAGContext {
   label: string;
   short_definition?: string | null;
   definition_excerpt?: string | null;
-  parents: FrameSummary[];
-  children: FrameSummary[];
+  parents: ConceptSummary[];
+  children: ConceptSummary[];
 }
 
-/** Pick the best available short blurb for a frame card. */
-function frameBlurb(frame: { short_definition?: string | null; definition_excerpt?: string | null }): string | null {
-  return frame.short_definition || frame.definition_excerpt || null;
+/** Pick the best available short blurb for a concept card. */
+function conceptBlurb(concept: { short_definition?: string | null; definition_excerpt?: string | null }): string | null {
+  return concept.short_definition || concept.definition_excerpt || null;
 }
 
 export interface DAGMoveVisualizationProps {
-  /** The frame being moved (source_id in both changesets) */
-  frameId: string;
-  frameLabel?: string;
-  /** Old parent frame ID (from the DELETE changeset) - null if frame had no parent */
+  /** The concept being moved (source_id in both changesets) */
+  conceptId: string;
+  conceptLabel?: string;
+  /** Old parent concept ID (from the DELETE changeset) - null if concept had no parent */
   oldParentId: string | null;
   oldParentLabel?: string | null;
-  /** New parent frame ID (from the CREATE changeset) */
+  /** New parent concept ID (from the CREATE changeset) */
   newParentId: string;
   newParentLabel?: string | null;
 }
@@ -52,7 +52,7 @@ export interface DAGMoveVisualizationProps {
 // ============================================
 
 function useDAGMoveContext(props: DAGMoveVisualizationProps) {
-  const [movingFrame, setMovingFrame] = useState<DAGContext | null>(null);
+  const [movingConcept, setMovingConcept] = useState<DAGContext | null>(null);
   const [oldParent, setOldParent] = useState<DAGContext | null>(null);
   const [newParent, setNewParent] = useState<DAGContext | null>(null);
   const [loading, setLoading] = useState(true);
@@ -61,8 +61,8 @@ function useDAGMoveContext(props: DAGMoveVisualizationProps) {
   useEffect(() => {
     const ac = new AbortController();
 
-    const fetchContext = async (frameId: string): Promise<DAGContext | null> => {
-      const res = await fetch(`/api/frames/${frameId}/dag-context`, { signal: ac.signal });
+    const fetchContext = async (conceptId: string): Promise<DAGContext | null> => {
+      const res = await fetch(`/api/concepts/${conceptId}/dag-context`, { signal: ac.signal });
       if (!res.ok) return null;
       return res.json();
     };
@@ -71,13 +71,13 @@ function useDAGMoveContext(props: DAGMoveVisualizationProps) {
       setLoading(true);
       setError(null);
       try {
-        const promises: Promise<DAGContext | null>[] = [fetchContext(props.frameId)];
+        const promises: Promise<DAGContext | null>[] = [fetchContext(props.conceptId)];
         if (props.oldParentId) promises.push(fetchContext(props.oldParentId));
         else promises.push(Promise.resolve(null));
         promises.push(fetchContext(props.newParentId));
 
         const [moving, oldP, newP] = await Promise.all(promises);
-        setMovingFrame(moving);
+        setMovingConcept(moving);
         setOldParent(oldP);
         setNewParent(newP);
       } catch (err) {
@@ -90,9 +90,9 @@ function useDAGMoveContext(props: DAGMoveVisualizationProps) {
 
     void loadAll();
     return () => ac.abort();
-  }, [props.frameId, props.oldParentId, props.newParentId]);
+  }, [props.conceptId, props.oldParentId, props.newParentId]);
 
-  return { movingFrame, oldParent, newParent, loading, error };
+  return { movingConcept, oldParent, newParent, loading, error };
 }
 
 // ============================================
@@ -100,11 +100,11 @@ function useDAGMoveContext(props: DAGMoveVisualizationProps) {
 // ============================================
 
 interface MiniDAGTreeProps {
-  parent: FrameSummary | null;
+  parent: ConceptSummary | null;
   parentLabel?: string | null;
-  siblings: FrameSummary[];
-  movingFrame: FrameSummary;
-  movingFrameChildren: FrameSummary[];
+  siblings: ConceptSummary[];
+  movingConcept: ConceptSummary;
+  movingConceptChildren: ConceptSummary[];
   side: 'before' | 'after';
 }
 
@@ -112,8 +112,8 @@ function MiniDAGTree({
   parent,
   parentLabel,
   siblings,
-  movingFrame,
-  movingFrameChildren,
+  movingConcept,
+  movingConceptChildren,
   side,
 }: MiniDAGTreeProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -129,7 +129,7 @@ function MiniDAGTree({
 
   const isBefore = side === 'before';
   const displayedParent = parent ?? (parentLabel ? { id: '', label: parentLabel, short_definition: null } : null);
-  const filteredSiblings = siblings.filter(s => s.id !== movingFrame.id).slice(0, 4);
+  const filteredSiblings = siblings.filter(s => s.id !== movingConcept.id).slice(0, 4);
 
   // Split siblings into two halves around a central spacer so the
   // straight parent → moving line drops cleanly through the middle
@@ -142,7 +142,7 @@ function MiniDAGTree({
   const leftSiblings = filteredSiblings.slice(0, leftCount);
   const rightSiblings = filteredSiblings.slice(leftCount);
 
-  const renderSiblingCard = (sib: FrameSummary) => (
+  const renderSiblingCard = (sib: ConceptSummary) => (
     <div
       key={sib.id}
       ref={el => {
@@ -151,7 +151,7 @@ function MiniDAGTree({
       }}
       className="max-w-[140px]"
     >
-      <FrameRefPopover as="div" frameId={sib.id} fallbackLabel={sib.label}>
+      <ConceptRefPopover as="div" conceptId={sib.id} fallbackLabel={sib.label}>
         <NodeCard
           title={sib.label}
           subtitle={`#${sib.id}`}
@@ -161,7 +161,7 @@ function MiniDAGTree({
           noDivider
           wrap
         />
-      </FrameRefPopover>
+      </ConceptRefPopover>
     </div>
   );
 
@@ -184,7 +184,7 @@ function MiniDAGTree({
       const parentCenter = getCenter(parentRef.current);
       const movingCenter = getCenter(movingRef.current);
 
-      // Lines from parent to moving frame
+      // Lines from parent to moving concept
       if (parentCenter && movingCenter) {
         newLines.push({
           x1: parentCenter.x, y1: parentCenter.yBottom,
@@ -207,7 +207,7 @@ function MiniDAGTree({
         }
       }
 
-      // Lines from moving frame to its children
+      // Lines from moving concept to its children
       for (const [, el] of childRefs.current) {
         const childCenter = getCenter(el);
         if (movingCenter && childCenter) {
@@ -224,7 +224,7 @@ function MiniDAGTree({
     }, 50);
 
     return () => clearTimeout(timer);
-  }, [displayedParent, filteredSiblings, movingFrame, movingFrameChildren, isBefore]);
+  }, [displayedParent, filteredSiblings, movingConcept, movingConceptChildren, isBefore]);
 
   return (
     <div className="relative" ref={containerRef}>
@@ -257,9 +257,9 @@ function MiniDAGTree({
             no truncation. Width sized so most labels fit on one line. */}
         {displayedParent ? (
           <div ref={parentRef} className="w-full max-w-[380px]">
-            <FrameRefPopover
+            <ConceptRefPopover
               as="div"
-              frameId={displayedParent.id || null}
+              conceptId={displayedParent.id || null}
               fallbackLabel={displayedParent.label}
             >
               <NodeCard
@@ -269,11 +269,11 @@ function MiniDAGTree({
                 className="!p-2.5"
                 wrap
               >
-                {frameBlurb(displayedParent) && (
-                  <div>{frameBlurb(displayedParent)}</div>
+                {conceptBlurb(displayedParent) && (
+                  <div>{conceptBlurb(displayedParent)}</div>
                 )}
               </NodeCard>
-            </FrameRefPopover>
+            </ConceptRefPopover>
           </div>
         ) : (
           <div ref={parentRef} className="w-full max-w-[380px]">
@@ -300,7 +300,7 @@ function MiniDAGTree({
           </div>
         )}
 
-        {/* Moving frame row. Always on its own line below the siblings so
+        {/* Moving concept row. Always on its own line below the siblings so
             the parent → moving line passes vertically through the spacer
             opened up in the siblings row above. */}
         <div className="flex justify-center w-full">
@@ -308,14 +308,14 @@ function MiniDAGTree({
             ref={movingRef}
             className="w-full max-w-[400px]"
           >
-            <FrameRefPopover
+            <ConceptRefPopover
               as="div"
-              frameId={movingFrame.id}
-              fallbackLabel={movingFrame.label}
+              conceptId={movingConcept.id}
+              fallbackLabel={movingConcept.label}
             >
               <NodeCard
-                title={movingFrame.label}
-                subtitle={`#${movingFrame.id}`}
+                title={movingConcept.label}
+                subtitle={`#${movingConcept.id}`}
                 type="focus"
                 className={`!p-2.5 ring-2 ${
                   isBefore
@@ -329,26 +329,20 @@ function MiniDAGTree({
                 }`}>
                   {isBefore ? 'Departing' : 'Arriving'}
                 </div>
-                {/* Option A: keep the focus frame's identity visible at rest. The
-                    parent already shows a definition; matching that here gives the
-                    reviewer constant context for the most important frame in the
-                    diagram without the noise of a tooltip. Falls back to the
-                    first sentence of the long definition so the line isn't blank
-                    when `short_definition` is null. */}
-                {frameBlurb(movingFrame) && (
+                {conceptBlurb(movingConcept) && (
                   <div className="mt-1 text-gray-600 font-normal">
-                    {frameBlurb(movingFrame)}
+                    {conceptBlurb(movingConcept)}
                   </div>
                 )}
               </NodeCard>
-            </FrameRefPopover>
+            </ConceptRefPopover>
           </div>
         </div>
 
-        {/* Children of the moving frame */}
-        {movingFrameChildren.length > 0 && (
+        {/* Children of the moving concept */}
+        {movingConceptChildren.length > 0 && (
           <div className="flex flex-wrap justify-center gap-2 w-full">
-            {movingFrameChildren.slice(0, 4).map(child => (
+            {movingConceptChildren.slice(0, 4).map(child => (
               <div
                 key={child.id}
                 ref={el => {
@@ -357,7 +351,7 @@ function MiniDAGTree({
                 }}
                 className="max-w-[130px]"
               >
-                <FrameRefPopover as="div" frameId={child.id} fallbackLabel={child.label}>
+                <ConceptRefPopover as="div" conceptId={child.id} fallbackLabel={child.label}>
                   <NodeCard
                     title={child.label}
                     subtitle={`#${child.id}`}
@@ -367,12 +361,12 @@ function MiniDAGTree({
                     noDivider
                     wrap
                   />
-                </FrameRefPopover>
+                </ConceptRefPopover>
               </div>
             ))}
-            {movingFrameChildren.length > 4 && (
+            {movingConceptChildren.length > 4 && (
               <div className="self-center text-[10px] text-gray-400">
-                +{movingFrameChildren.length - 4} more
+                +{movingConceptChildren.length - 4} more
               </div>
             )}
           </div>
@@ -387,7 +381,7 @@ function MiniDAGTree({
 // ============================================
 
 export default function DAGMoveVisualization(props: DAGMoveVisualizationProps) {
-  const { movingFrame, oldParent, newParent, loading, error } = useDAGMoveContext(props);
+  const { movingConcept, oldParent, newParent, loading, error } = useDAGMoveContext(props);
 
   if (loading) {
     return (
@@ -401,24 +395,24 @@ export default function DAGMoveVisualization(props: DAGMoveVisualizationProps) {
     return <div className="text-sm text-red-600 py-4">{error}</div>;
   }
 
-  const movingFrameSummary: FrameSummary = movingFrame
+  const movingConceptSummary: ConceptSummary = movingConcept
     ? {
-        id: movingFrame.id,
-        label: movingFrame.label,
-        short_definition: movingFrame.short_definition,
-        definition_excerpt: movingFrame.definition_excerpt,
+        id: movingConcept.id,
+        label: movingConcept.label,
+        short_definition: movingConcept.short_definition,
+        definition_excerpt: movingConcept.definition_excerpt,
       }
-    : { id: props.frameId, label: props.frameLabel || `Frame #${props.frameId}` };
+    : { id: props.conceptId, label: props.conceptLabel || `Concept #${props.conceptId}` };
 
-  const movingFrameChildren = movingFrame?.children ?? [];
+  const movingConceptChildren = movingConcept?.children ?? [];
 
-  // Old parent's children minus the moving frame = old siblings
+  // Old parent's children minus the moving concept = old siblings
   const oldSiblings = oldParent?.children ?? [];
 
-  // New parent's children = new siblings (the moving frame isn't there yet)
+  // New parent's children = new siblings (the moving concept isn't there yet)
   const newSiblings = newParent?.children ?? [];
 
-  const oldParentSummary: FrameSummary | null = oldParent
+  const oldParentSummary: ConceptSummary | null = oldParent
     ? {
         id: oldParent.id,
         label: oldParent.label,
@@ -427,7 +421,7 @@ export default function DAGMoveVisualization(props: DAGMoveVisualizationProps) {
       }
     : null;
 
-  const newParentSummary: FrameSummary | null = newParent
+  const newParentSummary: ConceptSummary | null = newParent
     ? {
         id: newParent.id,
         label: newParent.label,
@@ -445,8 +439,8 @@ export default function DAGMoveVisualization(props: DAGMoveVisualizationProps) {
             parent={oldParentSummary}
             parentLabel={props.oldParentLabel}
             siblings={oldSiblings}
-            movingFrame={movingFrameSummary}
-            movingFrameChildren={movingFrameChildren}
+            movingConcept={movingConceptSummary}
+            movingConceptChildren={movingConceptChildren}
             side="before"
           />
         </div>
@@ -457,20 +451,20 @@ export default function DAGMoveVisualization(props: DAGMoveVisualizationProps) {
             parent={newParentSummary}
             parentLabel={props.newParentLabel}
             siblings={newSiblings}
-            movingFrame={movingFrameSummary}
-            movingFrameChildren={movingFrameChildren}
+            movingConcept={movingConceptSummary}
+            movingConceptChildren={movingConceptChildren}
             side="after"
           />
         </div>
       </div>
 
       {/* Summary of cascading effects */}
-      {movingFrameChildren.length > 0 && (
+      {movingConceptChildren.length > 0 && (
         <div className="text-xs text-gray-500 mt-2 p-2 bg-amber-50 border border-amber-200 rounded-lg">
           <span className="font-medium text-amber-700">Note:</span>{' '}
-          {movingFrameChildren.length} child frame{movingFrameChildren.length !== 1 ? 's' : ''} will
-          move with this frame ({movingFrameChildren.slice(0, 3).map(c => c.label).join(', ')}
-          {movingFrameChildren.length > 3 ? `, +${movingFrameChildren.length - 3} more` : ''}).
+          {movingConceptChildren.length} child concept{movingConceptChildren.length !== 1 ? 's' : ''} will
+          move with this concept ({movingConceptChildren.slice(0, 3).map(c => c.label).join(', ')}
+          {movingConceptChildren.length > 3 ? `, +${movingConceptChildren.length - 3} more` : ''}).
         </div>
       )}
     </div>

@@ -8,9 +8,9 @@ import type {
   JobScope, 
   LexicalUnitSummary, 
   JobTargetType, 
-  FrameRoleData, 
-  FrameLexicalUnitData,
-  FrameRelationData,
+  ConceptPropertyData, 
+  ConceptLexicalUnitData,
+  ConceptRelationData,
 } from './types';
 
 function mergeLemmas(lemmas?: string[] | null, srcLemmas?: string[] | null): string[] {
@@ -18,15 +18,15 @@ function mergeLemmas(lemmas?: string[] | null, srcLemmas?: string[] | null): str
 }
 
 /**
- * Build structured frame data for template loops.
+ * Build structured concept data for template loops.
  */
-function buildStructuredFrameData(frameRecord: {
+function buildStructuredConceptData(conceptRecord: {
   id: bigint;
   code?: string | null;
   label: string;
   definition?: string | null;
   short_definition?: string | null;
-  frame_roles?: Array<{
+  properties?: Array<{
     id: bigint;
     description: string | null;
     notes: string | null;
@@ -34,8 +34,8 @@ function buildStructuredFrameData(frameRecord: {
     examples: string[] | null;
     label: string | null;
   }>;
-  frame_sense_frames?: Array<{
-    frame_senses: {
+  sense_concepts?: Array<{
+    senses: {
       lexical_unit_senses: Array<{
         lexical_units: {
           id: bigint;
@@ -50,9 +50,9 @@ function buildStructuredFrameData(frameRecord: {
       }>;
     };
   }>;
-}): { additional: Record<string, unknown>; frame: FrameRelationData } {
-  const roles: FrameRoleData[] = sortRolesByPrecedence(
-    (frameRecord.frame_roles ?? []).map(fr => ({
+}): { additional: Record<string, unknown>; concept: ConceptRelationData } {
+  const roles: ConceptPropertyData[] = sortRolesByPrecedence(
+    (conceptRecord.properties ?? []).map(fr => ({
       main: fr.main ?? false,
       description: fr.description ?? '',
       examples: fr.examples ?? [],
@@ -67,9 +67,9 @@ function buildStructuredFrameData(frameRecord: {
   }));
 
   // Build structured lexical units array — flatten across senses and dedupe by LU id.
-  const luMap = new Map<string, FrameLexicalUnitData>();
-  for (const sfLink of (frameRecord.frame_sense_frames ?? [])) {
-    for (const lus of (sfLink.frame_senses.lexical_unit_senses ?? [])) {
+  const luMap = new Map<string, ConceptLexicalUnitData>();
+  for (const sfLink of (conceptRecord.sense_concepts ?? [])) {
+    for (const lus of (sfLink.senses.lexical_unit_senses ?? [])) {
       const lu = lus.lexical_units;
       const key = lu.id.toString();
       if (luMap.has(key)) continue;
@@ -84,33 +84,33 @@ function buildStructuredFrameData(frameRecord: {
       });
     }
   }
-  const lexical_units: FrameLexicalUnitData[] = Array.from(luMap.values());
+  const lexical_units: ConceptLexicalUnitData[] = Array.from(luMap.values());
 
   // Build flat additional data for backward compatibility
   const additional: Record<string, unknown> = {
-    'frame.id': frameRecord.id.toString(),
-    'frame.code': frameRecord.code ?? frameRecord.label ?? frameRecord.id.toString(),
-    'frame.label': frameRecord.label,
-    'frame.definition': frameRecord.definition,
-    'frame.short_definition': frameRecord.short_definition,
-    'frame.roles': roles.map(fr => {
+    'concept.id': conceptRecord.id.toString(),
+    'concept.code': conceptRecord.code ?? conceptRecord.label ?? conceptRecord.id.toString(),
+    'concept.label': conceptRecord.label,
+    'concept.definition': conceptRecord.definition,
+    'concept.short_definition': conceptRecord.short_definition,
+    'concept.properties': roles.map(fr => {
       const examples = fr.examples.length > 0 ? fr.examples.join(', ') : '';
       return `**${fr.type}**: ${fr.description}${examples ? ` (e.g. ${examples})` : ''}${fr.label ? `; ${fr.label}` : ''}`;
     }).join('\n'),
   };
 
-  // Build structured frame object for loop iteration
-  const frame: FrameRelationData = {
-    id: frameRecord.id.toString(),
-    code: frameRecord.code ?? frameRecord.label ?? frameRecord.id.toString(),
-    label: frameRecord.label,
-    definition: frameRecord.definition,
-    short_definition: frameRecord.short_definition,
+  // Build structured concept object for loop iteration
+  const concept: ConceptRelationData = {
+    id: conceptRecord.id.toString(),
+    code: conceptRecord.code ?? conceptRecord.label ?? conceptRecord.id.toString(),
+    label: conceptRecord.label,
+    definition: conceptRecord.definition,
+    short_definition: conceptRecord.short_definition,
     roles,
     lexical_units,
   };
 
-  return { additional, frame };
+  return { additional, concept };
 }
 
 /**
@@ -120,8 +120,8 @@ export async function fetchUnitsForScope(scope: JobScope): Promise<LexicalUnitSu
   switch (scope.kind) {
     case 'ids':
       return fetchEntriesByIds(scope.targetType, scope.ids);
-    case 'frame_ids':
-      return fetchEntriesByFrameIds(scope.frameIds, scope.targetType, scope.includeLexicalUnits, scope.offset, scope.limit);
+    case 'concept_ids':
+      return fetchEntriesByConceptIds(scope.conceptIds, scope.targetType, scope.includeLexicalUnits, scope.offset, scope.limit);
     case 'filters':
       return fetchEntriesByFilters(scope.targetType, scope.filters);
     default:
@@ -138,15 +138,15 @@ export async function countEntriesForScope(scope: JobScope): Promise<number> {
   if (scope.kind === 'ids') {
     // For IDs, just return the array length
     count = scope.ids.length;
-  } else if (scope.kind === 'frame_ids') {
-    // For frame IDs, count frames and/or associated lexical units depending on flagTarget
+  } else if (scope.kind === 'concept_ids') {
+    // For concept IDs, count frames and/or associated lexical units depending on flagTarget
     const MAX_BIND_VARS = 15000;
-    const frameIds: bigint[] = [];
+    const conceptIds: bigint[] = [];
     
-    // Process frameIds in chunks to avoid bind variable limits
-    for (let i = 0; i < scope.frameIds.length; i += MAX_BIND_VARS) {
-      const chunk = scope.frameIds.slice(i, i + MAX_BIND_VARS);
-      const frames = await prisma.frames.findMany({
+    // Process conceptIds in chunks to avoid bind variable limits
+    for (let i = 0; i < scope.conceptIds.length; i += MAX_BIND_VARS) {
+      const chunk = scope.conceptIds.slice(i, i + MAX_BIND_VARS);
+      const resolved = await prisma.concepts.findMany({
         where: {
           deleted: false,
           OR: chunk.map(id =>
@@ -157,33 +157,33 @@ export async function countEntriesForScope(scope: JobScope): Promise<number> {
         },
         select: { id: true },
       });
-      frameIds.push(...frames.map(f => f.id));
+      conceptIds.push(...resolved.map(f => f.id));
     }
 
     const flagTarget = scope.flagTarget ?? 'lexical_unit';
 
-    if (flagTarget === 'frame' || flagTarget === 'both') {
-      count += frameIds.length;
+    if (flagTarget === 'concept' || flagTarget === 'both') {
+      count += conceptIds.length;
     }
 
     if (flagTarget === 'lexical_unit' || flagTarget === 'both') {
       const targetType = scope.targetType;
-      // Count distinct LUs reachable via frame_sense_frames → frame_senses → lexical_unit_senses.
-      for (let i = 0; i < frameIds.length; i += MAX_BIND_VARS) {
-        const chunk = frameIds.slice(i, i + MAX_BIND_VARS);
+      // Count distinct LUs reachable via sense_concepts → senses → lexical_unit_senses.
+      for (let i = 0; i < conceptIds.length; i += MAX_BIND_VARS) {
+        const chunk = conceptIds.slice(i, i + MAX_BIND_VARS);
         const luWhere: Prisma.lexical_unitsWhereInput = {
           deleted: false,
           lexical_unit_senses: {
             some: {
-              frame_senses: {
-                frame_sense_frames: {
-                  some: { frame_id: { in: chunk } },
+              senses: {
+                sense_concepts: {
+                  some: { concept_id: { in: chunk } },
                 },
               },
             },
           },
         };
-        if (targetType && targetType !== 'frames' && targetType !== 'lexical_units') {
+        if (targetType && targetType !== 'concepts' && targetType !== 'lexical_units') {
           luWhere.pos = targetType as part_of_speech;
         }
         const luCount = await prisma.lexical_units.count({ where: luWhere });
@@ -193,20 +193,20 @@ export async function countEntriesForScope(scope: JobScope): Promise<number> {
   } else if (scope.kind === 'filters') {
     // For filters, we need to run a count query
     const targetType = scope.targetType;
-    const legacyPos = targetType === 'frames' ? 'frames' : 
+    const legacyPos = targetType === 'concepts' ? 'concepts' : 
                      targetType === 'lexical_units' ? 'lexical_units' : 
                      targetType + 's';
     const { where } = await translateFilterASTToPrisma(legacyPos as any, scope.filters.where);
     const limit = scope.filters.limit;
 
-    if (targetType === 'frames') {
-      const framesWhere: Prisma.framesWhereInput = {
+    if (targetType === 'concepts') {
+      const framesWhere: Prisma.conceptsWhereInput = {
         AND: [
-          where as Prisma.framesWhereInput,
+          where as Prisma.conceptsWhereInput,
           { deleted: false },
         ],
       };
-      count = await prisma.frames.count({ where: framesWhere });
+      count = await prisma.concepts.count({ where: framesWhere });
     } else {
       const luWhere: any = {
         AND: [
@@ -228,7 +228,7 @@ export async function countEntriesForScope(scope: JobScope): Promise<number> {
 }
 
 /**
- * Fetch units by their lexical codes (e.g., say.v.01) or frame IDs.
+ * Fetch units by their lexical codes (e.g., say.v.01) or concept IDs.
  */
 async function fetchEntriesByIds(targetType: JobTargetType, ids: string[]): Promise<LexicalUnitSummary[]> {
   if (ids.length === 0) return [];
@@ -236,7 +236,7 @@ async function fetchEntriesByIds(targetType: JobTargetType, ids: string[]): Prom
   const uniqueIds = Array.from(new Set(ids));
   let entries: LexicalUnitSummary[] = [];
 
-  if (targetType === 'frames') {
+  if (targetType === 'concepts') {
     const numericIds = uniqueIds.filter(id => /^\d+$/.test(id)).map(id => BigInt(id));
     const labels = uniqueIds.filter(id => !/^\d+$/.test(id));
 
@@ -246,7 +246,7 @@ async function fetchEntriesByIds(targetType: JobTargetType, ids: string[]): Prom
     // Process numeric IDs in chunks
     for (let i = 0; i < numericIds.length; i += MAX_BIND_VARS) {
       const chunk = numericIds.slice(i, i + MAX_BIND_VARS);
-      const chunkRecords = await prisma.frames.findMany({
+      const chunkRecords = await prisma.concepts.findMany({
         where: {
           id: { in: chunk },
           deleted: false,
@@ -261,7 +261,7 @@ async function fetchEntriesByIds(targetType: JobTargetType, ids: string[]): Prom
           flagged_reason: true,
           verifiable: true,
           unverifiable_reason: true,
-          frame_roles: {
+          properties: {
             select: {
               id: true,
               description: true,
@@ -271,9 +271,9 @@ async function fetchEntriesByIds(targetType: JobTargetType, ids: string[]): Prom
               label: true,
             },
           },
-          frame_sense_frames: {
+          sense_concepts: {
             include: {
-              frame_senses: {
+              senses: {
                 include: {
                   lexical_unit_senses: {
                     where: { lexical_units: { deleted: false } },
@@ -305,7 +305,7 @@ async function fetchEntriesByIds(targetType: JobTargetType, ids: string[]): Prom
     // Process labels in chunks
     for (let i = 0; i < labels.length; i += MAX_BIND_VARS) {
       const chunk = labels.slice(i, i + MAX_BIND_VARS);
-      const chunkRecords = await prisma.frames.findMany({
+      const chunkRecords = await prisma.concepts.findMany({
         where: {
           label: { in: chunk },
           deleted: false,
@@ -320,7 +320,7 @@ async function fetchEntriesByIds(targetType: JobTargetType, ids: string[]): Prom
           flagged_reason: true,
           verifiable: true,
           unverifiable_reason: true,
-          frame_roles: {
+          properties: {
             select: {
               id: true,
               description: true,
@@ -330,9 +330,9 @@ async function fetchEntriesByIds(targetType: JobTargetType, ids: string[]): Prom
               label: true,
             },
           },
-          frame_sense_frames: {
+          sense_concepts: {
             include: {
-              frame_senses: {
+              senses: {
                 include: {
                   lexical_unit_senses: {
                     where: { lexical_units: { deleted: false } },
@@ -371,12 +371,12 @@ async function fetchEntriesByIds(targetType: JobTargetType, ids: string[]): Prom
       .map(id => byIdOrLabel.get(id))
       .filter((record): record is (typeof records)[number] => Boolean(record))
       .map(record => {
-        const frameInfo = buildStructuredFrameData(record);
+        const conceptInfo = buildStructuredConceptData(record);
         
         return {
           dbId: record.id,
           code: record.code ?? record.label ?? record.id.toString(),
-          pos: 'frames',
+          pos: 'concepts',
           gloss: record.definition ?? '',
           lemmas: [],
           examples: [],
@@ -387,8 +387,8 @@ async function fetchEntriesByIds(targetType: JobTargetType, ids: string[]): Prom
           flagged_reason: record.flagged_reason,
           verifiable: record.verifiable,
           unverifiable_reason: record.unverifiable_reason,
-          roles: frameInfo.frame.roles,
-          lexical_units: frameInfo.frame.lexical_units,
+          roles: conceptInfo.concept.roles,
+          lexical_units: conceptInfo.concept.lexical_units,
         };
       });
   } else {
@@ -417,18 +417,18 @@ async function fetchEntriesByIds(targetType: JobTargetType, ids: string[]): Prom
           lexfile: true,
           lexical_unit_senses: {
             include: {
-              frame_senses: {
+              senses: {
                 include: {
-                  frame_sense_frames: {
+                  sense_concepts: {
                     include: {
-                      frames: {
+                      concepts: {
                         select: {
                           id: true,
                           code: true,
                           label: true,
                           definition: true,
                           short_definition: true,
-                          frame_roles: {
+                          properties: {
                             select: {
                               id: true,
                               description: true,
@@ -438,9 +438,9 @@ async function fetchEntriesByIds(targetType: JobTargetType, ids: string[]): Prom
                               label: true,
                             },
                           },
-                          frame_sense_frames: {
+                          sense_concepts: {
                             include: {
-                              frame_senses: {
+                              senses: {
                                 include: {
                                   lexical_unit_senses: {
                                     where: { lexical_units: { deleted: false } },
@@ -482,10 +482,10 @@ async function fetchEntriesByIds(targetType: JobTargetType, ids: string[]): Prom
       .filter((record): record is (typeof records)[number] => Boolean(record))
       .map(record => {
         // Walk the sense chain to find the primary frame for this LU (first sense's first frame).
-        const frameRecord = record.lexical_unit_senses?.[0]?.frame_senses?.frame_sense_frames?.[0]?.frames;
-        const frameInfo = frameRecord
-          ? buildStructuredFrameData(frameRecord)
-          : { additional: {}, frame: null };
+        const conceptRecord = record.lexical_unit_senses?.[0]?.senses?.sense_concepts?.[0]?.concepts;
+        const conceptInfo = conceptRecord
+          ? buildStructuredConceptData(conceptRecord)
+          : { additional: {}, concept: null };
 
         return {
           dbId: record.id,
@@ -496,10 +496,10 @@ async function fetchEntriesByIds(targetType: JobTargetType, ids: string[]): Prom
           examples: record.examples,
           flagged: record.flagged,
           flagged_reason: record.flagged_reason,
-          label: frameRecord?.label ?? null,
+          label: conceptRecord?.label ?? null,
           lexfile: record.lexfile,
-          additional: frameInfo.additional,
-          frame: frameInfo.frame,
+          additional: conceptInfo.additional,
+          concept: conceptInfo.concept,
         };
       });
   }
@@ -508,28 +508,28 @@ async function fetchEntriesByIds(targetType: JobTargetType, ids: string[]): Prom
 }
 
 /**
- * Fetch entries by frame IDs, optionally including associated lexical units.
+ * Fetch entries by concept IDs, optionally including associated lexical units.
  */
-async function fetchEntriesByFrameIds(
-  frameIds: string[], 
+async function fetchEntriesByConceptIds(
+  conceptIds: string[], 
   targetType?: JobTargetType, 
   includeLexicalUnits?: boolean,
   offset?: number,
   limit?: number,
 ): Promise<LexicalUnitSummary[]> {
-  if (frameIds.length === 0) return [];
+  if (conceptIds.length === 0) return [];
 
-  const numericIds = frameIds.filter(id => id.match(/^\d+$/)).map(id => BigInt(id));
-  const labels = frameIds.filter(id => !id.match(/^\d+$/));
+  const numericIds = conceptIds.filter(id => id.match(/^\d+$/)).map(id => BigInt(id));
+  const labels = conceptIds.filter(id => !id.match(/^\d+$/));
 
   // Chunking to avoid "too many bind variables" error (max 32767)
   const MAX_BIND_VARS = 15000;
-  const frameRecords: any[] = [];
+  const conceptRecords: any[] = [];
   
   // Process numeric IDs in chunks
   for (let i = 0; i < numericIds.length; i += MAX_BIND_VARS) {
     const chunk = numericIds.slice(i, i + MAX_BIND_VARS);
-    const records = await prisma.frames.findMany({
+    const records = await prisma.concepts.findMany({
       where: {
         id: { in: chunk },
         deleted: false,
@@ -544,7 +544,7 @@ async function fetchEntriesByFrameIds(
         flagged_reason: true,
         verifiable: true,
         unverifiable_reason: true,
-        frame_roles: {
+        properties: {
           select: {
             id: true,
             description: true,
@@ -554,9 +554,9 @@ async function fetchEntriesByFrameIds(
             label: true,
           },
         },
-        frame_sense_frames: {
+        sense_concepts: {
           include: {
-            frame_senses: {
+            senses: {
               include: {
                 lexical_unit_senses: {
                   where: { lexical_units: { deleted: false } },
@@ -584,13 +584,13 @@ async function fetchEntriesByFrameIds(
         },
       },
     });
-    frameRecords.push(...records);
+    conceptRecords.push(...records);
   }
 
   // Process labels in chunks
   for (let i = 0; i < labels.length; i += MAX_BIND_VARS) {
     const chunk = labels.slice(i, i + MAX_BIND_VARS);
-    const records = await prisma.frames.findMany({
+    const records = await prisma.concepts.findMany({
       where: {
         label: { in: chunk },
         deleted: false,
@@ -605,7 +605,7 @@ async function fetchEntriesByFrameIds(
         flagged_reason: true,
         verifiable: true,
         unverifiable_reason: true,
-        frame_roles: {
+        properties: {
           select: {
             id: true,
             description: true,
@@ -615,9 +615,9 @@ async function fetchEntriesByFrameIds(
             label: true,
           },
         },
-        frame_sense_frames: {
+        sense_concepts: {
           include: {
-            frame_senses: {
+            senses: {
               include: {
                 lexical_unit_senses: {
                   where: { lexical_units: { deleted: false } },
@@ -645,52 +645,52 @@ async function fetchEntriesByFrameIds(
         },
       },
     });
-    frameRecords.push(...records);
+    conceptRecords.push(...records);
   }
 
-  const frames = frameRecords;
+  const concepts = conceptRecords;
 
   const entries: LexicalUnitSummary[] = [];
   
   // If targeting frames directly
-  if (!includeLexicalUnits || targetType === 'frames') {
-    for (const frame of frames) {
-      const frameInfo = buildStructuredFrameData(frame);
+  if (!includeLexicalUnits || targetType === 'concepts') {
+    for (const concept of concepts) {
+      const conceptInfo = buildStructuredConceptData(concept);
       entries.push({
-        dbId: frame.id,
-        code: frame.code ?? frame.label ?? frame.id.toString(),
-        pos: 'frames',
-        gloss: frame.definition ?? '',
+        dbId: concept.id,
+        code: concept.code ?? concept.label ?? concept.id.toString(),
+        pos: 'concepts',
+        gloss: concept.definition ?? '',
         lemmas: [],
         examples: [],
-        label: frame.label,
-        definition: frame.definition,
-        short_definition: frame.short_definition,
-        flagged: frame.flagged,
-        flagged_reason: frame.flagged_reason,
-        verifiable: frame.verifiable,
-        unverifiable_reason: frame.unverifiable_reason,
-        roles: frameInfo.frame.roles,
-        lexical_units: frameInfo.frame.lexical_units,
+        label: concept.label,
+        definition: concept.definition,
+        short_definition: concept.short_definition,
+        flagged: concept.flagged,
+        flagged_reason: concept.flagged_reason,
+        verifiable: concept.verifiable,
+        unverifiable_reason: concept.unverifiable_reason,
+        roles: conceptInfo.concept.roles,
+        lexical_units: conceptInfo.concept.lexical_units,
       });
     }
   }
   
   // If including lexical units
-  if (includeLexicalUnits && frames.length > 0) {
-    for (const frame of frames) {
-      const frameInfo = buildStructuredFrameData(frame);
+  if (includeLexicalUnits && concepts.length > 0) {
+    for (const concept of concepts) {
+      const conceptInfo = buildStructuredConceptData(concept);
 
-      // Walk the sense chain and dedupe LUs across senses for this frame.
+      // Walk the sense chain and dedupe LUs across senses for this concept.
       const seenLuIds = new Set<string>();
-      for (const sfLink of (frame.frame_sense_frames ?? [])) {
-        for (const lus of (sfLink.frame_senses?.lexical_unit_senses ?? [])) {
+      for (const sfLink of (concept.sense_concepts ?? [])) {
+        for (const lus of (sfLink.senses?.lexical_unit_senses ?? [])) {
           const lu = lus.lexical_units;
           const key = lu.id.toString();
           if (seenLuIds.has(key)) continue;
           seenLuIds.add(key);
-          // Apply targetType filter if specified (and not 'frames')
-          if (targetType && targetType !== 'frames' && lu.pos !== targetType) {
+          // Apply targetType filter if specified (and not 'concepts')
+          if (targetType && targetType !== 'concepts' && lu.pos !== targetType) {
             continue;
           }
 
@@ -703,10 +703,10 @@ async function fetchEntriesByFrameIds(
             examples: lu.examples,
             flagged: lu.flagged,
             flagged_reason: lu.flagged_reason,
-            label: frame.label,
+            label: concept.label,
             lexfile: lu.lexfile,
-            additional: frameInfo.additional,
-            frame: frameInfo.frame,
+            additional: conceptInfo.additional,
+            concept: conceptInfo.concept,
           });
         }
       }
@@ -735,18 +735,18 @@ async function fetchEntriesByFilters(
   const ast = (filters as { where?: BooleanFilterGroup }).where as BooleanFilterGroup | undefined;
   
   // translateFilterASTToPrisma expects 'verbs' style POS, but for lexical_units it's 'verb'
-  const legacyPos = targetType === 'frames' ? 'frames' : 
+  const legacyPos = targetType === 'concepts' ? 'concepts' : 
                    targetType === 'lexical_units' ? 'lexical_units' : 
                    targetType + 's';
   const { where, computedFilters } = await translateFilterASTToPrisma(legacyPos as any, ast);
 
-  if (targetType === 'frames') {
+  if (targetType === 'concepts') {
     const takeArg = limit === 0 ? undefined : (limit ?? 50);
     const skipArg = offset;
-    const records = await prisma.frames.findMany({
+    const records = await prisma.concepts.findMany({
       where: {
         AND: [
-          where as Prisma.framesWhereInput,
+          where as Prisma.conceptsWhereInput,
           { deleted: false },
         ],
       },
@@ -763,7 +763,7 @@ async function fetchEntriesByFilters(
         flagged_reason: true,
         verifiable: true,
         unverifiable_reason: true,
-        frame_roles: {
+        properties: {
           select: {
             id: true,
             description: true,
@@ -773,9 +773,9 @@ async function fetchEntriesByFilters(
             label: true,
           },
         },
-        frame_sense_frames: {
+        sense_concepts: {
           include: {
-            frame_senses: {
+            senses: {
               include: {
                 lexical_unit_senses: {
                   where: { lexical_units: { deleted: false } },
@@ -802,11 +802,11 @@ async function fetchEntriesByFilters(
       },
     });
     return records.map(record => {
-      const frameInfo = buildStructuredFrameData(record);
+      const conceptInfo = buildStructuredConceptData(record);
       return {
         dbId: record.id,
         code: record.code ?? record.label ?? record.id.toString(),
-        pos: 'frames',
+        pos: 'concepts',
         gloss: record.definition ?? '',
         lemmas: [] as string[],
         examples: [] as string[],
@@ -817,8 +817,8 @@ async function fetchEntriesByFilters(
         flagged_reason: record.flagged_reason,
         verifiable: record.verifiable,
         unverifiable_reason: record.unverifiable_reason,
-        roles: frameInfo.frame.roles,
-        lexical_units: frameInfo.frame.lexical_units,
+        roles: conceptInfo.concept.roles,
+        lexical_units: conceptInfo.concept.lexical_units,
       };
     }) as LexicalUnitSummary[];
   }
@@ -851,18 +851,18 @@ async function fetchEntriesByFilters(
       },
       lexical_unit_senses: {
         include: {
-          frame_senses: {
+          senses: {
             include: {
-              frame_sense_frames: {
+              sense_concepts: {
                 include: {
-                  frames: {
+                  concepts: {
                     select: {
                       id: true,
                       code: true,
                       label: true,
                       definition: true,
                       short_definition: true,
-                      frame_roles: {
+                      properties: {
                         select: {
                           id: true,
                           description: true,
@@ -872,9 +872,9 @@ async function fetchEntriesByFilters(
                           label: true,
                         },
                       },
-                      frame_sense_frames: {
+                      sense_concepts: {
                         include: {
-                          frame_senses: {
+                          senses: {
                             include: {
                               lexical_unit_senses: {
                                 where: { lexical_units: { deleted: false } },
@@ -909,10 +909,10 @@ async function fetchEntriesByFilters(
   });
 
   let entries = records.map(record => {
-    const frameRecord = record.lexical_unit_senses?.[0]?.frame_senses?.frame_sense_frames?.[0]?.frames;
-    const frameInfo = frameRecord
-      ? buildStructuredFrameData(frameRecord)
-      : { additional: {}, frame: null };
+    const conceptRecord = record.lexical_unit_senses?.[0]?.senses?.sense_concepts?.[0]?.concepts;
+    const conceptInfo = conceptRecord
+      ? buildStructuredConceptData(conceptRecord)
+      : { additional: {}, concept: null };
 
     return {
       dbId: record.id,
@@ -923,10 +923,10 @@ async function fetchEntriesByFilters(
       examples: record.examples,
       flagged: record.flagged ?? undefined,
       flagged_reason: record.flagged_reason ?? null,
-      label: frameRecord?.label ?? null,
+      label: conceptRecord?.label ?? null,
       lexfile: record.lexfile,
-      additional: frameInfo.additional,
-      frame: frameInfo.frame,
+      additional: conceptInfo.additional,
+      concept: conceptInfo.concept,
       _parentsCount: record._count?.lexical_unit_relations_lexical_unit_relations_source_idTolexical_units ?? 0,
       _childrenCount: record._count?.lexical_unit_relations_lexical_unit_relations_target_idTolexical_units ?? 0,
     };
