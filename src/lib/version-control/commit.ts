@@ -481,7 +481,7 @@ async function commitCreateInTx(
       }
       // senses.id is Int, but audit_log.entity_id is BigInt. Safe to cast.
       newEntityId = BigInt(sense.id);
-    } else if (changeset.entity_type === 'frame_relation' || changeset.entity_type === 'concept_relation') {
+    } else if (changeset.entity_type === 'frame_relation') {
       const relData = entityData as Record<string, unknown>;
       // V2 plan parent_id / child_id may be placeholder strings
       // (e.g. "-3") referencing a sibling CREATE-frame changeset
@@ -535,7 +535,7 @@ async function commitCreateInTx(
           update: {},
         });
       }
-    } else if (changeset.entity_type === 'frame_role_mapping' || changeset.entity_type === 'property_mapping') {
+    } else if (changeset.entity_type === 'frame_role_mapping') {
       // CREATE property_mapping (Phase 2 cascading remediations).
       //
       // Used by the v2 `upsert_role_mappings` plan kind. The
@@ -1289,7 +1289,7 @@ async function commitDeleteInTx(
         );
       }
       await tx.senses.delete({ where: { id: senseId } });
-    } else if (changeset.entity_type === 'frame_relation' || changeset.entity_type === 'concept_relation') {
+    } else if (changeset.entity_type === 'frame_relation') {
       const rel = await tx.concept_relations.findUnique({
         where: { id: changeset.entity_id! },
       });
@@ -1317,7 +1317,7 @@ async function commitDeleteInTx(
           });
         }
       }
-    } else if (changeset.entity_type === 'frame_role_mapping' || changeset.entity_type === 'property_mapping') {
+    } else if (changeset.entity_type === 'frame_role_mapping') {
       // Hard-delete (property_mappings has no soft-delete column).
       //
       // Used by Phase 2 of the cascading-remediations plan: when a
@@ -1808,7 +1808,7 @@ async function checkVersionConflictInTx(
       select: { version: true },
     });
     currentVersion = concept?.version ?? null;
-  } else if (changeset.entity_type === 'frame_relation' || changeset.entity_type === 'concept_relation') {
+  } else if (changeset.entity_type === 'frame_relation') {
     const rel = await client.concept_relations.findUnique({
       where: { id: changeset.entity_id },
       select: { version: true },
