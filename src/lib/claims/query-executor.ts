@@ -172,5 +172,5 @@ export async function buildGraphForInstances(
     : await loadGraphInstances(graphId);
 
   const highlightIds = new Set(matchedInstanceIds.map(String));
-  return buildClaimsGraphPayload(instances, { highlightIds });
+  return buildClaimsGraphPayload(instances, { highlightIds, includeConceptNodes: false });
 }

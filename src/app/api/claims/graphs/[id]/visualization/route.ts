@@ -28,6 +28,7 @@ export async function GET(
 
     const payload = buildClaimsGraphPayload(instances, {
       highlightIds: highlightIds.size > 0 ? highlightIds : undefined,
+      includeConceptNodes: false,
     });
 
     return NextResponse.json({
