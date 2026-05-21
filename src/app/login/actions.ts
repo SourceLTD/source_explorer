@@ -4,35 +4,29 @@ import { redirect } from 'next/navigation'
 
 import { createClient } from '@/utils/supabase/server'
 
-export type LoginState = {
-  error?: string
-}
-
-export async function login(
-  _prevState: LoginState | null,
-  formData: FormData,
-): Promise<LoginState> {
+export async function login(formData: FormData) {
   let supabase
   try {
     supabase = await createClient()
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Authentication is not configured'
     console.error('Failed to create Supabase client:', message)
-    return { error: message }
+    redirect(`/login?error=${encodeURIComponent(message)}`)
   }
 
-  const email = formData.get('email') as string
+  const email = (formData.get('email') as string)?.trim()
 
   if (!email) {
-    return { error: 'Email is required' }
+    redirect(`/login?error=${encodeURIComponent('Email is required')}`)
   }
 
-  // Send OTP code (no emailRedirectTo = sends 6-digit code instead of magic link)
   const { error } = await supabase.auth.signInWithOtp({ email })
 
   if (error) {
     console.error('OTP send error:', error.message)
-    return { error: error.message }
+    redirect(
+      `/login?error=${encodeURIComponent(error.message)}&email=${encodeURIComponent(email)}`,
+    )
   }
 
   redirect(`/auth/verify?email=${encodeURIComponent(email)}`)
@@ -46,8 +40,6 @@ export async function verifyCode(email: string, token: string) {
     redirect('/error')
   }
 
-  console.log('Verifying OTP code for:', email)
-
   const { error } = await supabase.auth.verifyOtp({
     email,
     token,
@@ -56,7 +48,6 @@ export async function verifyCode(email: string, token: string) {
 
   if (error) {
     console.error('OTP verification error:', error.message)
-    // Return error message instead of redirecting so user can retry
     return { error: error.message }
   }
 
@@ -71,8 +62,6 @@ export async function resendCode(email: string) {
     return { error: 'Email is required' }
   }
 
-  console.log('Resending OTP code to:', email)
-
   const { error } = await supabase.auth.signInWithOtp({ email })
 
   if (error) {
@@ -80,7 +69,5 @@ export async function resendCode(email: string) {
     return { error: error.message }
   }
 
-  console.log('OTP code resent successfully')
   return { success: true }
 }
-
