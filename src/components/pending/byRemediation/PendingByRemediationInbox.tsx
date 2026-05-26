@@ -14,7 +14,7 @@ import { EmptyState } from '@/components/ui';
 import LazyMount from '@/components/pending/LazyMount';
 import PlanCard from '@/components/pending/PlanCard';
 import LooseChangesetCard from './LooseChangesetCard';
-import type { BucketBusyState, PlansBulkBusyState } from './useBucketActions';
+import type { BucketBusyState, BulkCommitPlansOutcome, PlansBulkBusyState } from './useBucketActions';
 import { collectBucketPendingPlanIds } from './bulkCommitPlans';
 import {
   actionBucketKey,
@@ -201,7 +201,7 @@ interface PendingByRemediationInboxProps {
   busy: BucketBusyState;
   plansBulkBusy: PlansBulkBusyState;
   onCommitBucket: (bucket: ActionBucket, key: string) => Promise<void>;
-  onCommitBucketPlans: (bucket: ActionBucket, key: string) => Promise<void>;
+  onCommitBucketPlans: (bucket: ActionBucket, key: string) => Promise<BulkCommitPlansOutcome>;
   onRejectBucket: (bucket: ActionBucket, key: string) => void;
   onCommitRow: (cs: ByRemediationChangeset) => Promise<void>;
   onRejectRow: (cs: ByRemediationChangeset) => Promise<void>;

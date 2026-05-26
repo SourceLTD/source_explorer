@@ -46,9 +46,9 @@ export async function bulkCommitPlansRequest(args: {
   const body = (await res.json().catch(() => ({}))) as BulkCommitPlansResponse;
   if (!res.ok) {
     return {
+      ...body,
       success: false,
       error: body.error ?? `Bulk commit failed (${res.status})`,
-      ...body,
     };
   }
   return body;
