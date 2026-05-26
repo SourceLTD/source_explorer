@@ -32,6 +32,7 @@ export interface ConceptSummary {
   code: string | null;
   archetype: string | null;
   subtype: string | null;
+  state_kind: string | null;
   short_definition: string | null;
   definition_excerpt: string | null;
   verifiable: boolean | null;

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { stageConceptRelationReparent } from '@/lib/version-control';
+import { getCurrentUserName } from '@/utils/supabase/server';
 
 export async function POST(
   request: NextRequest,
@@ -10,9 +11,8 @@ export async function POST(
     const frameId = BigInt(idParam);
 
     const body = await request.json();
-    const { newParentId, userId = 'user' } = body as {
+    const { newParentId } = body as {
       newParentId: number | string;
-      userId?: string;
     };
 
     if (!newParentId) {
@@ -23,6 +23,7 @@ export async function POST(
     }
 
     const newParentBigInt = BigInt(newParentId);
+    const userId = await getCurrentUserName();
 
     const result = await stageConceptRelationReparent(
       frameId,

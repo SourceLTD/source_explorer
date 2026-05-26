@@ -9,6 +9,8 @@ export type LexicalType = 'lexical_units';
 
 export type VendlerClass = 'state' | 'activity' | 'accomplishment' | 'achievement';
 
+export type StateKind = 'dimension' | 'grade' | 'taxon';
+
 // ============================================
 // Unified Lexical Unit Interface
 // ============================================
@@ -197,6 +199,7 @@ export interface Concept {
   pending?: PendingChangeInfo | null;
   archetype?: string | null;
   subtype?: string | null;
+  state_kind?: StateKind | null;
   disable_healthcheck?: boolean;
   vendler?: string | null;
   multi_perspective?: boolean | null;
@@ -719,12 +722,14 @@ export interface ConceptGraphRelation {
     label: string;
     short_definition?: string | null;
     descendant_count?: number;
+    state_kind?: StateKind | null;
   };
   source?: {
     id: string;
     label: string;
     short_definition?: string | null;
     descendant_count?: number;
+    state_kind?: StateKind | null;
   };
 }
 
@@ -750,6 +755,7 @@ export interface ConceptGraphNode {
   vendler?: string | null;
   multi_perspective?: boolean | null;
   wikidata_id?: string | null;
+  state_kind?: StateKind | null;
   recipe?: ConceptRecipe | null;
   recipe_graph?: RecipeGraph | null;
 }

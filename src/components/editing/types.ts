@@ -13,6 +13,8 @@ export type EditableField =
   | 'definition'
   | 'short_definition'
   | 'subtype'
+  | 'archetype'
+  | 'state_kind'
   | 'properties'
   | 'parent_of';
 

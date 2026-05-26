@@ -182,6 +182,17 @@ export default function ConceptInfoCard({
                 <span className="ml-1 opacity-70 normal-case">/ {summary.subtype}</span>
               )}
             </span>
+            {summary.state_kind && (
+              <span className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-medium uppercase tracking-wide ${
+                summary.state_kind === 'grade'
+                  ? 'bg-amber-50 text-amber-700 border-amber-200'
+                  : summary.state_kind === 'dimension'
+                    ? 'bg-violet-50 text-violet-700 border-violet-200'
+                    : 'bg-gray-50 text-gray-600 border-gray-200'
+              }`}>
+                {summary.state_kind}
+              </span>
+            )}
             {summary.code && (
               <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-gray-100 text-gray-700">
                 {summary.code}

@@ -4,6 +4,74 @@ import { EditableField } from './types';
 import { OverlaySection } from './OverlaySection';
 import { PendingFieldIndicator } from '@/components/PendingChangeIndicator';
 
+const CONCEPT_SUBTYPES = [
+  'communication',
+  'relation',
+  'acquire',
+  'assist',
+  'attachment',
+  'attempt',
+  'avoidance',
+  'bearing',
+  'beginning',
+  'body process',
+  'characterization',
+  'combination',
+  'competition',
+  'compulsion',
+  'concealment',
+  'conduct',
+  'conflict',
+  'consumption',
+  'contact',
+  'control access',
+  'creation',
+  'delay',
+  'deprivation',
+  'emission',
+  'ending',
+  'enrol',
+  'expose',
+  'failure',
+  'give care',
+  'group action',
+  'host',
+  'legal proceeding',
+  'mental process',
+  'motion',
+  'natural process',
+  'officiate',
+  'ordering',
+  'participation',
+  'persistence',
+  'prevention',
+  'procedure',
+  'progress',
+  'protection',
+  'put',
+  'reach',
+  'recreation',
+  'resumption',
+  'separation',
+  'sexual intercourse',
+  'subtraction',
+  'termination',
+  'transfer',
+  'transformation',
+  'work up',
+  'quality',
+  'configuration',
+  'experience',
+  'capacity',
+  'tendency',
+  'susceptibility',
+  'status',
+] as const;
+
+const CONCEPT_ARCHETYPES = ['Event', 'State', 'Entity', 'Measure'] as const;
+
+const STATE_KINDS = ['dimension', 'grade', 'taxon'] as const;
+
 interface ConceptPropertiesSectionProps {
   concept: Concept;
   editingField: EditableField | null;
@@ -235,14 +303,17 @@ export function ConceptPropertiesSection({
         </div>
         {editingField === 'subtype' ? (
           <div className="space-y-2">
-            <input
-              type="text"
+            <select
               value={editValue}
               onChange={(e) => onValueChange(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-              placeholder="Subtype (leave empty for none)"
               autoFocus
-            />
+            >
+              <option value="">(none)</option>
+              {CONCEPT_SUBTYPES.map(st => (
+                <option key={st} value={st}>{st}</option>
+              ))}
+            </select>
             <div className="flex space-x-2">
               <button
                 onClick={onSave}
@@ -264,6 +335,126 @@ export function ConceptPropertiesSection({
             {getDisplayValue('subtype', concept.subtype) ? (
               <span className="inline-flex px-2 py-0.5 rounded-full border text-xs font-medium bg-indigo-50 text-indigo-700 border-indigo-200">
                 {getDisplayValue('subtype', concept.subtype)}
+              </span>
+            ) : (
+              <span className="text-gray-400 text-sm italic">none</span>
+            )}
+          </PendingFieldIndicator>
+        )}
+      </div>
+
+      {/* Archetype */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-sm font-medium text-gray-700">
+            Archetype
+            {hasPendingField('archetype') && (
+              <span className="ml-2 text-xs text-orange-600 font-normal">(pending)</span>
+            )}
+          </h3>
+          {editingField !== 'archetype' && (
+            <button
+              onClick={() => onStartEdit('archetype')}
+              className="text-xs text-blue-600 hover:text-blue-600 font-medium cursor-pointer"
+            >
+              Edit
+            </button>
+          )}
+        </div>
+        {editingField === 'archetype' ? (
+          <div className="space-y-2">
+            <select
+              value={editValue}
+              onChange={(e) => onValueChange(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              autoFocus
+            >
+              <option value="">(none)</option>
+              {CONCEPT_ARCHETYPES.map(a => (
+                <option key={a} value={a}>{a}</option>
+              ))}
+            </select>
+            <div className="flex space-x-2">
+              <button
+                onClick={onSave}
+                disabled={isSaving}
+                className="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
+              >
+                {isSaving ? 'Saving...' : 'Save'}
+              </button>
+              <button
+                onClick={onCancel}
+                className="px-4 py-2 bg-gray-200 text-gray-700 text-sm rounded hover:bg-gray-300 cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <PendingFieldIndicator fieldName="archetype" pending={pending}>
+            {getDisplayValue('archetype', concept.archetype) ? (
+              <span className="inline-flex px-2 py-0.5 rounded-full border text-xs font-medium bg-purple-50 text-purple-700 border-purple-200">
+                {getDisplayValue('archetype', concept.archetype)}
+              </span>
+            ) : (
+              <span className="text-gray-400 text-sm italic">none</span>
+            )}
+          </PendingFieldIndicator>
+        )}
+      </div>
+
+      {/* State Kind (only relevant for State archetype) */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-sm font-medium text-gray-700">
+            State Kind
+            {hasPendingField('state_kind') && (
+              <span className="ml-2 text-xs text-orange-600 font-normal">(pending)</span>
+            )}
+          </h3>
+          {editingField !== 'state_kind' && (
+            <button
+              onClick={() => onStartEdit('state_kind')}
+              className="text-xs text-blue-600 hover:text-blue-600 font-medium cursor-pointer"
+            >
+              Edit
+            </button>
+          )}
+        </div>
+        {editingField === 'state_kind' ? (
+          <div className="space-y-2">
+            <select
+              value={editValue}
+              onChange={(e) => onValueChange(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              autoFocus
+            >
+              <option value="">(none)</option>
+              {STATE_KINDS.map(sk => (
+                <option key={sk} value={sk}>{sk}</option>
+              ))}
+            </select>
+            <div className="flex space-x-2">
+              <button
+                onClick={onSave}
+                disabled={isSaving}
+                className="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
+              >
+                {isSaving ? 'Saving...' : 'Save'}
+              </button>
+              <button
+                onClick={onCancel}
+                className="px-4 py-2 bg-gray-200 text-gray-700 text-sm rounded hover:bg-gray-300 cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <PendingFieldIndicator fieldName="state_kind" pending={pending}>
+            {getDisplayValue('state_kind', concept.state_kind) ? (
+              <span className="inline-flex px-2 py-0.5 rounded-full border text-xs font-medium bg-teal-50 text-teal-700 border-teal-200">
+                {getDisplayValue('state_kind', concept.state_kind)}
               </span>
             ) : (
               <span className="text-gray-400 text-sm italic">none</span>

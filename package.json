@@ -15,6 +15,7 @@
     "db:resolve:glp1-concepts": "tsx scripts/resolve-glp1-concepts.ts",
     "db:cleanup:claims-demo": "tsx scripts/cleanup-claims-demo.ts",
     "db:seed:glp1-paper": "tsx scripts/seed-glp1-paper.ts",
+    "db:import:source-medical": "tsx scripts/import-source-medical.ts",
     "db:studio": "prisma studio"
   },
   "dependencies": {
@@ -48,6 +49,7 @@
     "resumable-stream": "^2.2.12",
     "swr": "^2.4.1",
     "usehooks-ts": "^3.1.1",
+    "yaml": "^2.9.0",
     "zod": "^3.25.76"
   },
   "devDependencies": {

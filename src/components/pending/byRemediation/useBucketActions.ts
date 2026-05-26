@@ -5,6 +5,11 @@ import type { ConflictError } from '@/components/ui';
 import { refreshPendingChangesCount } from '@/hooks/usePendingChangesCount';
 import type { ActionBucket, ByRemediationChangeset } from './types';
 import { getEntityDisplayName } from './changesetDisplay';
+import {
+  bulkCommitPlansRequest,
+  collectBucketPendingPlanIds,
+  collectPendingPlanIds,
+} from './bulkCommitPlans';
 
 export interface ConflictDialogState {
   isOpen: boolean;
@@ -21,11 +26,18 @@ export interface ConfirmDialogState {
 
 export interface BucketBusyState {
   bucketKey: string | null;
-  action: 'commit' | 'reject' | null;
+  action: 'commit' | 'reject' | 'commit_plans' | null;
+}
+
+export interface PlansBulkBusyState {
+  scope: 'all' | 'bucket' | null;
+  bucketKey?: string | null;
 }
 
 interface UseBucketActionsResult {
   commitBucket: (bucket: ActionBucket, bucketKey: string) => Promise<void>;
+  commitBucketPlans: (bucket: ActionBucket, bucketKey: string) => Promise<BulkCommitPlansOutcome>;
+  commitAllPlans: (buckets: ActionBucket[]) => Promise<BulkCommitPlansOutcome>;
   requestRejectBucket: (bucket: ActionBucket, bucketKey: string) => void;
   commitRow: (cs: ByRemediationChangeset) => Promise<void>;
   rejectRow: (cs: ByRemediationChangeset) => Promise<void>;
@@ -40,6 +52,16 @@ interface UseBucketActionsResult {
   acceptConfirmReject: () => Promise<void>;
 
   busy: BucketBusyState;
+  plansBulkBusy: PlansBulkBusyState;
+  lastBulkError: string | null;
+  clearBulkError: () => void;
+}
+
+export interface BulkCommitPlansOutcome {
+  success: boolean;
+  committed?: number;
+  discarded?: number;
+  error?: string;
 }
 
 export function useBucketActions({
@@ -63,6 +85,11 @@ export function useBucketActions({
     bucketKey: null,
     action: null,
   });
+  const [plansBulkBusy, setPlansBulkBusy] = useState<PlansBulkBusyState>({
+    scope: null,
+    bucketKey: null,
+  });
+  const [lastBulkError, setLastBulkError] = useState<string | null>(null);
   const [pendingRejectBucket, setPendingRejectBucket] = useState<{
     bucket: ActionBucket;
     bucketKey: string;
@@ -98,6 +125,69 @@ export function useBucketActions({
     },
     [],
   );
+
+  const commitBucketPlans = useCallback<
+    UseBucketActionsResult['commitBucketPlans']
+  >(
+    async (bucket, bucketKey) => {
+      const planIds = collectBucketPendingPlanIds(bucket);
+      if (planIds.length === 0) {
+        return { success: true, committed: 0, discarded: 0 };
+      }
+      setLastBulkError(null);
+      setPlansBulkBusy({ scope: 'bucket', bucketKey });
+      try {
+        const result = await bulkCommitPlansRequest({
+          planIds,
+          planKind: bucket.action_key.includes('/') ? undefined : bucket.action_key,
+        });
+        if (!result.success) {
+          setLastBulkError(result.error ?? 'Bulk commit failed');
+          return { success: false, error: result.error };
+        }
+        return {
+          success: true,
+          committed: result.committed,
+          discarded: result.discarded,
+        };
+      } finally {
+        setPlansBulkBusy({ scope: null, bucketKey: null });
+        await refetch();
+        refreshPendingChangesCount();
+      }
+    },
+    [refetch],
+  );
+
+  const commitAllPlans = useCallback<UseBucketActionsResult['commitAllPlans']>(
+    async (buckets) => {
+      const planIds = collectPendingPlanIds(buckets);
+      if (planIds.length === 0) {
+        return { success: true, committed: 0, discarded: 0 };
+      }
+      setLastBulkError(null);
+      setPlansBulkBusy({ scope: 'all', bucketKey: null });
+      try {
+        const result = await bulkCommitPlansRequest({ planIds });
+        if (!result.success) {
+          setLastBulkError(result.error ?? 'Bulk commit failed');
+          return { success: false, error: result.error };
+        }
+        return {
+          success: true,
+          committed: result.committed,
+          discarded: result.discarded,
+        };
+      } finally {
+        setPlansBulkBusy({ scope: null, bucketKey: null });
+        await refetch();
+        refreshPendingChangesCount();
+      }
+    },
+    [refetch],
+  );
+
+  const clearBulkError = useCallback(() => setLastBulkError(null), []);
 
   const commitBucket = useCallback<UseBucketActionsResult['commitBucket']>(
     async (bucket, bucketKey) => {
@@ -228,6 +318,8 @@ export function useBucketActions({
 
   return {
     commitBucket,
+    commitBucketPlans,
+    commitAllPlans,
     requestRejectBucket,
     commitRow,
     rejectRow,
@@ -239,5 +331,8 @@ export function useBucketActions({
     cancelConfirmReject,
     acceptConfirmReject,
     busy,
+    plansBulkBusy,
+    lastBulkError,
+    clearBulkError,
   };
 }

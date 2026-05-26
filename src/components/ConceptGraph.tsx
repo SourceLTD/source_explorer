@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useState, useCallback, useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
-import { ConceptGraphNode, ConceptGraphRelation, ConceptRelationType, RecipeGraph } from '@/lib/types';
+import { ConceptGraphNode, ConceptGraphRelation, ConceptRelationType, RecipeGraph, StateKind } from '@/lib/types';
 import type { PendingRelationChange } from '@/lib/version-control';
 import ConceptMainNode, { CONCEPT_MAIN_NODE_FIXED_HEIGHT, calculateConceptNodeHeights } from './ConceptMainNode';
 import LoadingSpinner from '@/components/LoadingSpinner';
@@ -47,6 +47,7 @@ interface PositionedFrameNode {
   width: number;
   height: number;
   descendant_count?: number;
+  state_kind?: StateKind | null;
 }
 
 const NODE_HEIGHT = 36;
@@ -375,6 +376,7 @@ function ConceptGraphInner({ currentConcept, onConceptClick, onEditClick, onRepa
               width: nodeWidth,
               height: nodeH,
               descendant_count: source.descendant_count,
+              state_kind: source.state_kind,
             });
           } else {
             // pendingCreate — record position for separate SVG rendering
@@ -443,6 +445,7 @@ function ConceptGraphInner({ currentConcept, onConceptClick, onEditClick, onRepa
             width: nodeWidth,
             height: nodeH,
             descendant_count: target.descendant_count,
+            state_kind: target.state_kind,
           });
           currentX += nodeWidth + nodeSpacing;
         });
@@ -478,6 +481,7 @@ function ConceptGraphInner({ currentConcept, onConceptClick, onEditClick, onRepa
     const hasDescendants = (node.descendant_count ?? 0) > 0;
     const nodeLeft = node.x - node.width / 2;
     const nodeTop = node.y - node.height / 2;
+    const stateKind = node.state_kind;
     
     return (
       <g 
@@ -497,14 +501,38 @@ function ConceptGraphInner({ currentConcept, onConceptClick, onEditClick, onRepa
           height={node.height}
           rx={8}
           fill={fillColor}
-          stroke={strokeColor}
-          strokeWidth={isHovered ? 3 : 2}
+          stroke={stateKind === 'grade' ? '#f59e0b' : stateKind === 'dimension' ? '#8b5cf6' : strokeColor}
+          strokeWidth={isHovered ? 3 : (stateKind ? 2.5 : 2)}
           style={{ 
             cursor: 'pointer',
             filter: isHovered ? 'brightness(1.1)' : 'none',
             transition: 'all 0.2s ease',
           }}
         />
+        {/* State kind badge — bottom right */}
+        {stateKind && (
+          <g>
+            <rect
+              x={nodeLeft + node.width - (stateKind === 'dimension' ? 32 : stateKind === 'taxon' ? 28 : 26) - 2}
+              y={nodeTop + node.height - 14}
+              width={stateKind === 'dimension' ? 30 : stateKind === 'taxon' ? 26 : 24}
+              height={12}
+              rx={6}
+              fill={stateKind === 'grade' ? '#f59e0b' : stateKind === 'dimension' ? '#8b5cf6' : '#6b7280'}
+            />
+            <text
+              x={nodeLeft + node.width - (stateKind === 'dimension' ? 19 : stateKind === 'taxon' ? 17 : 16)}
+              y={nodeTop + node.height - 8}
+              fontSize={7}
+              fontWeight="bold"
+              fill="white"
+              textAnchor="middle"
+              dominantBaseline="central"
+            >
+              {stateKind === 'grade' ? 'GRD' : stateKind === 'dimension' ? 'DIM' : 'TAX'}
+            </text>
+          </g>
+        )}
         {/* Label — vertically centered if no descendants, shifted up if there are */}
         <text
           x={node.x}

@@ -362,6 +362,20 @@ export function CellContent({
         ) : (
           <span className="text-sm text-gray-300"></span>
         );
+      case 'state_kind':
+        return entry.state_kind ? (
+          <span className={`inline-flex px-1.5 py-0.5 rounded-full border text-xs font-medium ${
+            entry.state_kind === 'grade'
+              ? 'bg-amber-50 text-amber-700 border-amber-200'
+              : entry.state_kind === 'dimension'
+                ? 'bg-violet-50 text-violet-700 border-violet-200'
+                : 'bg-gray-50 text-gray-700 border-gray-200'
+          }`}>
+            {entry.state_kind}
+          </span>
+        ) : (
+          <span className="text-sm text-gray-300"></span>
+        );
       case 'disable_healthcheck':
         return (
           <div className="flex items-center justify-center gap-2">

@@ -229,6 +229,18 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
             value = trimmed.length > 0 ? trimmed : null;
           }
           break;
+        case 'archetype':
+          {
+            const trimmed = editor.editValue.trim();
+            value = trimmed.length > 0 ? trimmed : null;
+          }
+          break;
+        case 'state_kind':
+          {
+            const trimmed = editor.editValue.trim();
+            value = trimmed.length > 0 ? trimmed : null;
+          }
+          break;
         default:
           return;
       }

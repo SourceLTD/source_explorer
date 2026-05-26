@@ -227,6 +227,7 @@ export async function PATCH(
     if (body.unverifiableReason !== undefined) updateData.unverifiable_reason = body.unverifiableReason;
     if (body.archetype !== undefined) updateData.archetype = body.archetype;
     if (body.subtype !== undefined) updateData.subtype = body.subtype;
+    if (body.state_kind !== undefined) updateData.state_kind = body.state_kind;
     if (body.disable_healthcheck !== undefined) {
       updateData.disable_healthcheck = Boolean(body.disable_healthcheck);
     }

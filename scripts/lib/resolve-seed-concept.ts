@@ -3,9 +3,11 @@
  */
 import { PrismaClient } from '@prisma/client';
 import OpenAI from 'openai';
+import { resolveConceptBySourceMedicalId } from '../../src/lib/medical';
 
 export const GI_HORMONES_CONCEPT_ID = 188034n;
 export const GLUCAGON_CONCEPT_ID = 188041n;
+export const GLP1_SOURCE_MEDICAL_ID = 'source-medical:endocrine/glp-1';
 
 const EMBEDDING_MODEL = 'text-embedding-3-small';
 const EMBEDDING_DIMENSIONS = 1536;
@@ -44,7 +46,7 @@ export interface ConceptCandidate {
 export interface SupertypeResolution {
   conceptId: bigint;
   label: string;
-  action: 'override' | 'preferred' | 'semantic' | 'default';
+  action: 'override' | 'preferred' | 'semantic' | 'default' | 'source_medical';
   candidates: ConceptCandidate[];
 }
 
@@ -108,6 +110,16 @@ export async function resolveGlp1Supertype(
   prisma: PrismaClient,
   options?: { apply?: boolean },
 ): Promise<SupertypeResolution> {
+  const imported = await resolveConceptBySourceMedicalId(prisma, GLP1_SOURCE_MEDICAL_ID);
+  if (imported) {
+    return {
+      conceptId: imported.conceptId,
+      label: imported.label,
+      action: 'source_medical',
+      candidates: [],
+    };
+  }
+
   const overrideRaw = process.env.GLP1_SUPERTYPE_CONCEPT_ID;
   if (overrideRaw) {
     const conceptId = BigInt(overrideRaw);

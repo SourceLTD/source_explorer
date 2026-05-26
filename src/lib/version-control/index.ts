@@ -175,6 +175,9 @@ export type {
   PlanConflictReport,
 } from './commit-plan';
 
+export { bulkCommitPlans } from './bulk-commit-plans';
+export type { BulkCommitPlansArgs, BulkCommitPlansResult } from './bulk-commit-plans';
+
 // Staging operations (for API routes)
 export {
   stageUpdate,

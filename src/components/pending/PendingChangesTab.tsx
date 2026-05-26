@@ -1,13 +1,13 @@
 'use client';
 
-import { useMemo } from 'react';
-import { ArrowPathIcon } from '@heroicons/react/24/outline';
+import { useMemo, useState, useCallback } from 'react';
+import { ArrowPathIcon, CheckIcon } from '@heroicons/react/24/outline';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import { ConfirmDialog, ConflictDialog } from '@/components/ui';
 import { usePendingByRemediation } from './byRemediation/usePendingByRemediation';
 import { useBucketActions } from './byRemediation/useBucketActions';
 import PendingByRemediationInbox from './byRemediation/PendingByRemediationInbox';
-import type { ActionBucket } from './byRemediation/types';
+import { collectPendingPlanIds } from './byRemediation/bulkCommitPlans';
 
 /**
  * Wrapper around the by-remediation Inbox view for the Pending Changes tab.
@@ -19,6 +19,7 @@ import type { ActionBucket } from './byRemediation/types';
 export default function PendingChangesTab() {
   const { data, isLoading, error, refetch } = usePendingByRemediation();
   const buckets = useMemo(() => data?.buckets ?? [], [data]);
+  const [confirmCommitAllPlans, setConfirmCommitAllPlans] = useState(false);
 
   const actions = useBucketActions({ refetch });
 
@@ -26,6 +27,14 @@ export default function PendingChangesTab() {
     () => buckets.filter((b) => !b.action_key.includes('/')).length,
     [buckets],
   );
+
+  const pendingPlanIds = useMemo(() => collectPendingPlanIds(buckets), [buckets]);
+  const allPlansBusy = actions.plansBulkBusy.scope === 'all';
+
+  const handleCommitAllPlans = useCallback(async () => {
+    setConfirmCommitAllPlans(false);
+    await actions.commitAllPlans(buckets);
+  }, [actions, buckets]);
 
   return (
     <div className="h-full flex flex-col bg-white">
@@ -37,6 +46,22 @@ export default function PendingChangesTab() {
           </span>
         )}
         <div className="ml-auto flex items-center gap-2">
+          {pendingPlanIds.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setConfirmCommitAllPlans(true)}
+              disabled={isLoading || allPlansBusy || actions.plansBulkBusy.scope === 'bucket'}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-white bg-emerald-700 rounded-md hover:bg-emerald-600 disabled:opacity-50"
+              title="Commit all pending change plans in one transaction"
+            >
+              {allPlansBusy ? (
+                <LoadingSpinner size="sm" noPadding />
+              ) : (
+                <CheckIcon className="w-3.5 h-3.5" />
+              )}
+              Commit all plans ({pendingPlanIds.length})
+            </button>
+          )}
           <button
             type="button"
             onClick={() => void refetch()}
@@ -54,14 +79,31 @@ export default function PendingChangesTab() {
         </div>
       </div>
 
+      {actions.lastBulkError && (
+        <div className="px-4 py-2 bg-red-50 border-b border-red-200 text-xs text-red-700 flex items-center justify-between gap-3">
+          <span>{actions.lastBulkError}</span>
+          <button
+            type="button"
+            onClick={actions.clearBulkError}
+            className="text-red-800 underline shrink-0"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       <div className="flex-1 min-h-0 overflow-hidden">
         <PendingByRemediationInbox
           buckets={buckets}
           isLoading={isLoading}
           error={error}
           busy={actions.busy}
+          plansBulkBusy={actions.plansBulkBusy}
           onCommitBucket={(bucket, key) =>
             actions.commitBucket(bucket, key)
+          }
+          onCommitBucketPlans={(bucket, key) =>
+            actions.commitBucketPlans(bucket, key)
           }
           onRejectBucket={(bucket, key) =>
             actions.requestRejectBucket(bucket, key)
@@ -79,6 +121,16 @@ export default function PendingChangesTab() {
         errors={actions.conflictDialog.errors}
         entityDisplay={actions.conflictDialog.entityDisplay ?? undefined}
         loading={actions.isDiscardingConflicted}
+      />
+
+      <ConfirmDialog
+        isOpen={confirmCommitAllPlans}
+        onCancel={() => setConfirmCommitAllPlans(false)}
+        onConfirm={() => void handleCommitAllPlans()}
+        title="Commit all pending plans?"
+        message={`Commit ${pendingPlanIds.length} change plan${pendingPlanIds.length === 1 ? '' : 's'} in a single transaction? Duplicate parent proposals will be discarded automatically.`}
+        confirmLabel="Commit all"
+        variant="success"
       />
 
       <ConfirmDialog

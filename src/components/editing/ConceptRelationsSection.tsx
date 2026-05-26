@@ -17,8 +17,8 @@ interface ConceptRelation {
 interface PendingRelationChange {
   changeset_id: string;
   operation: 'create' | 'delete';
-  source_id: string;
-  target_id: string;
+  parent_id: string;
+  child_id: string;
   type: string;
   target_label?: string;
   target_short_definition?: string | null;
@@ -93,7 +93,6 @@ export function ConceptRelationsSection({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           newParentId: selectedParentId,
-          userId: 'user',
         }),
       });
 
@@ -124,7 +123,7 @@ export function ConceptRelationsSection({
   };
 
   const isParentPendingDelete = (parentId: string) =>
-    pendingDeletes.some(p => p.source_id === concept.id && p.target_id === parentId);
+    pendingDeletes.some(p => p.child_id === concept.id && p.parent_id === parentId);
 
   return (
     <OverlaySection
@@ -165,7 +164,7 @@ export function ConceptRelationsSection({
             ) : (
               <div className="space-y-1.5">
                 {parents.map(rel => {
-                  const parentId = rel.target!.id;
+                  const parentId = rel.source!.id;
                   const isPendingDel = isParentPendingDelete(parentId);
                   return (
                     <div
@@ -176,7 +175,7 @@ export function ConceptRelationsSection({
                           : 'border-gray-200 bg-gray-50 text-gray-900'
                       }`}
                     >
-                      <span className="font-medium">{rel.target!.label}</span>
+                      <span className="font-medium">{rel.source!.label}</span>
                       <span className="text-xs text-gray-400">#{parentId}</span>
                       {isPendingDel && (
                         <span className="ml-auto text-xs text-red-500 font-medium">removing</span>
@@ -189,8 +188,8 @@ export function ConceptRelationsSection({
                     key={pc.changeset_id}
                     className="flex items-center gap-2 px-3 py-2 rounded-lg border border-green-200 bg-green-50 text-sm text-green-800"
                   >
-                    <span className="font-medium">{pc.target_label || `#${pc.target_id}`}</span>
-                    <span className="text-xs text-green-500">#{pc.target_id}</span>
+                    <span className="font-medium">{pc.target_label || `#${pc.parent_id}`}</span>
+                    <span className="text-xs text-green-500">#{pc.parent_id}</span>
                     <span className="ml-auto text-xs text-green-600 font-medium">pending</span>
                   </div>
                 ))}
@@ -230,11 +229,11 @@ export function ConceptRelationsSection({
               <div className="space-y-1.5 max-h-48 overflow-y-auto">
                 {children.map(rel => (
                   <div
-                    key={rel.source!.id}
+                    key={rel.target!.id}
                     className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 bg-gray-50 text-sm"
                   >
-                    <span className="font-medium text-gray-900">{rel.source!.label}</span>
-                    <span className="text-xs text-gray-400">#{rel.source!.id}</span>
+                    <span className="font-medium text-gray-900">{rel.target!.label}</span>
+                    <span className="text-xs text-gray-400">#{rel.target!.id}</span>
                   </div>
                 ))}
               </div>

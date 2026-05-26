@@ -388,6 +388,7 @@ export async function GET(request: NextRequest) {
         updatedAt: concept.updated_at.toISOString(),
         archetype: concept.archetype,
         subtype: concept.subtype,
+        state_kind: concept.state_kind,
         disable_healthcheck: concept.disable_healthcheck,
         vendler: concept.vendler,
         multi_perspective: concept.multi_perspective,

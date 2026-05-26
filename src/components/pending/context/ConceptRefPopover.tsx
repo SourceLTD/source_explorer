@@ -323,6 +323,17 @@ function ConceptSummaryBody({ summary }: { summary: ConceptSummary }) {
             )}
           </span>
         )}
+        {summary.state_kind && (
+          <span className={`shrink-0 inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-medium uppercase tracking-wide ${
+            summary.state_kind === 'grade'
+              ? 'bg-amber-50 text-amber-700 border-amber-200'
+              : summary.state_kind === 'dimension'
+                ? 'bg-violet-50 text-violet-700 border-violet-200'
+                : 'bg-gray-50 text-gray-600 border-gray-200'
+          }`}>
+            {summary.state_kind}
+          </span>
+        )}
       </div>
       {def && (
         <p className="text-xs text-gray-700 leading-snug line-clamp-3">{def}</p>

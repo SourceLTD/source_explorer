@@ -222,6 +222,41 @@ export default function ConceptMainNode({
       )}
       
       {/* Category Badge - Not in screenshot, removing */}
+
+      {/* State Kind Badge — next to the (id) in the title */}
+      {node.state_kind && (() => {
+        const titleStartX = hasPendingChanges && pendingOperation ? centerX + 92 : centerX + 12;
+        const labelWidth = node.label.length * 13.5;
+        const idText = ` (${node.id})`;
+        const idWidth = idText.length * 8.5;
+        const badgeX = titleStartX + labelWidth + idWidth + 8;
+        const badgeWidth = node.state_kind === 'dimension' ? 68 : node.state_kind === 'taxon' ? 46 : 46;
+        return (
+          <g>
+            <rect
+              x={badgeX}
+              y={topY + 22}
+              width={badgeWidth}
+              height={18}
+              rx={9}
+              fill={node.state_kind === 'grade' ? '#f59e0b' : node.state_kind === 'dimension' ? '#8b5cf6' : '#6b7280'}
+            />
+            <text
+              x={badgeX + badgeWidth / 2}
+              y={topY + 31}
+              fontSize={9}
+              fontFamily="Arial"
+              textAnchor="middle"
+              dominantBaseline="central"
+              fill="white"
+              fontWeight="600"
+              style={{ textTransform: 'uppercase', letterSpacing: '0.5px' } as React.CSSProperties}
+            >
+              {node.state_kind === 'grade' ? 'GRADE' : node.state_kind === 'dimension' ? 'DIMENSION' : 'TAXON'}
+            </text>
+          </g>
+        );
+      })()}
       
       {/* Short Definition */}
       {node.short_definition && (

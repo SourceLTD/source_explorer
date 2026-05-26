@@ -37,6 +37,11 @@ function camelToSnake(str: string): string {
 // (child_of relations are created as inverse but not auto-managed)
 export const INVERSE_RELATION_TYPE: Record<string, string> = {};
 
+/** Runner v2 uses `concept_relation`; legacy rows use `frame_relation`. */
+function isConceptRelationEntityType(entityType: string): boolean {
+  return entityType === 'frame_relation' || entityType === 'concept_relation';
+}
+
 function toBigIntSafe(v: unknown): bigint | null {
   if (v === null || v === undefined) return null;
   if (typeof v === 'bigint') return v;
@@ -481,7 +486,7 @@ async function commitCreateInTx(
       }
       // senses.id is Int, but audit_log.entity_id is BigInt. Safe to cast.
       newEntityId = BigInt(sense.id);
-    } else if (changeset.entity_type === 'frame_relation') {
+    } else if (isConceptRelationEntityType(changeset.entity_type)) {
       const relData = entityData as Record<string, unknown>;
       // V2 plan parent_id / child_id may be placeholder strings
       // (e.g. "-3") referencing a sibling CREATE-frame changeset
@@ -1289,7 +1294,7 @@ async function commitDeleteInTx(
         );
       }
       await tx.senses.delete({ where: { id: senseId } });
-    } else if (changeset.entity_type === 'frame_relation') {
+    } else if (isConceptRelationEntityType(changeset.entity_type)) {
       const rel = await tx.concept_relations.findUnique({
         where: { id: changeset.entity_id! },
       });
@@ -1808,7 +1813,7 @@ async function checkVersionConflictInTx(
       select: { version: true },
     });
     currentVersion = concept?.version ?? null;
-  } else if (changeset.entity_type === 'frame_relation') {
+  } else if (isConceptRelationEntityType(changeset.entity_type)) {
     const rel = await client.concept_relations.findUnique({
       where: { id: changeset.entity_id },
       select: { version: true },

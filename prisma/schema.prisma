@@ -154,12 +154,12 @@ model changesets {
   ai_revisions          ai_revisions[]
   audit_log             audit_log[]
   change_comments       change_comments[]
+  change_plan           change_plans?                  @relation(fields: [change_plan_id], references: [id], onUpdate: NoAction, map: "fk_changesets_change_plan")
+  llm_jobs              llm_jobs?                      @relation(fields: [llm_job_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_changesets_llm_job")
   revision_parent       changesets?                    @relation("ChangesetRevisionChain", fields: [revision_parent_id], references: [id], onUpdate: NoAction, map: "fk_changesets_revision_parent")
   revision_children     changesets[]                   @relation("ChangesetRevisionChain")
   superseded_by         changesets?                    @relation("ChangesetSupersession", fields: [superseded_by_id], references: [id], onUpdate: NoAction, map: "fk_changesets_superseded_by")
   supersedes            changesets[]                   @relation("ChangesetSupersession")
-  change_plan           change_plans?                  @relation(fields: [change_plan_id], references: [id], onUpdate: NoAction, map: "fk_changesets_change_plan")
-  llm_jobs              llm_jobs?                      @relation(fields: [llm_job_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_changesets_llm_job")
   comment_reads         comment_reads[]
   field_changes         field_changes[]
   health_check_findings health_check_findings[]
@@ -847,6 +847,19 @@ model concept_relations {
   @@index([type], map: "idx_concept_relations_type")
 }
 
+model concept_external_ids {
+  id          BigInt   @id @default(autoincrement())
+  concept_id  BigInt
+  vocabulary  String
+  external_id String
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  concepts    concepts @relation(fields: [concept_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([vocabulary, external_id], map: "uq_concept_external_ids_vocab_id")
+  @@index([concept_id], map: "idx_concept_external_ids_concept")
+  @@index([vocabulary], map: "idx_concept_external_ids_vocab")
+}
+
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 /// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
@@ -877,8 +890,12 @@ model concepts {
   disable_healthcheck                                             Boolean                       @default(false)
   merged_into                                                     BigInt?
   descendant_count                                                Int                           @default(0)
+  domain                                                          concept_domain_enum?
+  state_kind                                                      state_kind_enum?
+  concept_external_ids                                            concept_external_ids[]
   concept_relations_concept_relations_child_idToconcepts          concept_relations[]           @relation("concept_relations_child_idToconcepts")
   concept_relations_concept_relations_parent_idToconcepts         concept_relations[]           @relation("concept_relations_parent_idToconcepts")
+  concept_state_annotations                                       concept_state_annotations?
   concepts                                                        concepts?                     @relation("conceptsToconcepts", fields: [merged_into], references: [id], onUpdate: NoAction, map: "fk_concepts_merged_into")
   other_concepts                                                  concepts[]                    @relation("conceptsToconcepts")
   instances                                                       instances[]
@@ -943,19 +960,19 @@ model knowledge_graphs {
 model instances {
   id                                                              BigInt                @id @default(autoincrement())
   concept_id                                                      BigInt
-  knowledge_graph_id                                              BigInt?
   confidence                                                      Float?                @db.Real
   source_text_id                                                  BigInt?
   created_at                                                      DateTime              @default(now()) @db.Timestamptz(6)
   metadata                                                        Json?
+  knowledge_graph_id                                              BigInt?
   referential_status                                              referential_status    @default(specific)
   instance_fillers_instance_fillers_filler_instance_idToinstances instance_fillers[]    @relation("instance_fillers_filler_instance_idToinstances")
   instance_fillers_instance_fillers_instance_idToinstances        instance_fillers[]    @relation("instance_fillers_instance_idToinstances")
+  instance_mentions                                               instance_mentions[]
   concepts                                                        concepts              @relation(fields: [concept_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   knowledge_graphs                                                knowledge_graphs?     @relation(fields: [knowledge_graph_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   source_texts                                                    source_texts?         @relation(fields: [source_text_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   narrative_instances                                             narrative_instances[]
-  instance_mentions                                              instance_mentions[]
 
   @@index([concept_id], map: "idx_instances_concept")
   @@index([knowledge_graph_id], map: "idx_instances_knowledge_graph")
@@ -1006,13 +1023,14 @@ model properties {
 }
 
 model property_filler_constraints {
-  id             BigInt       @id @default(autoincrement())
-  property_id    BigInt
-  filler_type_id Int
-  concept_id     BigInt?
-  concepts       concepts?    @relation(fields: [concept_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  filler_types   filler_types @relation(fields: [filler_type_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  properties     properties   @relation(fields: [property_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id                       BigInt                     @id @default(autoincrement())
+  property_id              BigInt
+  filler_type_id           Int
+  concept_id               BigInt?
+  property_filler_bindings property_filler_bindings[]
+  concepts                 concepts?                  @relation(fields: [concept_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  filler_types             filler_types               @relation(fields: [filler_type_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  properties               properties                 @relation(fields: [property_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([property_id], map: "idx_property_filler_constraints_property")
   @@index([filler_type_id], map: "idx_property_filler_constraints_type")
@@ -1175,6 +1193,7 @@ model source_texts {
   narratives     narratives[]
 }
 
+/// This model contains an expression index which requires additional setup for migrations. Visit https://pris.ly/d/expression-indexes for more info.
 model instance_mentions {
   id           BigInt    @id @default(autoincrement())
   instance_id  BigInt
@@ -1182,7 +1201,7 @@ model instance_mentions {
   mention_text String?
   confidence   Float?    @db.Real
   created_at   DateTime  @default(now()) @db.Timestamptz(6)
-  instances    instances @relation(fields: [instance_id], references: [id], onDelete: Cascade)
+  instances    instances @relation(fields: [instance_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([instance_id], map: "idx_instance_mentions_instance")
 }
@@ -1198,6 +1217,33 @@ model units {
   concepts    concepts? @relation(fields: [concept_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([dimension], map: "idx_units_dimension")
+}
+
+model concept_state_annotations {
+  concept_id            BigInt          @id
+  state_kind            state_kind_enum
+  confidence            Float           @default(0) @db.Real
+  reasoning             String?
+  nominalization_pair   Boolean         @default(false)
+  lexical_stem          String?
+  mixed_dimension_grade Boolean         @default(false)
+  mixed_explanation     String?
+  classified_at         DateTime        @default(now()) @db.Timestamp(6)
+  model                 String?
+  concepts              concepts        @relation(fields: [concept_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([state_kind], map: "idx_csa_state_kind")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model property_filler_bindings {
+  id                          BigInt                      @id @default(autoincrement())
+  constraint_id               BigInt
+  filler_role_label           String
+  source_property_label       String
+  property_filler_constraints property_filler_constraints @relation(fields: [constraint_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([constraint_id], map: "idx_property_filler_bindings_constraint")
 }
 
 enum vendler_class_type {
@@ -1442,6 +1488,10 @@ enum concept_archetype_enum {
   Measure
 }
 
+enum concept_domain_enum {
+  biomed
+}
+
 enum concept_relation_type {
   parent_of
 }
@@ -1508,4 +1558,10 @@ enum concept_subtype_enum {
   tendency
   susceptibility
   status
+}
+
+enum state_kind_enum {
+  dimension
+  grade
+  taxon
 }

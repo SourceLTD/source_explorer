@@ -14,7 +14,8 @@ import { EmptyState } from '@/components/ui';
 import LazyMount from '@/components/pending/LazyMount';
 import PlanCard from '@/components/pending/PlanCard';
 import LooseChangesetCard from './LooseChangesetCard';
-import type { BucketBusyState } from './useBucketActions';
+import type { BucketBusyState, PlansBulkBusyState } from './useBucketActions';
+import { collectBucketPendingPlanIds } from './bulkCommitPlans';
 import {
   actionBucketKey,
   healthCheckGroupKey,
@@ -198,7 +199,9 @@ interface PendingByRemediationInboxProps {
   isLoading: boolean;
   error: string | null;
   busy: BucketBusyState;
+  plansBulkBusy: PlansBulkBusyState;
   onCommitBucket: (bucket: ActionBucket, key: string) => Promise<void>;
+  onCommitBucketPlans: (bucket: ActionBucket, key: string) => Promise<void>;
   onRejectBucket: (bucket: ActionBucket, key: string) => void;
   onCommitRow: (cs: ByRemediationChangeset) => Promise<void>;
   onRejectRow: (cs: ByRemediationChangeset) => Promise<void>;
@@ -217,7 +220,9 @@ export default function PendingByRemediationInbox({
   isLoading,
   error,
   busy,
+  plansBulkBusy,
   onCommitBucket,
+  onCommitBucketPlans,
   onRejectBucket,
   onCommitRow,
   onRejectRow,
@@ -260,8 +265,12 @@ export default function PendingByRemediationInbox({
   }, [keyedBuckets, selectedKey]);
 
   const selected = keyedBuckets.find((b) => b.key === selectedKey)?.bucket ?? null;
+  const selectedBucketKey = selected ? actionBucketKey(selected) : null;
   const selectedBucketBusy =
-    selected && busy.bucketKey === actionBucketKey(selected) ? busy.action : null;
+    selected && busy.bucketKey === selectedBucketKey ? busy.action : null;
+  const selectedPlansCount = selected ? collectBucketPendingPlanIds(selected).length : 0;
+  const selectedPlansBusy =
+    plansBulkBusy.scope === 'bucket' && plansBulkBusy.bucketKey === selectedBucketKey;
 
   if (isLoading && buckets.length === 0) {
     return <div className="flex items-center justify-center py-20"><LoadingSpinner /></div>;
@@ -311,8 +320,11 @@ export default function PendingByRemediationInbox({
             <ActionBucketHeader
               bucket={selected}
               busyAction={selectedBucketBusy}
-              onCommitAll={() => void onCommitBucket(selected, actionBucketKey(selected))}
-              onRejectAll={() => onRejectBucket(selected, actionBucketKey(selected))}
+              plansCount={selectedPlansCount}
+              plansBusy={selectedPlansBusy}
+              onCommitAll={() => void onCommitBucket(selected, selectedBucketKey!)}
+              onCommitPlans={() => void onCommitBucketPlans(selected, selectedBucketKey!)}
+              onRejectAll={() => onRejectBucket(selected, selectedBucketKey!)}
             />
             <div className="flex-1 overflow-y-auto">
               <ActionBucketBody
@@ -453,16 +465,24 @@ function ActionRailItem({
 function ActionBucketHeader({
   bucket,
   busyAction,
+  plansCount,
+  plansBusy,
   onCommitAll,
+  onCommitPlans,
   onRejectAll,
 }: {
   bucket: ActionBucket;
-  busyAction: 'commit' | 'reject' | null;
+  busyAction: 'commit' | 'reject' | 'commit_plans' | null;
+  plansCount: number;
+  plansBusy: boolean;
   onCommitAll: () => void;
+  onCommitPlans: () => void;
   onRejectAll: () => void;
 }) {
   const looseCount = bucket.counts.loose;
   const hasLoose = looseCount > 0;
+  const hasPlans = plansCount > 0;
+  const anyBusy = busyAction !== null || plansBusy;
 
   return (
     <header className="px-4 py-3 bg-white border-b border-gray-200 shrink-0">
@@ -496,30 +516,44 @@ function ActionBucketHeader({
           )}
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+          {hasPlans && (
+            <button
+              type="button"
+              onClick={onCommitPlans}
+              disabled={anyBusy}
+              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-white bg-emerald-700 rounded-md hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {plansBusy
+                ? <LoadingSpinner size="sm" noPadding />
+                : <CheckIcon className="w-3.5 h-3.5" />
+              }
+              Commit plans ({plansCount})
+            </button>
+          )}
           <button
             type="button"
             onClick={onRejectAll}
-            disabled={!hasLoose || busyAction !== null}
+            disabled={!hasLoose || anyBusy}
             className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-red-700 border border-red-200 rounded-md bg-white hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {busyAction === 'reject'
               ? <LoadingSpinner size="sm" noPadding />
               : <XMarkIcon className="w-3.5 h-3.5" />
             }
-            Reject {hasLoose ? `(${looseCount})` : ''}
+            Reject loose{hasLoose ? ` (${looseCount})` : ''}
           </button>
           <button
             type="button"
             onClick={onCommitAll}
-            disabled={!hasLoose || busyAction !== null}
+            disabled={!hasLoose || anyBusy}
             className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-white bg-emerald-600 rounded-md hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {busyAction === 'commit'
               ? <LoadingSpinner size="sm" noPadding />
               : <CheckIcon className="w-3.5 h-3.5" />
             }
-            Commit {hasLoose ? `(${looseCount})` : ''}
+            Commit loose{hasLoose ? ` (${looseCount})` : ''}
           </button>
         </div>
       </div>
