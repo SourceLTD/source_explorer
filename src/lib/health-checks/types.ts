@@ -182,7 +182,15 @@ export type ConceptSubtype =
   | 'capacity'
   | 'tendency'
   | 'susceptibility'
-  | 'status';
+  | 'status'
+  | 'activity'
+  | 'capability'
+  | 'change_of_state'
+  | 'destruction'
+  | 'force'
+  | 'joining'
+  | 'phasal'
+  | 'scenario';
 
 export const CONCEPT_SUBTYPES: ConceptSubtype[] = [
   'communication',
@@ -246,6 +254,14 @@ export const CONCEPT_SUBTYPES: ConceptSubtype[] = [
   'tendency',
   'susceptibility',
   'status',
+  'activity',
+  'capability',
+  'change_of_state',
+  'destruction',
+  'force',
+  'joining',
+  'phasal',
+  'scenario',
 ];
 
 /**

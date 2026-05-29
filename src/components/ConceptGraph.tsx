@@ -33,6 +33,7 @@ interface ConceptGraphProps {
   onConceptClick: (frameId: string, clickedNode?: { rect: { top: number; left: number; width: number; height: number }; label: string; color: string; direction: 'up' | 'down' }) => void;
   onEditClick?: () => void;
   onReparentComplete?: () => void;
+  onConceptChanged?: () => void;
   onVisualizeRecipeGraph?: (recipeGraph: RecipeGraph) => void;
   pendingRelationChanges?: PendingRelationChange[];
 }
@@ -67,6 +68,18 @@ function descendantColorIntensity(count: number | undefined): { fill: string; st
   return { fill: fills[idx], stroke: strokes[idx] };
 }
 
+/**
+ * Returns a fill/stroke color pair that gets darker orange with more descendants.
+ * 0 descendants → lightest (#fb923c orange-400), 150+ → darkest (#6c2309).
+ */
+function gradeColorIntensity(count: number | undefined): { fill: string; stroke: string } {
+  const s = count ? Math.min(1, Math.log(1 + count) / LOG_CEIL) : 0;
+  const fills =   ['#fb923c', '#f97316', '#ea580c', '#c2410c', '#9a3412', '#7c2d12', '#6c2309'];
+  const strokes = ['#f97316', '#ea580c', '#c2410c', '#9a3412', '#7c2d12', '#6c2309', '#431407'];
+  const idx = Math.min(fills.length - 1, Math.floor(s * (fills.length - 1)));
+  return { fill: fills[idx], stroke: strokes[idx] };
+}
+
 const RELATION_LABELS: Record<ConceptRelationType, string> = {
   'parent_of': 'Parent Of',
 };
@@ -90,7 +103,7 @@ export interface ConceptGraphHandle {
   isParentRelationLocked: () => boolean;
 }
 
-function ConceptGraphInner({ currentConcept, onConceptClick, onEditClick, onReparentComplete, onVisualizeRecipeGraph, pendingRelationChanges }: ConceptGraphProps, ref: React.Ref<ConceptGraphHandle>) {
+function ConceptGraphInner({ currentConcept, onConceptClick, onEditClick, onReparentComplete, onConceptChanged, onVisualizeRecipeGraph, pendingRelationChanges }: ConceptGraphProps, ref: React.Ref<ConceptGraphHandle>) {
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [rolesExpanded, setRolesExpanded] = useState<boolean>(true);
   const [lexicalUnitsExpanded, setLexicalUnitsExpanded] = useState<boolean>(true);
@@ -104,6 +117,20 @@ function ConceptGraphInner({ currentConcept, onConceptClick, onEditClick, onRepa
   const [reparentError, setReparentError] = useState<string | null>(null);
   const reparentInputRef = useRef<HTMLInputElement>(null);
   const [roleMappingModalOpen, setRoleMappingModalOpen] = useState(false);
+
+  const handleStateKindChange = useCallback(async (kind: StateKind | null) => {
+    try {
+      const res = await fetch(`/api/concepts/${currentConcept.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state_kind: kind }),
+      });
+      if (!res.ok) throw new Error(`PATCH failed (${res.status})`);
+      onConceptChanged?.();
+    } catch (err) {
+      console.error('[ConceptGraph] Failed to update state_kind:', err);
+    }
+  }, [currentConcept.id, onConceptChanged]);
 
   useEffect(() => {
     if (reparentModalOpen && reparentInputRef.current) {
@@ -298,45 +325,69 @@ function ConceptGraphInner({ currentConcept, onConceptClick, onEditClick, onRepa
 
     // Build combined parent items: real parents + pending new parents, row-packed together
     // so old (red) and new (green) appear side-by-side in the same row.
-    const combinedParentItems = [
-      ...parentRels.map(r => ({
-        _kind: 'real' as const,
-        rel: r,
-        direction: 'incoming' as const,
-        source: r.source,
-      })),
-      ...(pendingParentCreates ?? []).map(pc => ({
-        _kind: 'pendingCreate' as const,
-        changeset_id: pc.changeset_id,
-        source_id: pc.parent_id,
-        label: pc.target_label || `Concept #${pc.parent_id}`,
-        descendant_count: pc.target_descendant_count,
-        direction: 'incoming' as const,
-        source: { label: pc.target_label || `Concept #${pc.parent_id}` },
-      })),
+    // Partition by state_kind: dimensions get their own lane closest to the centre.
+    const realParentItems = parentRels.map(r => ({
+      _kind: 'real' as const,
+      rel: r,
+      direction: 'incoming' as const,
+      source: r.source,
+      state_kind: r.source?.state_kind,
+    }));
+    const pendingParentItems = (pendingParentCreates ?? []).map(pc => ({
+      _kind: 'pendingCreate' as const,
+      changeset_id: pc.changeset_id,
+      source_id: pc.parent_id,
+      label: pc.target_label || `Concept #${pc.parent_id}`,
+      descendant_count: pc.target_descendant_count,
+      direction: 'incoming' as const,
+      source: { label: pc.target_label || `Concept #${pc.parent_id}` },
+      state_kind: undefined as StateKind | null | undefined,
+    }));
+    const dimensionParentItems = realParentItems.filter(it => it.state_kind === 'dimension');
+    const taxonomicParentItems = [
+      ...realParentItems.filter(it => it.state_kind !== 'dimension'),
+      ...pendingParentItems,
     ];
 
-    // Arrange rows
-    const combinedParentRows = arrangeNodesInRows(combinedParentItems, maxRowWidth, nodeSpacing);
+    // Children: grades go into their own lane closest to the centre,
+    // pending creates and other taxonomic children stay in the taxonomic lane.
+    const gradeChildRels = childRels.filter(r => r.target?.state_kind === 'grade');
+    const taxonomicChildRels = childRels.filter(r => r.target?.state_kind !== 'grade');
+
+    // Arrange rows per lane
+    const dimensionParentRows = arrangeNodesInRows(dimensionParentItems, maxRowWidth, nodeSpacing);
+    const taxonomicParentRows = arrangeNodesInRows(taxonomicParentItems, maxRowWidth, nodeSpacing);
     const pendingChildRows = arrangeNodesInRows(pendingCreateItems, maxRowWidth, nodeSpacing);
-    const childRows = arrangeNodesInRows(childRels, maxRowWidth, nodeSpacing);
-    const totalChildRowCount = pendingChildRows.length + childRows.length;
-    const totalParentRowCount = combinedParentRows.length;
+    const gradeChildRows = arrangeNodesInRows(gradeChildRels, maxRowWidth, nodeSpacing);
+    const taxonomicChildRows = arrangeNodesInRows(taxonomicChildRels, maxRowWidth, nodeSpacing);
+
+    const LANE_GAP = 28;
+    const parentLaneDividerCount = (dimensionParentRows.length > 0 && taxonomicParentRows.length > 0) ? 1 : 0;
+    const childLaneDividerCount =
+      ((gradeChildRows.length > 0 ? 1 : 0)
+        + ((pendingChildRows.length > 0 || taxonomicChildRows.length > 0) ? 1 : 0))
+        - 1;
+    const childLaneGapCount = Math.max(0, childLaneDividerCount);
+    const totalChildRowCount = pendingChildRows.length + taxonomicChildRows.length + gradeChildRows.length;
+    const totalParentRowCount = dimensionParentRows.length + taxonomicParentRows.length;
 
     // Fixed vertical position for main node: enough room for 1 parent row above
     const fixedMainY = margin + relatedNodeHeight + spacingFromCenter + mainNodeLayoutHeight / 2;
     
     // Only shift down if parents need more space than reserved
     let topShift = 0;
-    if (totalParentRowCount > 1) {
+    if (totalParentRowCount > 1 || parentLaneDividerCount > 0) {
       const bottomParentY = fixedMainY - mainNodeLayoutHeight / 2 - spacingFromCenter - relatedNodeHeight / 2;
-      const topMostParentY = bottomParentY - (totalParentRowCount - 1) * (relatedNodeHeight + rowSpacing);
+      const extraParentSpace =
+        (totalParentRowCount - 1) * (relatedNodeHeight + rowSpacing)
+        + parentLaneDividerCount * LANE_GAP;
+      const topMostParentY = bottomParentY - Math.max(0, extraParentSpace);
       topShift = Math.max(0, margin - topMostParentY);
     }
     const centerY = fixedMainY + topShift;
 
     const spaceBelow = totalChildRowCount > 0 ? 
-      totalChildRowCount * relatedNodeHeight + (totalChildRowCount - 1) * rowSpacing + spacingFromCenter : 
+      totalChildRowCount * relatedNodeHeight + (totalChildRowCount - 1) * rowSpacing + childLaneGapCount * LANE_GAP + spacingFromCenter : 
       spacingFromCenter;
 
     const totalHeight = centerY + mainNodeLayoutHeight / 2 + renderOverflow + spaceBelow + margin;
@@ -353,13 +404,22 @@ function ConceptGraphInner({ currentConcept, onConceptClick, onEditClick, onRepa
       height: mainNodeLayoutHeight,
     });
     
-    // Position combined parent row (real + pending creates) ABOVE the main node
+    // Lane chrome bookkeeping for SVG rendering (dividers + labels)
+    const laneDividers: { y: number }[] = [];
+    const laneLabels: { x: number; y: number; text: string; color: string }[] = [];
+    const LANE_LABEL_X = 24;
+    const DIMENSION_COLOR = '#3b82f6';
+    const GRADE_COLOR = '#ea580c';
+    // Position parent lanes ABOVE the main node.
+    // Order from centre outward: dimension lane (innermost), then taxonomic lane.
     const pendingParentNodePositions: { changeset_id: string; x: number; y: number; width: number; height: number; lineY2: number; lineX2: number; descendant_count?: number }[] = [];
-    if (combinedParentRows.length > 0) {
-      const firstParentRowY = centerY - mainNodeLayoutHeight / 2 - spacingFromCenter - relatedNodeHeight / 2;
-      for (let rowIndex = combinedParentRows.length - 1; rowIndex >= 0; rowIndex--) {
-        const row = combinedParentRows[rowIndex];
-        const rowY = firstParentRowY - (combinedParentRows.length - 1 - rowIndex) * (relatedNodeHeight + rowSpacing);
+
+    const placeParentRows = (rows: { nodes: any[]; totalWidth: number }[], topRowY: number) => {
+      // topRowY is the y-centre of the BOTTOM row of this lane (closest to centre).
+      // Rows are filled bottom-up: index 0 is the topmost row visually.
+      for (let rowIndex = rows.length - 1; rowIndex >= 0; rowIndex--) {
+        const row = rows[rowIndex];
+        const rowY = topRowY - (rows.length - 1 - rowIndex) * (relatedNodeHeight + rowSpacing);
         let currentX = centerX - row.totalWidth / 2;
 
         row.nodes.forEach((item) => {
@@ -379,7 +439,6 @@ function ConceptGraphInner({ currentConcept, onConceptClick, onEditClick, onRepa
               state_kind: source.state_kind,
             });
           } else {
-            // pendingCreate — record position for separate SVG rendering
             const descCount = item.descendant_count as number | undefined;
             const nodeH = (descCount ?? 0) > 0 ? NODE_HEIGHT_WITH_COUNT : NODE_HEIGHT;
             pendingParentNodePositions.push({
@@ -396,63 +455,145 @@ function ConceptGraphInner({ currentConcept, onConceptClick, onEditClick, onRepa
           currentX += nodeWidth + nodeSpacing;
         });
       }
+    };
+
+    // Innermost (closest to centre) parent lane: dimensions if any, otherwise taxonomic.
+    const firstParentRowY = centerY - mainNodeLayoutHeight / 2 - spacingFromCenter - relatedNodeHeight / 2;
+    if (dimensionParentRows.length > 0) {
+      placeParentRows(dimensionParentRows, firstParentRowY);
+      laneLabels.push({ x: LANE_LABEL_X, y: firstParentRowY - relatedNodeHeight / 2 - 6, text: 'Dimensions', color: DIMENSION_COLOR });
+
+      if (taxonomicParentRows.length > 0) {
+        const topOfDimensionLane = firstParentRowY - (dimensionParentRows.length - 1) * (relatedNodeHeight + rowSpacing);
+        const dividerY = topOfDimensionLane - relatedNodeHeight / 2 - LANE_GAP / 2;
+        laneDividers.push({ y: dividerY });
+
+        const taxonomicTopRowY = topOfDimensionLane - (relatedNodeHeight + rowSpacing) - (LANE_GAP - rowSpacing);
+        placeParentRows(taxonomicParentRows, taxonomicTopRowY);
+        laneLabels.push({ x: LANE_LABEL_X, y: taxonomicTopRowY - relatedNodeHeight / 2 - 6, text: 'Parents', color: '#6b7280' });
+      }
+    } else if (taxonomicParentRows.length > 0) {
+      placeParentRows(taxonomicParentRows, firstParentRowY);
     }
 
     const childStartY = centerY + mainNodeLayoutHeight / 2 + renderOverflow + spacingFromCenter + relatedNodeHeight / 2;
 
-    // Position pending creates FIRST (before real children)
     const pendingNodePositions: { changeset_id: string; x: number; y: number; width: number; height: number; lineY1: number; lineX2: number; descendant_count?: number }[] = [];
-    if (pendingChildRows.length > 0) {
-      pendingChildRows.forEach((row, rowIndex) => {
-        const rowY = childStartY + rowIndex * (relatedNodeHeight + rowSpacing);
-        let currentX = centerX - row.totalWidth / 2;
-        row.nodes.forEach((item) => {
-          const labelText = item.target_label as string;
-          const descCount = item.target_descendant_count as number | undefined;
-          const nodeWidth = calculateNodeWidth(labelText);
-          const nodeH = (descCount ?? 0) > 0 ? NODE_HEIGHT_WITH_COUNT : NODE_HEIGHT;
-          pendingNodePositions.push({
-            changeset_id: item.changeset_id as string,
-            x: currentX + nodeWidth / 2,
-            y: rowY,
-            width: nodeWidth,
-            height: nodeH,
-            lineY1: centerY + mainNodeLayoutHeight / 2 + renderOverflow,
-            lineX2: centerX,
-            descendant_count: descCount,
+
+    let nextChildRowIdx = 0;
+    let usedChildLaneGaps = 0;
+
+    const placeChildRow = (
+      rowIndexInLane: number,
+      laneStart: number,
+      laneRows: { nodes: any[]; totalWidth: number }[],
+      placer: (row: { nodes: any[]; totalWidth: number }, rowY: number) => void,
+    ) => {
+      void laneStart; void laneRows;
+      const rowY = childStartY
+        + nextChildRowIdx * (relatedNodeHeight + rowSpacing)
+        + usedChildLaneGaps * LANE_GAP;
+      placer(laneRows[rowIndexInLane], rowY);
+      nextChildRowIdx += 1;
+    };
+
+    // Grade lane (closest to centre)
+    if (gradeChildRows.length > 0) {
+      const gradeLaneTopY = childStartY;
+      laneLabels.push({ x: LANE_LABEL_X, y: gradeLaneTopY - relatedNodeHeight / 2 - 6, text: 'Grades', color: GRADE_COLOR });
+      gradeChildRows.forEach((row, rowIndex) => {
+        placeChildRow(rowIndex, gradeLaneTopY, gradeChildRows, (r, rowY) => {
+          let currentX = centerX - r.totalWidth / 2;
+          r.nodes.forEach((rel: any) => {
+            const target = rel.target!;
+            const nodeWidth = calculateNodeWidth(target.label);
+            const nodeH = (target.descendant_count ?? 0) > 0 ? NODE_HEIGHT_WITH_COUNT : NODE_HEIGHT;
+            nodes.push({
+              id: target.id,
+              type: 'child',
+              label: target.label,
+              x: currentX + nodeWidth / 2,
+              y: rowY,
+              width: nodeWidth,
+              height: nodeH,
+              descendant_count: target.descendant_count,
+              state_kind: target.state_kind,
+            });
+            currentX += nodeWidth + nodeSpacing;
           });
-          currentX += nodeWidth + nodeSpacing;
         });
       });
     }
 
-    // Position real children BELOW pending rows
-    if (childRows.length > 0) {
-      childRows.forEach((row, rowIndex) => {
-        const rowY = childStartY + (pendingChildRows.length + rowIndex) * (relatedNodeHeight + rowSpacing);
-        let currentX = centerX - row.totalWidth / 2;
-        
-        row.nodes.forEach((rel) => {
-          const target = rel.target!;
-          const nodeWidth = calculateNodeWidth(target.label);
-          const nodeH = (target.descendant_count ?? 0) > 0 ? NODE_HEIGHT_WITH_COUNT : NODE_HEIGHT;
-          nodes.push({
-            id: target.id,
-            type: 'child',
-            label: target.label,
-            x: currentX + nodeWidth / 2,
-            y: rowY,
-            width: nodeWidth,
-            height: nodeH,
-            descendant_count: target.descendant_count,
-            state_kind: target.state_kind,
+    const taxonomicChildHasContent = pendingChildRows.length > 0 || taxonomicChildRows.length > 0;
+
+    // Divider between grade lane and taxonomic lane
+    if (gradeChildRows.length > 0 && taxonomicChildHasContent) {
+      const lastGradeRowY = childStartY + (gradeChildRows.length - 1) * (relatedNodeHeight + rowSpacing);
+      const dividerY = lastGradeRowY + relatedNodeHeight / 2 + LANE_GAP / 2;
+      laneDividers.push({ y: dividerY });
+      usedChildLaneGaps += 1;
+    }
+
+    // Taxonomic lane: pending creates first, then real children
+    if (taxonomicChildHasContent && gradeChildRows.length > 0) {
+      const firstTaxRowY = childStartY
+        + nextChildRowIdx * (relatedNodeHeight + rowSpacing)
+        + usedChildLaneGaps * LANE_GAP;
+      laneLabels.push({ x: LANE_LABEL_X, y: firstTaxRowY - relatedNodeHeight / 2 - 6, text: 'Children', color: '#6b7280' });
+    }
+
+    if (pendingChildRows.length > 0) {
+      pendingChildRows.forEach((row, rowIndex) => {
+        placeChildRow(rowIndex, 0, pendingChildRows, (r, rowY) => {
+          let currentX = centerX - r.totalWidth / 2;
+          r.nodes.forEach((item: any) => {
+            const labelText = item.target_label as string;
+            const descCount = item.target_descendant_count as number | undefined;
+            const nodeWidth = calculateNodeWidth(labelText);
+            const nodeH = (descCount ?? 0) > 0 ? NODE_HEIGHT_WITH_COUNT : NODE_HEIGHT;
+            pendingNodePositions.push({
+              changeset_id: item.changeset_id as string,
+              x: currentX + nodeWidth / 2,
+              y: rowY,
+              width: nodeWidth,
+              height: nodeH,
+              lineY1: centerY + mainNodeLayoutHeight / 2 + renderOverflow,
+              lineX2: centerX,
+              descendant_count: descCount,
+            });
+            currentX += nodeWidth + nodeSpacing;
           });
-          currentX += nodeWidth + nodeSpacing;
+        });
+      });
+    }
+
+    if (taxonomicChildRows.length > 0) {
+      taxonomicChildRows.forEach((row, rowIndex) => {
+        placeChildRow(rowIndex, 0, taxonomicChildRows, (r, rowY) => {
+          let currentX = centerX - r.totalWidth / 2;
+          r.nodes.forEach((rel: any) => {
+            const target = rel.target!;
+            const nodeWidth = calculateNodeWidth(target.label);
+            const nodeH = (target.descendant_count ?? 0) > 0 ? NODE_HEIGHT_WITH_COUNT : NODE_HEIGHT;
+            nodes.push({
+              id: target.id,
+              type: 'child',
+              label: target.label,
+              x: currentX + nodeWidth / 2,
+              y: rowY,
+              width: nodeWidth,
+              height: nodeH,
+              descendant_count: target.descendant_count,
+              state_kind: target.state_kind,
+            });
+            currentX += nodeWidth + nodeSpacing;
+          });
         });
       });
     }
     
-    return { nodes, width, height: totalHeight, renderOverflow, pendingNodePositions, pendingParentNodePositions };
+    return { nodes, width, height: totalHeight, renderOverflow, pendingNodePositions, pendingParentNodePositions, laneDividers, laneLabels };
   }, [currentConcept, parentRels, childRels, pendingCreates, pendingParentCreates, arrangeNodesInRows, calculateNodeWidth, rolesExpanded, lexicalUnitsExpanded, recipeGraphExpanded, expandedSenses]);
 
   // Identify pending relation changes for visualization
@@ -482,6 +623,28 @@ function ConceptGraphInner({ currentConcept, onConceptClick, onEditClick, onRepa
     const nodeLeft = node.x - node.width / 2;
     const nodeTop = node.y - node.height / 2;
     const stateKind = node.state_kind;
+
+    // Fill/stroke: colour-coded by state_kind, same shape (rx=8) and height for all.
+    // dimension → descendant-intensity blue (same as normal nodes); grade → descendant-intensity amber.
+    const isGrade = stateKind === 'grade' && !isPendingDelete;
+    const isDimension = stateKind === 'dimension' && !isPendingDelete;
+    const rectHeight = node.height;
+    const rectTop = nodeTop;
+    const rectRx = 8;
+    const gradeColors = gradeColorIntensity(node.descendant_count);
+    const nodeFill = isPendingDelete
+      ? pendingDeleteColor
+      : isGrade     ? gradeColors.fill
+      : isDimension ? fillColor
+      : fillColor;
+    const nodeStroke = isPendingDelete
+      ? pendingDeleteStroke
+      : isGrade     ? gradeColors.stroke
+      : isDimension ? strokeColor
+      : strokeColor;
+    const labelFill = 'white';
+    const iconStroke = 'rgba(255,255,255,0.7)';
+    const iconTextFill = 'rgba(255,255,255,0.7)';
     
     return (
       <g 
@@ -491,17 +654,17 @@ function ConceptGraphInner({ currentConcept, onConceptClick, onEditClick, onRepa
         onMouseLeave={() => setHoveredNodeId(null)}
         onClick={(e) => {
           const rect = (e.currentTarget as SVGGElement).getBoundingClientRect();
-          onConceptClick(node.id, { rect: { top: rect.top, left: rect.left, width: rect.width, height: rect.height }, label: node.label, color: fillColor, direction: node.type === 'parent' ? 'up' : 'down' });
+          onConceptClick(node.id, { rect: { top: rect.top, left: rect.left, width: rect.width, height: rect.height }, label: node.label, color: nodeFill, direction: node.type === 'parent' ? 'up' : 'down' });
         }}
       >
         <rect
           x={nodeLeft}
-          y={nodeTop}
+          y={rectTop}
           width={node.width}
-          height={node.height}
-          rx={8}
-          fill={fillColor}
-          stroke={stateKind === 'grade' ? '#f59e0b' : stateKind === 'dimension' ? '#8b5cf6' : strokeColor}
+          height={rectHeight}
+          rx={rectRx}
+          fill={nodeFill}
+          stroke={nodeStroke}
           strokeWidth={isHovered ? 3 : (stateKind ? 2.5 : 2)}
           style={{ 
             cursor: 'pointer',
@@ -509,37 +672,37 @@ function ConceptGraphInner({ currentConcept, onConceptClick, onEditClick, onRepa
             transition: 'all 0.2s ease',
           }}
         />
-        {/* State kind badge — bottom right */}
-        {stateKind && (
+        {/* Tiny corner pill — kept only for taxons */}
+        {stateKind === 'taxon' && (
           <g>
             <rect
-              x={nodeLeft + node.width - (stateKind === 'dimension' ? 32 : stateKind === 'taxon' ? 28 : 26) - 2}
-              y={nodeTop + node.height - 14}
-              width={stateKind === 'dimension' ? 30 : stateKind === 'taxon' ? 26 : 24}
+              x={nodeLeft + node.width - 30}
+              y={rectTop + rectHeight - 14}
+              width={26}
               height={12}
               rx={6}
-              fill={stateKind === 'grade' ? '#f59e0b' : stateKind === 'dimension' ? '#8b5cf6' : '#6b7280'}
+              fill="#6b7280"
             />
             <text
-              x={nodeLeft + node.width - (stateKind === 'dimension' ? 19 : stateKind === 'taxon' ? 17 : 16)}
-              y={nodeTop + node.height - 8}
+              x={nodeLeft + node.width - 17}
+              y={rectTop + rectHeight - 8}
               fontSize={7}
               fontWeight="bold"
               fill="white"
               textAnchor="middle"
               dominantBaseline="central"
             >
-              {stateKind === 'grade' ? 'GRD' : stateKind === 'dimension' ? 'DIM' : 'TAX'}
+              TAX
             </text>
           </g>
         )}
-        {/* Label — vertically centered if no descendants, shifted up if there are */}
+        {/* Label — vertically centered in the rendered rect */}
         <text
           x={node.x}
-          y={hasDescendants ? nodeTop + 16 : node.y}
+          y={hasDescendants ? rectTop + 16 : rectTop + rectHeight / 2}
           fontSize={11}
           fontWeight="bold"
-          fill="white"
+          fill={labelFill}
           textAnchor="middle"
           dominantBaseline="central"
         >
@@ -549,20 +712,20 @@ function ConceptGraphInner({ currentConcept, onConceptClick, onEditClick, onRepa
         {hasDescendants && (
           <g>
             {/* Same 3-arrow graph icon as the view toggle, scaled down */}
-            <g transform={`translate(${nodeLeft + 4}, ${nodeTop + node.height - 9}) scale(0.26)`}>
-              <path d="m11.99 16.5-3.75 3.75m0 0L4.49 16.5m3.75 3.75V3.75h11.25" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
+            <g transform={`translate(${nodeLeft + 4}, ${rectTop + rectHeight - 9}) scale(0.26)`}>
+              <path d="m11.99 16.5-3.75 3.75m0 0L4.49 16.5m3.75 3.75V3.75h11.25" fill="none" stroke={iconStroke} strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
             </g>
-            <g transform={`translate(${nodeLeft + 7}, ${nodeTop + node.height - 9}) scale(0.26)`}>
-              <path d="M19.5 13.5 12 21m0 0-7.5-7.5M12 21V3" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
+            <g transform={`translate(${nodeLeft + 7}, ${rectTop + rectHeight - 9}) scale(0.26)`}>
+              <path d="M19.5 13.5 12 21m0 0-7.5-7.5M12 21V3" fill="none" stroke={iconStroke} strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
             </g>
-            <g transform={`translate(${nodeLeft + 10}, ${nodeTop + node.height - 9}) scale(0.26)`}>
-              <path d="m11.99 16.5 3.75 3.75m0 0 3.75-3.75m-3.75 3.75V3.75H4.49" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
+            <g transform={`translate(${nodeLeft + 10}, ${rectTop + rectHeight - 9}) scale(0.26)`}>
+              <path d="m11.99 16.5 3.75 3.75m0 0 3.75-3.75m-3.75 3.75V3.75H4.49" fill="none" stroke={iconStroke} strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
             </g>
             <text
               x={nodeLeft + 20}
-              y={nodeTop + node.height - 6}
+              y={rectTop + rectHeight - 6}
               fontSize={10}
-              fill="rgba(255,255,255,0.7)"
+              fill={iconTextFill}
               textAnchor="start"
               dominantBaseline="central"
             >
@@ -572,11 +735,11 @@ function ConceptGraphInner({ currentConcept, onConceptClick, onEditClick, onRepa
         )}
         {/* Lock icon for locked relations */}
         {isLocked && (
-          <g transform={`translate(${nodeLeft + node.width - 16}, ${nodeTop + 2})`}>
+          <g transform={`translate(${nodeLeft + node.width - 16}, ${rectTop + 2})`}>
             <title>Relation locked</title>
             <path
               d="M6 8V6a3 3 0 1 1 6 0v2h1a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1h1Zm2-2v2h2V6a1 1 0 1 0-2 0Z"
-              fill="rgba(255,255,255,0.85)"
+              fill={isGrade && !isPendingDelete ? 'rgba(146,64,14,0.9)' : 'rgba(255,255,255,0.85)'}
               transform="scale(0.85)"
             />
           </g>
@@ -592,6 +755,7 @@ function ConceptGraphInner({ currentConcept, onConceptClick, onEditClick, onRepa
 
     const mainTop = mainNode.y - mainNode.height / 2;
     const mainBottom = mainNode.y + mainNode.height / 2 + (layout.renderOverflow || 0);
+    const centreStateKind = currentConcept.state_kind;
 
     return layout.nodes
       .filter(n => n.type !== 'current')
@@ -603,6 +767,17 @@ function ConceptGraphInner({ currentConcept, onConceptClick, onEditClick, onRepa
         const endY = isParent ? mainTop : mainBottom;
         const endX = mainNode.x;
 
+        // Tint dimension↔grade edges violet to make the relationship visible.
+        const isDimensionGradeEdge = !isPendingDelete && (
+          (centreStateKind === 'dimension' && node.state_kind === 'grade') ||
+          (centreStateKind === 'grade' && node.state_kind === 'dimension')
+        );
+        const lineStroke = isPendingDelete
+          ? pendingDeleteStroke
+          : isDimensionGradeEdge ? '#93c5fd' : linkColor;
+        const lineStrokeWidth = isDimensionGradeEdge ? 1.75 : 2;
+        const lineOpacity = isPendingDelete ? 0.8 : (isDimensionGradeEdge ? 0.95 : 0.6);
+
         return (
           <line
             key={`line-${getPositionedNodeKey(node)}`}
@@ -610,9 +785,9 @@ function ConceptGraphInner({ currentConcept, onConceptClick, onEditClick, onRepa
             y1={startY}
             x2={endX}
             y2={endY}
-            stroke={isPendingDelete ? pendingDeleteStroke : linkColor}
-            strokeWidth={2}
-            strokeOpacity={isPendingDelete ? 0.8 : 0.6}
+            stroke={lineStroke}
+            strokeWidth={lineStrokeWidth}
+            strokeOpacity={lineOpacity}
             strokeDasharray={isPendingDelete ? '6 4' : undefined}
           />
         );
@@ -627,6 +802,36 @@ function ConceptGraphInner({ currentConcept, onConceptClick, onEditClick, onRepa
         className="block flex-shrink-0"
       >
         <rect width={layout.width} height={layout.height} rx={14} fill={backgroundColor} stroke="none" />
+
+        {/* Lane dividers (dashed) and lane labels — drawn behind connections and nodes */}
+        {layout.laneDividers.map((d, i) => (
+          <line
+            key={`lane-divider-${i}`}
+            x1={40}
+            y1={d.y}
+            x2={layout.width - 40}
+            y2={d.y}
+            stroke="#e5e7eb"
+            strokeWidth={1}
+            strokeDasharray="4 4"
+            strokeOpacity={0.9}
+          />
+        ))}
+        {layout.laneLabels.map((l, i) => (
+          <text
+            key={`lane-label-${i}`}
+            x={l.x}
+            y={l.y}
+            fontSize={11}
+            fontWeight={600}
+            fill={l.color}
+            textAnchor="start"
+            dominantBaseline="central"
+            style={{ textTransform: 'uppercase', letterSpacing: '0.6px' } as React.CSSProperties}
+          >
+            {l.text}
+          </text>
+        ))}
         
         {/* Connections */}
         {renderConnections()}
@@ -831,6 +1036,7 @@ function ConceptGraphInner({ currentConcept, onConceptClick, onEditClick, onRepa
               }}
               onRoleMappingClick={() => setRoleMappingModalOpen(true)}
               hasParent={parentRels.length > 0}
+              onStateKindChange={handleStateKindChange}
             />
             </g>
           ))}

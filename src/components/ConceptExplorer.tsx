@@ -391,6 +391,12 @@ export default function ConceptExplorer({ initialConceptId }: ConceptExplorerPro
                         loadConcept(currentConcept.id, true);
                       }
                     }}
+                    onConceptChanged={() => {
+                      if (currentConcept?.id) {
+                        lastLoadedConceptRef.current = null;
+                        loadConcept(currentConcept.id, true);
+                      }
+                    }}
                     pendingRelationChanges={(currentConcept as any)?.pendingRelationChanges}
                   />
                 </div>

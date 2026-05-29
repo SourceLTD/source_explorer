@@ -453,9 +453,20 @@ export function ConceptPropertiesSection({
         ) : (
           <PendingFieldIndicator fieldName="state_kind" pending={pending}>
             {getDisplayValue('state_kind', concept.state_kind) ? (
-              <span className="inline-flex px-2 py-0.5 rounded-full border text-xs font-medium bg-teal-50 text-teal-700 border-teal-200">
-                {getDisplayValue('state_kind', concept.state_kind)}
-              </span>
+              (() => {
+                const value = getDisplayValue('state_kind', concept.state_kind);
+                const chipClass =
+                  value === 'grade'
+                    ? 'bg-orange-50 text-orange-700 border-orange-200'
+                    : value === 'dimension'
+                      ? 'bg-violet-50 text-violet-700 border-violet-200'
+                      : 'bg-gray-50 text-gray-700 border-gray-200';
+                return (
+                  <span className={`inline-flex px-2 py-0.5 rounded-full border text-xs font-medium ${chipClass}`}>
+                    {value}
+                  </span>
+                );
+              })()
             ) : (
               <span className="text-gray-400 text-sm italic">none</span>
             )}

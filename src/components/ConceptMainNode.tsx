@@ -5,6 +5,7 @@ import { Group } from '@visx/group';
 import { 
   ConceptGraphNode, 
   RecipeGraph,
+  StateKind,
   sortRolesByPrecedence,
   posShortLabel,
   compareSensesByPos,
@@ -76,6 +77,7 @@ interface ConceptMainNodeProps {
   onToggleSense?: (senseId: string) => void;
   onRoleMappingClick?: () => void;
   hasParent?: boolean;
+  onStateKindChange?: (kind: StateKind | null) => Promise<void>;
 }
 
 export default function ConceptMainNode({ 
@@ -95,8 +97,11 @@ export default function ConceptMainNode({
   onToggleSense,
   onRoleMappingClick,
   hasParent,
+  onStateKindChange,
 }: ConceptMainNodeProps) {
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+  const [stateKindPickerOpen, setStateKindPickerOpen] = useState(false);
+  const [stateKindSaving, setStateKindSaving] = useState(false);
   const [internalPropertiesExpanded, setInternalPropertiesExpanded] = useState<boolean>(true);
   const [internalLexicalUnitsExpanded, setInternalLexicalUnitsExpanded] = useState<boolean>(true);
   const [internalRecipeGraphExpanded, setInternalRecipeGraphExpanded] = useState<boolean>(false);
@@ -166,12 +171,16 @@ export default function ConceptMainNode({
         fill={
           hasPendingChanges && pendingOperation
             ? getPendingNodeFill(pendingOperation)
-            : '#3b82f6'
+            : node.state_kind === 'grade'
+              ? '#f97316'
+              : '#3b82f6'
         }
         stroke={
           hasPendingChanges && pendingOperation
             ? getPendingNodeStroke(pendingOperation)
-            : hoveredNodeId === node.id ? '#93c5fd' : '#1e40af'
+            : node.state_kind === 'grade'
+              ? (hoveredNodeId === node.id ? '#fb923c' : '#ea580c')
+              : (hoveredNodeId === node.id ? '#93c5fd' : '#1e40af')
         }
         strokeWidth={hoveredNodeId === node.id ? 4 : (hasPendingChanges ? 4 : 3)}
         rx={8}
@@ -223,37 +232,157 @@ export default function ConceptMainNode({
       
       {/* Category Badge - Not in screenshot, removing */}
 
-      {/* State Kind Badge — next to the (id) in the title */}
-      {node.state_kind && (() => {
+      {/* State Kind Badge — next to the (id) in the title; click to open kind picker */}
+      {(() => {
         const titleStartX = hasPendingChanges && pendingOperation ? centerX + 92 : centerX + 12;
         const labelWidth = node.label.length * 13.5;
         const idText = ` (${node.id})`;
         const idWidth = idText.length * 8.5;
         const badgeX = titleStartX + labelWidth + idWidth + 8;
-        const badgeWidth = node.state_kind === 'dimension' ? 68 : node.state_kind === 'taxon' ? 46 : 46;
+
+        const STATE_KIND_OPTIONS: Array<{ kind: StateKind | null; label: string; color: string }> = [
+          { kind: 'dimension', label: 'DIM',   color: '#8b5cf6' },
+          { kind: 'grade',     label: 'GRADE', color: '#f97316' },
+          { kind: 'taxon',     label: 'TAXON', color: '#6b7280' },
+          { kind: null,        label: 'NONE',  color: '#374151' },
+        ];
+
+        const badgeWidth = node.state_kind === 'dimension' ? 68 : 46;
+        const showEditBtn = !!onStateKindChange;
+
+        const handlePickerSelect = async (kind: StateKind | null) => {
+          if (!onStateKindChange || stateKindSaving) return;
+          setStateKindPickerOpen(false);
+          setStateKindSaving(true);
+          try {
+            await onStateKindChange(kind);
+          } finally {
+            setStateKindSaving(false);
+          }
+        };
+
+        // Picker pill dimensions
+        const pickerOptionW = 48;
+        const pickerOptionH = 20;
+        const pickerGap = 4;
+        const pickerTotalW = STATE_KIND_OPTIONS.length * (pickerOptionW + pickerGap) - pickerGap;
+        const pickerY = topY + 14;
+
         return (
           <g>
-            <rect
-              x={badgeX}
-              y={topY + 22}
-              width={badgeWidth}
-              height={18}
-              rx={9}
-              fill={node.state_kind === 'grade' ? '#f59e0b' : node.state_kind === 'dimension' ? '#8b5cf6' : '#6b7280'}
-            />
-            <text
-              x={badgeX + badgeWidth / 2}
-              y={topY + 31}
-              fontSize={9}
-              fontFamily="Arial"
-              textAnchor="middle"
-              dominantBaseline="central"
-              fill="white"
-              fontWeight="600"
-              style={{ textTransform: 'uppercase', letterSpacing: '0.5px' } as React.CSSProperties}
-            >
-              {node.state_kind === 'grade' ? 'GRADE' : node.state_kind === 'dimension' ? 'DIMENSION' : 'TAXON'}
-            </text>
+            {/* Current badge (always shown if state_kind set) */}
+            {node.state_kind && (
+              <g
+                style={{ cursor: showEditBtn ? 'pointer' : 'default' }}
+                onClick={showEditBtn ? (e) => { e.stopPropagation(); setStateKindPickerOpen(v => !v); } : undefined}
+              >
+                <rect
+                  x={badgeX}
+                  y={topY + 22}
+                  width={badgeWidth}
+                  height={18}
+                  rx={9}
+                  fill={node.state_kind === 'grade' ? '#f59e0b' : node.state_kind === 'dimension' ? '#8b5cf6' : '#6b7280'}
+                />
+                <text
+                  x={badgeX + badgeWidth / 2}
+                  y={topY + 31}
+                  fontSize={9}
+                  fontFamily="Arial"
+                  textAnchor="middle"
+                  dominantBaseline="central"
+                  fill="white"
+                  fontWeight="600"
+                  style={{ textTransform: 'uppercase', letterSpacing: '0.5px', pointerEvents: 'none' } as React.CSSProperties}
+                >
+                  {node.state_kind === 'grade' ? 'GRADE' : node.state_kind === 'dimension' ? 'DIMENSION' : 'TAXON'}
+                </text>
+              </g>
+            )}
+
+            {/* Toggle button — shown when no state_kind or next to badge */}
+            {showEditBtn && (
+              <g
+                style={{ cursor: 'pointer' }}
+                onClick={(e) => { e.stopPropagation(); setStateKindPickerOpen(v => !v); }}
+              >
+                <rect
+                  x={badgeX + (node.state_kind ? badgeWidth + 4 : 0)}
+                  y={topY + 22}
+                  width={stateKindPickerOpen ? 18 : (node.state_kind ? 18 : 48)}
+                  height={18}
+                  rx={9}
+                  fill={stateKindSaving ? 'rgba(255,255,255,0.15)' : stateKindPickerOpen ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.15)'}
+                  stroke="rgba(255,255,255,0.4)"
+                  strokeWidth={1}
+                />
+                <text
+                  x={badgeX + (node.state_kind ? badgeWidth + 4 : 0) + (stateKindPickerOpen ? 9 : (node.state_kind ? 9 : 24))}
+                  y={topY + 31}
+                  fontSize={9}
+                  fontFamily="Arial"
+                  textAnchor="middle"
+                  dominantBaseline="central"
+                  fill="white"
+                  fontWeight="600"
+                  style={{ pointerEvents: 'none' } as React.CSSProperties}
+                >
+                  {stateKindSaving ? '…' : stateKindPickerOpen ? '✕' : (node.state_kind ? '✎' : 'Set kind')}
+                </text>
+              </g>
+            )}
+
+            {/* Inline picker — shown when open */}
+            {stateKindPickerOpen && showEditBtn && (
+              <g>
+                {/* backdrop */}
+                <rect
+                  x={badgeX - 4}
+                  y={pickerY - 4}
+                  width={pickerTotalW + 8}
+                  height={pickerOptionH + 8}
+                  rx={6}
+                  fill="rgba(17,24,39,0.85)"
+                  stroke="rgba(255,255,255,0.2)"
+                  strokeWidth={1}
+                />
+                {STATE_KIND_OPTIONS.map((opt, i) => {
+                  const ox = badgeX + i * (pickerOptionW + pickerGap);
+                  const isActive = node.state_kind === opt.kind;
+                  return (
+                    <g
+                      key={opt.label}
+                      style={{ cursor: 'pointer' }}
+                      onClick={(e) => { e.stopPropagation(); void handlePickerSelect(opt.kind); }}
+                    >
+                      <rect
+                        x={ox}
+                        y={pickerY}
+                        width={pickerOptionW}
+                        height={pickerOptionH}
+                        rx={10}
+                        fill={isActive ? opt.color : 'rgba(255,255,255,0.1)'}
+                        stroke={isActive ? 'white' : opt.color}
+                        strokeWidth={isActive ? 1.5 : 1}
+                      />
+                      <text
+                        x={ox + pickerOptionW / 2}
+                        y={pickerY + pickerOptionH / 2}
+                        fontSize={8}
+                        fontFamily="Arial"
+                        textAnchor="middle"
+                        dominantBaseline="central"
+                        fill={isActive ? 'white' : opt.color}
+                        fontWeight="700"
+                        style={{ pointerEvents: 'none', letterSpacing: '0.4px' } as React.CSSProperties}
+                      >
+                        {opt.label}
+                      </text>
+                    </g>
+                  );
+                })}
+              </g>
+            )}
           </g>
         );
       })()}
@@ -792,7 +921,9 @@ export default function ConceptMainNode({
             width={36}
             height={36}
             rx={6}
-            fill={hasParent ? "rgba(59, 130, 246, 0.95)" : "rgba(156, 163, 175, 0.95)"}
+            fill={hasParent
+              ? (node.state_kind === 'grade' ? "rgba(249, 115, 22, 0.95)" : "rgba(59, 130, 246, 0.95)")
+              : "rgba(156, 163, 175, 0.95)"}
             stroke="rgba(255, 255, 255, 0.9)"
             strokeWidth={2}
             style={{ cursor: hasParent ? 'pointer' : 'not-allowed' }}
@@ -801,10 +932,10 @@ export default function ConceptMainNode({
               if (hasParent) onRoleMappingClick();
             }}
             onMouseEnter={(e) => {
-              if (hasParent) e.currentTarget.setAttribute('fill', 'rgba(29, 78, 216, 1)');
+              if (hasParent) e.currentTarget.setAttribute('fill', node.state_kind === 'grade' ? 'rgba(234, 88, 12, 1)' : 'rgba(29, 78, 216, 1)');
             }}
             onMouseLeave={(e) => {
-              if (hasParent) e.currentTarget.setAttribute('fill', 'rgba(59, 130, 246, 0.95)');
+              if (hasParent) e.currentTarget.setAttribute('fill', node.state_kind === 'grade' ? 'rgba(249, 115, 22, 0.95)' : 'rgba(59, 130, 246, 0.95)');
             }}
           >
             <title>{hasParent ? "View role mappings from parent concepts" : "No parent concepts to map roles from"}</title>
@@ -836,7 +967,7 @@ export default function ConceptMainNode({
             width={36}
             height={36}
             rx={6}
-            fill="rgba(59, 130, 246, 0.95)"
+            fill={node.state_kind === 'grade' ? "rgba(249, 115, 22, 0.95)" : "rgba(59, 130, 246, 0.95)"}
             stroke="rgba(255, 255, 255, 0.9)"
             strokeWidth={2}
             style={{ cursor: 'pointer' }}
@@ -845,10 +976,10 @@ export default function ConceptMainNode({
               onEditClick();
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.setAttribute('fill', 'rgba(29, 78, 216, 1)');
+              e.currentTarget.setAttribute('fill', node.state_kind === 'grade' ? 'rgba(234, 88, 12, 1)' : 'rgba(29, 78, 216, 1)');
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.setAttribute('fill', 'rgba(59, 130, 246, 0.95)');
+              e.currentTarget.setAttribute('fill', node.state_kind === 'grade' ? 'rgba(249, 115, 22, 0.95)' : 'rgba(59, 130, 246, 0.95)');
             }}
           >
             <title>Edit concept details</title>

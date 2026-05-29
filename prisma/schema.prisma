@@ -1500,6 +1500,7 @@ enum concept_subtype_enum {
   communication
   relation
   acquire
+  activity
   assist
   attachment
   attempt
@@ -1507,6 +1508,8 @@ enum concept_subtype_enum {
   bearing
   beginning
   body_process       @map("body process")
+  capability
+  change_of_state    @map("change of state")
   characterization
   combination
   competition
@@ -1520,14 +1523,17 @@ enum concept_subtype_enum {
   creation
   delay
   deprivation
+  destruction
   emission
   ending
   enrol
   expose
   failure
+  force
   give_care          @map("give care")
   group_action       @map("group action")
   host
+  joining
   legal_proceeding   @map("legal proceeding")
   mental_process     @map("mental process")
   motion
@@ -1536,6 +1542,7 @@ enum concept_subtype_enum {
   ordering
   participation
   persistence
+  phasal
   prevention
   procedure
   progress
@@ -1544,6 +1551,7 @@ enum concept_subtype_enum {
   reach
   recreation
   resumption
+  scenario
   separation
   sexual_intercourse @map("sexual intercourse")
   subtraction
