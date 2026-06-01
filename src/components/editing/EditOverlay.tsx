@@ -17,6 +17,7 @@ import { useEntryEditor } from '@/hooks/useEntryEditor';
 import { useEntryMutations } from '@/hooks/useEntryMutations';
 import { PendingEntityBadge } from '@/components/PendingChangeIndicator';
 import LoadingSpinner from '@/components/LoadingSpinner';
+import ClassifierGuidanceModal from '@/components/ClassifierGuidanceModal';
 
 type EditTab = 'ai' | 'manual';
 
@@ -35,6 +36,7 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
   const [isUpdating, setIsUpdating] = useState(false);
   const [availableConcepts, setAvailableConcepts] = useState<ConceptOption[]>([]);
   const [activeTab, setActiveTab] = useState<EditTab>('ai');
+  const [classifierGuidanceOpen, setClassifierGuidanceOpen] = useState(false);
   
   // Overlay section expansion state
   const [overlaySections, setOverlaySections] = useState<OverlaySectionsState>({
@@ -322,17 +324,18 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
   if (!isOpen) return null;
 
   return (
-    <EditOverlayModal
-      isOpen={isOpen}
-      onClose={() => {
-        if (!editor.editingField && !editor.isSaving && !isUpdating) {
-          onClose();
-        }
-      }}
-      nodeId={node?.id || nodeId}
-      validationMessage={editor.codeValidationMessage && !editor.isSaving ? editor.codeValidationMessage : ''}
-      onDelete={() => setShowDeleteConfirm(true)}
-    >
+    <>
+      <EditOverlayModal
+        isOpen={isOpen}
+        onClose={() => {
+          if (!editor.editingField && !editor.isSaving && !isUpdating) {
+            onClose();
+          }
+        }}
+        nodeId={node?.id || nodeId}
+        validationMessage={editor.codeValidationMessage && !editor.isSaving ? editor.codeValidationMessage : ''}
+        onDelete={() => setShowDeleteConfirm(true)}
+      >
       {showSpinner ? (
         <LoadingSpinner size="page" label={loadingLabel} className="p-12" />
       ) : (
@@ -465,6 +468,11 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
                 await mutations.updateField(node.id, 'disable_healthcheck', next);
                 await onUpdate();
               }}
+              onShowClassifierGuidance={
+                (node as Concept).classifier_guidance
+                  ? () => setClassifierGuidanceOpen(true)
+                  : undefined
+              }
             />
           )}
 
@@ -548,6 +556,15 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
         </>
       )}
     </EditOverlayModal>
+
+      {classifierGuidanceOpen && node && 'classifier_guidance' in node && (node as Concept).classifier_guidance && (
+        <ClassifierGuidanceModal
+          label={(node as Concept).label}
+          guidance={(node as Concept).classifier_guidance!}
+          onClose={() => setClassifierGuidanceOpen(false)}
+        />
+      )}
+    </>
   );
 }
 

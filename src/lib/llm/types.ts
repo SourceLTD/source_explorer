@@ -110,6 +110,7 @@ export interface ConceptRelationData {
   label: string;
   definition?: string | null;
   short_definition?: string | null;
+  classifier_guidance?: string | null;
   roles: ConceptPropertyData[];
   lexical_units: ConceptLexicalUnitData[];
 }
@@ -132,6 +133,7 @@ export interface LexicalUnitSummary {
   // Concept-specific fields
   definition?: string | null;
   short_definition?: string | null;
+  classifier_guidance?: string | null;
   roles?: ConceptPropertyData[];
   lexical_units?: ConceptLexicalUnitData[];
 }

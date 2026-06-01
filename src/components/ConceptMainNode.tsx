@@ -76,8 +76,124 @@ interface ConceptMainNodeProps {
   onRecipeGraphExpandedChange?: (expanded: boolean) => void;
   onToggleSense?: (senseId: string) => void;
   onRoleMappingClick?: () => void;
+  onClassifierGuidanceClick?: () => void;
   hasParent?: boolean;
   onStateKindChange?: (kind: StateKind | null) => Promise<void>;
+}
+
+// Layout constants for filler chips rendered under each property.
+const FILLER_CHIP_HEIGHT = 18;
+const FILLER_ROW_GAP = 4;
+const FILLER_CONTAINER_TOP_GAP = 4;
+const FILLER_CHIP_FONT_SIZE = 11;
+const FILLER_CHIP_HORIZONTAL_PADDING = 12; // 6px each side
+const FILLER_CHIP_GAP = 4;
+const FILLER_AVG_CHAR_WIDTH = FILLER_CHIP_FONT_SIZE * 0.62;
+
+function fillerChipLabel(c: { filler_type_label: string; concept_label: string | null }): string {
+  return c.concept_label ?? c.filler_type_label;
+}
+
+function estimateFillerChipWidth(c: { filler_type_label: string; concept_label: string | null }): number {
+  const label = fillerChipLabel(c);
+  return Math.ceil(label.length * FILLER_AVG_CHAR_WIDTH) + FILLER_CHIP_HORIZONTAL_PADDING;
+}
+
+interface FillerChipProps {
+  filler: {
+    filler_type_id: number;
+    filler_type_label: string;
+    concept_id: string | null;
+    concept_label: string | null;
+  };
+  onConceptClick?: (conceptId: string) => void;
+}
+
+function FillerChip({ filler, onConceptClick }: FillerChipProps) {
+  const isConcept = !!filler.concept_id;
+  const label = fillerChipLabel(filler);
+  const interactive = isConcept && !!onConceptClick;
+
+  const className = `filler-chip ${isConcept ? 'filler-chip--concept' : 'filler-chip--primitive'}${interactive ? ' filler-chip--interactive' : ''}`;
+
+  return (
+    <span
+      className={className}
+      title={
+        isConcept
+          ? `Filler concept: ${label} (${filler.concept_id})`
+          : `Primitive filler type: ${label}`
+      }
+      onClick={
+        interactive
+          ? (e) => {
+              e.stopPropagation();
+              onConceptClick!(filler.concept_id!);
+            }
+          : undefined
+      }
+    >
+      {label}
+    </span>
+  );
+}
+
+const FILLER_CHIP_STYLES = `
+.filler-chip {
+  display: inline-block;
+  font-size: ${FILLER_CHIP_FONT_SIZE}px;
+  line-height: ${FILLER_CHIP_HEIGHT}px;
+  padding: 0 6px;
+  border-radius: 9px;
+  color: white;
+  white-space: nowrap;
+  border: 1px solid;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+.filler-chip--concept {
+  font-weight: 600;
+  background-color: rgba(167, 139, 250, 0.35);
+  border-color: rgba(196, 181, 253, 0.7);
+}
+.filler-chip--primitive {
+  font-weight: 500;
+  font-style: italic;
+  background-color: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.25);
+  cursor: default;
+}
+.filler-chip--interactive { cursor: pointer; }
+.filler-chip--interactive:hover {
+  background-color: rgba(167, 139, 250, 0.65);
+  border-color: rgba(221, 214, 254, 1);
+  text-decoration: underline;
+}
+.filler-chip--primitive:hover {
+  background-color: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.5);
+}
+`;
+
+function estimateFillerBlockHeight(
+  fillers: { filler_type_label: string; concept_label: string | null }[],
+  containerWidth: number
+): number {
+  if (!fillers || fillers.length === 0) return 0;
+  // Account for the inline "Fillers:" label that precedes the chips.
+  const labelWidth = Math.ceil('Fillers:'.length * (FILLER_CHIP_FONT_SIZE - 1) * 0.6) + 6;
+  let rowWidth = labelWidth;
+  let rows = 1;
+  for (const f of fillers) {
+    const w = estimateFillerChipWidth(f);
+    const next = rowWidth + FILLER_CHIP_GAP + w;
+    if (next > containerWidth && rowWidth > labelWidth) {
+      rows += 1;
+      rowWidth = w;
+    } else {
+      rowWidth = next;
+    }
+  }
+  return FILLER_CONTAINER_TOP_GAP + rows * FILLER_CHIP_HEIGHT + (rows - 1) * FILLER_ROW_GAP + 4;
 }
 
 export default function ConceptMainNode({ 
@@ -96,6 +212,7 @@ export default function ConceptMainNode({
   onRecipeGraphExpandedChange,
   onToggleSense,
   onRoleMappingClick,
+  onClassifierGuidanceClick,
   hasParent,
   onStateKindChange,
 }: ConceptMainNodeProps) {
@@ -163,6 +280,7 @@ export default function ConceptMainNode({
       onMouseLeave={() => setHoveredNodeId(null)}
       style={{ cursor: 'pointer' }}
     >
+      <style>{FILLER_CHIP_STYLES}</style>
       <rect
         width={nodeWidth}
         height={nodeHeight}
@@ -485,12 +603,56 @@ export default function ConceptMainNode({
                 const rightText = row.right ? `${row.right.label}: ${row.right.description || 'No description'}` : '';
                 const leftLines = Math.ceil(leftText.length / 50);
                 const rightLines = row.right ? Math.ceil(rightText.length / 50) : 0;
+                const leftBaseHeight = leftLines <= 2 ? 44 : 60;
+                const rightBaseHeight = row.right ? (rightLines <= 2 ? 44 : 60) : 0;
+                const cellInnerWidth = colWidth - 16; // padding
+                const leftFillers = row.left.filler_constraints ?? [];
+                const rightFillers = row.right?.filler_constraints ?? [];
+                const leftFillerHeight = estimateFillerBlockHeight(leftFillers, cellInnerWidth);
+                const rightFillerHeight = row.right ? estimateFillerBlockHeight(rightFillers, cellInnerWidth) : 0;
                 const rowHeight = Math.max(
-                  leftLines <= 2 ? 44 : 60,
-                  row.right ? (rightLines <= 2 ? 44 : 60) : 0
+                  leftBaseHeight + leftFillerHeight,
+                  rightBaseHeight + rightFillerHeight
                 );
                 const currentRowY = rowY;
                 rowY += rowHeight + 4;
+
+                const renderFillers = (
+                  fillers: typeof leftFillers,
+                ): React.ReactNode => {
+                  if (!fillers || fillers.length === 0) return null;
+                  return (
+                    <div
+                      style={{
+                        marginTop: '6px',
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        gap: `${FILLER_CHIP_GAP}px`,
+                        alignItems: 'center',
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: '10px',
+                          fontWeight: 600,
+                          color: 'rgba(255,255,255,0.65)',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.4px',
+                          marginRight: '2px',
+                        }}
+                      >
+                        Fillers:
+                      </span>
+                      {fillers.map((f, i) => (
+                        <FillerChip
+                          key={`${f.filler_type_id}-${f.concept_id ?? 'p'}-${i}`}
+                          filler={f}
+                          onConceptClick={onNodeClick}
+                        />
+                      ))}
+                    </div>
+                  );
+                };
 
                 return (
                   <g key={`role-row-${rowIdx}`}>
@@ -519,6 +681,7 @@ export default function ConceptMainNode({
                       >
                         <span style={{ fontWeight: 'bold' }}>{row.left.label}:</span>{' '}
                         {row.left.description || 'No description'}
+                        {renderFillers(leftFillers)}
                       </div>
                     </foreignObject>
                     {row.right && (
@@ -547,6 +710,7 @@ export default function ConceptMainNode({
                         >
                           <span style={{ fontWeight: 'bold' }}>{row.right.label}:</span>{' '}
                           {row.right.description || 'No description'}
+                          {renderFillers(rightFillers)}
                         </div>
                       </foreignObject>
                     )}
@@ -912,6 +1076,50 @@ export default function ConceptMainNode({
         </g>
       )}
 
+      {/* Classifier Guidance Button */}
+      {onClassifierGuidanceClick && node.classifier_guidance && (
+        <g>
+          <rect
+            x={centerX + nodeWidth - 132}
+            y={topY + 8}
+            width={36}
+            height={36}
+            rx={6}
+            fill="rgba(99, 102, 241, 0.9)"
+            stroke="rgba(255, 255, 255, 0.9)"
+            strokeWidth={2}
+            style={{ cursor: 'pointer' }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onClassifierGuidanceClick();
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.setAttribute('fill', 'rgba(67, 56, 202, 1)');
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.setAttribute('fill', 'rgba(99, 102, 241, 0.9)');
+            }}
+          >
+            <title>View classifier guidance</title>
+          </rect>
+          <g
+            style={{ pointerEvents: 'none' }}
+            transform={`translate(${centerX + nodeWidth - 114}, ${topY + 26}) scale(0.75)`}
+          >
+            <g transform="translate(-12, -12)">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2.5}
+                stroke="white"
+                fill="none"
+                d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25"
+              />
+            </g>
+          </g>
+        </g>
+      )}
+
       {/* Role Mapping Button - Next to Edit Button */}
       {onRoleMappingClick && (
         <g>
@@ -1066,15 +1274,28 @@ export function calculateConceptNodeHeights(
   let rolesHeight = 28;
   if (rolesExpanded && node.properties && node.properties.length > 0) {
     const visibleRoles = node.properties;
+    const colGap = 8;
+    const colWidth = (contentWidth - colGap) / 2;
+    const cellInnerWidth = colWidth - 16;
     for (let i = 0; i < visibleRoles.length; i += 2) {
       const leftText = `${visibleRoles[i].label}: ${visibleRoles[i].description || 'No description'}`;
       const leftLines = Math.ceil(leftText.length / 50);
-      const leftHeight = leftLines <= 2 ? 44 : 60;
+      const leftBase = leftLines <= 2 ? 44 : 60;
+      const leftFillerHeight = estimateFillerBlockHeight(
+        visibleRoles[i].filler_constraints ?? [],
+        cellInnerWidth
+      );
+      const leftHeight = leftBase + leftFillerHeight;
       let rightHeight = 0;
       if (visibleRoles[i + 1]) {
         const rightText = `${visibleRoles[i + 1].label}: ${visibleRoles[i + 1].description || 'No description'}`;
         const rightLines = Math.ceil(rightText.length / 50);
-        rightHeight = rightLines <= 2 ? 44 : 60;
+        const rightBase = rightLines <= 2 ? 44 : 60;
+        const rightFillerHeight = estimateFillerBlockHeight(
+          visibleRoles[i + 1].filler_constraints ?? [],
+          cellInnerWidth
+        );
+        rightHeight = rightBase + rightFillerHeight;
       }
       rolesHeight += Math.max(leftHeight, rightHeight) + 4;
     }

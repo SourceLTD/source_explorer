@@ -345,6 +345,7 @@ function buildVariableMap(entry: LexicalUnitSummary): Record<string, string> {
   if (entry.pos === 'concepts') {
     base.definition = entry.definition ?? '';
     base.short_definition = entry.short_definition ?? '';
+    base.classifier_guidance = entry.classifier_guidance ?? '';
     base.flagged = entry.flagged ? 'true' : 'false';
     base.flagged_reason = entry.flagged_reason ?? '';
     base.verifiable = entry.verifiable ? 'true' : 'false';
@@ -390,6 +391,7 @@ function buildTemplateContext(entry: LexicalUnitSummary): Record<string, unknown
   if (entry.pos === 'concepts') {
     context.definition = entry.definition ?? '';
     context.short_definition = entry.short_definition ?? '';
+    context.classifier_guidance = entry.classifier_guidance ?? '';
     context.roles = entry.roles ?? [];
     context.roles_count = entry.roles?.length ?? 0;
     
@@ -877,6 +879,7 @@ export async function createLLMJob(
       id: entry.concept.id,
       definition: entry.concept.definition,
       short_definition: entry.concept.short_definition,
+      classifier_guidance: entry.concept.classifier_guidance,
       roles: entry.concept.roles,
     } : null;
 
@@ -898,6 +901,7 @@ export async function createLLMJob(
         lexfile: entry.lexfile ?? null,
         definition: entry.definition ?? null,
         short_definition: entry.short_definition ?? null,
+        classifier_guidance: entry.classifier_guidance ?? null,
         lexical_units: (entry.lexical_units ?? []) as any[],
         roles: (entry.roles ?? []) as any[],
       },

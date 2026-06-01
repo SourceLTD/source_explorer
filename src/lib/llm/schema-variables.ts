@@ -77,6 +77,7 @@ const VERB_VARIABLES: VariableDefinition[] = [
   { key: 'concept.label', label: 'Concept Label', category: 'relation' },
   { key: 'concept.definition', label: 'Concept Definition', category: 'relation' },
   { key: 'concept.short_definition', label: 'Concept Short Definition', category: 'relation' },
+  { key: 'concept.classifier_guidance', label: 'Concept Classifier Guidance', category: 'relation' },
   { key: 'concept.properties', label: 'Concept Roles (formatted string)', category: 'relation' },
   // Iterable collections for {% for %} loops
   {
@@ -141,6 +142,7 @@ const CONCEPT_VARIABLES: VariableDefinition[] = [
   { key: 'label', label: 'Label', category: 'basic' },
   { key: 'definition', label: 'Definition', category: 'basic' },
   { key: 'short_definition', label: 'Short Definition', category: 'basic' },
+  { key: 'classifier_guidance', label: 'Classifier Guidance', category: 'basic' },
   { key: 'flagged', label: 'Flagged', category: 'basic' },
   { key: 'flagged_reason', label: 'Flagged Reason', category: 'basic' },
   { key: 'verifiable', label: 'Verifiable', category: 'basic' },

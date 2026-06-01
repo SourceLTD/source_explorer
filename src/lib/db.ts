@@ -417,6 +417,7 @@ function transformToGraphNodeWithContext(entry: any): GraphNode {
       code: conceptData.code,
       definition: conceptData.definition,
       short_definition: conceptData.short_definition,
+      classifier_guidance: conceptData.classifier_guidance,
       createdAt: conceptData.created_at,
       updatedAt: conceptData.updated_at,
       properties: (conceptData.properties ?? []).map((role: any) => ({
@@ -838,6 +839,7 @@ export async function getPaginatedConcepts(
     label: concept.label,
     definition: concept.definition,
     short_definition: concept.short_definition,
+    classifier_guidance: concept.classifier_guidance,
     code: concept.code,
     flagged: concept.flagged ?? undefined,
     flaggedReason: concept.flagged_reason ?? undefined,

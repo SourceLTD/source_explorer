@@ -26,6 +26,7 @@ function buildStructuredConceptData(conceptRecord: {
   label: string;
   definition?: string | null;
   short_definition?: string | null;
+  classifier_guidance?: string | null;
   properties?: Array<{
     id: bigint;
     description: string | null;
@@ -93,6 +94,7 @@ function buildStructuredConceptData(conceptRecord: {
     'concept.label': conceptRecord.label,
     'concept.definition': conceptRecord.definition,
     'concept.short_definition': conceptRecord.short_definition,
+    'concept.classifier_guidance': conceptRecord.classifier_guidance,
     'concept.properties': roles.map(fr => {
       const examples = fr.examples.length > 0 ? fr.examples.join(', ') : '';
       return `**${fr.type}**: ${fr.description}${examples ? ` (e.g. ${examples})` : ''}${fr.label ? `; ${fr.label}` : ''}`;
@@ -106,6 +108,7 @@ function buildStructuredConceptData(conceptRecord: {
     label: conceptRecord.label,
     definition: conceptRecord.definition,
     short_definition: conceptRecord.short_definition,
+    classifier_guidance: conceptRecord.classifier_guidance,
     roles,
     lexical_units,
   };
@@ -257,6 +260,7 @@ async function fetchEntriesByIds(targetType: JobTargetType, ids: string[]): Prom
           label: true,
           definition: true,
           short_definition: true,
+          classifier_guidance: true,
           flagged: true,
           flagged_reason: true,
           verifiable: true,
@@ -316,6 +320,7 @@ async function fetchEntriesByIds(targetType: JobTargetType, ids: string[]): Prom
           label: true,
           definition: true,
           short_definition: true,
+          classifier_guidance: true,
           flagged: true,
           flagged_reason: true,
           verifiable: true,
@@ -383,6 +388,7 @@ async function fetchEntriesByIds(targetType: JobTargetType, ids: string[]): Prom
           label: record.label,
           definition: record.definition,
           short_definition: record.short_definition,
+          classifier_guidance: record.classifier_guidance,
           flagged: record.flagged,
           flagged_reason: record.flagged_reason,
           verifiable: record.verifiable,
@@ -428,6 +434,7 @@ async function fetchEntriesByIds(targetType: JobTargetType, ids: string[]): Prom
                           label: true,
                           definition: true,
                           short_definition: true,
+                          classifier_guidance: true,
                           properties: {
                             select: {
                               id: true,
@@ -540,6 +547,7 @@ async function fetchEntriesByConceptIds(
         label: true,
         definition: true,
         short_definition: true,
+        classifier_guidance: true,
         flagged: true,
         flagged_reason: true,
         verifiable: true,
@@ -601,6 +609,7 @@ async function fetchEntriesByConceptIds(
         label: true,
         definition: true,
         short_definition: true,
+        classifier_guidance: true,
         flagged: true,
         flagged_reason: true,
         verifiable: true,
@@ -666,6 +675,7 @@ async function fetchEntriesByConceptIds(
         label: concept.label,
         definition: concept.definition,
         short_definition: concept.short_definition,
+        classifier_guidance: concept.classifier_guidance,
         flagged: concept.flagged,
         flagged_reason: concept.flagged_reason,
         verifiable: concept.verifiable,
@@ -759,6 +769,7 @@ async function fetchEntriesByFilters(
         label: true,
         definition: true,
         short_definition: true,
+        classifier_guidance: true,
         flagged: true,
         flagged_reason: true,
         verifiable: true,
@@ -813,6 +824,7 @@ async function fetchEntriesByFilters(
         label: record.label,
         definition: record.definition,
         short_definition: record.short_definition,
+        classifier_guidance: record.classifier_guidance,
         flagged: record.flagged,
         flagged_reason: record.flagged_reason,
         verifiable: record.verifiable,
@@ -862,6 +874,7 @@ async function fetchEntriesByFilters(
                       label: true,
                       definition: true,
                       short_definition: true,
+                      classifier_guidance: true,
                       properties: {
                         select: {
                           id: true,

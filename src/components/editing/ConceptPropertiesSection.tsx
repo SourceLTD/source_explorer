@@ -89,6 +89,8 @@ interface ConceptPropertiesSectionProps {
    * single-field text editor since the value is binary.
    */
   onToggleDisableHealthcheck?: (next: boolean) => Promise<void> | void;
+  /** Open the classifier-guidance modal (only shown when concept has classifier_guidance). */
+  onShowClassifierGuidance?: () => void;
 }
 
 export function ConceptPropertiesSection({
@@ -104,6 +106,7 @@ export function ConceptPropertiesSection({
   isSaving,
   pending,
   onToggleDisableHealthcheck,
+  onShowClassifierGuidance,
 }: ConceptPropertiesSectionProps) {
   const [togglingHealthcheck, setTogglingHealthcheck] = React.useState(false);
   const hasPendingField = (fieldName: string) => {
@@ -282,6 +285,21 @@ export function ConceptPropertiesSection({
           </PendingFieldIndicator>
         )}
       </div>
+
+      {/* Classifier Guidance (read-only, opens modal) */}
+      {concept.classifier_guidance && onShowClassifierGuidance && (
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm font-medium text-gray-700">Classifier Guidance</h3>
+          </div>
+          <button
+            onClick={onShowClassifierGuidance}
+            className="w-full text-left px-3 py-2 text-sm text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-colors cursor-pointer"
+          >
+            View classifier guidance &rarr;
+          </button>
+        </div>
+      )}
 
       {/* Subtype */}
       <div>

@@ -99,6 +99,59 @@ export async function GET(
       );
     }
 
+    // Load filler constraints for this concept's properties so the UI can
+    // show what kinds of values (primitive types or referenced concepts)
+    // each property accepts. Deduped by (filler_type_id, concept_id) since
+    // duplicate constraint rows are common in the DB.
+    const propertyIds = frame.properties.map(p => p.id);
+    const fillerConstraintRows = propertyIds.length > 0
+      ? await prisma.property_filler_constraints.findMany({
+          where: { property_id: { in: propertyIds } },
+          include: {
+            filler_types: { select: { id: true, label: true } },
+            concepts: { select: { id: true, label: true } },
+          },
+        })
+      : [];
+
+    const fillerConstraintsByProperty = new Map<string, Array<{
+      filler_type_id: number;
+      filler_type_label: string;
+      concept_id: string | null;
+      concept_label: string | null;
+    }>>();
+    for (const row of fillerConstraintRows) {
+      const key = row.property_id.toString();
+      const list = fillerConstraintsByProperty.get(key) ?? [];
+      list.push({
+        filler_type_id: row.filler_types.id,
+        filler_type_label: row.filler_types.label,
+        concept_id: row.concept_id ? row.concept_id.toString() : null,
+        concept_label: row.concepts?.label ?? null,
+      });
+      fillerConstraintsByProperty.set(key, list);
+    }
+    for (const [key, list] of fillerConstraintsByProperty) {
+      const seen = new Set<string>();
+      const deduped: typeof list = [];
+      for (const item of list) {
+        const dedupeKey = `${item.filler_type_id}|${item.concept_id ?? ''}`;
+        if (seen.has(dedupeKey)) continue;
+        seen.add(dedupeKey);
+        deduped.push(item);
+      }
+      // Concept fillers first (more informative), then primitive types alphabetically.
+      deduped.sort((a, b) => {
+        if (a.concept_id && !b.concept_id) return -1;
+        if (!a.concept_id && b.concept_id) return 1;
+        if (a.concept_id && b.concept_id) {
+          return (a.concept_label ?? '').localeCompare(b.concept_label ?? '');
+        }
+        return a.filler_type_label.localeCompare(b.filler_type_label);
+      });
+      fillerConstraintsByProperty.set(key, deduped);
+    }
+
     const graphNode = {
       id: frame.id.toString(),
       numericId: frame.id.toString(),
@@ -106,6 +159,7 @@ export async function GET(
       label: frame.label,
       gloss: frame.definition,
       short_definition: frame.short_definition,
+      classifier_guidance: frame.classifier_guidance,
       archetype: frame.archetype,
       subtype: frame.subtype,
       state_kind: frame.state_kind,
@@ -124,6 +178,7 @@ export async function GET(
         examples: role.examples,
         label: role.label,
         fillers: role.fillers,
+        filler_constraints: fillerConstraintsByProperty.get(role.id.toString()) ?? [],
       })),
       senses: frame.sense_concepts.map(sfLink => {
         const sense = sfLink.senses;

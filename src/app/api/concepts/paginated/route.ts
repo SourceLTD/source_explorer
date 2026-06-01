@@ -380,6 +380,7 @@ export async function GET(request: NextRequest) {
         code: concept.code,
         definition: concept.definition,
         short_definition: concept.short_definition,
+        classifier_guidance: concept.classifier_guidance,
         flagged: concept.flagged ?? false,
         flaggedReason: concept.flagged_reason ?? undefined,
         verifiable: concept.verifiable ?? true,

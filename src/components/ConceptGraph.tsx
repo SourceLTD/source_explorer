@@ -6,6 +6,7 @@ import type { PendingRelationChange } from '@/lib/version-control';
 import ConceptMainNode, { CONCEPT_MAIN_NODE_FIXED_HEIGHT, calculateConceptNodeHeights } from './ConceptMainNode';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import PropertyMappingModal from './PropertyMappingModal';
+import ClassifierGuidanceModal from './ClassifierGuidanceModal';
 
 // Color scheme
 const currentNodeColor = '#3b82f6';
@@ -117,6 +118,7 @@ function ConceptGraphInner({ currentConcept, onConceptClick, onEditClick, onRepa
   const [reparentError, setReparentError] = useState<string | null>(null);
   const reparentInputRef = useRef<HTMLInputElement>(null);
   const [roleMappingModalOpen, setRoleMappingModalOpen] = useState(false);
+  const [classifierGuidanceModalOpen, setClassifierGuidanceModalOpen] = useState(false);
 
   const handleStateKindChange = useCallback(async (kind: StateKind | null) => {
     try {
@@ -1035,6 +1037,7 @@ function ConceptGraphInner({ currentConcept, onConceptClick, onEditClick, onRepa
                 setExpandedSenses(newSet);
               }}
               onRoleMappingClick={() => setRoleMappingModalOpen(true)}
+              onClassifierGuidanceClick={() => setClassifierGuidanceModalOpen(true)}
               hasParent={parentRels.length > 0}
               onStateKindChange={handleStateKindChange}
             />
@@ -1116,6 +1119,14 @@ function ConceptGraphInner({ currentConcept, onConceptClick, onEditClick, onRepa
           childId={currentConcept.id}
           childLabel={currentConcept.label}
           onClose={() => setRoleMappingModalOpen(false)}
+        />
+      )}
+
+      {classifierGuidanceModalOpen && currentConcept.classifier_guidance && (
+        <ClassifierGuidanceModal
+          label={currentConcept.label}
+          guidance={currentConcept.classifier_guidance}
+          onClose={() => setClassifierGuidanceModalOpen(false)}
         />
       )}
     </div>

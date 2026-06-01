@@ -180,6 +180,7 @@ export interface Concept {
   label: string;
   definition?: string | null;
   short_definition?: string | null;
+  classifier_guidance?: string | null;
   code?: string | null;
   flagged?: boolean;
   flaggedReason?: string;
@@ -667,6 +668,19 @@ export interface WithPendingInfo<T> {
 
 export type ConceptRelationType = 'parent_of';
 
+/**
+ * Allowed filler for a concept's property — either a primitive type
+ * (`string`, `number`, ...) or a reference to a specific concept whose
+ * instances may fill the slot. Derived from `property_filler_constraints`
+ * joined with `filler_types` and the referenced `concepts` row.
+ */
+export interface FillerConstraint {
+  filler_type_id: number;
+  filler_type_label: string;
+  concept_id: string | null;
+  concept_label: string | null;
+}
+
 export interface ConceptGraphProperty {
   id: string;
   concept_id: string;
@@ -676,6 +690,7 @@ export interface ConceptGraphProperty {
   examples: string[];
   label: string | null;
   fillers?: unknown;
+  filler_constraints?: FillerConstraint[];
 }
 
 export interface ConceptGraphLexicalUnit {
@@ -740,6 +755,7 @@ export interface ConceptGraphNode {
   label: string;
   gloss?: string | null;
   short_definition?: string | null;
+  classifier_guidance?: string | null;
   properties: ConceptGraphProperty[];
   // Senses attached to this concept (senses-first view); each sense carries its LUs.
   senses: ConceptGraphSense[];
@@ -816,6 +832,7 @@ export interface ConceptRecipeData {
     label: string;
     definition?: string | null;
     short_definition?: string | null;
+    classifier_guidance?: string | null;
     flagged: boolean | null;
     flagged_reason: string | null;
     archetype?: string | null;

@@ -867,6 +867,7 @@ model concepts {
   label                                                           String
   definition                                                      String?
   short_definition                                                String?
+  classifier_guidance                                             String?
   created_at                                                      DateTime                      @default(now())
   updated_at                                                      DateTime                      @default(now())
   id                                                              BigInt                        @id @default(autoincrement())
