@@ -2,6 +2,8 @@
 
 import React, { useEffect } from 'react';
 import { XMarkIcon } from '@heroicons/react/24/outline';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface ClassifierGuidanceModalProps {
   label: string;
@@ -51,9 +53,11 @@ export default function ClassifierGuidanceModal({
 
         {/* Body */}
         <main className="flex-1 overflow-y-auto p-5">
-          <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
-            {guidance}
-          </p>
+          <div className="chat-markdown prose prose-sm max-w-none text-sm text-gray-700 leading-relaxed">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {guidance}
+            </ReactMarkdown>
+          </div>
         </main>
       </div>
     </div>
