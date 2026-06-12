@@ -9,7 +9,7 @@ import {
   XCircleIcon,
 } from '@heroicons/react/24/outline';
 import LoadingSpinner from '@/components/LoadingSpinner';
-import type { RevisionChain, RevisionHistoryEntry } from '@/lib/version-control/types';
+import type { AlternativeGroup, AlternativeEntry } from '@/lib/version-control/types';
 
 interface RevisionHistoryProps {
   changesetId: string;
@@ -18,7 +18,7 @@ interface RevisionHistoryProps {
 }
 
 export function RevisionHistory({ changesetId, isOpen, onClose }: RevisionHistoryProps) {
-  const [chain, setChain] = useState<RevisionChain | null>(null);
+  const [chain, setChain] = useState<AlternativeGroup | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expandedEntry, setExpandedEntry] = useState<string | null>(null);
@@ -30,12 +30,12 @@ export function RevisionHistory({ changesetId, isOpen, onClose }: RevisionHistor
       const response = await fetch(`/api/changesets/${changesetId}/history`);
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error || `Failed to fetch history (${response.status})`);
+        throw new Error(errData.error || `Failed to fetch alternatives (${response.status})`);
       }
-      const data: RevisionChain = await response.json();
+      const data: AlternativeGroup = await response.json();
       setChain(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch revision history');
+      setError(err instanceof Error ? err.message : 'Failed to fetch alternatives');
     } finally {
       setLoading(false);
     }
@@ -54,10 +54,10 @@ export function RevisionHistory({ changesetId, isOpen, onClose }: RevisionHistor
         <header className="flex items-center justify-between px-5 py-4 border-b border-gray-200 shrink-0">
           <div className="flex items-center gap-2">
             <ClockIcon className="w-5 h-5 text-gray-600" />
-            <h2 className="text-base font-semibold text-gray-900">Revision History</h2>
+            <h2 className="text-base font-semibold text-gray-900">Alternatives</h2>
             {chain && (
               <span className="text-xs text-gray-500">
-                ({chain.total_revisions} version{chain.total_revisions === 1 ? '' : 's'})
+                ({chain.total_alternatives} alternative{chain.total_alternatives === 1 ? '' : 's'})
               </span>
             )}
           </div>
@@ -87,13 +87,14 @@ export function RevisionHistory({ changesetId, isOpen, onClose }: RevisionHistor
             <div className="relative">
               <div className="absolute left-3 top-4 bottom-4 w-px bg-gray-200" />
               <ul className="space-y-4 relative">
-                {chain.entries.map((entry, idx) => (
+                {chain.alternatives.map((entry, idx) => (
                   <RevisionEntryItem
                     key={entry.id}
                     entry={entry}
-                    isLatest={idx === chain.entries.length - 1}
-                    isCurrent={entry.id === chain.current_id}
+                    isLatest={idx === chain.alternatives.length - 1}
+                    isCurrent={entry.id === chain.selected_changeset_id}
                     isExpanded={expandedEntry === entry.id}
+                    ordinal={idx + 1}
                     onToggle={() =>
                       setExpandedEntry((prev) => (prev === entry.id ? null : entry.id))
                     }
@@ -109,10 +110,11 @@ export function RevisionHistory({ changesetId, isOpen, onClose }: RevisionHistor
 }
 
 interface RevisionEntryItemProps {
-  entry: RevisionHistoryEntry;
+  entry: AlternativeEntry;
   isLatest: boolean;
   isCurrent: boolean;
   isExpanded: boolean;
+  ordinal: number;
   onToggle: () => void;
 }
 
@@ -121,6 +123,7 @@ function RevisionEntryItem({
   isLatest,
   isCurrent,
   isExpanded,
+  ordinal,
   onToggle,
 }: RevisionEntryItemProps) {
   const statusIcon = entry.status === 'discarded' ? (
@@ -155,17 +158,12 @@ function RevisionEntryItem({
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
             <span className="text-xs font-bold text-gray-700">
-              Rev {entry.revision_number}
+              Alternative {ordinal}
             </span>
             {statusIcon}
-            {isLatest && (
-              <span className="text-[10px] font-medium text-indigo-600 bg-indigo-100 px-1.5 py-0.5 rounded">
-                Latest
-              </span>
-            )}
-            {isCurrent && !isLatest && (
-              <span className="text-[10px] font-medium text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded">
-                Viewing
+            {isCurrent && (
+              <span className="text-[10px] font-medium text-green-700 bg-green-100 px-1.5 py-0.5 rounded">
+                Selected
               </span>
             )}
           </div>
@@ -179,11 +177,11 @@ function RevisionEntryItem({
           </span>
         </div>
 
-        {entry.revision_prompt && (
+        {entry.label && (
           <div className="mt-2 flex items-start gap-1.5">
             <ChatBubbleLeftIcon className="w-3.5 h-3.5 text-gray-400 mt-0.5 shrink-0" />
             <p className="text-xs text-gray-600 line-clamp-2">
-              {entry.revision_prompt}
+              {entry.label}
             </p>
           </div>
         )}

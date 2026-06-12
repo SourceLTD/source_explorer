@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const [parentFrame, childFrame, mappings] = await Promise.all([
+    const [parentConcept, childConcept, mappings] = await Promise.all([
       prisma.concepts.findUnique({
         where: { id: BigInt(parentId) },
         select: { id: true, label: true },
@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
       }),
     ]);
 
-    if (!parentFrame || !childFrame) {
+    if (!parentConcept || !childConcept) {
       return NextResponse.json(
         { error: 'Parent or child concept not found' },
         { status: 404 }
@@ -62,12 +62,12 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       parent: {
-        id: parentFrame.id.toString(),
-        label: parentFrame.label,
+        id: parentConcept.id.toString(),
+        label: parentConcept.label,
       },
       child: {
-        id: childFrame.id.toString(),
-        label: childFrame.label,
+        id: childConcept.id.toString(),
+        label: childConcept.label,
       },
       mappings: mappings.map(m => ({
         id: m.id.toString(),

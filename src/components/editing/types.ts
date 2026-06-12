@@ -28,8 +28,6 @@ export interface EditableConceptProperty {
   examples: string[];
 }
 
-/** @deprecated Use EditableConceptProperty instead */
-export type EditableFrameRole = EditableConceptProperty;
 
 export interface FieldEditorProps {
   onSave: () => void;
@@ -61,5 +59,3 @@ export interface ConceptOption {
   code?: string | null;
 }
 
-/** @deprecated Use ConceptOption instead */
-export type FrameOption = ConceptOption;

@@ -1,12 +1,14 @@
 'use client';
 
 import { useEffect, useState, useMemo, useCallback } from 'react';
+import Link from 'next/link';
 import {
   CheckCircleIcon,
   XCircleIcon,
   ExclamationTriangleIcon,
   ChevronDownIcon,
   ChevronRightIcon,
+  ChevronLeftIcon,
   ArrowsPointingInIcon,
   ArrowsPointingOutIcon,
   ArrowRightCircleIcon,
@@ -14,6 +16,8 @@ import {
   XMarkIcon,
   Squares2X2Icon,
   TableCellsIcon,
+  PlusCircleIcon,
+  DocumentTextIcon,
 } from '@heroicons/react/24/outline';
 import type {
   IssueChangePlanSummary,
@@ -22,8 +26,10 @@ import type {
 import LoadingSpinner from '@/components/LoadingSpinner';
 import { RevisionModal } from '@/components/editing/RevisionModal';
 import { RevisionNavigator } from '@/components/editing/RevisionNavigator';
-import type { RevisionHistoryEntry } from '@/lib/version-control/types';
-import DAGMoveVisualization from '@/components/pending/context/DAGMoveVisualization';
+import type { AlternativeEntry } from '@/lib/version-control/types';
+import DAGMoveVisualization, {
+  DAGPlacementVisualization,
+} from '@/components/pending/context/DAGMoveVisualization';
 import ConceptRefPopover from '@/components/pending/context/ConceptRefPopover';
 import ConceptInfoCard, {
   type ExtraSense,
@@ -41,7 +47,7 @@ import {
  * Plan kinds (split, merge, move, attach, detach) each ship with a
  * tiny `PlanRenderer` that knows how to draw the most important
  * visual diff for that kind ("Source.A → Target.B" for a move,
- * "Frame X = Y + Z" for a split, etc.). Unknown / forward-compatible
+ * "Concept X = Y + Z" for a split, etc.). Unknown / forward-compatible
  * kinds fall back to a neutral N-changeset summary via `assertNever`.
  *
  * The card itself owns the commit / discard CTA and the conflict
@@ -50,12 +56,28 @@ import {
  */
 export interface PlanCardProps {
   plan: IssueChangePlanSummary;
-  /** Called after a successful commit so the parent can refetch. */
-  onCommitted?: () => void;
+  /**
+   * Concept the plan edits, used as the card title so it reads by subject
+   * rather than repeating the action type (already shown in the rail + pane
+   * header). Falls back to the plan-kind label when absent.
+   */
+  subjectLabel?: string;
+  /**
+   * Called after a successful commit with the ids of every plan in the
+   * resolved alternative group (the committed plan plus any siblings the
+   * server discarded). The parent removes them locally so the card vanishes
+   * without a disruptive full-list refetch.
+   */
+  onCommitted?: (planIds: string[]) => void;
   /** Called after a successful discard so the parent can refetch. */
   onDiscarded?: () => void;
   /** Called after a successful revision so the parent can refetch. */
   onRevised?: () => void;
+  /**
+   * Called when a commit returns 409 (conflict report persisted). The parent
+   * refetches so the card reloads and shows the conflict report.
+   */
+  onConflict?: () => void;
 }
 
 const PLAN_KIND_LABELS: Record<string, string> = {
@@ -66,6 +88,7 @@ const PLAN_KIND_LABELS: Record<string, string> = {
   move_frame_parent: 'Reparent concept',
   detach_parent_relation: 'Detach parent relation',
   upsert_role_mappings: 'Upsert role mappings',
+  ingest_new_tbox_concept: 'Add new concept',
 };
 
 const PLAN_STATUS_BADGE: Record<string, string> = {
@@ -93,6 +116,8 @@ function planKindIcon(kind: string): React.ReactNode {
       return <XMarkIcon className="w-4 h-4" />;
     case 'upsert_role_mappings':
       return <ArrowPathIcon className="w-4 h-4" />;
+    case 'ingest_new_tbox_concept':
+      return <PlusCircleIcon className="w-4 h-4" />;
     default:
       return <Squares2X2Icon className="w-4 h-4" />;
   }
@@ -166,7 +191,7 @@ function operationBadge(op: string): string {
  * summary (where the sense currently lives) so we don't need a
  * dedicated sense-fetch endpoint.
  */
-function MoveFrameSensePanel({
+function MoveConceptSensePanel({
   senseId,
   senseLabel,
   fromId,
@@ -236,33 +261,33 @@ function MoveFrameSensePanel({
  * to the bare `fallbackLabel`.
  */
 function useMovingSense(
-  parentFrameId: string | null,
+  parentConceptId: string | null,
   senseId: string | null,
 ): ConceptSenseSummary | null {
   const [sense, setSense] = useState<ConceptSenseSummary | null>(() => {
-    if (!parentFrameId || !senseId) return null;
-    const cached = getCachedConceptSummary(parentFrameId);
+    if (!parentConceptId || !senseId) return null;
+    const cached = getCachedConceptSummary(parentConceptId);
     return findSense(cached?.senses, senseId);
   });
 
   useEffect(() => {
-    if (!parentFrameId || !senseId) {
+    if (!parentConceptId || !senseId) {
       setSense(null);
       return;
     }
-    const cached = getCachedConceptSummary(parentFrameId);
+    const cached = getCachedConceptSummary(parentConceptId);
     const cachedSense = findSense(cached?.senses, senseId);
     if (cachedSense) {
       setSense(cachedSense);
       return;
     }
     const ac = new AbortController();
-    void fetchConceptSummary(parentFrameId, ac.signal).then((summary) => {
+    void fetchConceptSummary(parentConceptId, ac.signal).then((summary) => {
       if (ac.signal.aborted) return;
       setSense(findSense(summary?.senses, senseId));
     });
     return () => ac.abort();
-  }, [parentFrameId, senseId]);
+  }, [parentConceptId, senseId]);
 
   return sense;
 }
@@ -277,6 +302,92 @@ function findSense(
 }
 
 /**
+ * Slim provenance/background for an ingested concept: where it came
+ * from (the paper) and the reference info we used to understand the
+ * concept and its placement (UMLS CUI + the imagine/match reasoning).
+ */
+function ConceptProvenance({
+  source,
+  cuis,
+}: {
+  source: Record<string, unknown> | undefined;
+  cuis: string[];
+}) {
+  const sourceTextId = snapStr(source, 'source_text_id');
+  const sourceUri = snapStr(source, 'source_uri');
+  const placementNote =
+    snapStr(source, 'match_reasoning') ?? snapStr(source, 'imagined_reasoning');
+
+  const hasAnything = sourceTextId || cuis.length > 0 || placementNote;
+  if (!hasAnything) return null;
+
+  return (
+    <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 space-y-2 text-xs">
+      <header className="flex items-center gap-1 font-bold uppercase tracking-wider text-gray-500">
+        <DocumentTextIcon className="w-3.5 h-3.5" />
+        Provenance &amp; background
+      </header>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-gray-400">From paper</span>
+        {sourceTextId ? (
+          <Link
+            href={`/claims/sources?source=${encodeURIComponent(sourceTextId)}`}
+            className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-blue-200 bg-white text-blue-800 hover:bg-blue-50"
+          >
+            {sourceUri || `#${sourceTextId}`}
+          </Link>
+        ) : (
+          <span className="inline-flex items-center px-2 py-1 rounded-md border border-gray-200 bg-white text-gray-500">
+            unknown
+          </span>
+        )}
+      </div>
+
+      {cuis.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-gray-400">UMLS</span>
+          {cuis.map((cui) => (
+            <span
+              key={cui}
+              className="inline-flex items-center px-2 py-1 rounded-md border border-indigo-200 bg-white font-mono text-indigo-800"
+            >
+              {cui}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {placementNote && (
+        <p className="text-gray-600 leading-relaxed">
+          <span className="font-semibold text-gray-500">Placement: </span>
+          {placementNote}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** Pulls UMLS CUIs out of the plan metadata (external_ids + evidence). */
+function extractCuis(md: Record<string, unknown>): string[] {
+  const out = new Set<string>();
+  const unsupported = md.unsupported_operations as Record<string, unknown> | undefined;
+  const externalIds = Array.isArray(unsupported?.external_ids)
+    ? (unsupported?.external_ids as Array<Record<string, unknown>>)
+    : [];
+  for (const ext of externalIds) {
+    if (snapStr(ext, 'vocabulary') === 'umls_cui') {
+      const cui = snapStr(ext, 'external_id');
+      if (cui) out.add(cui);
+    }
+  }
+  const source = md.source as Record<string, unknown> | undefined;
+  const sourceCui = snapStr(source, 'umls_cui');
+  if (sourceCui) out.add(sourceCui);
+  return Array.from(out);
+}
+
+/**
  * Per-plan-kind renderer. We keep these tiny and rendering-only —
  * they read from the plan's `metadata` (filled in by the runner) and
  * fall back to a generic per-changeset list when the runner didn't
@@ -286,6 +397,68 @@ function PlanKindRenderer({ plan, metadataOverride }: { plan: IssueChangePlanSum
   const md = metadataOverride ?? plan.metadata ?? {};
 
   switch (plan.plan_kind) {
+    case 'ingest_new_tbox_concept': {
+      const proposed = md.proposed_concept as Record<string, unknown> | undefined;
+      const source = md.source as Record<string, unknown> | undefined;
+      const label = snapStr(proposed, 'label') ?? plan.summary ?? 'Proposed concept';
+      const archetype = snapStr(proposed, 'archetype') ?? 'Concept';
+      const parentId = snapStr(proposed, 'parent_concept_id');
+      const parentLabel = snapStr(proposed, 'parent_label') ?? 'Matched parent';
+      const definition =
+        snapStr(proposed, 'definition') ??
+        snapStr(proposed, 'short_definition') ??
+        snapStr(source, 'imagined_definition_gloss');
+      const cuis = extractCuis(md);
+      const requiresManualFollowup = md.requires_manual_followup === true;
+
+      return (
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2 text-sm text-gray-700">
+            <span className="inline-flex items-center gap-1 font-mono px-2 py-0.5 rounded bg-green-50 border border-green-200 text-green-800">
+              {label}
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-green-700">
+                new {archetype}
+              </span>
+            </span>
+            <span className="text-gray-400">under</span>
+            {parentId ? (
+              <FrameChip
+                conceptId={parentId}
+                label={parentLabel}
+                className="font-mono px-2 py-0.5 rounded bg-blue-50 border border-blue-200 text-blue-800"
+              />
+            ) : (
+              <span className="font-mono px-2 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-800 italic">
+                no parent staged
+              </span>
+            )}
+            {requiresManualFollowup && (
+              <span className="inline-flex items-center px-2 py-0.5 rounded border border-amber-200 bg-amber-50 text-amber-800 text-[10px] font-semibold uppercase tracking-wide">
+                Manual follow-up
+              </span>
+            )}
+          </div>
+
+          {/* Proposed placement — reuses the reparent DAG so the new node
+              and its proposed parentage are shown in the familiar layout. */}
+          <DAGPlacementVisualization
+            parentId={parentId}
+            parentLabel={parentId ? parentLabel : null}
+            conceptLabel={label}
+            conceptDefinition={definition}
+            arrivingLabel={`New ${archetype}`}
+          />
+
+          {!parentId && (
+            <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1">
+              No matched parent is staged; reviewer placement is required.
+            </div>
+          )}
+
+          <ConceptProvenance source={source} cuis={cuis} />
+        </div>
+      );
+    }
     case 'split_frame': {
       // Metadata (from `normaliseSplitFrame` in the runner):
       //   source_frame: { id, label }
@@ -738,7 +911,7 @@ function PlanKindRenderer({ plan, metadataOverride }: { plan: IssueChangePlanSum
               className="font-mono px-2 py-0.5 rounded bg-green-50 border border-green-200 text-green-800"
             />
           </div>
-          <MoveFrameSensePanel
+          <MoveConceptSensePanel
             senseId={senseId}
             senseLabel={senseLabel}
             fromId={fromId}
@@ -1087,34 +1260,80 @@ function readConflictReport(
   return { status, attempted, committed, failed_at_changeset, errors };
 }
 
-export default function PlanCard({ plan, onCommitted, onDiscarded, onRevised }: PlanCardProps) {
+export default function PlanCard({ plan, subjectLabel, onCommitted, onDiscarded, onRevised, onConflict }: PlanCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [busy, setBusy] = useState<'commit' | 'discard' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [revisionModalOpen, setRevisionModalOpen] = useState(false);
   const [revising, setRevising] = useState(false);
-  const [activeRevision, setActiveRevision] = useState<RevisionHistoryEntry | null>(null);
+  const [activeRevision, setActiveRevision] = useState<AlternativeEntry | null>(null);
 
-  const conflict = useMemo(() => readConflictReport(plan.conflict_report), [plan.conflict_report]);
-  const isPending = plan.status === 'pending';
-  const statusClass = PLAN_STATUS_BADGE[plan.status] ?? PLAN_STATUS_BADGE.pending;
+  // Plan alternatives: the full set of coexisting plans for this logical
+  // change (this plan + its siblings). When >1, the card shows a picker so the
+  // reviewer can preview each, select a winner, and commit the selected one.
+  const planAlternatives = useMemo<IssueChangePlanSummary[]>(() => {
+    const sibs = plan.alternatives ?? [];
+    if (sibs.length === 0) return [plan];
+    // Order by id for a stable tab order, representative first is not required.
+    const all = [plan, ...sibs];
+    return all.sort((a, b) => {
+      const an = BigInt(a.id);
+      const bn = BigInt(b.id);
+      return an < bn ? -1 : an > bn ? 1 : 0;
+    });
+  }, [plan]);
+
+  const hasAlternatives = planAlternatives.length > 1;
+  const selectedPlanId = plan.selected_plan_id ?? null;
+
+  // Which alternative is currently being previewed. Defaults to the selected
+  // winner, else this card's own plan.
+  const [activePlanId, setActivePlanId] = useState<string>(
+    () => selectedPlanId ?? plan.id,
+  );
+
+  // Keep the active tab valid if the alternative set changes after a refetch.
+  useEffect(() => {
+    if (!planAlternatives.some((p) => p.id === activePlanId)) {
+      setActivePlanId(selectedPlanId ?? plan.id);
+    }
+  }, [planAlternatives, activePlanId, selectedPlanId, plan.id]);
+
+  const activePlan = useMemo<IssueChangePlanSummary>(
+    () => planAlternatives.find((p) => p.id === activePlanId) ?? plan,
+    [planAlternatives, activePlanId, plan],
+  );
+
+  // Carousel position of the previewed alternative within the group.
+  const activeIndex = useMemo(
+    () => Math.max(0, planAlternatives.findIndex((p) => p.id === activePlanId)),
+    [planAlternatives, activePlanId],
+  );
+  const goToAlternative = (idx: number) => {
+    const clamped = Math.max(0, Math.min(planAlternatives.length - 1, idx));
+    setActivePlanId(planAlternatives[clamped].id);
+  };
+
+  const conflict = useMemo(() => readConflictReport(activePlan.conflict_report), [activePlan.conflict_report]);
+  const isPending = activePlan.status === 'pending';
+  const statusClass = PLAN_STATUS_BADGE[activePlan.status] ?? PLAN_STATUS_BADGE.pending;
 
   // Find the primary changeset for revision purposes.
   // For reparent plans, prefer the CREATE changeset (defines the new parent).
   // Otherwise fall back to the one with the highest revision_number.
   const primaryChangeset = useMemo(() => {
-    if (!plan.changesets.length) return null;
-    if (plan.plan_kind === 'move_frame_parent') {
-      const createCs = plan.changesets.find(cs => cs.operation === 'create');
+    if (!activePlan.changesets.length) return null;
+    if (activePlan.plan_kind === 'move_frame_parent') {
+      const createCs = activePlan.changesets.find(cs => cs.operation === 'create');
       if (createCs) return createCs;
     }
-    return plan.changesets.reduce((best, cs) =>
+    return activePlan.changesets.reduce((best, cs) =>
       (cs.revision_number ?? 1) > (best.revision_number ?? 1) ? cs : best
-    , plan.changesets[0]);
-  }, [plan.changesets, plan.plan_kind]);
+    , activePlan.changesets[0]);
+  }, [activePlan.changesets, activePlan.plan_kind]);
 
   const effectiveMetadata = useMemo(() => {
-    if (!activeRevision || !activeRevision.field_changes.length) return plan.metadata;
+    if (!activeRevision || !activeRevision.field_changes.length) return activePlan.metadata;
     let newParentId: string | null = null;
     for (const fc of activeRevision.field_changes) {
       // In frame_relations, source_id = parent, target_id = child.
@@ -1123,30 +1342,58 @@ export default function PlanCard({ plan, onCommitted, onDiscarded, onRevised }: 
         newParentId = String(fc.new_value);
       }
     }
-    if (!newParentId) return plan.metadata;
-    const existingNewParent = (plan.metadata?.new_parent as Record<string, unknown>) ?? {};
+    if (!newParentId) return activePlan.metadata;
+    const existingNewParent = (activePlan.metadata?.new_parent as Record<string, unknown>) ?? {};
     return {
-      ...plan.metadata,
+      ...activePlan.metadata,
       new_parent: { ...existingNewParent, id: newParentId, label: null },
     };
-  }, [plan.metadata, activeRevision]);
+  }, [activePlan.metadata, activeRevision]);
+
 
   const handleCommit = async () => {
     if (!isPending) return;
+    // Plan alternatives: commit the plan currently being viewed. If it isn't
+    // already the selected winner, select it first so the server-side
+    // select-then-commit guard is satisfied and siblings get discarded.
+    const targetPlanId = activePlan.id;
     setBusy('commit');
     setError(null);
     try {
-      const res = await fetch(`/api/change-plans/${plan.id}/commit`, { method: 'POST' });
+      // Changeset-level alternatives: commit whatever option the carousel is
+      // showing. The previewed revision becomes the selected one (idempotent
+      // if it already is), so there's no separate "use this option" step.
+      if (activeRevision) {
+        const altRes = await fetch(`/api/changesets/${activeRevision.id}/select`, {
+          method: 'POST',
+        });
+        if (!altRes.ok) {
+          const body = await altRes.json().catch(() => ({}));
+          throw new Error(body?.error ?? `Failed to select alternative (${altRes.status})`);
+        }
+      }
+      if (hasAlternatives && selectedPlanId !== targetPlanId) {
+        const selRes = await fetch(`/api/change-plans/${targetPlanId}/select`, {
+          method: 'POST',
+        });
+        if (!selRes.ok) {
+          const body = await selRes.json().catch(() => ({}));
+          throw new Error(body?.error ?? `Failed to select alternative (${selRes.status})`);
+        }
+      }
+      const res = await fetch(`/api/change-plans/${targetPlanId}/commit`, { method: 'POST' });
       if (res.status === 409) {
         // Conflict report is now persisted on the plan; refetching shows it.
-        onCommitted?.();
+        onConflict?.();
         return;
       }
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body?.error ?? `Failed to commit plan (${res.status})`);
       }
-      onCommitted?.();
+      // Committing resolves the whole alternative group: the chosen plan plus
+      // any siblings the server discarded. Remove them all locally.
+      onCommitted?.(planAlternatives.map((p) => p.id));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to commit plan');
     } finally {
@@ -1156,13 +1403,14 @@ export default function PlanCard({ plan, onCommitted, onDiscarded, onRevised }: 
 
   const handleDiscard = async () => {
     if (!isPending) return;
-    if (!confirm(`Discard plan #${plan.id}? All ${plan.changesets.length} linked changesets will be discarded.`)) {
+    const verb = hasAlternatives ? 'this alternative' : 'this plan';
+    if (!confirm(`Discard ${verb} #${activePlan.id}? All ${activePlan.changesets.length} linked changesets will be discarded.`)) {
       return;
     }
     setBusy('discard');
     setError(null);
     try {
-      const res = await fetch(`/api/change-plans/${plan.id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/change-plans/${activePlan.id}`, { method: 'DELETE' });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body?.error ?? `Failed to discard plan (${res.status})`);
@@ -1203,20 +1451,27 @@ export default function PlanCard({ plan, onCommitted, onDiscarded, onRevised }: 
       <header className="px-4 py-3 border-b border-gray-200 bg-gray-50 flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-gray-600">{planKindIcon(plan.plan_kind)}</span>
-            <h3 className="text-sm font-semibold text-gray-900">
-              {planKindLabel(plan.plan_kind)}
+            <span className="text-gray-600" title={planKindLabel(activePlan.plan_kind)}>
+              {planKindIcon(activePlan.plan_kind)}
+            </span>
+            <h3 className="text-sm font-semibold text-gray-900" title={planKindLabel(activePlan.plan_kind)}>
+              {subjectLabel ?? planKindLabel(activePlan.plan_kind)}
             </h3>
             <span
               className={`inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-medium capitalize ${statusClass}`}
             >
-              {plan.status}
+              {activePlan.status}
             </span>
-            <span className="text-xs text-gray-500 font-mono">#{plan.id}</span>
+            <span className="text-xs text-gray-500 font-mono">#{activePlan.id}</span>
             <span className="text-xs text-gray-500">
-              {plan.changesets.length} change
-              {plan.changesets.length === 1 ? '' : 's'}
+              {activePlan.changesets.length} change
+              {activePlan.changesets.length === 1 ? '' : 's'}
             </span>
+            {hasAlternatives && (
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full border border-indigo-200 bg-indigo-50 text-indigo-700 text-xs font-medium">
+                {planAlternatives.length} alternatives
+              </span>
+            )}
           </div>
         </div>
         {isPending && (
@@ -1227,15 +1482,15 @@ export default function PlanCard({ plan, onCommitted, onDiscarded, onRevised }: 
               className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-red-700 border border-red-200 rounded-md bg-white hover:bg-red-50 disabled:opacity-50"
             >
               {busy === 'discard' ? <LoadingSpinner size="sm" noPadding /> : <XCircleIcon className="w-4 h-4" />}
-              Discard
+              {hasAlternatives ? 'Discard alternative' : 'Discard'}
             </button>
             <button
               onClick={() => setRevisionModalOpen(true)}
               disabled={busy !== null || revising}
               className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-indigo-700 border border-indigo-200 rounded-md bg-white hover:bg-indigo-50 disabled:opacity-50"
             >
-              <ArrowPathIcon className={`w-4 h-4 ${revising ? 'animate-spin' : ''}`} />
-              {revising ? 'Revising...' : 'Revise'}
+              {revising ? <LoadingSpinner size="sm" noPadding /> : <PlusCircleIcon className="w-4 h-4" />}
+              {revising ? 'Adding...' : 'Add alternative'}
             </button>
             <button
               onClick={handleCommit}
@@ -1243,11 +1498,87 @@ export default function PlanCard({ plan, onCommitted, onDiscarded, onRevised }: 
               className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-white bg-emerald-600 rounded-md hover:bg-emerald-500 disabled:opacity-50"
             >
               {busy === 'commit' ? <LoadingSpinner size="sm" noPadding /> : <CheckCircleIcon className="w-4 h-4" />}
-              Commit plan
+              {hasAlternatives ? `Commit option ${activeIndex + 1}` : 'Commit plan'}
             </button>
           </div>
         )}
       </header>
+
+      {/* Plan alternatives carousel: step through one coexisting plan at a
+          time. The previewed option is what commits — "Commit option N" in
+          the header acts on whatever is shown here. Dots jump directly. */}
+      {hasAlternatives && (
+        <div className="px-4 py-2 border-b border-gray-200 bg-indigo-50/40">
+          <div className="flex items-center justify-center gap-3">
+            <button
+              type="button"
+              onClick={() => goToAlternative(activeIndex - 1)}
+              disabled={activeIndex === 0}
+              className="inline-flex items-center gap-0.5 px-2 py-1 text-xs font-medium text-indigo-700 rounded-md hover:bg-white disabled:opacity-30 disabled:hover:bg-transparent"
+              aria-label="Previous option"
+            >
+              <ChevronLeftIcon className="w-4 h-4" />
+              Prev
+            </button>
+
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-indigo-900 tabular-nums">
+              <span>Option {activeIndex + 1} of {planAlternatives.length}</span>
+              {activePlan.id === selectedPlanId && (
+                <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-emerald-700">
+                  <CheckCircleIcon className="w-3.5 h-3.5" />
+                  current
+                </span>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => goToAlternative(activeIndex + 1)}
+              disabled={activeIndex === planAlternatives.length - 1}
+              className="inline-flex items-center gap-0.5 px-2 py-1 text-xs font-medium text-indigo-700 rounded-md hover:bg-white disabled:opacity-30 disabled:hover:bg-transparent"
+              aria-label="Next option"
+            >
+              Next
+              <ChevronRightIcon className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Position dots — click to jump straight to an option. */}
+          <div className="mt-1.5 flex justify-center gap-1.5">
+            {planAlternatives.map((alt, i) => (
+              <button
+                key={alt.id}
+                type="button"
+                onClick={() => goToAlternative(i)}
+                aria-label={`Go to option ${i + 1}`}
+                aria-current={i === activeIndex}
+                className={`h-2 w-2 rounded-full transition-colors ${
+                  i === activeIndex
+                    ? 'bg-indigo-600'
+                    : alt.id === selectedPlanId
+                      ? 'bg-emerald-400 hover:bg-emerald-500'
+                      : 'bg-indigo-200 hover:bg-indigo-300'
+                }`}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Alternatives carousel for the primary changeset — a full-width
+          toolbar at the top of the card. Stepping through it re-renders the
+          whole card body below for the focused alternative. */}
+      {isPending && primaryChangeset && (
+        <RevisionNavigator
+          variant="bar"
+          changesetId={primaryChangeset.id}
+          revisionNumber={primaryChangeset.revision_number}
+          onRequestRevision={() => setRevisionModalOpen(true)}
+          onActiveRevisionChange={setActiveRevision}
+          onSelectionChanged={() => onRevised?.()}
+          revising={revising}
+        />
+      )}
 
       <div className="p-4 space-y-3">
         {/* Per-kind structured renderer (split/merge/move/attach/detach). */}
@@ -1257,18 +1588,7 @@ export default function PlanCard({ plan, onCommitted, onDiscarded, onRevised }: 
             Viewing Revision {activeRevision.revision_number} &mdash; this is a previous proposal
           </div>
         )}
-        <PlanKindRenderer plan={plan} metadataOverride={effectiveMetadata} />
-
-        {/* Revision history navigator for the primary changeset. */}
-        {isPending && primaryChangeset && (
-          <RevisionNavigator
-            changesetId={primaryChangeset.id}
-            revisionNumber={primaryChangeset.revision_number}
-            onRequestRevision={() => setRevisionModalOpen(true)}
-            onActiveRevisionChange={setActiveRevision}
-            revising={revising}
-          />
-        )}
+        <PlanKindRenderer plan={activePlan} metadataOverride={effectiveMetadata} />
 
         {/* Inline error from the last commit/discard attempt. */}
         {error && (
@@ -1321,13 +1641,13 @@ export default function PlanCard({ plan, onCommitted, onDiscarded, onRevised }: 
           ) : (
             <ChevronRightIcon className="w-3.5 h-3.5" />
           )}
-          {expanded ? 'Hide' : 'Show'} {plan.changesets.length} changeset
-          {plan.changesets.length === 1 ? '' : 's'}
+          {expanded ? 'Hide' : 'Show'} {activePlan.changesets.length} changeset
+          {activePlan.changesets.length === 1 ? '' : 's'}
         </button>
 
         {expanded && (
           <ul className="divide-y divide-gray-100 border border-gray-200 rounded-md bg-white">
-            {plan.changesets.map((cs) => (
+            {activePlan.changesets.map((cs) => (
               <li key={cs.id} className="flex items-center gap-2 px-3 py-2 text-xs">
                 <span className="font-mono text-gray-400">#{cs.id}</span>
                 <span
@@ -1345,7 +1665,7 @@ export default function PlanCard({ plan, onCommitted, onDiscarded, onRevised }: 
 
       <RevisionModal
         changesetId={primaryChangeset?.id ?? ''}
-        entitySummary={`${planKindLabel(plan.plan_kind)}${plan.summary ? `: ${plan.summary}` : ''}`}
+        entitySummary={`${planKindLabel(activePlan.plan_kind)}${activePlan.summary ? `: ${activePlan.summary}` : ''}`}
         isOpen={revisionModalOpen}
         onClose={() => setRevisionModalOpen(false)}
         onSubmit={handleBackgroundRevision}

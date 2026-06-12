@@ -20,8 +20,6 @@ export interface ConceptPropertyRow {
   examples: string[];
 }
 
-/** @deprecated Use ConceptPropertyRow instead */
-export type FrameRoleRow = ConceptPropertyRow;
 
 export interface ConceptPropertiesPayload {
   /** Stringified concept id. */
@@ -33,8 +31,6 @@ export interface ConceptPropertiesPayload {
   roles: ConceptPropertyRow[];
 }
 
-/** @deprecated Use ConceptPropertiesPayload instead */
-export type FrameRolesPayload = ConceptPropertiesPayload;
 
 const rolesCache = new Map<string, ConceptPropertiesPayload>();
 const inflight = new Map<string, Promise<ConceptPropertiesPayload | null>>();
@@ -46,8 +42,6 @@ export function getCachedProperties(
   return rolesCache.get(id) ?? null;
 }
 
-/** @deprecated Use getCachedProperties instead */
-export const getCachedFrameRoles = getCachedProperties;
 
 /**
  * Fetch a concept's properties, sharing in-flight requests across callers.
@@ -93,13 +87,9 @@ export async function fetchProperties(
   return result;
 }
 
-/** @deprecated Use fetchProperties instead */
-export const fetchFrameRoles = fetchProperties;
 
 /** Heuristic: real db ids are positive integer strings. */
 export function isRealConceptId(id: string | null | undefined): boolean {
   return !!id && /^\d+$/.test(id);
 }
 
-/** @deprecated Use isRealConceptId instead */
-export const isRealFrameId = isRealConceptId;

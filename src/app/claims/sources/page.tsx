@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import SignOutButton from '@/components/SignOutButton';
 import ChatButton from '@/components/ChatButton';
@@ -9,12 +9,29 @@ import PendingChangesButton from '@/components/PendingChangesButton';
 import SourceListPanel from '@/components/claims/SourceListPanel';
 import SourceDetailPane from '@/components/claims/SourceDetailPane';
 
-export default function ClaimsSourcesPage() {
+function ClaimsSourcesContent() {
   const router = useRouter();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const searchParams = useSearchParams();
+  const [selectedId, setSelectedId] = useState<string | null>(() => searchParams.get('source'));
+
+  useEffect(() => {
+    setSelectedId(searchParams.get('source'));
+  }, [searchParams]);
+
+  const selectSource = (id: string | null) => {
+    setSelectedId(id);
+    const params = new URLSearchParams(searchParams.toString());
+    if (id) {
+      params.set('source', id);
+    } else {
+      params.delete('source');
+    }
+    const qs = params.toString();
+    router.replace(qs ? `/claims/sources?${qs}` : '/claims/sources', { scroll: false });
+  };
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50">
+    <div className="h-screen-zoomed flex flex-col bg-gray-50">
       <header className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -68,9 +85,17 @@ export default function ClaimsSourcesPage() {
       </header>
 
       <div className="flex-1 flex min-h-0">
-        <SourceListPanel selected={selectedId} onSelect={setSelectedId} />
+        <SourceListPanel selected={selectedId} onSelect={selectSource} />
         <SourceDetailPane sourceId={selectedId} />
       </div>
     </div>
+  );
+}
+
+export default function ClaimsSourcesPage() {
+  return (
+    <Suspense fallback={<div className="h-screen-zoomed bg-gray-50" />}>
+      <ClaimsSourcesContent />
+    </Suspense>
   );
 }

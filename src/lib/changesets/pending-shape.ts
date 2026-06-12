@@ -53,6 +53,12 @@ export interface ShapedChangeset {
   change_plan_kind: string | null;
   revision_number: number;
   revision_prompt: string | null;
+  alternative_group_id: string | null;
+  origin: string;
+  /** Number of pending alternatives in this changeset's group (1 if ungrouped). */
+  alternatives_count: number;
+  /** The selected alternative's changeset id within the group, if any. */
+  selected_changeset_id: string | null;
   field_changes: ShapedFieldChange[];
 }
 
@@ -76,6 +82,15 @@ export const PENDING_CHANGESET_INCLUDE = {
       id: true,
       plan_kind: true,
       status: true,
+    },
+  },
+  alternative_group: {
+    select: {
+      id: true,
+      selected_changeset_id: true,
+      alternatives: {
+        select: { id: true, status: true },
+      },
     },
   },
 } as const;
@@ -208,7 +223,14 @@ interface PendingChangesetRow {
   change_plan_id: bigint | null;
   revision_number?: number;
   revision_prompt?: string | null;
+  alternative_group_id?: bigint | null;
+  origin?: string;
   change_plan: { id: bigint; plan_kind: string; status: string } | null;
+  alternative_group?: {
+    id: bigint;
+    selected_changeset_id: bigint | null;
+    alternatives: Array<{ id: bigint; status: string }>;
+  } | null;
   llm_jobs: { id: bigint; label: string | null; status: string; submitted_by: string | null } | null;
   field_changes: Array<{
     id: bigint;
@@ -252,6 +274,13 @@ export function shapePendingChangeset(
     change_plan_kind: row.change_plan?.plan_kind ?? null,
     revision_number: row.revision_number ?? 1,
     revision_prompt: row.revision_prompt ?? null,
+    alternative_group_id: row.alternative_group_id?.toString() ?? null,
+    origin: row.origin ?? 'manual',
+    alternatives_count: row.alternative_group
+      ? row.alternative_group.alternatives.filter((a) => a.status === 'pending').length || 1
+      : 1,
+    selected_changeset_id:
+      row.alternative_group?.selected_changeset_id?.toString() ?? null,
     field_changes: row.field_changes.map((fc) => {
       const shouldDecorate = CONCEPT_REF_FIELDS.has(fc.field_name);
       const oldRaw = shouldDecorate ? normalizeIntLike(fc.old_value) : null;

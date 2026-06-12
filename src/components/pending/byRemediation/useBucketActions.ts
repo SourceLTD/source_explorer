@@ -8,7 +8,6 @@ import { getEntityDisplayName } from './changesetDisplay';
 import {
   bulkCommitPlansRequest,
   collectBucketPendingPlanIds,
-  collectPendingPlanIds,
 } from './bulkCommitPlans';
 
 export interface ConflictDialogState {
@@ -18,27 +17,13 @@ export interface ConflictDialogState {
   entityDisplay: string | null;
 }
 
-export interface ConfirmDialogState {
-  isOpen: boolean;
-  bucketKey: string | null;
-  count: number;
-}
-
-export interface BucketBusyState {
-  bucketKey: string | null;
-  action: 'commit' | 'reject' | 'commit_plans' | null;
-}
-
 export interface PlansBulkBusyState {
   scope: 'all' | 'bucket' | null;
   bucketKey?: string | null;
 }
 
 interface UseBucketActionsResult {
-  commitBucket: (bucket: ActionBucket, bucketKey: string) => Promise<void>;
   commitBucketPlans: (bucket: ActionBucket, bucketKey: string) => Promise<BulkCommitPlansOutcome>;
-  commitAllPlans: (buckets: ActionBucket[]) => Promise<BulkCommitPlansOutcome>;
-  requestRejectBucket: (bucket: ActionBucket, bucketKey: string) => void;
   commitRow: (cs: ByRemediationChangeset) => Promise<void>;
   rejectRow: (cs: ByRemediationChangeset) => Promise<void>;
 
@@ -47,11 +32,6 @@ interface UseBucketActionsResult {
   discardConflictedChangeset: () => Promise<void>;
   isDiscardingConflicted: boolean;
 
-  confirmReject: ConfirmDialogState;
-  cancelConfirmReject: () => void;
-  acceptConfirmReject: () => Promise<void>;
-
-  busy: BucketBusyState;
   plansBulkBusy: PlansBulkBusyState;
   lastBulkError: string | null;
   clearBulkError: () => void;
@@ -66,8 +46,11 @@ export interface BulkCommitPlansOutcome {
 
 export function useBucketActions({
   refetch,
+  removeChangesets,
 }: {
   refetch: () => Promise<void>;
+  /** Optimistically drop committed/rejected loose changesets from the list. */
+  removeChangesets: (changesetIds: string[]) => void;
 }): UseBucketActionsResult {
   const [conflictDialog, setConflictDialog] = useState<ConflictDialogState>({
     isOpen: false,
@@ -76,27 +59,11 @@ export function useBucketActions({
     entityDisplay: null,
   });
   const [isDiscardingConflicted, setIsDiscardingConflicted] = useState(false);
-  const [confirmReject, setConfirmReject] = useState<ConfirmDialogState>({
-    isOpen: false,
-    bucketKey: null,
-    count: 0,
-  });
-  const [busy, setBusy] = useState<BucketBusyState>({
-    bucketKey: null,
-    action: null,
-  });
   const [plansBulkBusy, setPlansBulkBusy] = useState<PlansBulkBusyState>({
     scope: null,
     bucketKey: null,
   });
   const [lastBulkError, setLastBulkError] = useState<string | null>(null);
-  const [pendingRejectBucket, setPendingRejectBucket] = useState<{
-    bucket: ActionBucket;
-    bucketKey: string;
-  } | null>(null);
-
-  const looseIds = (bucket: ActionBucket): string[] =>
-    bucket.changesets.filter((c) => !c.change_plan_id).map((c) => c.id);
 
   const runBulk = useCallback(
     async (
@@ -137,37 +104,10 @@ export function useBucketActions({
       setLastBulkError(null);
       setPlansBulkBusy({ scope: 'bucket', bucketKey });
       try {
-        const result = await bulkCommitPlansRequest({
-          planIds,
-          planKind: bucket.action_key.includes('/') ? undefined : bucket.action_key,
-        });
-        if (!result.success) {
-          setLastBulkError(result.error ?? 'Bulk commit failed');
-          return { success: false, error: result.error };
-        }
-        return {
-          success: true,
-          committed: result.committed,
-          discarded: result.discarded,
-        };
-      } finally {
-        setPlansBulkBusy({ scope: null, bucketKey: null });
-        await refetch();
-        refreshPendingChangesCount();
-      }
-    },
-    [refetch],
-  );
-
-  const commitAllPlans = useCallback<UseBucketActionsResult['commitAllPlans']>(
-    async (buckets) => {
-      const planIds = collectPendingPlanIds(buckets);
-      if (planIds.length === 0) {
-        return { success: true, committed: 0, discarded: 0 };
-      }
-      setLastBulkError(null);
-      setPlansBulkBusy({ scope: 'all', bucketKey: null });
-      try {
+        // `planIds` already identifies the exact pending plans in this bucket,
+        // and the endpoint ANDs plan_ids with plan_kind — so passing a
+        // plan_kind here can only ever narrow (or, for non-action-type bucket
+        // keys like `concept:123`, break) an already-correct selection.
         const result = await bulkCommitPlansRequest({ planIds });
         if (!result.success) {
           setLastBulkError(result.error ?? 'Bulk commit failed');
@@ -189,97 +129,36 @@ export function useBucketActions({
 
   const clearBulkError = useCallback(() => setLastBulkError(null), []);
 
-  const commitBucket = useCallback<UseBucketActionsResult['commitBucket']>(
-    async (bucket, bucketKey) => {
-      const ids = looseIds(bucket);
-      if (ids.length === 0) return;
-      setBusy({ bucketKey, action: 'commit' });
-      try {
-        await runBulk(ids, 'approve_and_commit', (csId, errors) => {
-          const conflicted = bucket.changesets.find((c) => c.id === csId);
-          setConflictDialog({
-            isOpen: true,
-            errors,
-            changesetId: csId,
-            entityDisplay: conflicted ? getEntityDisplayName(conflicted) : null,
-          });
-        });
-      } finally {
-        setBusy({ bucketKey: null, action: null });
-        await refetch();
-        refreshPendingChangesCount();
-      }
-    },
-    [refetch, runBulk],
-  );
-
-  const requestRejectBucket = useCallback<
-    UseBucketActionsResult['requestRejectBucket']
-  >((bucket, bucketKey) => {
-    const ids = looseIds(bucket);
-    if (ids.length === 0) return;
-    setPendingRejectBucket({ bucket, bucketKey });
-    setConfirmReject({
-      isOpen: true,
-      bucketKey,
-      count: ids.length,
-    });
-  }, []);
-
-  const cancelConfirmReject = useCallback(() => {
-    setConfirmReject({ isOpen: false, bucketKey: null, count: 0 });
-    setPendingRejectBucket(null);
-  }, []);
-
-  const acceptConfirmReject = useCallback(async () => {
-    if (!pendingRejectBucket) {
-      cancelConfirmReject();
-      return;
-    }
-    const { bucket, bucketKey } = pendingRejectBucket;
-    const ids = looseIds(bucket);
-    setConfirmReject({ isOpen: false, bucketKey: null, count: 0 });
-    setPendingRejectBucket(null);
-    if (ids.length === 0) return;
-    setBusy({ bucketKey, action: 'reject' });
-    try {
-      await runBulk(ids, 'reject');
-    } finally {
-      setBusy({ bucketKey: null, action: null });
-      await refetch();
-      refreshPendingChangesCount();
-    }
-  }, [pendingRejectBucket, refetch, runBulk, cancelConfirmReject]);
-
   const commitRow = useCallback<UseBucketActionsResult['commitRow']>(
     async (cs) => {
-      try {
-        await runBulk([cs.id], 'approve_and_commit', (csId, errors) => {
-          setConflictDialog({
-            isOpen: true,
-            errors,
-            changesetId: csId,
-            entityDisplay: getEntityDisplayName(cs),
-          });
+      // Single-row actions remove just that changeset locally on success, so
+      // concurrent commits/rejects on other rows are never interrupted by a
+      // full-list refetch. On conflict the dialog opens and the row stays.
+      const ok = await runBulk([cs.id], 'approve_and_commit', (csId, errors) => {
+        setConflictDialog({
+          isOpen: true,
+          errors,
+          changesetId: csId,
+          entityDisplay: getEntityDisplayName(cs),
         });
-      } finally {
-        await refetch();
+      });
+      if (ok) {
+        removeChangesets([cs.id]);
         refreshPendingChangesCount();
       }
     },
-    [refetch, runBulk],
+    [runBulk, removeChangesets],
   );
 
   const rejectRow = useCallback<UseBucketActionsResult['rejectRow']>(
     async (cs) => {
-      try {
-        await runBulk([cs.id], 'reject');
-      } finally {
-        await refetch();
+      const ok = await runBulk([cs.id], 'reject');
+      if (ok) {
+        removeChangesets([cs.id]);
         refreshPendingChangesCount();
       }
     },
-    [refetch, runBulk],
+    [runBulk, removeChangesets],
   );
 
   const closeConflictDialog = useCallback(() => {
@@ -317,20 +196,13 @@ export function useBucketActions({
   }, [conflictDialog.changesetId, refetch]);
 
   return {
-    commitBucket,
     commitBucketPlans,
-    commitAllPlans,
-    requestRejectBucket,
     commitRow,
     rejectRow,
     conflictDialog,
     closeConflictDialog,
     discardConflictedChangeset,
     isDiscardingConflicted,
-    confirmReject,
-    cancelConfirmReject,
-    acceptConfirmReject,
-    busy,
     plansBulkBusy,
     lastBulkError,
     clearBulkError,

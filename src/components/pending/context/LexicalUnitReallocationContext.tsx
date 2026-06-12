@@ -248,7 +248,7 @@ export default function LexicalUnitReallocationContext(props: LexicalUnitRealloc
   ) => {
     if (!parentId) return null;
     if (!/^\d+$/.test(parentId)) {
-      const virtualUnits = props.virtualIndex?.lexicalUnitsByFrameRef.get(parentId) ?? [];
+      const virtualUnits = props.virtualIndex?.lexicalUnitsByConceptRef.get(parentId) ?? [];
       const totalPages = Math.ceil(virtualUnits.length / 10);
       const pageStart = (page - 1) * 10;
       const pageItems = virtualUnits.slice(pageStart, pageStart + 10);

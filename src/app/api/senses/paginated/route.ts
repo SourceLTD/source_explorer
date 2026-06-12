@@ -201,13 +201,13 @@ export async function GET(request: NextRequest) {
     if (conceptWarning === 'none') {
       and.push({ sense_concepts: { none: {} } });
     } else if (conceptWarning === 'multiple') {
-      const multiFrameRows = await prisma.sense_concepts.groupBy({
+      const multiConceptRows = await prisma.sense_concepts.groupBy({
         by: ['sense_id'],
         having: {
           concept_id: { _count: { gt: 1 } },
         },
       });
-      and.push({ id: { in: multiFrameRows.map(row => row.sense_id) } });
+      and.push({ id: { in: multiConceptRows.map(row => row.sense_id) } });
     }
 
     if (createdAfter) {

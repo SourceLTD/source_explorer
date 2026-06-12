@@ -66,14 +66,14 @@ async function callMcpTool(toolName: string, input: Record<string, unknown>) {
   }
 }
 
-const searchFramesParams = z.object({
+const searchConceptsParams = z.object({
   query: z.string().describe('Natural language search text'),
   limit: z.number().int().min(1).max(50).default(20).describe('Max results to return'),
   similarity_threshold: z.number().min(0).max(1).default(0.3).describe('Minimum similarity score (0-1)'),
   include_roles: z.boolean().default(false).describe('Whether to include concept properties in the response'),
 });
 
-const selectFramesParams = z.object({
+const selectConceptsParams = z.object({
   ids: z.array(z.number().int()).optional().describe('Filter by specific concept IDs'),
   label: z.string().optional().describe('Substring match on concept label (case-insensitive)'),
   definition: z.string().optional().describe('Substring match on definition (case-insensitive)'),
@@ -95,7 +95,7 @@ const selectLexicalUnitsParams = z.object({
   limit: z.number().int().min(1).max(100).default(100).describe('Max results'),
 });
 
-const reparentFrameParams = z.object({
+const reparentConceptParams = z.object({
   concept_id: z.number().int().describe('ID of the concept to reparent'),
   new_parent_frame_id: z.number().int().describe('ID of the new parent concept in the parent_of hierarchy'),
   author: z.string().default('chat').describe('Author of the change'),
@@ -116,23 +116,23 @@ const askQuestionsParams = z.object({
 
 export type AskQuestionsInput = z.infer<typeof askQuestionsParams>;
 
-type SearchFramesInput = z.infer<typeof searchFramesParams>;
-type SelectFramesInput = z.infer<typeof selectFramesParams>;
+type SearchConceptsInput = z.infer<typeof searchConceptsParams>;
+type SelectConceptsInput = z.infer<typeof selectConceptsParams>;
 type SelectLexicalUnitsInput = z.infer<typeof selectLexicalUnitsParams>;
-type ReparentFrameInput = z.infer<typeof reparentFrameParams>;
+type ReparentConceptInput = z.infer<typeof reparentConceptParams>;
 
 export const chatTools = {
-  search_frames: tool<SearchFramesInput, any>({
+  search_frames: tool<SearchConceptsInput, any>({
     description:
       'Search for semantic concepts using natural language. Uses vector embeddings to find concepts semantically similar to the query.',
-    inputSchema: searchFramesParams,
+    inputSchema: searchConceptsParams,
     execute: async (params) => callMcpTool('search_frames', params),
   }),
 
-  select_frames: tool<SelectFramesInput, any>({
+  select_frames: tool<SelectConceptsInput, any>({
     description:
       'Look up concepts by specific criteria: IDs, label substring, definition substring, or flag states. Use this when you know the exact concept you want or need to filter by properties.',
-    inputSchema: selectFramesParams,
+    inputSchema: selectConceptsParams,
     execute: async (params) => callMcpTool('select_frames', params),
   }),
 
@@ -143,10 +143,10 @@ export const chatTools = {
     execute: async (params) => callMcpTool('select_lexical_units', params),
   }),
 
-  reparent_frame: tool<ReparentFrameInput, any>({
+  reparent_frame: tool<ReparentConceptInput, any>({
     description:
       'Move a concept to a new parent in the parent_of DAG hierarchy. Stages a pending changeset that removes the old parent_of relation and creates a new one. Validates that both concepts exist and that the reparent does not create a cycle. The change requires human approval before taking effect.',
-    inputSchema: reparentFrameParams,
+    inputSchema: reparentConceptParams,
     execute: async (params) => callMcpTool('reparent_frame', params),
   }),
 

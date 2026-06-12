@@ -199,16 +199,18 @@ export function DataTableToolbar({
       
       <div className="flex flex-wrap gap-4 items-center justify-between">
         <div className="flex items-center gap-4">
-          <div className="relative">
-            <FilterPanel
-              isOpen={isFilterPanelOpen}
-              onToggle={onFilterPanelToggle}
-              filters={filters}
-              onFiltersChange={onFiltersChange}
-              onClearAll={onClearAllFilters}
-              mode={mode}
-            />
-          </div>
+          {mode !== 'referents' && (
+            <div className="relative">
+              <FilterPanel
+                isOpen={isFilterPanelOpen}
+                onToggle={onFilterPanelToggle}
+                filters={filters}
+                onFiltersChange={onFiltersChange}
+                onClearAll={onClearAllFilters}
+                mode={mode}
+              />
+            </div>
+          )}
           <div className="relative">
             <ColumnVisibilityPanel
               isOpen={isColumnPanelOpen}

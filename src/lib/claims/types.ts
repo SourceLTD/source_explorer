@@ -11,6 +11,10 @@ export interface ClaimsNode {
   confidence?: number;
   matched?: boolean;
   referentialStatus?: ReferentialStatus;
+  pendingChangePlanId?: string;
+  pendingConceptLabel?: string;
+  pendingConceptArchetype?: string;
+  fallbackConceptLabel?: string;
 }
 
 export type ClaimsLinkType = 'filler' | 'typed_as';
@@ -52,6 +56,11 @@ export interface ClaimsInstanceDetail {
   id: string;
   conceptId: string;
   conceptLabel: string;
+  conceptDefinition: string | null;
+  conceptArchetype: string | null;
+  conceptDomain: string | null;
+  conceptCode: string | null;
+  conceptParents: { id: string; label: string }[];
   confidence: number | null;
   metadata: Record<string, unknown> | null;
   referentialStatus: ReferentialStatus;

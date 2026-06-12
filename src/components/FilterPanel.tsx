@@ -1,22 +1,19 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { 
-  FunnelIcon, 
-  XMarkIcon, 
-  ChevronDownIcon, 
+import {
   MagnifyingGlassIcon,
   CalendarIcon,
   HashtagIcon,
   CheckIcon,
   XCircleIcon,
-  ArrowPathIcon
+  SparklesIcon,
 } from '@heroicons/react/24/outline';
 import LoadingSpinner from './LoadingSpinner';
-import { SparklesIcon } from '@heroicons/react/24/outline';
 import { POS_LABELS } from '@/lib/types';
 import type { DataTableRenderMode } from './DataTable/types';
 import type { FilterState } from './DataTable/filterState';
+import { FilterPanelShell, FilterSection } from '@/components/filters';
 
 interface Concept {
   id: string;
@@ -34,39 +31,7 @@ interface FilterPanelProps {
   mode?: DataTableRenderMode;
 }
 
-interface FilterSectionProps {
-  title: string;
-  icon: React.ReactNode;
-  children: React.ReactNode;
-  isOpen: boolean;
-  onToggle: () => void;
-}
-
-function FilterSection({ title, icon, children, isOpen, onToggle }: FilterSectionProps) {
-  return (
-    <div className="border-b border-gray-200 last:border-b-0">
-      <button
-        onClick={onToggle}
-        className="w-full px-6 py-4 flex items-center justify-between text-left hover:bg-gray-50 transition-colors cursor-pointer"
-      >
-        <div className="flex items-center gap-2">
-          {icon}
-          <span className="font-medium text-gray-900">{title}</span>
-        </div>
-        <ChevronDownIcon 
-          className={`w-4 h-4 text-gray-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} 
-        />
-      </button>
-      {isOpen && (
-        <div className="px-6 pb-6 space-y-4">
-          {children}
-        </div>
-      )}
-    </div>
-  );
-}
-
-export default function FilterPanel({ 
+export default function FilterPanel({
   isOpen, 
   onToggle, 
   filters, 
@@ -86,8 +51,6 @@ export default function FilterPanel({
   const [jobsLoading, setJobsLoading] = useState(false);
   const [jobSearchQuery, setJobSearchQuery] = useState('');
   const [jobDropdownOpen, setJobDropdownOpen] = useState(false);
-  const panelRef = useRef<HTMLDivElement>(null);
-  const buttonRef = useRef<HTMLButtonElement>(null);
   const conceptDropdownContainerRef = useRef<HTMLDivElement>(null);
   const jobDropdownContainerRef = useRef<HTMLDivElement>(null);
   const isConceptsMode = mode === 'concepts';
@@ -187,32 +150,6 @@ export default function FilterPanel({
 
     fetchJobs();
   }, []);
-
-  // Close panel when clicking outside
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        panelRef.current &&
-        buttonRef.current &&
-        !panelRef.current.contains(event.target as Node) &&
-        !buttonRef.current.contains(event.target as Node)
-      ) {
-        onToggle();
-      }
-    };
-
-    // Add a small delay to prevent immediate closing
-    const timeoutId = setTimeout(() => {
-      document.addEventListener('mousedown', handleClickOutside);
-    }, 100);
-
-    return () => {
-      clearTimeout(timeoutId);
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [isOpen, onToggle]);
 
   const updateFilter = (key: keyof FilterState, value: unknown) => {
     let normalizedValue = value;
@@ -348,11 +285,7 @@ export default function FilterPanel({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [jobDropdownOpen]);
 
-  const hasActiveFilters = Object.values(filters).some(value => 
-    value !== undefined && value !== ''
-  );
-
-  const activeFilterCount = Object.values(filters).filter(value => 
+  const activeFilterCount = Object.values(filters).filter(value =>
     value !== undefined && value !== ''
   ).length;
 
@@ -392,56 +325,13 @@ export default function FilterPanel({
     : jobs;
 
   return (
-    <>
-      {/* Filter Toggle Button */}
-      <button
-        ref={buttonRef}
-        onClick={onToggle}
-        className={`inline-flex items-center gap-2 px-3 py-2 text-sm font-medium border border-gray-300 rounded-xl hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors cursor-pointer ${
-          hasActiveFilters ? 'bg-blue-50 border-blue-300 text-blue-600' : 'bg-white text-gray-700'
-        }`}
-      >
-        <FunnelIcon className="w-4 h-4" />
-        <span>Filters</span>
-        {activeFilterCount > 0 && (
-          <span className="bg-blue-600 text-white text-xs rounded-full px-2 py-0.5 min-w-[1.25rem] text-center">
-            {activeFilterCount}
-          </span>
-        )}
-      </button>
-
-      {/* Filter Panel */}
-      {isOpen && (
-        <div 
-          ref={panelRef}
-          className={`absolute top-full left-0 mt-2 w-[32rem] bg-white border border-gray-200 rounded-xl z-50 ${className || ''}`}
-        >
-          {/* Header */}
-          <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <FunnelIcon className="w-5 h-5 text-gray-600" />
-              <h3 className="font-semibold text-gray-900">Filters</h3>
-            </div>
-            <div className="flex items-center gap-2">
-              {hasActiveFilters && (
-                <button
-                  onClick={onClearAll}
-                  className="text-sm text-blue-600 hover:text-blue-600 font-medium cursor-pointer"
-                >
-                  Clear all
-                </button>
-              )}
-              <button
-                onClick={onToggle}
-                className="text-gray-400 hover:text-gray-600 cursor-pointer"
-              >
-                <XMarkIcon className="w-5 h-5" />
-              </button>
-            </div>
-          </div>
-
-          {/* Filter Sections */}
-          <div className="max-h-[32rem] overflow-y-auto">
+    <FilterPanelShell
+      isOpen={isOpen}
+      onToggle={onToggle}
+      activeFilterCount={activeFilterCount}
+      onClearAll={onClearAll}
+      panelClassName={className}
+    >
             {/* Category Filters */}
             {(mode === 'lexical_units' || isSensesMode) && (
               <FilterSection
@@ -599,7 +489,7 @@ export default function FilterPanel({
               </FilterSection>
             )}
 
-            {/* Frame hierarchy filters */}
+            {/* Concept hierarchy filters */}
             {canFilterByParentConceptId && (
               <FilterSection
                 title="Hierarchy"
@@ -1157,27 +1047,6 @@ export default function FilterPanel({
                 </div>
               </FilterSection>
             )}
-          </div>
-
-          {/* Active Filters Summary */}
-          {hasActiveFilters && (
-            <div className="px-6 py-4 border-t border-gray-200 bg-gray-50">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">
-                  {activeFilterCount} filter{activeFilterCount !== 1 ? 's' : ''} active
-                </span>
-                <button
-                  onClick={onClearAll}
-                  className="text-sm text-red-600 hover:text-red-700 font-medium flex items-center gap-1 cursor-pointer"
-                >
-                  <XCircleIcon className="w-4 h-4" />
-                  Clear all
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-    </>
+    </FilterPanelShell>
   );
 }

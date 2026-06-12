@@ -97,17 +97,3 @@ export function applyPropertiesSubChanges(
   return Array.from(propertiesByType.values()).sort((a, b) => a.propertyType.localeCompare(b.propertyType));
 }
 
-/** @deprecated Use PropertyField */
-export type FrameRoleField = PropertyField;
-/** @deprecated Use NormalizedProperty */
-export type NormalizedFrameRole = NormalizedProperty;
-/** @deprecated Use isPropertiesFieldName */
-export const isFrameRolesFieldName = isPropertiesFieldName;
-/** @deprecated Use parsePropertiesFieldName */
-export const parseFrameRolesFieldName = parsePropertiesFieldName;
-/** @deprecated Use defaultNormalizedProperty */
-export const defaultNormalizedFrameRole = defaultNormalizedProperty;
-/** @deprecated Use coerceNormalizedPropertyValue */
-export const coerceNormalizedFrameRoleValue = coerceNormalizedPropertyValue;
-/** @deprecated Use applyPropertiesSubChanges */
-export const applyFrameRolesSubChanges = applyPropertiesSubChanges;

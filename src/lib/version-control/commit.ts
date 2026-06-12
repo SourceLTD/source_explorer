@@ -173,6 +173,7 @@ export async function commitChangeset(
         const result = await commitChangesetInTx(tx, changesetId, committedBy);
         if (result.success) {
           await discardRevisionAncestorsInTx(tx, changesetId);
+          await finalizeAlternativeGroupInTx(tx, changesetId);
         }
         return result;
       },
@@ -228,6 +229,58 @@ async function discardRevisionAncestorsInTx(
       data: { status: 'discarded' },
     });
   }
+}
+
+/**
+ * When the committed changeset belongs to an alternative group, discard the
+ * non-selected sibling alternatives (only one alternative can be applied) and
+ * mark the group `committed` with this changeset as the selected winner.
+ *
+ * No-op for legacy ungrouped changesets.
+ */
+async function finalizeAlternativeGroupInTx(
+  tx: Prisma.TransactionClient,
+  changesetId: bigint,
+): Promise<void> {
+  const cs = await (tx.changesets.findUnique as any)({
+    where: { id: changesetId },
+    select: { alternative_group_id: true, change_plan_id: true },
+  });
+  const groupId = cs?.alternative_group_id as bigint | null | undefined;
+  if (!groupId) return;
+  // Plan members are committed via `commitPlan`, which finalizes the
+  // plan-scoped group as a whole. A standalone commit of a plan member must
+  // never discard its plan siblings, so bail out for plan-bound changesets.
+  if (cs?.change_plan_id != null) return;
+
+  // Skip plan-scoped groups entirely (their alternative is the whole plan,
+  // not a member changeset).
+  const group = await (tx.change_alternatives.findUnique as any)({
+    where: { id: groupId },
+    select: { change_plan_id: true },
+  });
+  if (group?.change_plan_id != null) return;
+
+  // Discard every other pending LOOSE alternative in the group. Plan-member
+  // changesets (change_plan_id set) are never discarded here: they belong to a
+  // plan alternative and are finalized via commitPlan/finalizePlanAlternative.
+  await (tx.changesets.updateMany as any)({
+    where: {
+      alternative_group_id: groupId,
+      id: { not: changesetId },
+      change_plan_id: null,
+      status: 'pending',
+    },
+    data: { status: 'discarded' },
+  });
+
+  await (tx.change_alternatives.update as any)({
+    where: { id: groupId },
+    data: {
+      status: 'committed',
+      selected_changeset_id: changesetId,
+    },
+  });
 }
 
 /**
@@ -450,7 +503,7 @@ async function commitCreateInTx(
         );
       }
       if (conceptIdRaw === undefined || conceptIdRaw === null) {
-        throw new Error('CREATE sense requires concept_id (senses anchor to exactly one frame)');
+        throw new Error('CREATE sense requires concept_id (senses anchor to exactly one concept)');
       }
       const conceptId = toBigIntSafe(conceptIdRaw);
       if (!conceptId) {
@@ -643,7 +696,7 @@ async function commitCreateInTx(
       });
       if (dup) {
         throw new Error(
-          `CREATE frame_role: label "${label}" already exists on frame ${conceptId.toString()}`,
+          `CREATE frame_role: label "${label}" already exists on concept ${conceptId.toString()}`,
         );
       }
       const role = await tx.properties.create({
@@ -712,7 +765,7 @@ async function commitPropertiesSubChanges(
   approvedRoleChanges: ChangesetWithFieldChanges['field_changes'],
 ): Promise<void> {
   if (changeset.entity_type !== 'frame') {
-    throw new Error(`properties.* changes are only supported for frames (got ${changeset.entity_type})`);
+    throw new Error(`properties.* changes are only supported for concepts (got ${changeset.entity_type})`);
   }
   const entityId = changeset.entity_id!;
 
@@ -805,7 +858,7 @@ async function commitUpdateInTx(
 
   // For frame_sense updates, `concept_id` is not a scalar column — it's stored via
   // sense_concepts. Pull it out and apply as a complex change after simple fields.
-  const senseFrameIdChange =
+  const senseConceptIdChange =
     changeset.entity_type === 'frame_sense'
       ? simpleChanges.find(fc => fc.field_name === 'concept_id') ?? null
       : null;
@@ -849,7 +902,7 @@ async function commitUpdateInTx(
       //                                       repoints; can target a
       //                                       newly-created merge
       //                                       target frame)
-      //   - `merged_into`  on `frame`        (Phase 5 merge_frame
+      //   - `merged_into`  on `concept`        (Phase 5 merge_frame
       //                                       per-source finalisation;
       //                                       may point at a brand-
       //                                       new target frame when
@@ -975,9 +1028,9 @@ async function commitUpdateInTx(
     }
 
     // frame_sense: re-point the sense to a different frame (complex update).
-    if (senseFrameIdChange) {
+    if (senseConceptIdChange) {
       const senseId = Number(changeset.entity_id!);
-      const raw = senseFrameIdChange.new_value;
+      const raw = senseConceptIdChange.new_value;
       // V2 plan paths can pass a placeholder string (e.g. "-711")
       // that references a sibling CREATE-frame changeset staged
       // earlier in the same plan (e.g. Phase 6 split_frame: each
@@ -1410,7 +1463,7 @@ async function commitDeleteInTx(
 /**
  * Commits a `merge` operation. Currently only `entity_type='sense'`
  * is supported (Phase 1 - merge_sense plan kind). Phase 5 will add the
- * `frame` case for merge_frame.
+ * `concept` case for merge_frame.
  *
  * Contract for `merge` on `frame_sense`:
  *
@@ -1533,12 +1586,12 @@ async function commitMergeInTx(
   ]);
   if (!winnerLink) {
     throw new Error(
-      `MERGE drift: winner frame_sense ${winnerIdInt} no longer linked to frame ${expectedConceptId.toString()}`,
+      `MERGE drift: winner frame_sense ${winnerIdInt} no longer linked to concept ${expectedConceptId.toString()}`,
     );
   }
   if (!loserLink) {
     throw new Error(
-      `MERGE drift: loser frame_sense ${loserIdInt} no longer linked to frame ${expectedConceptId.toString()}`,
+      `MERGE drift: loser frame_sense ${loserIdInt} no longer linked to concept ${expectedConceptId.toString()}`,
     );
   }
 

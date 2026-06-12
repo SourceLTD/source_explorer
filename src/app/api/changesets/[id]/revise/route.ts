@@ -1,16 +1,23 @@
 /**
  * API Route: /api/changesets/[id]/revise
  *
- * POST — Accept user natural language feedback and create a revised changeset
- * using the LLM revision agent.
+ * POST — Accept user natural language feedback and ADD a new alternative to
+ * the changeset's alternative group using the LLM revision agent. The new
+ * alternative coexists with the existing one(s) (the source is NOT discarded);
+ * the newly-added alternative becomes the selected one.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUserName } from '@/utils/supabase/server';
 import { reviseChangeset, type ChangesetContext } from '@/lib/agents/changeset-revision-agent';
+import {
+  getOrCreateAlternativeGroup,
+  attachChangesetToGroup,
+  countPendingAlternatives,
+} from '@/lib/version-control/alternatives';
 
-const MAX_REVISIONS_PER_CHAIN = 10;
+const MAX_ALTERNATIVES_PER_GROUP = 10;
 const MAX_PROMPT_LENGTH = 2000;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX_REQUESTS = 5;
@@ -84,21 +91,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    if (changeset.superseded_by_id) {
-      return NextResponse.json(
-        { error: 'This changeset has already been superseded. Revise the latest version instead.' },
-        { status: 400 },
-      );
-    }
-
-    const revisionNumber = (changeset.revision_number ?? 1) + 1;
-    if (revisionNumber > MAX_REVISIONS_PER_CHAIN) {
-      return NextResponse.json(
-        { error: `Maximum of ${MAX_REVISIONS_PER_CHAIN} revisions per changeset reached` },
-        { status: 400 },
-      );
-    }
-
     const context: ChangesetContext = {
       changeset_id: changeset.id.toString(),
       entity_type: changeset.entity_type as ChangesetContext['entity_type'],
@@ -127,6 +119,33 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     const result = await prisma.$transaction(async (tx) => {
+      // Resolve (or create) the alternative group for this change. The new
+      // revision is ADDED as a coexisting alternative; the original is NOT
+      // discarded so reviewers can compare them side-by-side.
+      let groupId = changeset.alternative_group_id as bigint | null;
+      if (groupId == null) {
+        groupId = await getOrCreateAlternativeGroup(tx, {
+          entityType: changeset.change_plan_id ? null : changeset.entity_type,
+          entityId: changeset.change_plan_id ? null : changeset.entity_id,
+          changePlanId: changeset.change_plan_id ?? null,
+          findingId: changeset.finding_id ?? null,
+          createdBy: userId,
+        });
+        // Backfill the source changeset into the group (selected by default).
+        await attachChangesetToGroup(tx, {
+          groupId,
+          changesetId: changeset.id,
+          origin: (changeset.origin as any) ?? 'manual',
+        });
+      }
+
+      const pendingCount = await countPendingAlternatives(tx, groupId);
+      if (pendingCount >= MAX_ALTERNATIVES_PER_GROUP) {
+        throw new MaxAlternativesError(
+          `Maximum of ${MAX_ALTERNATIVES_PER_GROUP} alternatives per change reached`,
+        );
+      }
+
       const newChangeset = await (tx.changesets.create as any)({
         data: {
           entity_type: changeset.entity_type,
@@ -139,9 +158,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           created_by: userId,
           llm_job_id: changeset.llm_job_id,
           change_plan_id: changeset.change_plan_id,
+          finding_id: changeset.finding_id,
           revision_parent_id: changeset.id,
-          revision_number: revisionNumber,
+          revision_number: (changeset.revision_number ?? 1) + 1,
           revision_prompt: user_prompt.trim(),
+          alternative_group_id: groupId,
+          origin: 'revision',
         },
       });
 
@@ -157,27 +179,32 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         });
       }
 
-      await (tx.changesets.update as any)({
-        where: { id: changeset.id },
-        data: {
-          superseded_by_id: newChangeset.id,
-          status: 'discarded',
-        },
+      // The newly-added alternative becomes the selected one (most recent
+      // intent), but the prior alternatives remain pending for comparison.
+      await (tx.change_alternatives.update as any)({
+        where: { id: groupId },
+        data: { selected_changeset_id: newChangeset.id },
       });
 
-      return newChangeset;
+      const totalAlternatives = await countPendingAlternatives(tx, groupId);
+
+      return { newChangeset, groupId, totalAlternatives };
     });
 
     return NextResponse.json(
       {
-        new_changeset_id: result.id.toString(),
-        revision_number: revisionNumber,
+        new_changeset_id: result.newChangeset.id.toString(),
+        alternative_group_id: result.groupId.toString(),
+        total_alternatives: result.totalAlternatives,
         reasoning: revision.reasoning,
         field_changes: revision.field_changes,
       },
       { status: 201 },
     );
   } catch (error) {
+    if (error instanceof MaxAlternativesError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
     console.error('[API] Error revising changeset:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed to revise changeset' },
@@ -185,3 +212,5 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     );
   }
 }
+
+class MaxAlternativesError extends Error {}

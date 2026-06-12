@@ -94,7 +94,7 @@ export default function GraphMainNode({
     causative: node.senses?.some(sense => sense.causative) ?? false,
     perspectival: node.senses?.some(sense => sense.perspectival) ?? false,
   };
-  const hasFrameSenseRow = Boolean(
+  const hasConceptSenseRow = Boolean(
     node.concept ||
     frameSenseTypeBadgeSource.inchoative ||
     frameSenseTypeBadgeSource.causative ||
@@ -139,7 +139,7 @@ export default function GraphMainNode({
     
     height += 22; // Category badge
     
-    if (hasFrameSenseRow) {
+    if (hasConceptSenseRow) {
       height += 22;
     }
     
@@ -224,7 +224,7 @@ export default function GraphMainNode({
       entailsHeight,
       alsoSeeHeight
     };
-  }, [node, rolesExpanded, lemmasExpanded, examplesExpanded, causesExpanded, entailsExpanded, alsoSeeExpanded, hasFrameSenseRow]);
+  }, [node, rolesExpanded, lemmasExpanded, examplesExpanded, causesExpanded, entailsExpanded, alsoSeeExpanded, hasConceptSenseRow]);
 
   const nodeWidth = 600;
   const nodeHeights = calculateNodeHeights();
@@ -238,7 +238,7 @@ export default function GraphMainNode({
   
   const { glossHeight, lemmasHeight, examplesHeight, rolesHeight } = nodeHeights;
   
-  let sectionY = centerY + 55 + (node.vendler_class ? 20 : 0) + 22 + (hasFrameSenseRow ? 22 : 0) + glossHeight + lemmasHeight + examplesHeight + rolesHeight;
+  let sectionY = centerY + 55 + (node.vendler_class ? 20 : 0) + 22 + (hasConceptSenseRow ? 22 : 0) + glossHeight + lemmasHeight + examplesHeight + rolesHeight;
   
   const causesY = sectionY;
   let causesHeight = 0;
@@ -406,8 +406,8 @@ export default function GraphMainNode({
         </div>
       </foreignObject>
       
-      {/* Frame Badge */}
-      {hasFrameSenseRow && (
+      {/* Concept Badge */}
+      {hasConceptSenseRow && (
         <foreignObject
           x={centerX + 12}
           y={centerY + (node.vendler_class ? 90 : 70)}
@@ -450,7 +450,7 @@ export default function GraphMainNode({
       {/* Definition/gloss */}
       <foreignObject
         x={centerX + 12}
-        y={centerY + 55 + (node.vendler_class ? 20 : 0) + 22 + (hasFrameSenseRow ? 22 : 0)}
+        y={centerY + 55 + (node.vendler_class ? 20 : 0) + 22 + (hasConceptSenseRow ? 22 : 0)}
         width={nodeWidth - 24}
         height={glossHeight}
       >
@@ -484,7 +484,7 @@ export default function GraphMainNode({
           <>
             <foreignObject
               x={centerX + 12}
-              y={centerY + 55 + (node.vendler_class ? 20 : 0) + 22 + (hasFrameSenseRow ? 22 : 0) + glossHeight}
+              y={centerY + 55 + (node.vendler_class ? 20 : 0) + 22 + (hasConceptSenseRow ? 22 : 0) + glossHeight}
               width={nodeWidth - 24}
               height={20}
             >
@@ -509,7 +509,7 @@ export default function GraphMainNode({
             {lemmasExpanded && (
               <foreignObject
                 x={centerX + 12}
-                y={centerY + 55 + (node.vendler_class ? 20 : 0) + 22 + (hasFrameSenseRow ? 22 : 0) + glossHeight + 20}
+                y={centerY + 55 + (node.vendler_class ? 20 : 0) + 22 + (hasConceptSenseRow ? 22 : 0) + glossHeight + 20}
                 width={nodeWidth - 24}
                 height={lemmasHeight - 20}
               >
@@ -560,7 +560,7 @@ export default function GraphMainNode({
         <>
           <foreignObject
             x={centerX + 12}
-            y={centerY + 55 + (node.vendler_class ? 20 : 0) + 22 + (hasFrameSenseRow ? 22 : 0) + glossHeight + lemmasHeight}
+            y={centerY + 55 + (node.vendler_class ? 20 : 0) + 22 + (hasConceptSenseRow ? 22 : 0) + glossHeight + lemmasHeight}
             width={nodeWidth - 24}
             height={20}
           >
@@ -585,7 +585,7 @@ export default function GraphMainNode({
           {examplesExpanded && (
             <foreignObject
               x={centerX + 12}
-              y={centerY + 55 + (node.vendler_class ? 20 : 0) + 22 + (hasFrameSenseRow ? 22 : 0) + glossHeight + lemmasHeight + 20}
+              y={centerY + 55 + (node.vendler_class ? 20 : 0) + 22 + (hasConceptSenseRow ? 22 : 0) + glossHeight + lemmasHeight + 20}
               width={nodeWidth - 24}
               height={examplesHeight - 20}
             >
@@ -612,7 +612,7 @@ export default function GraphMainNode({
       
       {/* Roles */}
       {(() => {
-        const rolesStartY = centerY + 55 + (node.vendler_class ? 20 : 0) + 22 + (hasFrameSenseRow ? 22 : 0) + glossHeight + lemmasHeight + examplesHeight;
+        const rolesStartY = centerY + 55 + (node.vendler_class ? 20 : 0) + 22 + (hasConceptSenseRow ? 22 : 0) + glossHeight + lemmasHeight + examplesHeight;
         let currentRoleY = rolesStartY + 20;
         const roleElements: JSX.Element[] = [];
         

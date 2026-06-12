@@ -39,7 +39,7 @@ export async function GET(
 
     const id = BigInt(idParam);
 
-    const frame = await prisma.concepts.findUnique({
+    const concept = await prisma.concepts.findUnique({
       where: { id },
       select: {
         id: true,
@@ -56,7 +56,7 @@ export async function GET(
       },
     });
 
-    if (!frame || frame.deleted) {
+    if (!concept || concept.deleted) {
       return NextResponse.json({ error: 'Concept not found' }, { status: 404 });
     }
 
@@ -103,24 +103,24 @@ export async function GET(
       };
     });
 
-    const definitionExcerpt = frame.definition
-      ? frame.definition.length > 320
-        ? frame.definition.slice(0, 317) + '…'
-        : frame.definition
+    const definitionExcerpt = concept.definition
+      ? concept.definition.length > 320
+        ? concept.definition.slice(0, 317) + '…'
+        : concept.definition
       : null;
 
     return NextResponse.json(
       {
-        id: frame.id.toString(),
-        label: frame.label,
-        code: frame.code,
-        archetype: frame.archetype,
-        subtype: frame.subtype,
-        state_kind: frame.state_kind,
-        short_definition: frame.short_definition,
+        id: concept.id.toString(),
+        label: concept.label,
+        code: concept.code,
+        archetype: concept.archetype,
+        subtype: concept.subtype,
+        state_kind: concept.state_kind,
+        short_definition: concept.short_definition,
         definition_excerpt: definitionExcerpt,
-        classifier_guidance: frame.classifier_guidance,
-        verifiable: frame.verifiable,
+        classifier_guidance: concept.classifier_guidance,
+        verifiable: concept.verifiable,
         senses,
         senses_total: sensesAll.length,
       },

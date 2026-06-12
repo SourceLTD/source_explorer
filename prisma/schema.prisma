@@ -151,9 +151,18 @@ model changesets {
   superseded_by_id      BigInt?
   /// Health check finding that triggered this changeset (set for AI-remediated changesets).
   finding_id            BigInt?
+  /// Alternatives: the logical change group this changeset is a candidate of.
+  /// Multiple changesets sharing one group are coexisting alternatives; a
+  /// reviewer selects one and commits it (siblings auto-discarded).
+  alternative_group_id  BigInt?
+  /// Who/what produced this alternative: 'remediation' (runner), 'revision'
+  /// (UI revise), or 'manual' (direct edit). Defaults to 'manual'.
+  origin                String                         @default("manual")
   ai_revisions          ai_revisions[]
   audit_log             audit_log[]
+  selected_in_group     change_alternatives[]          @relation("AlternativeGroupSelection")
   change_comments       change_comments[]
+  alternative_group     change_alternatives?           @relation("AlternativeGroupMembers", fields: [alternative_group_id], references: [id], onUpdate: NoAction, map: "fk_changesets_alternative_group")
   change_plan           change_plans?                  @relation(fields: [change_plan_id], references: [id], onUpdate: NoAction, map: "fk_changesets_change_plan")
   llm_jobs              llm_jobs?                      @relation(fields: [llm_job_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_changesets_llm_job")
   revision_parent       changesets?                    @relation("ChangesetRevisionChain", fields: [revision_parent_id], references: [id], onUpdate: NoAction, map: "fk_changesets_revision_parent")
@@ -170,6 +179,39 @@ model changesets {
   @@index([entity_type, entity_id], map: "idx_changesets_entity")
   @@index([status], map: "idx_changesets_status")
   @@index([llm_job_id], map: "idx_changesets_llm_job")
+}
+
+/// A logical "change": owns N coexisting candidate changesets ("alternatives").
+/// Populated by both UI revision (source-explorer) and automated remediation
+/// (source-health-check-runner). A reviewer selects one alternative
+/// (`selected_changeset_id`) and commits it; non-selected siblings are
+/// discarded at commit time.
+model change_alternatives {
+  id                    BigInt           @id @default(autoincrement())
+  /// Entity this change targets. NULL for plan-scoped groups.
+  entity_type           entity_type?
+  entity_id             BigInt?
+  /// Set for plan-scoped alternative groups (alternatives are whole plans).
+  change_plan_id        BigInt?
+  /// Health check finding that triggered this change (when remediation-sourced).
+  finding_id            BigInt?
+  status                changeset_status @default(pending)
+  /// The alternative the reviewer has selected as the winner (NULL until chosen).
+  /// Used for changeset-scoped groups (loose alternatives).
+  selected_changeset_id BigInt?
+  created_by            String
+  created_at            DateTime         @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime         @default(now()) @updatedAt @db.Timestamptz(6)
+  /// The selected winning plan for plan-scoped groups (NULL until chosen, and
+  /// NULL for changeset-scoped groups which use `selected_changeset_id`).
+  selected_plan_id      BigInt?
+  selected_changeset    changesets?      @relation("AlternativeGroupSelection", fields: [selected_changeset_id], references: [id], onUpdate: NoAction, map: "fk_change_alternatives_selected")
+  selected_plan         change_plans?    @relation("PlanAlternativeGroupSelection", fields: [selected_plan_id], references: [id], onUpdate: NoAction, map: "fk_change_alternatives_selected_plan")
+  plans                 change_plans[]   @relation("PlanAlternativeGroupMembers")
+  alternatives          changesets[]     @relation("AlternativeGroupMembers")
+
+  @@index([entity_type, entity_id], map: "idx_change_alternatives_entity")
+  @@index([status], map: "idx_change_alternatives_status")
 }
 
 model change_plans {
@@ -192,6 +234,13 @@ model change_plans {
   updated_at            DateTime                       @default(now()) @updatedAt @db.Timestamptz(6)
   /// Health check finding that triggered this plan (set for AI-remediated plans).
   finding_id            BigInt?
+  /// Alternatives: the logical change group this plan is an alternative of.
+  /// Multiple plans sharing one group are coexisting alternatives; a reviewer
+  /// selects one (`change_alternatives.selected_plan_id`) and commits it
+  /// (sibling plans + their changesets auto-discarded).
+  alternative_group_id  BigInt?
+  selected_in_group     change_alternatives[]          @relation("PlanAlternativeGroupSelection")
+  alternative_group     change_alternatives?           @relation("PlanAlternativeGroupMembers", fields: [alternative_group_id], references: [id], onUpdate: NoAction, map: "fk_change_plans_alternative_group")
   changesets            changesets[]
   remediation_proposals health_remediation_proposals[] @relation("ChangePlanRemediationProposals")
 
@@ -864,50 +913,56 @@ model concept_external_ids {
 /// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model concepts {
-  label                                                           String
-  definition                                                      String?
-  short_definition                                                String?
-  classifier_guidance                                             String?
-  created_at                                                      DateTime                      @default(now())
-  updated_at                                                      DateTime                      @default(now())
-  id                                                              BigInt                        @id @default(autoincrement())
-  flagged                                                         Boolean?                      @default(false)
-  flagged_reason                                                  String?
-  verifiable                                                      Boolean?                      @default(false)
-  unverifiable_reason                                             String?
-  version                                                         Int                           @default(1)
-  embedding                                                       Unsupported("vector")?
-  deleted                                                         Boolean                       @default(false)
-  deleted_at                                                      DateTime?                     @db.Timestamp(6)
-  deleted_reason                                                  String?
-  code                                                            String?
-  archetype                                                       concept_archetype_enum?
-  vendler                                                         String?
-  multi_perspective                                               Boolean?
-  wikidata_id                                                     String?
-  recipe                                                          Json?
-  recipe_graph                                                    Json?
-  subtype                                                         concept_subtype_enum?
-  disable_healthcheck                                             Boolean                       @default(false)
-  merged_into                                                     BigInt?
-  descendant_count                                                Int                           @default(0)
-  domain                                                          concept_domain_enum?
-  state_kind                                                      state_kind_enum?
-  concept_external_ids                                            concept_external_ids[]
-  concept_relations_concept_relations_child_idToconcepts          concept_relations[]           @relation("concept_relations_child_idToconcepts")
-  concept_relations_concept_relations_parent_idToconcepts         concept_relations[]           @relation("concept_relations_parent_idToconcepts")
-  concept_state_annotations                                       concept_state_annotations?
-  concepts                                                        concepts?                     @relation("conceptsToconcepts", fields: [merged_into], references: [id], onUpdate: NoAction, map: "fk_concepts_merged_into")
-  other_concepts                                                  concepts[]                    @relation("conceptsToconcepts")
-  instances                                                       instances[]
-  llm_job_items                                                   llm_job_items[]
-  properties                                                      properties[]
-  property_filler_constraints                                     property_filler_constraints[]
-  property_groups                                                 property_groups[]
-  property_mappings_property_mappings_child_concept_idToconcepts  property_mappings[]           @relation("property_mappings_child_concept_idToconcepts")
-  property_mappings_property_mappings_parent_concept_idToconcepts property_mappings[]           @relation("property_mappings_parent_concept_idToconcepts")
-  sense_concepts                                                  sense_concepts[]
-  units                                                           units[]
+  label                                                                     String
+  definition                                                                String?
+  short_definition                                                          String?
+  created_at                                                                DateTime                      @default(now())
+  updated_at                                                                DateTime                      @default(now())
+  id                                                                        BigInt                        @id @default(autoincrement())
+  flagged                                                                   Boolean?                      @default(false)
+  flagged_reason                                                            String?
+  verifiable                                                                Boolean?                      @default(false)
+  unverifiable_reason                                                       String?
+  version                                                                   Int                           @default(1)
+  embedding                                                                 Unsupported("vector")?
+  deleted                                                                   Boolean                       @default(false)
+  deleted_at                                                                DateTime?                     @db.Timestamp(6)
+  deleted_reason                                                            String?
+  code                                                                      String?
+  archetype                                                                 concept_archetype_enum?
+  vendler                                                                   String?
+  multi_perspective                                                         Boolean?
+  wikidata_id                                                               String?
+  recipe                                                                    Json?
+  recipe_graph                                                              Json?
+  subtype                                                                   concept_subtype_enum?
+  disable_healthcheck                                                       Boolean                       @default(false)
+  merged_into                                                               BigInt?
+  descendant_count                                                          Int                           @default(0)
+  domain                                                                    concept_domain_enum?
+  state_kind                                                                state_kind_enum?
+  classifier_guidance                                                       String?
+  statistical                                                               Boolean                       @default(false)
+  quantitative                                                              Boolean                       @default(false)
+  concept_external_ids                                                      concept_external_ids[]
+  concept_proposals_concept_proposals_nearest_ancestor_concept_idToconcepts concept_proposals[]           @relation("concept_proposals_nearest_ancestor_concept_idToconcepts")
+  concept_proposals_concept_proposals_resolved_concept_idToconcepts         concept_proposals[]           @relation("concept_proposals_resolved_concept_idToconcepts")
+  concept_proposals_concept_proposals_suggested_parent_concept_idToconcepts concept_proposals[]           @relation("concept_proposals_suggested_parent_concept_idToconcepts")
+  concept_relations_concept_relations_child_idToconcepts                    concept_relations[]           @relation("concept_relations_child_idToconcepts")
+  concept_relations_concept_relations_parent_idToconcepts                   concept_relations[]           @relation("concept_relations_parent_idToconcepts")
+  concept_state_annotations                                                 concept_state_annotations?
+  concepts                                                                  concepts?                     @relation("conceptsToconcepts", fields: [merged_into], references: [id], onUpdate: NoAction, map: "fk_concepts_merged_into")
+  other_concepts                                                            concepts[]                    @relation("conceptsToconcepts")
+  instances                                                                 instances[]
+  llm_job_items                                                             llm_job_items[]
+  properties                                                                properties[]
+  property_filler_constraints                                               property_filler_constraints[]
+  property_groups                                                           property_groups[]
+  property_mappings_property_mappings_child_concept_idToconcepts            property_mappings[]           @relation("property_mappings_child_concept_idToconcepts")
+  property_mappings_property_mappings_parent_concept_idToconcepts           property_mappings[]           @relation("property_mappings_parent_concept_idToconcepts")
+  referents                                                                 referents[]
+  sense_concepts                                                            sense_concepts[]
+  units                                                                     units[]
 
   @@index([code], map: "idx_concepts_code")
   @@index([deleted], map: "idx_concepts_deleted")
@@ -953,6 +1008,7 @@ model knowledge_graphs {
   metadata    Json?
   created_at  DateTime    @default(now()) @db.Timestamptz(6)
   instances   instances[]
+  referents   referents[]
 
   @@index([label])
 }
@@ -967,11 +1023,13 @@ model instances {
   metadata                                                        Json?
   knowledge_graph_id                                              BigInt?
   referential_status                                              referential_status    @default(specific)
+  referent_id                                                     BigInt?
   instance_fillers_instance_fillers_filler_instance_idToinstances instance_fillers[]    @relation("instance_fillers_filler_instance_idToinstances")
   instance_fillers_instance_fillers_instance_idToinstances        instance_fillers[]    @relation("instance_fillers_instance_idToinstances")
   instance_mentions                                               instance_mentions[]
   concepts                                                        concepts              @relation(fields: [concept_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   knowledge_graphs                                                knowledge_graphs?     @relation(fields: [knowledge_graph_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  referents                                                       referents?            @relation(fields: [referent_id], references: [id], onUpdate: NoAction)
   source_texts                                                    source_texts?         @relation(fields: [source_text_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   narrative_instances                                             narrative_instances[]
 
@@ -1014,6 +1072,7 @@ model properties {
   examples                    String[]                      @default([])
   label                       String?
   fillers                     Json?
+  version                     Int                           @default(1)
   instance_fillers            instance_fillers[]
   concepts                    concepts                      @relation(fields: [concept_id], references: [id], onDelete: Cascade)
   property_filler_constraints property_filler_constraints[]
@@ -1245,6 +1304,275 @@ model property_filler_bindings {
   property_filler_constraints property_filler_constraints @relation(fields: [constraint_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([constraint_id], map: "idx_property_filler_bindings_constraint")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model concept_proposals {
+  id                                                               BigInt                 @id @default(autoincrement())
+  surface_form                                                     String
+  normalized                                                       String
+  archetype                                                        concept_archetype_enum
+  suggested_label                                                  String?
+  suggested_definition                                             String?
+  suggested_parent_concept_id                                      BigInt?
+  nearest_ancestor_concept_id                                      BigInt?
+  evidence                                                         Json                   @default("{}")
+  confidence                                                       Float?                 @db.Real
+  status                                                           String                 @default("pending")
+  resolved_concept_id                                              BigInt?
+  created_at                                                       DateTime               @default(now()) @db.Timestamptz(6)
+  resolved_at                                                      DateTime?              @db.Timestamptz(6)
+  concepts_concept_proposals_nearest_ancestor_concept_idToconcepts concepts?              @relation("concept_proposals_nearest_ancestor_concept_idToconcepts", fields: [nearest_ancestor_concept_id], references: [id], onUpdate: NoAction)
+  concepts_concept_proposals_resolved_concept_idToconcepts         concepts?              @relation("concept_proposals_resolved_concept_idToconcepts", fields: [resolved_concept_id], references: [id], onUpdate: NoAction)
+  concepts_concept_proposals_suggested_parent_concept_idToconcepts concepts?              @relation("concept_proposals_suggested_parent_concept_idToconcepts", fields: [suggested_parent_concept_id], references: [id], onUpdate: NoAction)
+
+  @@index([status], map: "idx_concept_proposals_status")
+}
+
+model concept_relations_mesh_sever_backup_20260529 {
+  id         BigInt                @id @default(autoincrement())
+  parent_id  BigInt
+  child_id   BigInt
+  type       concept_relation_type
+  created_at DateTime?             @default(now()) @db.Timestamp(6)
+  updated_at DateTime?             @default(now()) @db.Timestamp(6)
+  version    Int                   @default(1)
+  locked     Boolean               @default(false)
+
+  @@unique([parent_id, type, child_id], map: "concept_relations_mesh_sever_backu_source_id_type_target_id_key")
+  @@index([parent_id], map: "concept_relations_mesh_sever_backup_20260529_source_id_idx")
+  @@index([parent_id, type], map: "concept_relations_mesh_sever_backup_20260529_source_id_type_idx")
+  @@index([child_id], map: "concept_relations_mesh_sever_backup_20260529_target_id_idx")
+  @@index([child_id, type], map: "concept_relations_mesh_sever_backup_20260529_target_id_type_idx")
+  @@index([type])
+}
+
+model concept_relations_mesh_sever_backup_20260529_b {
+  id         BigInt                @id @default(autoincrement())
+  parent_id  BigInt
+  child_id   BigInt
+  type       concept_relation_type
+  created_at DateTime?             @default(now()) @db.Timestamp(6)
+  updated_at DateTime?             @default(now()) @db.Timestamp(6)
+  version    Int                   @default(1)
+  locked     Boolean               @default(false)
+
+  @@unique([parent_id, type, child_id], map: "concept_relations_mesh_sever_back_source_id_type_target_id_key1")
+  @@index([parent_id], map: "concept_relations_mesh_sever_backup_20260529_b_source_id_idx")
+  @@index([child_id], map: "concept_relations_mesh_sever_backup_20260529_b_target_id_idx")
+  @@index([type])
+  @@index([parent_id, type], map: "concept_relations_mesh_sever_backup_2026052_source_id_type_idx1")
+  @@index([child_id, type], map: "concept_relations_mesh_sever_backup_2026052_target_id_type_idx1")
+}
+
+model concept_relations_mesh_sever_backup_20260529_c {
+  id         BigInt                @id @default(autoincrement())
+  parent_id  BigInt
+  child_id   BigInt
+  type       concept_relation_type
+  created_at DateTime?             @default(now()) @db.Timestamp(6)
+  updated_at DateTime?             @default(now()) @db.Timestamp(6)
+  version    Int                   @default(1)
+  locked     Boolean               @default(false)
+
+  @@unique([parent_id, type, child_id], map: "concept_relations_mesh_sever_back_source_id_type_target_id_key2")
+  @@index([parent_id], map: "concept_relations_mesh_sever_backup_20260529_c_source_id_idx")
+  @@index([child_id], map: "concept_relations_mesh_sever_backup_20260529_c_target_id_idx")
+  @@index([type])
+  @@index([parent_id, type], map: "concept_relations_mesh_sever_backup_2026052_source_id_type_idx2")
+  @@index([child_id, type], map: "concept_relations_mesh_sever_backup_2026052_target_id_type_idx2")
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model mesh_hd_bak_20260609_153833_concept_external_ids {
+  id          BigInt?
+  concept_id  BigInt?
+  vocabulary  String?
+  external_id String?
+  created_at  DateTime? @db.Timestamptz(6)
+
+  @@ignore
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model mesh_hd_bak_20260609_153833_concept_relations {
+  id         BigInt?
+  parent_id  BigInt?
+  child_id   BigInt?
+  type       concept_relation_type?
+  created_at DateTime?              @db.Timestamp(6)
+  updated_at DateTime?              @db.Timestamp(6)
+  version    Int?
+  locked     Boolean?
+
+  @@ignore
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model mesh_hd_bak_20260609_153833_concept_state_annotations {
+  concept_id            BigInt?
+  state_kind            state_kind_enum?
+  confidence            Float?           @db.Real
+  reasoning             String?
+  nominalization_pair   Boolean?
+  lexical_stem          String?
+  mixed_dimension_grade Boolean?
+  mixed_explanation     String?
+  classified_at         DateTime?        @db.Timestamp(6)
+  model                 String?
+
+  @@ignore
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model mesh_hd_bak_20260609_153833_concepts {
+  label               String?
+  definition          String?
+  short_definition    String?
+  created_at          DateTime?
+  updated_at          DateTime?
+  id                  BigInt?
+  flagged             Boolean?
+  flagged_reason      String?
+  verifiable          Boolean?
+  unverifiable_reason String?
+  version             Int?
+  embedding           Unsupported("vector")?
+  deleted             Boolean?
+  deleted_at          DateTime?               @db.Timestamp(6)
+  deleted_reason      String?
+  code                String?
+  archetype           concept_archetype_enum?
+  vendler             String?
+  multi_perspective   Boolean?
+  wikidata_id         String?
+  recipe              Json?
+  recipe_graph        Json?
+  subtype             concept_subtype_enum?
+  disable_healthcheck Boolean?
+  merged_into         BigInt?
+  descendant_count    Int?
+  domain              concept_domain_enum?
+  state_kind          state_kind_enum?
+  classifier_guidance String?
+  statistical         Boolean?
+  quantitative        Boolean?
+
+  @@ignore
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model mesh_hd_bak_20260609_153833_lexical_units {
+  id                  BigInt?
+  pos                 part_of_speech?
+  code                String?                  @db.VarChar
+  legacy_id           String?                  @db.VarChar
+  lemmas              String[]
+  src_lemmas          String[]
+  gloss               String?
+  lexfile             String?                  @db.VarChar
+  examples            String[]
+  is_mwe              Boolean?
+  flagged             Boolean?
+  flagged_reason      String?
+  verifiable          Boolean?
+  unverifiable_reason String?
+  legal_gloss         String?
+  legal_constraints   String[]
+  deleted             Boolean?
+  deleted_at          DateTime?                @db.Timestamp(6)
+  deleted_reason      String?
+  gloss_tsv           Unsupported("tsvector")?
+  examples_tsv        Unsupported("tsvector")?
+  embedding           Unsupported("vector")?
+  version             Int?
+  created_at          DateTime?                @db.Timestamp(6)
+  updated_at          DateTime?                @db.Timestamp(6)
+  vendler_class       vendler_class_type?
+  created_from        String[]
+  concrete            Boolean?
+  countable           Boolean?
+  proper              Boolean?
+  collective          Boolean?
+  predicate           Boolean?
+  is_satellite        Boolean?
+  gradable            Boolean?
+  predicative         Boolean?
+  attributive         Boolean?
+  subjective          Boolean?
+  relational          Boolean?
+  embedding_1536      Unsupported("vector")?
+  wikidata_id         String?                  @db.VarChar
+
+  @@ignore
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model mesh_hd_bak_20260609_153833_merged_into_pointers {
+  id          BigInt?
+  merged_into BigInt?
+
+  @@ignore
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model mesh_hd_bak_20260609_153833_property_filler_constraints {
+  id             BigInt?
+  property_id    BigInt?
+  filler_type_id Int?
+  concept_id     BigInt?
+
+  @@ignore
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model mesh_hd_bak_20260609_153833_sense_concepts {
+  sense_id   Int?
+  concept_id BigInt?
+  created_at DateTime? @db.Timestamp(6)
+
+  @@ignore
+}
+
+model referent_aliases {
+  id          BigInt    @id @default(autoincrement())
+  referent_id BigInt
+  alias       String
+  normalized  String
+  created_at  DateTime  @default(now()) @db.Timestamptz(6)
+  referents   referents @relation(fields: [referent_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([referent_id, normalized])
+  @@index([normalized], map: "idx_referent_aliases_normalized")
+}
+
+model referent_external_ids {
+  id          BigInt    @id @default(autoincrement())
+  referent_id BigInt
+  vocabulary  String
+  external_id String
+  created_at  DateTime  @default(now()) @db.Timestamptz(6)
+  referents   referents @relation(fields: [referent_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([vocabulary, external_id])
+  @@index([referent_id], map: "idx_referent_external_ids_referent")
+}
+
+model referents {
+  id                    BigInt                  @id @default(autoincrement())
+  canonical_label       String
+  type_concept_id       BigInt
+  knowledge_graph_id    BigInt?
+  metadata              Json                    @default("{}")
+  created_at            DateTime                @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime                @default(now()) @db.Timestamptz(6)
+  instances             instances[]
+  referent_aliases      referent_aliases[]
+  referent_external_ids referent_external_ids[]
+  knowledge_graphs      knowledge_graphs?       @relation(fields: [knowledge_graph_id], references: [id], onUpdate: NoAction)
+  concepts              concepts                @relation(fields: [type_concept_id], references: [id], onUpdate: NoAction)
+
+  @@index([type_concept_id], map: "idx_referents_type_concept")
 }
 
 enum vendler_class_type {
@@ -1501,7 +1829,6 @@ enum concept_subtype_enum {
   communication
   relation
   acquire
-  activity
   assist
   attachment
   attempt
@@ -1509,8 +1836,6 @@ enum concept_subtype_enum {
   bearing
   beginning
   body_process       @map("body process")
-  capability
-  change_of_state    @map("change of state")
   characterization
   combination
   competition
@@ -1524,17 +1849,14 @@ enum concept_subtype_enum {
   creation
   delay
   deprivation
-  destruction
   emission
   ending
   enrol
   expose
   failure
-  force
   give_care          @map("give care")
   group_action       @map("group action")
   host
-  joining
   legal_proceeding   @map("legal proceeding")
   mental_process     @map("mental process")
   motion
@@ -1543,7 +1865,6 @@ enum concept_subtype_enum {
   ordering
   participation
   persistence
-  phasal
   prevention
   procedure
   progress
@@ -1552,7 +1873,6 @@ enum concept_subtype_enum {
   reach
   recreation
   resumption
-  scenario
   separation
   sexual_intercourse @map("sexual intercourse")
   subtraction
@@ -1567,6 +1887,14 @@ enum concept_subtype_enum {
   tendency
   susceptibility
   status
+  capability
+  activity
+  change_of_state    @map("change of state")
+  destruction
+  force
+  joining
+  phasal
+  scenario
 }
 
 enum state_kind_enum {

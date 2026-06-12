@@ -15,7 +15,7 @@ export async function GET(
     const { id: idParam } = await params;
     const id = BigInt(idParam);
 
-    const frame = await (prisma.concepts as any).findUnique({
+    const concept = await (prisma.concepts as any).findUnique({
       where: { id },
       include: {
         properties: true,
@@ -46,7 +46,7 @@ export async function GET(
       },
     });
 
-    if (!frame || frame.deleted) {
+    if (!concept || concept.deleted) {
       return NextResponse.json(
         { error: 'Concept not found' },
         { status: 404 }
@@ -65,7 +65,7 @@ export async function GET(
     }));
 
     // Build senses-first payload and dedupe flat LUs for legacy consumers.
-    const senseLinks = (frame as any).sense_concepts ?? [];
+    const senseLinks = (concept as any).sense_concepts ?? [];
     const senses = senseLinks.map((sfLink: any) => {
       const sense = sfLink.senses;
       const senseConceptCount = (sense.sense_concepts ?? []).length;
@@ -96,9 +96,9 @@ export async function GET(
     }
 
     const serialized = {
-      ...frame,
-      id: frame.id.toString(),
-      properties: serializeRoles(frame.properties || []),
+      ...concept,
+      id: concept.id.toString(),
+      properties: serializeRoles(concept.properties || []),
       senses,
       lexical_units: Array.from(luDedupe.values()),
     };
@@ -119,7 +119,7 @@ export async function GET(
     }
 
     const serializedWithPending: any = { ...serialized, pending: pendingInfo };
-    const pendingFrameRoleSubChanges: Array<{ field_name: string; new_value: unknown }> = [];
+    const pendingConceptRoleSubChanges: Array<{ field_name: string; new_value: unknown }> = [];
 
     // Apply pending/approved values onto the response shape
     for (const [fieldName, pendingField] of Object.entries(pendingInfo.pending_fields)) {
@@ -146,7 +146,7 @@ export async function GET(
       }
       
       if (fieldName.startsWith('properties.')) {
-        pendingFrameRoleSubChanges.push({ field_name: fieldName, new_value: pendingField.new_value });
+        pendingConceptRoleSubChanges.push({ field_name: fieldName, new_value: pendingField.new_value });
         continue;
       }
 
@@ -154,7 +154,7 @@ export async function GET(
       (serializedWithPending as any)[fieldName] = pendingField.new_value;
     }
 
-    if (pendingFrameRoleSubChanges.length > 0) {
+    if (pendingConceptRoleSubChanges.length > 0) {
       const baseRoles: NormalizedProperty[] = Array.isArray(serializedWithPending.properties)
         ? serializedWithPending.properties
             .map((r: any) => {
@@ -172,7 +172,7 @@ export async function GET(
             .filter((x: unknown): x is NormalizedProperty => Boolean(x))
         : [];
 
-      const patched = applyPropertiesSubChanges(baseRoles, pendingFrameRoleSubChanges);
+      const patched = applyPropertiesSubChanges(baseRoles, pendingConceptRoleSubChanges);
 
       serializedWithPending.properties = patched.map((r, index) => {
         const existing = Array.isArray(serializedWithPending.properties)

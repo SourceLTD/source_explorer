@@ -41,10 +41,10 @@ export const CreationWizard = memo(function CreationWizard({
     setReasoningEffort,
     agenticMode,
     setAgenticMode,
-    splitMinFrames,
-    setSplitMinFrames,
-    splitMaxFrames,
-    setSplitMaxFrames,
+    splitMinConcepts,
+    setSplitMinConcepts,
+    splitMaxConcepts,
+    setSplitMaxConcepts,
     scopeMode,
     setScopeMode,
     manualIdsText,
@@ -52,11 +52,11 @@ export const CreationWizard = memo(function CreationWizard({
     manualIds,
     frameIds,
     validatedManualIds,
-    validatedFrameIds,
+    validatedConceptIds,
     frameIncludeLexicalUnits,
-    setFrameIncludeLexicalUnits,
+    setConceptIncludeLexicalUnits,
     frameFlagTarget,
-    setFrameFlagTarget,
+    setConceptFlagTarget,
     filterGroup,
     setFilterGroup,
     filterLimit,
@@ -74,13 +74,13 @@ export const CreationWizard = memo(function CreationWizard({
     handleManualIdKeyDown,
     insertManualId,
     frameIdInputRef,
-    showFrameIdMenu,
+    showConceptIdMenu,
     frameIdSuggestions,
     frameIdMenuPosition,
     frameIdActiveIndex,
-    handleFrameIdChange,
-    handleFrameIdKeyDown,
-    insertFrameId,
+    handleConceptIdChange,
+    handleConceptIdKeyDown,
+    insertConceptId,
     promptMode,
     setPromptMode,
     promptTemplate,
@@ -301,16 +301,16 @@ export const CreationWizard = memo(function CreationWizard({
                 manualIdSuggestions={manualIdSuggestions}
                 manualIdMenuPosition={manualIdMenuPosition}
                 insertManualId={insertManualId}
-                showFrameIdMenu={showFrameIdMenu}
+                showConceptIdMenu={showConceptIdMenu}
                 frameIdSuggestions={frameIdSuggestions}
                 frameIdMenuPosition={frameIdMenuPosition}
-                insertFrameId={insertFrameId}
+                insertConceptId={insertConceptId}
                 handleManualIdChange={handleManualIdChange}
                 handleManualIdKeyDown={handleManualIdKeyDown}
-                handleFrameIdChange={handleFrameIdChange}
-                handleFrameIdKeyDown={handleFrameIdKeyDown}
+                handleConceptIdChange={handleConceptIdChange}
+                handleConceptIdKeyDown={handleConceptIdKeyDown}
                 validatedManualIds={validatedManualIds}
-                validatedFrameIds={validatedFrameIds}
+                validatedConceptIds={validatedConceptIds}
                 manualIds={manualIds}
                 frameIds={frameIds}
                 pos={mode}
@@ -326,15 +326,15 @@ export const CreationWizard = memo(function CreationWizard({
                 filterValidateSample={filterValidateSample}
                 onValidateFilters={handleValidateFilters}
                 frameIncludeLexicalUnits={frameIncludeLexicalUnits}
-                onFrameIncludeLexicalUnitsChange={setFrameIncludeLexicalUnits}
+                onConceptIncludeLexicalUnitsChange={setConceptIncludeLexicalUnits}
                 frameFlagTarget={frameFlagTarget}
-                onFrameFlagTargetChange={setFrameFlagTarget}
+                onConceptFlagTargetChange={setConceptFlagTarget}
               />
               {!isScopeValid && (
                 <p className="text-xs text-red-500">
                   {scopeMode === 'manual' && manualIds.length > 0 && manualIds.some(id => !validatedManualIds.has(id))
                     ? 'Some manual IDs are invalid. Please ensure all IDs exist in the database.'
-                    : scopeMode === 'concepts' && (mode === 'lexical_units' || mode === 'concepts') && frameIds.length > 0 && frameIds.some(id => !validatedFrameIds.has(id))
+                    : scopeMode === 'concepts' && (mode === 'lexical_units' || mode === 'concepts') && frameIds.length > 0 && frameIds.some(id => !validatedConceptIds.has(id))
                     ? (frameIncludeLexicalUnits && mode === 'lexical_units' 
                         ? 'Some concept IDs are invalid or have no associated lexical units. Please ensure all concept IDs exist and have lexical units.'
                         : 'Some concept IDs are invalid. Please ensure all concept IDs exist in the database.')
@@ -442,9 +442,9 @@ export const CreationWizard = memo(function CreationWizard({
                         <input
                           type="number"
                           min={2}
-                          max={splitMaxFrames}
-                          value={splitMinFrames}
-                          onChange={(e) => setSplitMinFrames(Math.max(2, Math.min(parseInt(e.target.value) || 2, splitMaxFrames)))}
+                          max={splitMaxConcepts}
+                          value={splitMinConcepts}
+                          onChange={(e) => setSplitMinConcepts(Math.max(2, Math.min(parseInt(e.target.value) || 2, splitMaxConcepts)))}
                           className="w-full rounded-lg border border-blue-300 bg-white px-2 py-1 text-sm text-blue-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                         />
                       </div>
@@ -452,10 +452,10 @@ export const CreationWizard = memo(function CreationWizard({
                         <label className="block text-[10px] font-medium text-blue-800 mb-1">Max Concepts</label>
                         <input
                           type="number"
-                          min={splitMinFrames}
+                          min={splitMinConcepts}
                           max={10}
-                          value={splitMaxFrames}
-                          onChange={(e) => setSplitMaxFrames(Math.max(splitMinFrames, Math.min(parseInt(e.target.value) || 5, 10)))}
+                          value={splitMaxConcepts}
+                          onChange={(e) => setSplitMaxConcepts(Math.max(splitMinConcepts, Math.min(parseInt(e.target.value) || 5, 10)))}
                           className="w-full rounded-lg border border-blue-300 bg-white px-2 py-1 text-sm text-blue-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                         />
                       </div>

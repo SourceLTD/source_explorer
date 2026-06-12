@@ -27,6 +27,11 @@ import {
   type ShapedChangeset,
 } from '@/lib/changesets/pending-shape';
 import type { IssueChangePlanSummary } from '@/lib/issues/types';
+import {
+  subjectConceptForChangeset,
+  subjectConceptForPlan,
+  type SubjectConcept,
+} from '@/components/pending/byRemediation/subjectConcept';
 
 export interface HealthCheckSubGroup {
   diagnosis_code: string | null;
@@ -54,9 +59,87 @@ export interface ActionBucket {
   };
 }
 
+export interface EnrichedSubject {
+  concept_id: string | null;
+  key: string;
+  label: string | null;
+  archetype: string | null;
+  is_new: boolean;
+}
+
 export interface PendingByRemediationResponse {
   buckets: ActionBucket[];
   total_pending_changesets: number;
+  subjects_by_changeset: Record<string, EnrichedSubject>;
+  subjects_by_plan: Record<string, EnrichedSubject>;
+}
+
+/**
+ * Resolve the subject concept of every surfaced changeset and plan, and
+ * batch-fetch each subject concept's label/archetype in one query. The
+ * client uses these maps to regroup the inbox "by concept" or "by
+ * concept type" without per-card fetches. Action-type grouping ignores
+ * them entirely.
+ */
+async function buildSubjectMaps(
+  shapedChangesets: ShapedChangeset[],
+  plans: Iterable<IssueChangePlanSummary>,
+): Promise<{
+  subjects_by_changeset: Record<string, EnrichedSubject>;
+  subjects_by_plan: Record<string, EnrichedSubject>;
+}> {
+  const raw: Array<{
+    map: Record<string, EnrichedSubject>;
+    id: string;
+    subj: SubjectConcept;
+  }> = [];
+
+  const subjects_by_changeset: Record<string, EnrichedSubject> = {};
+  const subjects_by_plan: Record<string, EnrichedSubject> = {};
+
+  for (const cs of shapedChangesets) {
+    raw.push({ map: subjects_by_changeset, id: cs.id, subj: subjectConceptForChangeset(cs) });
+  }
+  for (const plan of plans) {
+    raw.push({ map: subjects_by_plan, id: plan.id, subj: subjectConceptForPlan(plan) });
+  }
+
+  // Batch-resolve label + archetype for the real subject concept ids that
+  // the subject derivation couldn't fill in locally.
+  const conceptIds = Array.from(
+    new Set(
+      raw
+        .map((r) => r.subj.id)
+        .filter((id): id is string => id != null && /^\d+$/.test(id)),
+    ),
+  );
+
+  const meta = new Map<string, { label: string | null; archetype: string | null }>();
+  if (conceptIds.length) {
+    const rows = await prisma.concepts.findMany({
+      where: { id: { in: conceptIds.map((s) => BigInt(s)) } },
+      select: { id: true, label: true, code: true, archetype: true },
+    });
+    for (const r of rows) {
+      meta.set(r.id.toString(), {
+        label: r.label?.trim() || r.code?.trim() || null,
+        archetype: r.archetype ?? null,
+      });
+    }
+  }
+
+  for (const { map, id, subj } of raw) {
+    const resolved = subj.id ? meta.get(subj.id) : undefined;
+    map[id] = {
+      concept_id: subj.id,
+      key: subj.key,
+      label: subj.label ?? resolved?.label ?? null,
+      archetype: subj.archetype ?? resolved?.archetype ?? null,
+      is_new: subj.isNew,
+    };
+  }
+
+  return { subjects_by_changeset, subjects_by_plan };
 }
 
 // ---------------------------------------------------------------------------
@@ -71,6 +154,7 @@ const PLAN_KIND_LABELS: Record<string, string> = {
   move_frame_parent: 'Reparent concept',
   detach_parent_relation: 'Detach parent relation',
   upsert_role_mappings: 'Upsert property mappings',
+  ingest_new_tbox_concept: 'Add new concept',
 };
 
 const ENTITY_LABELS: Record<string, string> = {
@@ -109,10 +193,38 @@ function deriveActionLabel(cs: ShapedChangeset): string {
 
 export async function GET(_request: NextRequest) {
   try {
-    const changesets = await prisma.changesets.findMany({
+    const allPending = await prisma.changesets.findMany({
       where: { status: 'pending' },
       orderBy: { created_at: 'desc' },
       include: PENDING_CHANGESET_INCLUDE,
+    });
+
+    // Collapse alternative siblings: a change with N pending alternatives
+    // should appear as ONE card (the selected one, else the most recent),
+    // with the in-card navigator surfacing the other alternatives. Plan
+    // members are never collapsed here (a plan is one logical unit already).
+    const seenGroups = new Set<string>();
+    const changesets = allPending.filter((cs) => {
+      // Plan members are one logical unit already; never collapse them as
+      // alternatives of each other. (A plan-scoped group represents the
+      // whole plan as a single alternative, not its individual changesets.)
+      if (cs.change_plan_id != null) return true;
+      const groupId = (cs as any).alternative_group_id as bigint | null | undefined;
+      if (!groupId) return true;
+      const key = groupId.toString();
+      const selectedId = (cs as any).alternative_group?.selected_changeset_id as
+        | bigint
+        | null
+        | undefined;
+      // Prefer the selected alternative as the representative.
+      if (selectedId != null) {
+        return cs.id === selectedId;
+      }
+      // No selection yet: keep the first one we encounter (most recent, since
+      // ordered by created_at desc).
+      if (seenGroups.has(key)) return false;
+      seenGroups.add(key);
+      return true;
     });
 
     const lookup = await buildConceptRefLookup(changesets);
@@ -126,9 +238,65 @@ export async function GET(_request: NextRequest) {
       ),
     );
 
-    const planRows = allPlanIds.length
+    // Plan alternatives: a logical change may have several coexisting plans in
+    // one `change_alternatives` group. We surface ONE representative plan card
+    // per group (the selected plan, else the most recent) and expose the other
+    // sibling plans as `alternatives` on it. Sibling plans (and their
+    // changesets) are dropped from the bucket lists so the inbox shows the
+    // logical change once.
+    //
+    // To do that we first need the group membership of every surfaced plan,
+    // then we pull ALL pending plans in those groups (siblings may have no
+    // surviving changeset of their own in `changesets`).
+    const surfacedPlans = allPlanIds.length
       ? await prisma.change_plans.findMany({
-          where: { id: { in: allPlanIds.map((s) => BigInt(s)) }, status: 'pending' },
+          where: { id: { in: allPlanIds.map((s) => BigInt(s)) } },
+          select: { id: true, alternative_group_id: true },
+        })
+      : [];
+
+    const groupIds = Array.from(
+      new Set(
+        surfacedPlans
+          .map((p) => (p as any).alternative_group_id as bigint | null)
+          .filter((g): g is bigint => g != null)
+          .map((g) => g.toString()),
+      ),
+    );
+
+    // Map group -> selected_plan_id (the chosen winner, if any).
+    const groupSelection = new Map<string, string | null>();
+    if (groupIds.length) {
+      const groups = await prisma.change_alternatives.findMany({
+        where: { id: { in: groupIds.map((s) => BigInt(s)) } },
+        select: { id: true, selected_plan_id: true },
+      });
+      for (const g of groups) {
+        groupSelection.set(
+          g.id.toString(),
+          (g as any).selected_plan_id ? (g as any).selected_plan_id.toString() : null,
+        );
+      }
+    }
+
+    // Pull every pending plan in the surfaced groups (siblings included), plus
+    // the originally-surfaced plans (which may be ungrouped). One findMany with
+    // a union of ids.
+    const planFetchIds = new Set<string>(allPlanIds);
+    if (groupIds.length) {
+      const siblings = await prisma.change_plans.findMany({
+        where: {
+          status: 'pending',
+          alternative_group_id: { in: groupIds.map((s) => BigInt(s)) },
+        },
+        select: { id: true },
+      });
+      for (const s of siblings) planFetchIds.add(s.id.toString());
+    }
+
+    const planRows = planFetchIds.size
+      ? await prisma.change_plans.findMany({
+          where: { id: { in: Array.from(planFetchIds).map((s) => BigInt(s)) }, status: 'pending' },
           orderBy: { created_at: 'desc' },
           include: {
             changesets: {
@@ -147,7 +315,13 @@ export async function GET(_request: NextRequest) {
       : [];
 
     const planById = new Map<string, IssueChangePlanSummary>();
+    // Group membership for every fetched plan, used to build representatives.
+    const planGroupId = new Map<string, string | null>();
     for (const plan of planRows) {
+      const groupId = (plan as any).alternative_group_id
+        ? (plan as any).alternative_group_id.toString()
+        : null;
+      planGroupId.set(plan.id.toString(), groupId);
       const summary: IssueChangePlanSummary = {
         id: plan.id.toString(),
         plan_kind: plan.plan_kind,
@@ -169,9 +343,52 @@ export async function GET(_request: NextRequest) {
           status: cs.status,
           revision_number: cs.revision_number ?? 1,
         })),
+        alternative_group_id: groupId,
+        selected_plan_id: groupId ? groupSelection.get(groupId) ?? null : null,
       };
       planById.set(summary.id, summary);
     }
+
+    // Resolve the representative plan id for each group. planRows is ordered by
+    // created_at desc, so the first pending plan we see in a group is the most
+    // recent; the selected plan (if any) always wins.
+    const groupRepresentative = new Map<string, string>();
+    for (const plan of planRows) {
+      const groupId = planGroupId.get(plan.id.toString());
+      if (!groupId) continue;
+      const selected = groupSelection.get(groupId) ?? null;
+      const existing = groupRepresentative.get(groupId);
+      if (selected != null) {
+        groupRepresentative.set(groupId, selected);
+      } else if (existing == null) {
+        groupRepresentative.set(groupId, plan.id.toString());
+      }
+    }
+
+    // Attach sibling alternatives to each representative summary.
+    for (const [groupId, repId] of groupRepresentative) {
+      const rep = planById.get(repId);
+      if (!rep) continue;
+      const siblings: IssueChangePlanSummary[] = [];
+      for (const plan of planRows) {
+        if (planGroupId.get(plan.id.toString()) !== groupId) continue;
+        if (plan.id.toString() === repId) continue;
+        const sib = planById.get(plan.id.toString());
+        if (sib) siblings.push(sib);
+      }
+      rep.alternatives = siblings;
+    }
+
+    // Returns true if a plan id should be surfaced as its own card: it's
+    // ungrouped, or it's the representative of its group. Sibling plans are
+    // folded into the representative's `alternatives` and must not appear
+    // standalone.
+    const isSurfacedPlan = (planId: string | null | undefined): boolean => {
+      if (planId == null) return false;
+      const groupId = planGroupId.get(planId);
+      if (!groupId) return true;
+      return groupRepresentative.get(groupId) === planId;
+    };
 
     // Bucket changesets by action key.
     const byAction = new Map<
@@ -192,8 +409,23 @@ export async function GET(_request: NextRequest) {
       }
     >();
 
+    // Flat list of every surfaced shaped changeset, reused for the
+    // subject-concept enrichment after bucketing.
+    const surfacedShaped: ShapedChangeset[] = [];
+
     for (const row of changesets) {
       const cs = shapePendingChangeset(row, lookup);
+
+      // Plan alternatives: drop changesets that belong to a non-representative
+      // sibling plan. The representative plan's card carries the siblings as
+      // `alternatives`, so surfacing the sibling's changesets here would
+      // duplicate the logical change.
+      if (cs.change_plan_id && !isSurfacedPlan(cs.change_plan_id)) {
+        continue;
+      }
+
+      surfacedShaped.push(cs);
+
       const actionKey = deriveActionKey(cs);
       const actionLabel = deriveActionLabel(cs);
 
@@ -282,9 +514,19 @@ export async function GET(_request: NextRequest) {
       return a.action_label.localeCompare(b.action_label);
     });
 
+    const surfacedPlanSummaries = Array.from(planById.values()).filter((p) =>
+      isSurfacedPlan(p.id),
+    );
+    const { subjects_by_changeset, subjects_by_plan } = await buildSubjectMaps(
+      surfacedShaped,
+      surfacedPlanSummaries,
+    );
+
     const response: PendingByRemediationResponse = {
       buckets,
-      total_pending_changesets: changesets.length,
+      total_pending_changesets: buckets.reduce((sum, b) => sum + b.counts.total, 0),
+      subjects_by_changeset,
+      subjects_by_plan,
     };
     return NextResponse.json(response);
   } catch (error) {

@@ -68,7 +68,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     const rawLuIds = Array.isArray(body.lexical_unit_ids) ? body.lexical_unit_ids : null;
-    const rawFrameId = body.concept_id;
+    const rawConceptId = body.concept_id;
 
     if (!rawLuIds || rawLuIds.length === 0) {
       return NextResponse.json(
@@ -77,7 +77,7 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    const frameId = toBigIntSafe(rawFrameId);
+    const frameId = toBigIntSafe(rawConceptId);
     if (!frameId) {
       return NextResponse.json(
         { error: 'concept_id is required and must be a numeric id' },
@@ -106,11 +106,11 @@ export async function PATCH(request: NextRequest) {
 
     // Confirm the target concept exists and is not deleted — surface a clean error
     // rather than letting the changeset commit fail later.
-    const frame = await prisma.concepts.findUnique({
+    const concept = await prisma.concepts.findUnique({
       where: { id: frameId },
       select: { id: true, deleted: true },
     });
-    if (!frame || frame.deleted) {
+    if (!concept || concept.deleted) {
       return NextResponse.json({ error: 'Target concept not found' }, { status: 404 });
     }
 

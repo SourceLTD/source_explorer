@@ -106,6 +106,10 @@ interface MiniDAGTreeProps {
   movingConcept: ConceptSummary;
   movingConceptChildren: ConceptSummary[];
   side: 'before' | 'after';
+  /** Overrides the default "Before"/"After" column heading. */
+  headerLabel?: string;
+  /** Overrides the default "Arriving" tag on the focus card (after side). */
+  arrivingLabel?: string;
 }
 
 function MiniDAGTree({
@@ -115,6 +119,8 @@ function MiniDAGTree({
   movingConcept,
   movingConceptChildren,
   side,
+  headerLabel,
+  arrivingLabel,
 }: MiniDAGTreeProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const parentRef = useRef<HTMLDivElement>(null);
@@ -129,7 +135,25 @@ function MiniDAGTree({
 
   const isBefore = side === 'before';
   const displayedParent = parent ?? (parentLabel ? { id: '', label: parentLabel, short_definition: null } : null);
-  const filteredSiblings = siblings.filter(s => s.id !== movingConcept.id).slice(0, 4);
+
+  // Show more siblings the wider the tree gets (up to 10). Each sibling card
+  // is ~140px (max-w-[140px] + gap); reserve room for the central spacer.
+  const [maxSiblings, setMaxSiblings] = useState(4);
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const compute = () => {
+      const cap = Math.max(4, Math.min(10, Math.floor((container.offsetWidth - 40) / 140)));
+      setMaxSiblings(cap);
+    };
+    compute();
+    const ro = new ResizeObserver(compute);
+    ro.observe(container);
+    return () => ro.disconnect();
+  }, []);
+
+  const eligibleSiblings = siblings.filter(s => s.id !== movingConcept.id);
+  const filteredSiblings = eligibleSiblings.slice(0, maxSiblings);
 
   // Split siblings into two halves around a central spacer so the
   // straight parent → moving line drops cleanly through the middle
@@ -166,18 +190,30 @@ function MiniDAGTree({
   );
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      if (!containerRef.current) return;
-      const containerRect = containerRef.current.getBoundingClientRect();
+    const container = containerRef.current;
+    if (!container) return;
+
+    let raf = 0;
+
+    const measure = () => {
+      const containerRect = container.getBoundingClientRect();
       const newLines: typeof lines = [];
+
+      // getBoundingClientRect reports zoom-scaled (visual) pixels, but the
+      // SVG overlay (no viewBox) draws in unzoomed layout pixels. Under the
+      // app's `body { zoom }` these differ, which would pull the connectors
+      // short of the cards. offsetWidth/Height are layout pixels, so this
+      // ratio recovers the zoom factor (1 when there is no zoom).
+      const scaleX = containerRect.width / (container.offsetWidth || containerRect.width);
+      const scaleY = containerRect.height / (container.offsetHeight || containerRect.height);
 
       const getCenter = (el: HTMLElement | null | undefined) => {
         if (!el) return null;
         const r = el.getBoundingClientRect();
         return {
-          x: r.left + r.width / 2 - containerRect.left,
-          yTop: r.top - containerRect.top,
-          yBottom: r.top + r.height - containerRect.top,
+          x: (r.left + r.width / 2 - containerRect.left) / scaleX,
+          yTop: (r.top - containerRect.top) / scaleY,
+          yBottom: (r.top + r.height - containerRect.top) / scaleY,
         };
       };
 
@@ -221,9 +257,31 @@ function MiniDAGTree({
       }
 
       setLines(newLines);
-    }, 50);
+    };
 
-    return () => clearTimeout(timer);
+    // Recompute on the next frame (so initial layout has settled) and
+    // again whenever the tree reflows — card heights change as long
+    // definitions wrap or webfonts load, which would otherwise leave
+    // the cached line endpoints stale and the connectors "broken".
+    const schedule = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(measure);
+    };
+
+    schedule();
+
+    const ro = new ResizeObserver(schedule);
+    ro.observe(container);
+    if (parentRef.current) ro.observe(parentRef.current);
+    if (movingRef.current) ro.observe(movingRef.current);
+    for (const [, el] of siblingRefs.current) ro.observe(el);
+    window.addEventListener('resize', schedule);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+      window.removeEventListener('resize', schedule);
+    };
   }, [displayedParent, filteredSiblings, movingConcept, movingConceptChildren, isBefore]);
 
   return (
@@ -250,7 +308,7 @@ function MiniDAGTree({
         <div className={`text-xs font-bold uppercase tracking-wider ${
           isBefore ? 'text-gray-400' : 'text-emerald-600'
         }`}>
-          {isBefore ? 'Before' : 'After'}
+          {headerLabel ?? (isBefore ? 'Before' : 'After')}
         </div>
 
         {/* Parent — hero card: full title + full first-sentence blurb,
@@ -283,18 +341,21 @@ function MiniDAGTree({
           </div>
         )}
 
-        {/* Siblings row. Siblings are split into two halves with a fixed
-            central spacer so the parent → moving line drops cleanly through
-            the middle of the row instead of clipping a centered sibling
-            card. A phantom placeholder pads the right when the count is
-            odd, keeping the spacer exactly on the centerline. */}
+        {/* Siblings row. Two equal `flex-1` halves keep the central spacer
+            exactly on the centerline (so the parent → moving line drops
+            cleanly through the middle). Each half justifies its cards
+            *toward* that spacer — left half end-aligned, right half
+            start-aligned — so siblings stay clustered near the centre
+            regardless of how wide the container gets (e.g. when the panel is
+            maximized). `mt-3` adds vertical drop so the parent → sibling
+            connectors stay angled rather than going flat. */}
         {filteredSiblings.length > 0 && (
-          <div className="flex w-full items-start">
-            <div className="flex-1 flex flex-wrap justify-center items-start gap-2 min-w-0">
+          <div className="flex w-full items-start mt-3">
+            <div className="flex-1 flex flex-wrap justify-end items-start gap-2 min-w-0">
               {leftSiblings.map(renderSiblingCard)}
             </div>
             <div className="w-10 shrink-0" aria-hidden />
-            <div className="flex-1 flex flex-wrap justify-center items-start gap-2 min-w-0">
+            <div className="flex-1 flex flex-wrap justify-start items-start gap-2 min-w-0">
               {rightSiblings.map(renderSiblingCard)}
             </div>
           </div>
@@ -310,12 +371,12 @@ function MiniDAGTree({
           >
             <ConceptRefPopover
               as="div"
-              conceptId={movingConcept.id}
+              conceptId={movingConcept.id || null}
               fallbackLabel={movingConcept.label}
             >
               <NodeCard
                 title={movingConcept.label}
-                subtitle={`#${movingConcept.id}`}
+                subtitle={movingConcept.id ? `#${movingConcept.id}` : undefined}
                 type="focus"
                 className={`!p-2.5 ring-2 ${
                   isBefore
@@ -327,7 +388,7 @@ function MiniDAGTree({
                 <div className={`text-[10px] font-semibold ${
                   isBefore ? 'text-red-500' : 'text-emerald-600'
                 }`}>
-                  {isBefore ? 'Departing' : 'Arriving'}
+                  {isBefore ? 'Departing' : (arrivingLabel ?? 'Arriving')}
                 </div>
                 {conceptBlurb(movingConcept) && (
                   <div className="mt-1 text-gray-600 font-normal">
@@ -467,6 +528,108 @@ export default function DAGMoveVisualization(props: DAGMoveVisualizationProps) {
           {movingConceptChildren.length > 3 ? `, +${movingConceptChildren.length - 3} more` : ''}).
         </div>
       )}
+    </div>
+  );
+}
+
+// ============================================
+// New-concept placement (reuses the reparent tree)
+// ============================================
+
+export interface DAGPlacementVisualizationProps {
+  /** Proposed parent concept id, or null when no parent is staged yet. */
+  parentId: string | null;
+  parentLabel?: string | null;
+  /** The not-yet-created concept being placed. */
+  conceptLabel: string;
+  conceptDefinition?: string | null;
+  /** Tag shown on the new node's focus card. */
+  arrivingLabel?: string;
+}
+
+/**
+ * Placement view for a brand-new concept being added under a proposed
+ * parent. Reuses the same <MiniDAGTree> the reparent UX uses (parent
+ * hero card + existing children as siblings) and slots the new,
+ * id-less concept in as the arriving focus node, so reviewers see the
+ * node being added together with its proposed parentage in the
+ * familiar reparent layout.
+ */
+export function DAGPlacementVisualization({
+  parentId,
+  parentLabel,
+  conceptLabel,
+  conceptDefinition,
+  arrivingLabel = 'New concept',
+}: DAGPlacementVisualizationProps) {
+  const [parent, setParent] = useState<DAGContext | null>(null);
+  const [loading, setLoading] = useState<boolean>(!!parentId);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!parentId) {
+      setParent(null);
+      setLoading(false);
+      return;
+    }
+    const ac = new AbortController();
+    setLoading(true);
+    setError(null);
+    fetch(`/api/concepts/${parentId}/dag-context`, { signal: ac.signal })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: DAGContext | null) => {
+        if (ac.signal.aborted) return;
+        setParent(data);
+        setLoading(false);
+      })
+      .catch((err) => {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        setError(err instanceof Error ? err.message : 'Failed to load parent context');
+        setLoading(false);
+      });
+    return () => ac.abort();
+  }, [parentId]);
+
+  if (loading) {
+    return (
+      <div className="py-8 flex justify-center">
+        <LoadingSpinner size="sm" noPadding />
+      </div>
+    );
+  }
+
+  if (error) {
+    return <div className="text-sm text-red-600 py-4">{error}</div>;
+  }
+
+  const parentSummary: ConceptSummary | null = parent
+    ? {
+        id: parent.id,
+        label: parent.label,
+        short_definition: parent.short_definition,
+        definition_excerpt: parent.definition_excerpt,
+      }
+    : null;
+
+  const siblings = parent?.children ?? [];
+  const newConcept: ConceptSummary = {
+    id: '',
+    label: conceptLabel,
+    short_definition: conceptDefinition ?? null,
+  };
+
+  return (
+    <div className="px-2 py-3 rounded-xl border border-emerald-200 bg-emerald-50/30">
+      <MiniDAGTree
+        parent={parentSummary}
+        parentLabel={parentLabel}
+        siblings={siblings}
+        movingConcept={newConcept}
+        movingConceptChildren={[]}
+        side="after"
+        headerLabel="Proposed placement"
+        arrivingLabel={arrivingLabel}
+      />
     </div>
   );
 }

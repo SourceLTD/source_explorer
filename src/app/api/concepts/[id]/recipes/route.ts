@@ -13,7 +13,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const { id: idParam } = await params;
     const id = BigInt(idParam);
 
-    const frame = await prisma.concepts.findUnique({
+    const concept = await prisma.concepts.findUnique({
       where: { id },
       include: {
         properties: {
@@ -58,7 +58,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       },
     });
 
-    if (!frame || frame.deleted) {
+    if (!concept || concept.deleted) {
       return NextResponse.json(
         { error: 'Concept not found' },
         { status: 404 }
@@ -67,21 +67,21 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     const conceptRecipeData = {
       concept: {
-        id: frame.id.toString(),
-        label: frame.label,
-        definition: frame.definition,
-        short_definition: frame.short_definition,
-        flagged: frame.flagged,
-        flagged_reason: frame.flagged_reason,
-        archetype: frame.archetype,
-        subtype: frame.subtype,
-        disable_healthcheck: frame.disable_healthcheck,
-        vendler: frame.vendler,
-        multi_perspective: frame.multi_perspective,
-        wikidata_id: frame.wikidata_id,
-        recipe: frame.recipe,
+        id: concept.id.toString(),
+        label: concept.label,
+        definition: concept.definition,
+        short_definition: concept.short_definition,
+        flagged: concept.flagged,
+        flagged_reason: concept.flagged_reason,
+        archetype: concept.archetype,
+        subtype: concept.subtype,
+        disable_healthcheck: concept.disable_healthcheck,
+        vendler: concept.vendler,
+        multi_perspective: concept.multi_perspective,
+        wikidata_id: concept.wikidata_id,
+        recipe: concept.recipe,
       },
-      properties: frame.properties.map(role => ({
+      properties: concept.properties.map(role => ({
         id: role.id.toString(),
         label: role.label,
         description: role.description,
@@ -91,7 +91,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         fillers: role.fillers,
         groups: [],
       })),
-      senses: frame.sense_concepts.map(sfLink => {
+      senses: concept.sense_concepts.map(sfLink => {
         const sense = sfLink.senses;
         const senseConceptCount = (sense.sense_concepts ?? []).length;
         const conceptWarning = senseConceptCount === 0
@@ -123,7 +123,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       // Legacy flat LUs across senses (deduped), kept for back-compat UIs.
       lexical_units: Array.from(
         new Map(
-          frame.sense_concepts
+          concept.sense_concepts
             .flatMap(sfLink => sfLink.senses.lexical_unit_senses ?? [])
             .map(lus => [lus.lexical_units.id.toString(), lus.lexical_units])
         ).values()
@@ -139,7 +139,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       })),
       verbs: Array.from(
         new Map(
-          frame.sense_concepts
+          concept.sense_concepts
             .flatMap(sfLink => sfLink.senses.lexical_unit_senses ?? [])
             .filter(lus => lus.lexical_units.pos === 'verb')
             .map(lus => [lus.lexical_units.id.toString(), lus.lexical_units])
@@ -154,7 +154,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         role_groups: [],
       })),
       relations: {
-        parent_of: frame.concept_relations_concept_relations_parent_idToconcepts
+        parent_of: concept.concept_relations_concept_relations_parent_idToconcepts
           .filter(rel => rel.type === 'parent_of')
           .map(rel => ({
             id: rel.concepts_concept_relations_child_idToconcepts.id.toString(),
@@ -167,7 +167,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
               main: r.main,
             })),
           })),
-        child_of: frame.concept_relations_concept_relations_child_idToconcepts
+        child_of: concept.concept_relations_concept_relations_child_idToconcepts
           .filter(rel => rel.type === 'parent_of')
           .map(rel => ({
             id: rel.concepts_concept_relations_parent_idToconcepts.id.toString(),

@@ -483,7 +483,7 @@ export function EditOverlay({ node, nodeId, mode, isOpen, onClose, onUpdate }: E
               mode={mode}
               editingField={editor.editingField}
               editValue={editor.editValue}
-              availableFrames={availableConcepts}
+              availableConcepts={availableConcepts}
               isOpen={overlaySections.lexicalProperties}
               onToggle={() => setOverlaySections(prev => ({ ...prev, lexicalProperties: !prev.lexicalProperties }))}
               onStartEdit={editor.startEditing}

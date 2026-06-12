@@ -78,9 +78,9 @@ function toConceptRef(ref: RawConceptRef): SenseConceptRef {
   };
 }
 
-export function computeConceptWarning(frames: SenseConceptRef[]): SenseWarning {
-  if (frames.length === 0) return 'none';
-  if (frames.length > 1) return 'multiple';
+export function computeConceptWarning(concepts: SenseConceptRef[]): SenseWarning {
+  if (concepts.length === 0) return 'none';
+  if (concepts.length > 1) return 'multiple';
   return null;
 }
 
@@ -182,7 +182,7 @@ export async function getSensesForLexicalUnit(
   return transformLexicalUnitSenses(links);
 }
 
-export async function getSensesForFrame(conceptId: bigint): Promise<
+export async function getSensesForConcept(conceptId: bigint): Promise<
   Array<SenseWithConcept & { lexical_unit_ids: string[] }>
 > {
   const links = await prisma.sense_concepts.findMany({
@@ -292,7 +292,7 @@ export interface UpdateSenseInput {
   /**
    * If provided, replaces the sense's single frame link atomically. Enforces the
    * 1:1 invariant — callers who need multi-frame behaviour should use
-   * `attachSenseToFrame` / `detachSenseFromFrame` directly.
+   * `attachSenseToConcept` / `detachSenseFromConcept` directly.
    */
   concept_id?: bigint | null;
 }
@@ -355,7 +355,7 @@ export async function detachSenseFromLexicalUnit(
 }
 
 /** Replace the sense's single frame link atomically. */
-export async function setSenseFrame(senseId: number, conceptId: bigint): Promise<void> {
+export async function setSenseConcept(senseId: number, conceptId: bigint): Promise<void> {
   await prisma.$transaction(async tx => {
     await tx.sense_concepts.deleteMany({ where: { sense_id: senseId } });
     await tx.sense_concepts.create({

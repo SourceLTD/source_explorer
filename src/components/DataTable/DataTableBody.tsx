@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { TableEntry, Concept, SenseTableRow, POS_LABELS, PendingChangeInfo, getRoleTypeAcronym, posShortLabel } from '@/lib/types';
+import { TableEntry, Concept, SenseTableRow, ReferentTableRow, POS_LABELS, PendingChangeInfo, getRoleTypeAcronym, posShortLabel } from '@/lib/types';
 import { ColumnConfig } from '@/components/ColumnVisibilityPanel';
 import { CheckCircleIcon, XCircleIcon, ClipboardDocumentIcon } from '@heroicons/react/24/outline';
 import {
@@ -17,7 +17,7 @@ import { EmptyState } from '@/components/ui';
 import { DataTableMode, getGraphBasePath, FIELD_NAME_MAP } from './config';
 import { SortState, EditingState, FilterState } from './types';
 
-type DataTableEntry = TableEntry | Concept | SenseTableRow;
+type DataTableEntry = TableEntry | Concept | SenseTableRow | ReferentTableRow;
 
 // Helper components for empty/null values
 export const EmptyCell = () => <span className="text-gray-400 text-sm">—</span>;
@@ -239,6 +239,10 @@ export function CellContent({
     return mode === 'senses' && 'conceptWarning' in e;
   };
 
+  const isReferent = (e: DataTableEntry): e is ReferentTableRow => {
+    return mode === 'referents' && 'canonical_label' in e;
+  };
+
   // Common styles
   const textContainerClasses = "text-sm text-gray-900 break-words max-w-full";
 
@@ -331,6 +335,67 @@ export function CellContent({
         const value = entry[columnKey];
         return value === null || value === undefined ? <NACell /> : (
           <span className="text-xs text-gray-700">{value ? 'Yes' : 'No'}</span>
+        );
+      }
+      default:
+        break;
+    }
+  } else if (isReferent(entry)) {
+    switch (columnKey) {
+      case 'id':
+        return <span className="text-xs font-mono text-blue-600 break-all">{entry.id}</span>;
+      case 'canonical_label':
+        return <span className="inline-block max-w-full text-sm font-semibold text-gray-900 break-words">{entry.canonical_label}</span>;
+      case 'type_concept':
+        return entry.type_concept ? (
+          <button
+            type="button"
+            onClick={() => router.push(`/graph/concepts?entry=${encodeURIComponent(entry.type_concept!.id)}`)}
+            className="inline-flex items-center rounded bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-600 hover:bg-blue-100 cursor-pointer transition-colors"
+            title={entry.type_concept.label}
+          >
+            {entry.type_concept.code ?? entry.type_concept.label ?? entry.type_concept.id}
+          </button>
+        ) : <EmptyCell />;
+      case 'aliases':
+        return entry.aliases.length > 0 ? (
+          <div className="flex flex-wrap gap-1">
+            {entry.aliases.slice(0, 8).map((alias, idx) => (
+              <span key={`${entry.id}-alias-${idx}`} className="inline-flex items-center rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
+                {alias}
+              </span>
+            ))}
+            {entry.aliases.length > 8 && (
+              <span className="text-xs text-gray-500 self-center">+{entry.aliases.length - 8}</span>
+            )}
+          </div>
+        ) : <EmptyCell />;
+      case 'external_ids':
+        return entry.external_ids.length > 0 ? (
+          <div className="flex flex-wrap gap-1">
+            {entry.external_ids.map((ext, idx) => (
+              <span key={`${entry.id}-ext-${idx}`} className="inline-flex items-center rounded bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700" title={`${ext.vocabulary}: ${ext.external_id}`}>
+                <span className="font-semibold">{ext.vocabulary}</span>
+                <span className="text-emerald-400 mx-1">:</span>
+                {ext.external_id}
+              </span>
+            ))}
+          </div>
+        ) : <EmptyCell />;
+      case 'knowledge_graph':
+        return entry.knowledge_graph ? (
+          <span className="inline-flex items-center rounded-full bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-700">
+            {entry.knowledge_graph.label || entry.knowledge_graph.id}
+          </span>
+        ) : <EmptyCell />;
+      case 'metadata': {
+        const meta = entry.metadata;
+        const isEmpty = !meta || (typeof meta === 'object' && Object.keys(meta).length === 0);
+        if (isEmpty) return <EmptyCell />;
+        return (
+          <pre className="text-xs text-gray-600 whitespace-pre-wrap break-words max-w-full font-mono">
+            {JSON.stringify(meta, null, 0)}
+          </pre>
         );
       }
       default:
@@ -909,10 +974,10 @@ export function DataTableBody({
 
   return (
     <table className="min-w-full border-collapse">
-      <thead className="sticky top-0 z-10 bg-white border-b border-gray-200">
+      <thead className="bg-white">
         <tr>
           {/* Selection column */}
-          <th className="px-3 py-3 text-left w-[44px]">
+          <th className="sticky top-0 z-10 bg-white border-b border-gray-200 px-3 py-3 text-left w-[44px]">
             <input
               type="checkbox"
               checked={selectAll}
@@ -927,7 +992,7 @@ export function DataTableBody({
             return (
             <th
               key={col.key}
-              className={`relative px-3 py-3 ${isCenteredColumn ? 'text-center' : 'text-left'} text-xs font-semibold text-gray-700 uppercase tracking-wider border-l border-gray-100 ${
+              className={`sticky top-0 z-10 bg-white border-b border-gray-200 px-3 py-3 ${isCenteredColumn ? 'text-center' : 'text-left'} text-xs font-semibold text-gray-700 uppercase tracking-wider border-l border-gray-100 ${
                 col.sortable ? 'cursor-pointer select-none' : ''
               }`}
               style={{ width: getColumnWidth(col.key) }}

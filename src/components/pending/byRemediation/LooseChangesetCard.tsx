@@ -34,12 +34,13 @@ import type { ByRemediationChangeset } from './types';
 
 export interface LooseChangesetCardProps {
   cs: ByRemediationChangeset;
-  isBusy: boolean;
-  busyAction: 'commit' | 'reject' | null;
-  /** Disable buttons when another row in this bucket is busy. */
-  disabled: boolean;
-  onCommit: () => void;
-  onReject: () => void;
+  /**
+   * Commit this changeset. Resolves when the request settles; the card owns
+   * its own busy spinner so concurrent commits on other rows aren't blocked.
+   */
+  onCommit: () => Promise<void>;
+  /** Reject this changeset. See {@link onCommit} for concurrency notes. */
+  onReject: () => Promise<void>;
   /** Optional deep-link to the legacy detail modal. */
   onOpen?: () => void;
   /** Called when a revision produces a new changeset (refreshes the list). */
@@ -64,9 +65,6 @@ export interface LooseChangesetCardProps {
  */
 export default function LooseChangesetCard({
   cs,
-  isBusy,
-  busyAction,
-  disabled,
   onCommit,
   onReject,
   onOpen,
@@ -74,6 +72,25 @@ export default function LooseChangesetCard({
 }: LooseChangesetCardProps) {
   const [showRaw, setShowRaw] = useState(false);
   const [revisionModalOpen, setRevisionModalOpen] = useState(false);
+  const [busyAction, setBusyAction] = useState<'commit' | 'reject' | null>(null);
+  const isBusy = busyAction !== null;
+
+  const handleCommit = async () => {
+    setBusyAction('commit');
+    try {
+      await onCommit();
+    } finally {
+      setBusyAction(null);
+    }
+  };
+  const handleReject = async () => {
+    setBusyAction('reject');
+    try {
+      await onReject();
+    } finally {
+      setBusyAction(null);
+    }
+  };
   const entityDisplay = getEntityDisplayName(cs);
   const summary = summarizeChangeset(cs);
 
@@ -120,17 +137,17 @@ export default function LooseChangesetCard({
           )}
           <RevisionButton
             onClick={() => setRevisionModalOpen(true)}
-            disabled={isBusy || disabled}
-            revisionCount={cs.revision_number}
+            disabled={isBusy}
+            revisionCount={cs.alternatives_count}
           />
           <button
             type="button"
-            onClick={onReject}
-            disabled={isBusy || disabled}
+            onClick={() => void handleReject()}
+            disabled={isBusy}
             className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-red-700 border border-red-200 rounded-md bg-white hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
             title="Reject changeset"
           >
-            {isBusy && busyAction === 'reject' ? (
+            {busyAction === 'reject' ? (
               <LoadingSpinner size="sm" noPadding />
             ) : (
               <XCircleIcon className="w-4 h-4" />
@@ -139,12 +156,12 @@ export default function LooseChangesetCard({
           </button>
           <button
             type="button"
-            onClick={onCommit}
-            disabled={isBusy || disabled}
+            onClick={() => void handleCommit()}
+            disabled={isBusy}
             className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-white bg-emerald-600 rounded-md hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
             title="Commit changeset"
           >
-            {isBusy && busyAction === 'commit' ? (
+            {busyAction === 'commit' ? (
               <LoadingSpinner size="sm" noPadding />
             ) : (
               <CheckCircleIcon className="w-4 h-4" />
@@ -199,11 +216,12 @@ export default function LooseChangesetCard({
         <ChangesetEntityContext cs={cs} />
         <ChangesetBody cs={cs} pendingFieldChanges={pendingFieldChanges} />
 
-        {(cs.revision_number ?? 1) > 1 && (
+        {(cs.alternatives_count ?? 1) > 1 && (
           <RevisionNavigator
             changesetId={cs.id}
-            revisionNumber={cs.revision_number}
+            revisionNumber={cs.alternatives_count}
             onRequestRevision={() => setRevisionModalOpen(true)}
+            onSelectionChanged={() => onRevisionComplete?.(cs.id)}
           />
         )}
 
@@ -477,7 +495,7 @@ function pickStringLike(value: unknown): string | null {
 }
 
 // =====================================================================
-// Rich role-grouped panel for `frame` UPDATE changesets whose field
+// Rich role-grouped panel for `concept` UPDATE changesets whose field
 // changes are all `frame_roles.<roleType>.*` subfields (i.e. from the
 // manual editor). Renders one `PropertyPanel` per changed role type
 // so the reviewer sees the same rich Before/After role cards they get
@@ -596,7 +614,7 @@ function ChangesetBody({ cs, pendingFieldChanges }: ChangesetBodyProps) {
   // expand the raw field-change list via the toggle below.
   if (cs.entity_type === 'frame_role') return null;
 
-  // `frame` UPDATE changesets where every pending field change is a
+  // `concept` UPDATE changesets where every pending field change is a
   // `frame_roles.*` subfield get a rich grouped role panel instead of
   // the flat field-by-field list.
   if (

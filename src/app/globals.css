@@ -1,11 +1,41 @@
 @import "tailwindcss";
 
+/* Slight global contrast bump. We override only the lightness of the mid-tone
+   grays — chroma and hue are kept at Tailwind's defaults so the theme's colour
+   identity is unchanged. The very-light background tokens (gray-50/100) and the
+   already-dark heading tokens (gray-900/950) are left alone so panel fills and
+   the overall feel stay the same; only muted text/borders that read a touch
+   washed-out get firmed up. */
+@theme {
+  --color-gray-200: oklch(91.0% 0.006 264.531);
+  --color-gray-300: oklch(84.5% 0.01 258.338);
+  --color-gray-400: oklch(65.0% 0.022 261.325);
+  --color-gray-500: oklch(50.5% 0.027 264.364);
+  --color-gray-600: oklch(40.5% 0.03 256.802);
+  --color-gray-700: oklch(34.0% 0.034 259.733);
+  --color-gray-800: oklch(26.0% 0.033 256.848);
+}
+
+:root {
+  /* App-wide zoom factor. Kept in a variable so full-height layouts can
+     compensate for it (see .h-screen-zoomed below). */
+  --app-zoom: 0.9;
+}
+
 /* Simple, consistent styling without CSS custom properties */
 body {
   background: #ffffff;
   color: #171717;
   font-family: Arial, Helvetica, sans-serif;
-  zoom: 0.9;
+  zoom: var(--app-zoom);
+}
+
+/* Tailwind's h-screen (100vh) measures the unzoomed viewport, so under
+   `body { zoom }` a 100vh element renders at (100vh * zoom) and leaves a gap
+   at the bottom of the window. Divide by the zoom factor to fill the actual
+   visible viewport. */
+.h-screen-zoomed {
+  height: calc(100vh / var(--app-zoom));
 }
 
 /* Custom styles for the WordNet Explorer */

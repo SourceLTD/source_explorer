@@ -32,7 +32,7 @@ export async function GET(
 
     const id = BigInt(idParam);
 
-    const frame = await prisma.concepts.findUnique({
+    const concept = await prisma.concepts.findUnique({
       where: { id },
       select: {
         id: true,
@@ -43,7 +43,7 @@ export async function GET(
       },
     });
 
-    if (!frame || frame.deleted) {
+    if (!concept || concept.deleted) {
       return NextResponse.json({ error: 'Concept not found' }, { status: 404 });
     }
 
@@ -74,10 +74,10 @@ export async function GET(
 
     return NextResponse.json(
       {
-        id: frame.id.toString(),
-        label: frame.label,
-        code: frame.code,
-        archetype: frame.archetype,
+        id: concept.id.toString(),
+        label: concept.label,
+        code: concept.code,
+        archetype: concept.archetype,
         roles,
       },
       {
@@ -117,11 +117,11 @@ export async function PATCH(
     }
 
     // Check if concept exists
-    const existingFrame = await prisma.concepts.findUnique({
+    const existingConcept = await prisma.concepts.findUnique({
       where: { id: frameId },
     });
 
-    if (!existingFrame) {
+    if (!existingConcept) {
       return NextResponse.json(
         { error: 'Concept not found' },
         { status: 404 }

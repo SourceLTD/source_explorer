@@ -20,7 +20,7 @@ function PendingChangesContent() {
   };
 
   return (
-    <div className="h-screen flex flex-col bg-white">
+    <div className="h-screen-zoomed flex flex-col bg-white">
       {/* Header */}
       <header className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="flex items-center justify-between">
@@ -62,8 +62,8 @@ function PendingChangesContent() {
       </header>
 
       {/* Main Content - Full width */}
-      <main className="flex-1 overflow-y-auto bg-white">
-        <div className="w-full px-6 py-8">
+      <main className="flex-1 min-h-0 flex flex-col overflow-hidden bg-white">
+        <div className="w-full px-6 py-8 flex-1 min-h-0 flex flex-col">
           <PendingChangesList />
         </div>
       </main>

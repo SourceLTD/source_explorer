@@ -17,7 +17,8 @@ interface RevisionModalProps {
 
 interface RevisionResponse {
   new_changeset_id: string;
-  revision_number: number;
+  alternative_group_id: string;
+  total_alternatives: number;
   reasoning: string;
   field_changes: Array<{
     field_name: string;
@@ -91,7 +92,7 @@ export function RevisionModal({
         <header className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
           <div className="flex items-center gap-2">
             <ArrowPathIcon className="w-5 h-5 text-indigo-600" />
-            <h2 className="text-base font-semibold text-gray-900">Revise Changeset</h2>
+            <h2 className="text-base font-semibold text-gray-900">Add Alternative</h2>
           </div>
           <button
             type="button"
@@ -114,7 +115,7 @@ export function RevisionModal({
             <div className="space-y-3">
               <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
                 <p className="text-sm font-medium text-green-800 mb-1">
-                  Revision #{result.revision_number} created
+                  Alternative added ({result.total_alternatives} total)
                 </p>
                 <p className="text-xs text-green-700">{result.reasoning}</p>
               </div>
@@ -123,7 +124,7 @@ export function RevisionModal({
                 <div className="border border-gray-200 rounded-lg overflow-hidden">
                   <div className="px-3 py-2 bg-gray-50 border-b border-gray-200">
                     <p className="text-xs font-medium text-gray-600">
-                      Revised field changes ({result.field_changes.length})
+                      New alternative field changes ({result.field_changes.length})
                     </p>
                   </div>
                   <ul className="divide-y divide-gray-100 max-h-48 overflow-y-auto">
@@ -148,7 +149,7 @@ export function RevisionModal({
                   onClick={handleReset}
                   className="flex-1 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
                 >
-                  Revise Again
+                  Add Another
                 </button>
                 <button
                   type="button"
@@ -163,7 +164,7 @@ export function RevisionModal({
             <>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                  How should this change be revised?
+                  Describe the alternative you want to add
                 </label>
                 <textarea
                   value={prompt}
@@ -203,10 +204,10 @@ export function RevisionModal({
                 {submitting ? (
                   <span className="inline-flex items-center gap-2">
                     <LoadingSpinner size="sm" noPadding />
-                    Revising...
+                    Adding alternative...
                   </span>
                 ) : (
-                  'Submit Revision'
+                  'Add Alternative'
                 )}
               </button>
             </>

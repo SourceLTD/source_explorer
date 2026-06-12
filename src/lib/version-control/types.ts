@@ -267,13 +267,58 @@ export interface RevisionChain {
   entries: RevisionHistoryEntry[];
 }
 
+// ============================================
+// Alternatives Types
+// ============================================
+
+/** How an alternative was produced. */
+export type AlternativeOrigin = 'remediation' | 'revision' | 'manual';
+
+/**
+ * A single candidate changeset within an alternative group, shaped for the UI.
+ */
+export interface AlternativeEntry {
+  id: string;
+  /** Per-alternative label/feedback (reuses the legacy `revision_prompt`). */
+  label: string | null;
+  origin: AlternativeOrigin;
+  created_by: string;
+  created_at: string;
+  status: ChangesetStatus;
+  /** Convenience: index within the group (1-based), for "Alternative N" display. */
+  revision_number: number;
+  field_changes: Array<{
+    field_name: string;
+    old_value: unknown;
+    new_value: unknown;
+    status: FieldChangeStatus;
+  }>;
+}
+
+/**
+ * The full set of coexisting alternatives for a logical change, returned by the
+ * history/alternatives API. Replaces the linear `RevisionChain` walk.
+ */
+export interface AlternativeGroup {
+  group_id: string | null;
+  /** The changeset id originally requested. */
+  current_id: string;
+  /** The alternative the reviewer has selected (NULL until chosen). */
+  selected_changeset_id: string | null;
+  total_alternatives: number;
+  alternatives: AlternativeEntry[];
+}
+
 export interface ReviseChangesetInput {
   user_prompt: string;
 }
 
 export interface ReviseChangesetResult {
   new_changeset_id: string;
-  revision_number: number;
+  /** The alternative group this changeset now belongs to. */
+  alternative_group_id: string;
+  /** Total number of alternatives in the group after this addition. */
+  total_alternatives: number;
   field_changes: Array<{
     field_name: string;
     old_value: unknown;

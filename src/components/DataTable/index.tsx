@@ -185,7 +185,7 @@ export default function DataTable({
 
   // Fetch pending AI jobs (filtered by current mode)
   const fetchPendingAIJobs = useCallback(async () => {
-    if (mode === 'senses') {
+    if (mode === 'senses' || mode === 'referents') {
       setPendingAIJobs(0);
       return;
     }
@@ -493,7 +493,7 @@ export default function DataTable({
     setConceptOptionsError(null);
 
     try {
-      const response = await fetch(`${tableState.apiPrefix}/frame`, {
+      const response = await fetch(`${tableState.apiPrefix}/concept`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -829,14 +829,16 @@ export default function DataTable({
   }, [currentColumnsWithActions]);
 
   const handleRowClick = useCallback((entry: DataTableEntry) => {
-    if ('conceptWarning' in entry) {
+    // Senses and referents are read-only and not edited via these handlers.
+    if ('conceptWarning' in entry || 'canonical_label' in entry) {
       return;
     }
     onRowClick?.(entry);
   }, [onRowClick]);
 
   const handleEditEntryClick = useCallback((entry: DataTableEntry) => {
-    if ('conceptWarning' in entry) {
+    // Senses and referents are read-only and not edited via these handlers.
+    if ('conceptWarning' in entry || 'canonical_label' in entry) {
       return;
     }
     onEditClick?.(entry);
@@ -845,7 +847,7 @@ export default function DataTable({
   // Loading state
   if (tableState.loading && !tableState.data) {
     return (
-      <div className={`bg-white rounded-xl border border-gray-200 ${className || ''}`}>
+      <div className={`bg-white rounded-xl border border-gray-200 flex flex-col flex-1 min-h-0 ${className || ''}`}>
         <div className="p-8 text-center">
           <LoadingSpinner size="page" label="Loading entries..." className="py-20" />
         </div>
@@ -856,7 +858,7 @@ export default function DataTable({
   // Error state
   if (tableState.error) {
     return (
-      <div className={`bg-white rounded-xl border border-gray-200 ${className || ''}`}>
+      <div className={`bg-white rounded-xl border border-gray-200 flex flex-col flex-1 min-h-0 ${className || ''}`}>
         <div className="p-8 text-center text-red-600">
           <ExclamationTriangleIcon className="h-12 w-12 mx-auto mb-4" />
           <p>Error loading data: {tableState.error}</p>
@@ -878,7 +880,7 @@ export default function DataTable({
     : null;
 
   return (
-    <div className={`bg-white rounded-xl border border-gray-200 ${className || ''} ${tableState.isResizing ? 'select-none' : ''}`}>
+    <div className={`bg-white rounded-xl border border-gray-200 flex flex-col flex-1 min-h-0 ${className || ''} ${tableState.isResizing ? 'select-none' : ''}`}>
       {/* Toolbar */}
       <DataTableToolbar
         mode={mode}
@@ -896,7 +898,7 @@ export default function DataTable({
         onResetColumnWidths={tableState.handleResetColumnWidths}
         pendingAIJobs={pendingAIJobs}
         onOpenAIOverlay={() => setIsAIOverlayOpen(true)}
-        selectedCount={mode === 'senses' ? 0 : selection.selectedCount}
+        selectedCount={mode === 'senses' || mode === 'referents' ? 0 : selection.selectedCount}
         flagState={getSelectionFlagState()}
         onOpenFlagModal={handleOpenFlagModal}
         onOpenConceptModal={handleOpenConceptModal}
@@ -908,7 +910,7 @@ export default function DataTable({
       />
 
       {/* Table */}
-      <div className="overflow-x-auto relative h-[calc(100vh-300px)] overflow-y-auto bg-gray-50">
+      <div className="overflow-x-auto relative flex-1 min-h-0 overflow-y-auto bg-gray-50">
         {tableState.loading && (
           <div className="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center z-10">
             <LoadingSpinner size="page" />
@@ -953,11 +955,11 @@ export default function DataTable({
         pageSize={tableState.data?.limit || tableState.pageSize}
         onPageChange={tableState.handlePageChange}
         loading={tableState.loading}
-        itemLabel={mode === 'senses' ? 'senses' : 'entries'}
+        itemLabel={mode === 'referents' ? 'referents' : mode === 'senses' ? 'senses' : 'entries'}
       />
 
       {/* Context Menu */}
-      {mode !== 'senses' && (
+      {mode !== 'senses' && mode !== 'referents' && (
         <ContextMenu
           contextMenu={contextMenu}
           entry={contextMenuEntry as TableLexicalUnit | Concept | null}
@@ -1002,7 +1004,7 @@ export default function DataTable({
       )}
 
       {/* AI Jobs Overlay */}
-      {mode !== 'senses' && (
+      {mode !== 'senses' && mode !== 'referents' && (
         <AIJobsOverlay
           isOpen={isAIOverlayOpen}
           onClose={() => setIsAIOverlayOpen(false)}
@@ -1014,7 +1016,7 @@ export default function DataTable({
       )}
 
       {/* AI Agent Quick Edit Modal */}
-      {aiQuickEditEntry && mode !== 'senses' && (
+      {aiQuickEditEntry && mode !== 'senses' && mode !== 'referents' && (
         <AIAgentQuickEditModal
           isOpen={!!aiQuickEditEntry}
           onClose={handleCloseAIQuickEdit}

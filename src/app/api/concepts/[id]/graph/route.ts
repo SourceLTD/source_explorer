@@ -12,7 +12,7 @@ export async function GET(
     const { id: idParam } = await params;
     const id = BigInt(idParam);
 
-    const frame = await prisma.concepts.findUnique({
+    const concept = await prisma.concepts.findUnique({
       where: { id },
       include: {
         properties: {
@@ -92,7 +92,7 @@ export async function GET(
       },
     });
 
-    if (!frame || frame.deleted) {
+    if (!concept || concept.deleted) {
       return NextResponse.json(
         { error: 'Concept not found' },
         { status: 404 }
@@ -103,7 +103,7 @@ export async function GET(
     // show what kinds of values (primitive types or referenced concepts)
     // each property accepts. Deduped by (filler_type_id, concept_id) since
     // duplicate constraint rows are common in the DB.
-    const propertyIds = frame.properties.map(p => p.id);
+    const propertyIds = concept.properties.map(p => p.id);
     const fillerConstraintRows = propertyIds.length > 0
       ? await prisma.property_filler_constraints.findMany({
           where: { property_id: { in: propertyIds } },
@@ -153,23 +153,23 @@ export async function GET(
     }
 
     const graphNode = {
-      id: frame.id.toString(),
-      numericId: frame.id.toString(),
+      id: concept.id.toString(),
+      numericId: concept.id.toString(),
       pos: 'concepts' as const,
-      label: frame.label,
-      gloss: frame.definition,
-      short_definition: frame.short_definition,
-      classifier_guidance: frame.classifier_guidance,
-      archetype: frame.archetype,
-      subtype: frame.subtype,
-      state_kind: frame.state_kind,
-      disable_healthcheck: frame.disable_healthcheck,
-      vendler: frame.vendler,
-      multi_perspective: frame.multi_perspective,
-      wikidata_id: frame.wikidata_id,
-      recipe: frame.recipe,
-      recipe_graph: frame.recipe_graph,
-      properties: frame.properties.map(role => ({
+      label: concept.label,
+      gloss: concept.definition,
+      short_definition: concept.short_definition,
+      classifier_guidance: concept.classifier_guidance,
+      archetype: concept.archetype,
+      subtype: concept.subtype,
+      state_kind: concept.state_kind,
+      disable_healthcheck: concept.disable_healthcheck,
+      vendler: concept.vendler,
+      multi_perspective: concept.multi_perspective,
+      wikidata_id: concept.wikidata_id,
+      recipe: concept.recipe,
+      recipe_graph: concept.recipe_graph,
+      properties: concept.properties.map(role => ({
         id: role.id.toString(),
         concept_id: role.concept_id.toString(),
         description: role.description,
@@ -180,7 +180,7 @@ export async function GET(
         fillers: role.fillers,
         filler_constraints: fillerConstraintsByProperty.get(role.id.toString()) ?? [],
       })),
-      senses: frame.sense_concepts.map(sfLink => {
+      senses: concept.sense_concepts.map(sfLink => {
         const sense = sfLink.senses;
         const senseConcepts = (sense.sense_concepts ?? []).map(sc => ({
           id: sc.concepts.id.toString(),
@@ -222,7 +222,7 @@ export async function GET(
       // Legacy flat LUs across senses (deduped), kept for back-compat UIs.
       lexical_units: Array.from(
         new Map(
-          frame.sense_concepts
+          concept.sense_concepts
             .flatMap(sfLink => sfLink.senses.lexical_unit_senses ?? [])
             .map(lus => [lus.lexical_units.id.toString(), lus.lexical_units])
         ).values()
@@ -240,7 +240,7 @@ export async function GET(
       })),
       verbs: Array.from(
         new Map(
-          frame.sense_concepts
+          concept.sense_concepts
             .flatMap(sfLink => sfLink.senses.lexical_unit_senses ?? [])
             .filter(lus => lus.lexical_units.pos === 'verb')
             .map(lus => [lus.lexical_units.id.toString(), lus.lexical_units])
@@ -257,7 +257,7 @@ export async function GET(
         flagged_reason: verb.flagged_reason,
       })),
       relations: [
-        ...frame.concept_relations_concept_relations_parent_idToconcepts.map(rel => ({
+        ...concept.concept_relations_concept_relations_parent_idToconcepts.map(rel => ({
           id: rel.id.toString(),
           type: rel.type,
           locked: rel.locked,
@@ -270,7 +270,7 @@ export async function GET(
             state_kind: rel.concepts_concept_relations_child_idToconcepts.state_kind,
           },
         })),
-        ...frame.concept_relations_concept_relations_child_idToconcepts.map(rel => ({
+        ...concept.concept_relations_concept_relations_child_idToconcepts.map(rel => ({
           id: rel.id.toString(),
           type: rel.type,
           locked: rel.locked,

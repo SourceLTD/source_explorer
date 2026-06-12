@@ -57,6 +57,18 @@ export const CONCEPTS_COLUMNS: ColumnConfig[] = [
   { key: 'actions', label: 'Actions', visible: true, sortable: false },
 ];
 
+export const REFERENTS_COLUMNS: ColumnConfig[] = [
+  { key: 'id', label: 'ID', visible: false, sortable: true },
+  { key: 'canonical_label', label: 'Label', visible: true, sortable: true },
+  { key: 'type_concept', label: 'Type', visible: true, sortable: false },
+  { key: 'aliases', label: 'Aliases', visible: true, sortable: false },
+  { key: 'external_ids', label: 'External IDs', visible: true, sortable: false },
+  { key: 'knowledge_graph', label: 'Knowledge Graph', visible: true, sortable: false },
+  { key: 'metadata', label: 'Metadata', visible: true, sortable: false },
+  { key: 'createdAt', label: 'Created', visible: true, sortable: true },
+  { key: 'updatedAt', label: 'Updated', visible: true, sortable: true },
+];
+
 export const SENSES_COLUMNS: ColumnConfig[] = [
   { key: 'id', label: 'ID', visible: false, sortable: true },
   { key: 'pos', label: 'POS', visible: true, sortable: true },
@@ -101,7 +113,7 @@ export const DEFAULT_COLUMN_WIDTHS: ColumnWidthState = {
   createdAt: 100,
   updatedAt: 100,
   actions: 110,
-  // Frame columns
+  // Concept columns
   code: 150,
   label: 200,
   definition: 350,
@@ -123,6 +135,13 @@ export const DEFAULT_COLUMN_WIDTHS: ColumnWidthState = {
   multi_perspective: 120,
   wikidata_id: 150,
   recipe: 120,
+  // Referent columns
+  canonical_label: 240,
+  type_concept: 160,
+  aliases: 260,
+  external_ids: 260,
+  knowledge_graph: 180,
+  metadata: 280,
 };
 
 /**
@@ -132,6 +151,8 @@ export function getColumnsForMode(mode: DataTableRenderMode): ColumnConfig[] {
   switch (mode) {
     case 'senses':
       return SENSES_COLUMNS;
+    case 'referents':
+      return REFERENTS_COLUMNS;
     case 'concepts':
       return CONCEPTS_COLUMNS;
     case 'lexical_units':
@@ -187,6 +208,7 @@ export function sanitizeColumnVisibility(
  */
 export function getApiPrefix(mode: DataTableRenderMode): string {
   if (mode === 'senses') return '/api/senses';
+  if (mode === 'referents') return '/api/referents';
   if (mode === 'concepts') return '/api/concepts';
   return '/api/lexical-units';
 }
@@ -197,6 +219,7 @@ export function getApiPrefix(mode: DataTableRenderMode): string {
 export function getGraphBasePath(mode: DataTableRenderMode): string {
   if (mode === 'concepts') return '/graph/concepts';
   if (mode === 'senses') return '/table';
+  if (mode === 'referents') return '/table/referents';
   return '/table';
 }
 

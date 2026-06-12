@@ -1,13 +1,45 @@
 'use client';
 
-import { useMemo, useState, useCallback } from 'react';
-import { ArrowPathIcon, CheckIcon } from '@heroicons/react/24/outline';
-import LoadingSpinner from '@/components/LoadingSpinner';
-import { ConfirmDialog, ConflictDialog } from '@/components/ui';
+import { useMemo, useState, useEffect, useCallback } from 'react';
+import { ConflictDialog } from '@/components/ui';
+import { refreshPendingChangesCount } from '@/hooks/usePendingChangesCount';
+import { SearchInput } from '@/components/filters';
+import PendingFilterPanel from './filter/PendingFilterPanel';
+import {
+  type PendingFilter,
+  type PendingFilterSections,
+  defaultPendingFilter,
+  hasActivePendingFilters,
+  clearHiddenFacets,
+} from './filter/pendingFilter';
 import { usePendingByRemediation } from './byRemediation/usePendingByRemediation';
 import { useBucketActions } from './byRemediation/useBucketActions';
 import PendingByRemediationInbox from './byRemediation/PendingByRemediationInbox';
-import { collectPendingPlanIds } from './byRemediation/bulkCommitPlans';
+import { filterActionBuckets, buildInboxFilterOptions } from './byRemediation/inboxFilter';
+import { regroupBySubject } from './byRemediation/regroupBySubject';
+import type { ByRemediationChangeset } from './byRemediation/types';
+import type { IssueChangePlanSummary } from '@/lib/issues/types';
+
+/** Inbox grouping mode. `action_type` is the original (default) view. */
+type GroupByMode = 'action_type' | 'concept' | 'concept_type';
+
+const GROUP_BY_OPTIONS: { value: GroupByMode; label: string; noun: string }[] = [
+  { value: 'action_type', label: 'Action type', noun: 'action type' },
+  { value: 'concept', label: 'Concept', noun: 'concept' },
+  { value: 'concept_type', label: 'Concept type', noun: 'concept type' },
+];
+
+/**
+ * Which filter facets each grouping mode exposes. Action-type leans into how a
+ * change arose (jobs, health checks); concept views swap those for subject
+ * facets (archetype, new vs existing). `concept_type` already groups by
+ * archetype, so it drops the redundant archetype facet.
+ */
+const FILTER_SECTIONS_BY_MODE: Record<GroupByMode, PendingFilterSections> = {
+  action_type: { jobs: true, planState: true, severity: true, diagnosis: true, dates: true },
+  concept: { archetype: true, subjectState: true, planState: true, jobs: true, dates: true },
+  concept_type: { subjectState: true, planState: true, jobs: true, dates: true },
+};
 
 /**
  * Wrapper around the by-remediation Inbox view for the Pending Changes tab.
@@ -16,66 +48,148 @@ import { collectPendingPlanIds } from './byRemediation/bulkCommitPlans';
  * produced them, with health-check diagnosis codes as collapsible sub-
  * rows inside each remediation bucket.
  */
-export default function PendingChangesTab() {
-  const { data, isLoading, error, refetch } = usePendingByRemediation();
+export default function PendingChangesTab({
+  onRegisterRefresh,
+}: {
+  /** Lets the modal header's Refresh button trigger this tab's refetch. */
+  onRegisterRefresh?: (refresh: (() => void | Promise<void>) | null) => void;
+} = {}) {
+  const { data, isLoading, error, refetch, removePlans, removeChangesets } =
+    usePendingByRemediation();
   const buckets = useMemo(() => data?.buckets ?? [], [data]);
-  const [confirmCommitAllPlans, setConfirmCommitAllPlans] = useState(false);
+  const [filter, setFilter] = useState<PendingFilter>(defaultPendingFilter);
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [groupBy, setGroupBy] = useState<GroupByMode>('action_type');
 
-  const actions = useBucketActions({ refetch });
+  const actions = useBucketActions({ refetch, removeChangesets });
 
-  const remediationCount = useMemo(
-    () => buckets.filter((b) => !b.action_key.includes('/')).length,
-    [buckets],
+  // Expose this tab's refetch to the modal header's Refresh button while
+  // mounted; clear it on unmount (e.g. when switching to the Health tab).
+  useEffect(() => {
+    onRegisterRefresh?.(refetch);
+    return () => onRegisterRefresh?.(null);
+  }, [onRegisterRefresh, refetch]);
+
+  const filterShow = FILTER_SECTIONS_BY_MODE[groupBy];
+
+  // Switch the active facets to the new mode's set, dropping any that the new
+  // mode hides so no invisible filter keeps narrowing the list.
+  const changeGroupBy = useCallback((mode: GroupByMode) => {
+    setGroupBy(mode);
+    setFilter((f) => clearHiddenFacets(f, FILTER_SECTIONS_BY_MODE[mode]));
+  }, []);
+
+  const filterOptions = useMemo(
+    () => buildInboxFilterOptions(buckets, data?.subjects_by_changeset, data?.subjects_by_plan),
+    [buckets, data],
+  );
+  const filteredBuckets = useMemo(
+    () => filterActionBuckets(buckets, filter, data?.subjects_by_changeset, data?.subjects_by_plan),
+    [buckets, filter, data],
+  );
+  const filterActive = hasActivePendingFilters(filter);
+  const filteredTotal = useMemo(
+    () => filteredBuckets.reduce((n, b) => n + b.counts.total, 0),
+    [filteredBuckets],
   );
 
-  const pendingPlanIds = useMemo(() => collectPendingPlanIds(buckets), [buckets]);
-  const allPlansBusy = actions.plansBulkBusy.scope === 'all';
+  // The buckets actually rendered. For the concept / concept-type views we
+  // re-bucket the (already-filtered) changes by their subject concept; the
+  // action-type view passes the server buckets through untouched.
+  const displayBuckets = useMemo(() => {
+    if (groupBy === 'action_type' || !data) return filteredBuckets;
+    const csById = new Map<string, ByRemediationChangeset>();
+    const planById = new Map<string, IssueChangePlanSummary>();
+    for (const b of filteredBuckets) {
+      for (const c of b.changesets) csById.set(c.id, c);
+      for (const p of b.plans) planById.set(p.id, p);
+    }
+    return regroupBySubject(
+      Array.from(csById.values()),
+      Array.from(planById.values()),
+      data.subjects_by_changeset,
+      data.subjects_by_plan,
+      groupBy,
+    );
+  }, [groupBy, data, filteredBuckets]);
 
-  const handleCommitAllPlans = useCallback(async () => {
-    setConfirmCommitAllPlans(false);
-    await actions.commitAllPlans(buckets);
-  }, [actions, buckets]);
+  const groupNoun =
+    GROUP_BY_OPTIONS.find((o) => o.value === groupBy)?.noun ?? 'action type';
+
+  // A plan committed: drop its (and any discarded siblings') cards locally and
+  // keep the global pending badge in sync — no disruptive full-list refetch.
+  const handlePlanCommitted = useCallback(
+    (planIds: string[]) => {
+      removePlans(planIds);
+      refreshPendingChangesCount();
+    },
+    [removePlans],
+  );
+
+  // In action-type view, count only the plan (remediation) buckets — those
+  // are the ones keyed without a `<op>/<entity>` slash. In subject views the
+  // bucket count is just the number of subject groups.
+  const bucketCount = useMemo(
+    () =>
+      groupBy === 'action_type'
+        ? filteredBuckets.filter((b) => !b.action_key.includes('/')).length
+        : displayBuckets.length,
+    [groupBy, filteredBuckets, displayBuckets],
+  );
 
   return (
     <div className="h-full flex flex-col bg-white">
       <div className="px-4 py-2 border-b border-gray-200 bg-gray-50 flex items-center gap-3 shrink-0">
+        {/* Grouping mode toggle */}
+        <div
+          className="inline-flex rounded-md border border-gray-200 bg-white p-0.5"
+          role="group"
+          aria-label="Group pending changes by"
+        >
+          {GROUP_BY_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => changeGroupBy(opt.value)}
+              aria-pressed={groupBy === opt.value}
+              className={`px-2.5 py-1 text-xs font-medium rounded transition-colors ${
+                groupBy === opt.value
+                  ? 'bg-blue-600 text-white'
+                  : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
         {data && (
-          <span className="text-xs text-gray-500 tabular-nums">
-            {data.total_pending_changesets} pending · {remediationCount} action type
-            {remediationCount === 1 ? '' : 's'}
+          <span className="text-xs text-gray-500 tabular-nums whitespace-nowrap">
+            {filterActive
+              ? `${filteredTotal} of ${data.total_pending_changesets}`
+              : data.total_pending_changesets}{' '}
+            pending · {bucketCount} {groupNoun}
+            {bucketCount === 1 ? '' : 's'}
           </span>
         )}
+
         <div className="ml-auto flex items-center gap-2">
-          {pendingPlanIds.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setConfirmCommitAllPlans(true)}
-              disabled={isLoading || allPlansBusy || actions.plansBulkBusy.scope === 'bucket'}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-white bg-emerald-700 rounded-md hover:bg-emerald-600 disabled:opacity-50"
-              title="Commit all pending change plans in one transaction"
-            >
-              {allPlansBusy ? (
-                <LoadingSpinner size="sm" noPadding />
-              ) : (
-                <CheckIcon className="w-3.5 h-3.5" />
-              )}
-              Commit all plans ({pendingPlanIds.length})
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => void refetch()}
-            disabled={isLoading}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50"
-            title="Refresh"
-          >
-            {isLoading ? (
-              <LoadingSpinner size="sm" noPadding />
-            ) : (
-              <ArrowPathIcon className="w-3.5 h-3.5" />
-            )}
-            Refresh
-          </button>
+          <div className="relative">
+            <PendingFilterPanel
+              filter={filter}
+              onFilterChange={setFilter}
+              isOpen={isFilterOpen}
+              onToggle={() => setIsFilterOpen((v) => !v)}
+              options={filterOptions}
+              show={filterShow}
+            />
+          </div>
+          <SearchInput
+            value={filter.search}
+            onChange={(value) => setFilter((f) => ({ ...f, search: value }))}
+            placeholder="Search changes..."
+            className="w-56"
+          />
         </div>
       </div>
 
@@ -94,22 +208,19 @@ export default function PendingChangesTab() {
 
       <div className="flex-1 min-h-0 overflow-hidden">
         <PendingByRemediationInbox
-          buckets={buckets}
+          buckets={displayBuckets}
+          groupNoun={groupNoun}
           isLoading={isLoading}
+          emptyHint={filterActive ? 'No changes match the current filters.' : undefined}
           error={error}
-          busy={actions.busy}
           plansBulkBusy={actions.plansBulkBusy}
-          onCommitBucket={(bucket, key) =>
-            actions.commitBucket(bucket, key)
-          }
+          subjectsByPlan={groupBy === 'action_type' ? data?.subjects_by_plan : undefined}
           onCommitBucketPlans={(bucket, key) =>
             actions.commitBucketPlans(bucket, key)
           }
-          onRejectBucket={(bucket, key) =>
-            actions.requestRejectBucket(bucket, key)
-          }
           onCommitRow={actions.commitRow}
           onRejectRow={actions.rejectRow}
+          onPlanCommitted={handlePlanCommitted}
           onPlanChanged={() => void refetch()}
         />
       </div>
@@ -123,25 +234,6 @@ export default function PendingChangesTab() {
         loading={actions.isDiscardingConflicted}
       />
 
-      <ConfirmDialog
-        isOpen={confirmCommitAllPlans}
-        onCancel={() => setConfirmCommitAllPlans(false)}
-        onConfirm={() => void handleCommitAllPlans()}
-        title="Commit all pending plans?"
-        message={`Commit ${pendingPlanIds.length} change plan${pendingPlanIds.length === 1 ? '' : 's'} in a single transaction? Duplicate parent proposals will be discarded automatically.`}
-        confirmLabel="Commit all"
-        variant="success"
-      />
-
-      <ConfirmDialog
-        isOpen={actions.confirmReject.isOpen}
-        onCancel={actions.cancelConfirmReject}
-        onConfirm={actions.acceptConfirmReject}
-        title="Reject loose changes?"
-        message={`Reject ${actions.confirmReject.count} loose change${actions.confirmReject.count === 1 ? '' : 's'} in this remediation? Plan-bound changesets are unaffected.`}
-        confirmLabel="Reject"
-        variant="danger"
-      />
     </div>
   );
 }

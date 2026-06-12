@@ -42,9 +42,33 @@ export interface ActionBucket {
   };
 }
 
+/**
+ * Subject concept of a change, resolved server-side. Powers the
+ * "by concept" and "by concept type" inbox views: every change is filed
+ * under the single concept it is *about* (see `subjectConcept.ts`), with
+ * its label/archetype already resolved so the client can group without
+ * extra fetches.
+ */
+export interface EnrichedSubject {
+  /** Subject concept id, or null when it doesn't exist yet (create/split/ingest). */
+  concept_id: string | null;
+  /** Stable bucket key: `concept:<id>` for existing, `new:<seed>` for not-yet-created. */
+  key: string;
+  /** Resolved display label (null only when the concept couldn't be resolved). */
+  label: string | null;
+  /** Resolved archetype / concept type (null when unset or unresolved). */
+  archetype: string | null;
+  /** True when the subject is a not-yet-created concept. */
+  is_new: boolean;
+}
+
 export interface PendingByRemediationResponse {
   buckets: ActionBucket[];
   total_pending_changesets: number;
+  /** Subject concept per loose changeset, keyed by changeset id. */
+  subjects_by_changeset: Record<string, EnrichedSubject>;
+  /** Subject concept per plan, keyed by plan id. */
+  subjects_by_plan: Record<string, EnrichedSubject>;
 }
 
 export function actionBucketKey(bucket: ActionBucket): string {

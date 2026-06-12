@@ -167,6 +167,7 @@ export {
   discardPlan,
   PlanNotFoundError,
   PlanNotPendingError,
+  PlanNotSelectedError,
 } from './commit-plan';
 
 export type {

@@ -26,20 +26,20 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       if (seen.has(currentId.toString())) break;
       seen.add(currentId.toString());
 
-      const frame = await prisma.concepts.findUnique({
+      const concept = await prisma.concepts.findUnique({
         where: { id: currentId },
         select: { id: true, label: true, short_definition: true, deleted: true },
       });
 
-      if (!frame || frame.deleted) break;
+      if (!concept || concept.deleted) break;
 
       path.push({
-        id: frame.id.toString(),
-        label: frame.label,
-        short_definition: frame.short_definition,
+        id: concept.id.toString(),
+        label: concept.label,
+        short_definition: concept.short_definition,
       });
 
-      if (ROOT_FRAME_IDS.has(frame.id)) break;
+      if (ROOT_FRAME_IDS.has(concept.id)) break;
 
       const parentRel: { parent_id: bigint } | null = await prisma.concept_relations.findFirst({
         where: { child_id: currentId, type: 'parent_of' },

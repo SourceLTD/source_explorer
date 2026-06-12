@@ -47,6 +47,7 @@
 import { prisma } from '@/lib/prisma';
 
 import { commitChangesetInTx } from './commit';
+import { finalizePlanAlternativeGroupInTx, getGroupIdForPlan } from './alternatives';
 import type { CommitError } from './types';
 
 export type ChangePlanStatus = 'pending' | 'committed' | 'discarded';
@@ -90,6 +91,23 @@ export class PlanNotPendingError extends Error {
 }
 
 /**
+ * Thrown when committing a plan that is an alternative in a group where a
+ * DIFFERENT plan has been selected as the winner. The reviewer must commit the
+ * selected alternative (or change the selection) instead.
+ */
+export class PlanNotSelectedError extends Error {
+  readonly selectedPlanId: bigint;
+  constructor(planId: bigint, selectedPlanId: bigint) {
+    super(
+      `change plan ${planId.toString()} is not the selected alternative ` +
+        `(group selects plan ${selectedPlanId.toString()})`,
+    );
+    this.name = 'PlanNotSelectedError';
+    this.selectedPlanId = selectedPlanId;
+  }
+}
+
+/**
  * Commits every pending changeset in `planId` in `(entity_type, id)`
  * order inside a single `prisma.$transaction`. On success, every child
  * changeset, every audit-log row, and the parent `change_plans` row
@@ -124,7 +142,7 @@ export async function commitPlan(
         //      without an explicit `commit_order_hint` column.
         //   3. For frame_relation reparent specifically, this gives
         //      DELETE-old-edge -> CREATE-new-edge, mirroring
-        //      `stageFrameRelationReparent`'s ordering. Reversing the
+        //      `stageConceptRelationReparent`'s ordering. Reversing the
         //      order would briefly leave the source frame parent-less,
         //      which `commitChangeset` for a CREATE frame_relation
         //      handles fine, but the DAG visualisation expects the
@@ -138,6 +156,23 @@ export async function commitPlan(
   if (plan.status !== 'pending') {
     throw new PlanNotPendingError(planId, plan.status as ChangePlanStatus);
   }
+
+  // Plan alternatives: if this plan belongs to a group that has selected a
+  // DIFFERENT plan as the winner, refuse to commit it. The reviewer must
+  // commit the selected alternative (or change the selection first). A group
+  // with no selection, or one that selects THIS plan, commits normally.
+  const groupId = await getGroupIdForPlan(prisma, planId);
+  if (groupId != null) {
+    const group = await prisma.change_alternatives.findUnique({
+      where: { id: groupId },
+      select: { selected_plan_id: true },
+    });
+    const selectedPlanId = group?.selected_plan_id ?? null;
+    if (selectedPlanId != null && selectedPlanId !== planId) {
+      throw new PlanNotSelectedError(planId, selectedPlanId);
+    }
+  }
+
   const orderedChangesets = plan.changesets;
   const attempted = orderedChangesets.length;
 
@@ -213,6 +248,11 @@ export async function commitPlan(
           conflict_report: undefined,
         },
       });
+
+      // Finalize the plan's alternative group: mark this plan as the selected
+      // winner, mark the group committed, and discard sibling plans + their
+      // changesets. No-op for ungrouped plans.
+      await finalizePlanAlternativeGroupInTx(tx, planId);
     }, {
       timeout: 30_000,
       maxWait: 10_000,
@@ -379,6 +419,17 @@ export async function discardPlan(planId: bigint, discardedBy: string): Promise<
         reviewed_at: new Date(),
       },
     });
+
+    // Plan alternatives: discarding ONE alternative leaves the group and its
+    // sibling plans intact. Only clear the group's selection if it pointed at
+    // the plan we just discarded, so the reviewer must pick another winner.
+    const groupId = await getGroupIdForPlan(tx, planId);
+    if (groupId != null) {
+      await tx.change_alternatives.updateMany({
+        where: { id: groupId, selected_plan_id: planId },
+        data: { selected_plan_id: null },
+      });
+    }
   });
 
   return { planId, discardedChangesets };

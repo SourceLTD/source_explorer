@@ -853,19 +853,19 @@ export async function createLLMJob(
     changesetId: params.changesetId ?? null,
     chatHistory: params.chatHistory ? (params.chatHistory as unknown as Prisma.InputJsonValue) : null,
     // Split job configuration
-    splitMinFrames: params.splitMinFrames ?? null,
-    splitMaxFrames: params.splitMaxFrames ?? null,
+    splitMinConcepts: params.splitMinConcepts ?? null,
+    splitMaxConcepts: params.splitMaxConcepts ?? null,
   };
 
   const preparedJobItemsData = await Promise.all(entriesToCreate.map(async (entry) => {
     // Inject split configuration into entry.additional for template variable interpolation
-    const entryWithSplitConfig = params.jobType === 'split' && (params.splitMinFrames || params.splitMaxFrames)
+    const entryWithSplitConfig = params.jobType === 'split' && (params.splitMinConcepts || params.splitMaxConcepts)
       ? {
           ...entry,
           additional: {
             ...entry.additional,
-            min_splits: params.splitMinFrames ?? 2,
-            max_splits: params.splitMaxFrames ?? 5,
+            min_splits: params.splitMinConcepts ?? 2,
+            max_splits: params.splitMaxConcepts ?? 5,
           },
         }
       : entry;

@@ -1,8 +1,8 @@
-import { TableLexicalUnit, Concept, SenseTableRow } from '@/lib/types';
+import { TableLexicalUnit, Concept, SenseTableRow, ReferentTableRow } from '@/lib/types';
 
 export type DataTableMode = 'lexical_units' | 'concepts';
-export type DataTableRenderMode = DataTableMode | 'senses';
-export type DataTableEntry = TableLexicalUnit | Concept | SenseTableRow;
+export type DataTableRenderMode = DataTableMode | 'senses' | 'referents';
+export type DataTableEntry = TableLexicalUnit | Concept | SenseTableRow | ReferentTableRow;
 
 export interface DataTableProps {
   onRowClick?: (entry: TableLexicalUnit | Concept) => void;
@@ -51,6 +51,6 @@ export interface FlagState {
 }
 
 // Re-export commonly used types
-export type { TableLexicalUnit, Concept, SenseTableRow, PaginatedResult, PaginationParams } from '@/lib/types';
+export type { TableLexicalUnit, Concept, SenseTableRow, ReferentTableRow, PaginatedResult, PaginationParams } from '@/lib/types';
 export type { FilterState } from './filterState';
 export type { ColumnConfig, ColumnVisibilityState } from '@/components/ColumnVisibilityPanel';

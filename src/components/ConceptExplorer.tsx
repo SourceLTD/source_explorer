@@ -240,7 +240,7 @@ export default function ConceptExplorer({ initialConceptId }: ConceptExplorerPro
   }, [isEditOverlayOpen, currentConcept?.id, currentConcept, loadConceptForEdit]);
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50">
+    <div className="h-screen-zoomed flex flex-col bg-gray-50">
       {/* Header */}
       <header className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="flex items-center justify-between">
@@ -264,6 +264,13 @@ export default function ConceptExplorer({ initialConceptId }: ConceptExplorerPro
               </button>
               <button
                 type="button"
+                onClick={() => router.push('/table/referents')}
+                className="px-4 py-2 text-base font-medium transition-colors relative cursor-pointer text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+              >
+                Referents
+              </button>
+              <button
+                type="button"
                 onClick={() => router.push('/claims')}
                 className="px-4 py-2 text-base font-medium transition-colors relative cursor-pointer text-gray-600 hover:text-gray-900 hover:bg-gray-50"
               >
@@ -271,7 +278,7 @@ export default function ConceptExplorer({ initialConceptId }: ConceptExplorerPro
               </button>
             </div>
           </div>
-          
+
           <div className="flex items-center gap-4 flex-1 justify-end">
             <div className="flex-1 max-w-2xl">
               <SearchBox 

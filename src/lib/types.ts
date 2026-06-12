@@ -280,6 +280,28 @@ export interface SenseTableRow extends Omit<SenseWithConcept, 'createdAt' | 'upd
   pending?: PendingChangeInfo | null;
 }
 
+/**
+ * A referent row — a stable named entity sitting between concepts and claims.
+ * Typed by a concept (`type_concept`), optionally scoped to a knowledge graph,
+ * and carrying aliases and external ids aggregated from its child tables.
+ */
+export interface ReferentExternalId {
+  vocabulary: string;
+  external_id: string;
+}
+
+export interface ReferentTableRow {
+  id: string;
+  canonical_label: string;
+  type_concept: { id: string; label: string; code: string | null } | null;
+  knowledge_graph: { id: string; label: string } | null;
+  aliases: string[];
+  external_ids: ReferentExternalId[];
+  metadata: Record<string, unknown> | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
 // ============================================
 // Recipe Graph Types (recipe_graph JSON column)
 // ============================================
@@ -391,6 +413,30 @@ export interface SearchOptions {
   pos?: PartOfSpeech | PartOfSpeech[];
   limit?: number;
 }
+
+// ============================================
+// Unified (cross-entity) search
+// ============================================
+
+/** The four entity types reachable from the global navbar search. */
+export type SearchEntityType = 'concept' | 'sense' | 'referent' | 'claim';
+
+/**
+ * A single normalized result from the unified search endpoint. Every searcher
+ * (concepts/senses/referents/claims) maps its rows into this shape, building a
+ * ready-to-navigate `href` server-side so the client just calls router.push.
+ */
+export interface UnifiedSearchResult {
+  type: SearchEntityType;
+  id: string;
+  label: string; // primary line
+  sublabel?: string; // secondary line (definition / gloss / alias / concept·referent)
+  badge?: string; // pos / archetype / vocabulary / graph name
+  href: string; // ready-to-navigate URL (built server-side)
+}
+
+/** Unscoped response: results grouped by entity type. */
+export type UnifiedSearchGroups = Record<SearchEntityType, UnifiedSearchResult[]>;
 
 export interface PaginatedSearchResult {
   entries: LexicalUnit[];
@@ -956,50 +1002,8 @@ export function sortPropertiesByPrecedence<T extends { label?: string | null; ma
 // Deprecated Aliases (for backward compatibility)
 // ============================================
 
-/** @deprecated Use ConceptProperty */
-export type FrameRole = ConceptProperty;
 /** @deprecated Use PropertyGroup */
 export type RoleGroup = PropertyGroup;
-/** @deprecated Use Concept */
-export type Frame = Concept;
-/** @deprecated Use ConceptRecipe */
-export type FrameRecipe = ConceptRecipe;
-/** @deprecated Use SenseWarning */
-export type FrameSenseWarning = SenseWarning;
-/** @deprecated Use SenseConceptRef */
-export type FrameSenseFrameRef = SenseConceptRef;
-/** @deprecated Use Sense */
-export type FrameSense = Sense;
-/** @deprecated Use SenseWithConcept */
-export type FrameSenseWithFrame = SenseWithConcept;
-/** @deprecated Use SenseLexicalUnitSnippet */
-export type FrameSenseLexicalUnitSnippet = SenseLexicalUnitSnippet;
-/** @deprecated Use SenseTableRow */
-export type FrameSenseTableRow = SenseTableRow;
-/** @deprecated Use ConceptRelationType */
-export type FrameRelationType = ConceptRelationType;
-/** @deprecated Use ConceptGraphProperty */
-export type FrameGraphRole = ConceptGraphProperty;
-/** @deprecated Use ConceptGraphLexicalUnit */
-export type FrameGraphLexicalUnit = ConceptGraphLexicalUnit;
-/** @deprecated Use ConceptGraphSense */
-export type FrameGraphSense = ConceptGraphSense;
-/** @deprecated Use ConceptGraphRelation */
-export type FrameGraphRelation = ConceptGraphRelation;
-/** @deprecated Use ConceptGraphNode */
-export type FrameGraphNode = ConceptGraphNode;
-/** @deprecated Use ConceptRecipeProperty */
-export type FrameRecipeRole = ConceptRecipeProperty;
-/** @deprecated Use ConceptRecipeLexicalUnit */
-export type FrameRecipeLexicalUnit = ConceptRecipeLexicalUnit;
-/** @deprecated Use ConceptRecipeRelatedConcept */
-export type FrameRecipeRelatedFrame = ConceptRecipeRelatedConcept;
-/** @deprecated Use ConceptRecipeSense */
-export type FrameRecipeSense = ConceptRecipeSense;
-/** @deprecated Use ConceptRecipeData */
-export type FrameRecipeData = ConceptRecipeData;
-/** @deprecated Use ConceptPaginationParams */
-export type FramePaginationParams = ConceptPaginationParams;
 /** @deprecated Use PROPERTY_TYPE_ACRONYMS */
 export const ROLE_TYPE_ACRONYMS = PROPERTY_TYPE_ACRONYMS;
 /** @deprecated Use getPropertyTypeAcronym */

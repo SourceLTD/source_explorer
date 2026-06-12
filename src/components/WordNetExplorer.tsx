@@ -282,7 +282,7 @@ export default function WordNetExplorer({ initialEntryId, mode = 'lexical_units'
   }, [searchParams, initialEntryId, loadGraphNode]);
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50">
+    <div className="h-screen-zoomed flex flex-col bg-gray-50">
       {/* Header */}
       <header className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="flex items-center justify-between">

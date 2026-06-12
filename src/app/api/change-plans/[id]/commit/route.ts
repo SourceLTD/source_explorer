@@ -22,6 +22,7 @@ import {
   commitPlan,
   PlanNotFoundError,
   PlanNotPendingError,
+  PlanNotSelectedError,
 } from '@/lib/version-control';
 import { getCurrentUserName } from '@/utils/supabase/server';
 
@@ -46,6 +47,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         return NextResponse.json(
           { error: err.message, status: err.status },
           { status: 422 },
+        );
+      }
+      if (err instanceof PlanNotSelectedError) {
+        return NextResponse.json(
+          { error: err.message, selected_plan_id: err.selectedPlanId.toString() },
+          { status: 409 },
         );
       }
       throw err;

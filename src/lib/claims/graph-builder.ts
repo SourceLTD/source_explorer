@@ -19,10 +19,61 @@ type InstanceWithRelations = Prisma.instancesGetPayload<{
 
 function instanceLabel(instance: InstanceWithRelations): string {
   const meta = instance.metadata as Record<string, unknown> | null;
+  const pending = pendingConceptInfo(meta);
+  if (pending.label) {
+    return pending.label;
+  }
   if (meta?.label && typeof meta.label === 'string') {
     return meta.label;
   }
   return `${instance.concepts.label} #${instance.id}`;
+}
+
+function snapRecord(value: unknown): Record<string, unknown> | null {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return null;
+}
+
+function snapString(value: unknown): string | undefined {
+  if (typeof value === 'string' && value.trim()) return value.trim();
+  if (typeof value === 'number' || typeof value === 'bigint') return String(value);
+  return undefined;
+}
+
+function pendingConceptInfo(metadata: unknown): {
+  changePlanId?: string;
+  label?: string;
+  archetype?: string;
+} {
+  const meta = snapRecord(metadata);
+  const bundle = snapRecord(meta?.pending_tbox_bundle);
+  const bundleMetadata = snapRecord(bundle?.metadata);
+  const proposed = snapRecord(bundleMetadata?.proposed_concept);
+  return {
+    changePlanId: snapString(meta?.pending_change_plan_id),
+    label: snapString(proposed?.label),
+    archetype: snapString(proposed?.archetype),
+  };
+}
+
+function instanceNode(instance: InstanceWithRelations, matched: boolean | undefined): ClaimsNode {
+  const pending = pendingConceptInfo(instance.metadata);
+  return {
+    id: instance.id.toString(),
+    type: 'instance',
+    label: instanceLabel(instance),
+    conceptLabel: instance.concepts.label,
+    conceptId: instance.concepts.id.toString(),
+    confidence: instance.confidence ?? undefined,
+    matched,
+    referentialStatus: instance.referential_status as ReferentialStatus,
+    pendingChangePlanId: pending.changePlanId,
+    pendingConceptLabel: pending.label,
+    pendingConceptArchetype: pending.archetype,
+    fallbackConceptLabel: pending.label ? instance.concepts.label : undefined,
+  };
 }
 
 export function buildClaimsGraphPayload(
@@ -36,16 +87,10 @@ export function buildClaimsGraphPayload(
 
   for (const instance of instances) {
     const instanceId = instance.id.toString();
-    nodes.set(instanceId, {
-      id: instanceId,
-      type: 'instance',
-      label: instanceLabel(instance),
-      conceptLabel: instance.concepts.label,
-      conceptId: instance.concepts.id.toString(),
-      confidence: instance.confidence ?? undefined,
-      matched: highlightIds.size > 0 ? highlightIds.has(instanceId) : undefined,
-      referentialStatus: instance.referential_status as ReferentialStatus,
-    });
+    nodes.set(
+      instanceId,
+      instanceNode(instance, highlightIds.size > 0 ? highlightIds.has(instanceId) : undefined),
+    );
 
     if (includeConceptNodes) {
       const conceptId = `concept-${instance.concepts.id}`;
@@ -71,15 +116,13 @@ export function buildClaimsGraphPayload(
         const targetInstance = filler.instances_instance_fillers_filler_instance_idToinstances;
         const targetId = targetInstance.id.toString();
         if (!nodes.has(targetId)) {
-          nodes.set(targetId, {
-            id: targetId,
-            type: 'instance',
-            label: instanceLabel(targetInstance as InstanceWithRelations),
-            conceptLabel: targetInstance.concepts.label,
-            conceptId: targetInstance.concepts.id.toString(),
-            matched: highlightIds.size > 0 ? highlightIds.has(targetId) : undefined,
-            referentialStatus: (targetInstance as InstanceWithRelations).referential_status as ReferentialStatus,
-          });
+          nodes.set(
+            targetId,
+            instanceNode(
+              targetInstance as InstanceWithRelations,
+              highlightIds.size > 0 ? highlightIds.has(targetId) : undefined,
+            ),
+          );
         }
         links.push({
           id: `filler-${filler.id}`,

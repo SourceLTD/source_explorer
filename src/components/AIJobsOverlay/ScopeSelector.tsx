@@ -24,16 +24,16 @@ export const ScopeSelector = memo(function ScopeSelector({
   manualIdSuggestions,
   manualIdMenuPosition,
   insertManualId,
-  showFrameIdMenu,
+  showConceptIdMenu,
   frameIdSuggestions,
   frameIdMenuPosition,
-  insertFrameId,
+  insertConceptId,
   handleManualIdChange,
   handleManualIdKeyDown,
-  handleFrameIdChange,
-  handleFrameIdKeyDown,
+  handleConceptIdChange,
+  handleConceptIdKeyDown,
   validatedManualIds,
-  validatedFrameIds,
+  validatedConceptIds,
   manualIds,
   frameIds,
   pos,
@@ -49,9 +49,9 @@ export const ScopeSelector = memo(function ScopeSelector({
   filterValidateSample,
   onValidateFilters,
   frameIncludeLexicalUnits,
-  onFrameIncludeLexicalUnitsChange,
+  onConceptIncludeLexicalUnitsChange,
   frameFlagTarget,
-  onFrameFlagTargetChange,
+  onConceptFlagTargetChange,
 }: {
   mode: ScopeMode;
   setMode: (mode: ScopeMode) => void;
@@ -65,16 +65,16 @@ export const ScopeSelector = memo(function ScopeSelector({
   manualIdSuggestions: Array<{ code: string; gloss: string }>;
   manualIdMenuPosition: { top: number; left: number };
   insertManualId: (code: string) => void;
-  showFrameIdMenu: boolean;
+  showConceptIdMenu: boolean;
   frameIdSuggestions: Array<{ id: string; label: string }>;
   frameIdMenuPosition: { top: number; left: number };
-  insertFrameId: (id: string) => void;
+  insertConceptId: (id: string) => void;
   handleManualIdChange: (event: React.ChangeEvent<HTMLTextAreaElement>) => void;
   handleManualIdKeyDown: (event: React.KeyboardEvent<HTMLTextAreaElement>) => void;
-  handleFrameIdChange: (event: React.ChangeEvent<HTMLTextAreaElement>) => void;
-  handleFrameIdKeyDown: (event: React.KeyboardEvent<HTMLTextAreaElement>) => void;
+  handleConceptIdChange: (event: React.ChangeEvent<HTMLTextAreaElement>) => void;
+  handleConceptIdKeyDown: (event: React.KeyboardEvent<HTMLTextAreaElement>) => void;
   validatedManualIds: Set<string>;
-  validatedFrameIds: Set<string>;
+  validatedConceptIds: Set<string>;
   manualIds: string[];
   frameIds: string[];
   pos: DataTableMode;
@@ -90,9 +90,9 @@ export const ScopeSelector = memo(function ScopeSelector({
   filterValidateSample: Array<{ code: string; gloss: string }>;
   onValidateFilters: () => void;
   frameIncludeLexicalUnits?: boolean;
-  onFrameIncludeLexicalUnitsChange?: (include: boolean) => void;
+  onConceptIncludeLexicalUnitsChange?: (include: boolean) => void;
   frameFlagTarget?: 'concept' | 'lexical_unit' | 'both';
-  onFrameFlagTargetChange?: (target: 'concept' | 'lexical_unit' | 'both') => void;
+  onConceptFlagTargetChange?: (target: 'concept' | 'lexical_unit' | 'both') => void;
 }) {
   return (
     <div className="space-y-2">
@@ -221,7 +221,7 @@ export const ScopeSelector = memo(function ScopeSelector({
                   >
                     <ul>
                       {manualIdSuggestions.map((suggestion, idx) => {
-                        const isFrameMode = pos === 'concepts';
+                        const isConceptMode = pos === 'concepts';
                         return (
                           <li key={suggestion.code}>
                             <button
@@ -231,7 +231,7 @@ export const ScopeSelector = memo(function ScopeSelector({
                             >
                               <span className="font-semibold text-gray-800">{suggestion.code}</span>
                               <span className="text-[11px] text-gray-500 font-mono">
-                                {isFrameMode ? `ID: ${suggestion.gloss}` : suggestion.gloss}
+                                {isConceptMode ? `ID: ${suggestion.gloss}` : suggestion.gloss}
                               </span>
                             </button>
                           </li>
@@ -276,14 +276,14 @@ export const ScopeSelector = memo(function ScopeSelector({
                 <textarea
                   ref={frameIdInputRef}
                   value={frameIdsText}
-                  onChange={handleFrameIdChange}
-                  onKeyDown={handleFrameIdKeyDown}
+                  onChange={handleConceptIdChange}
+                  onKeyDown={handleConceptIdKeyDown}
                   rows={2}
                   className="w-full rounded-xl border border-gray-300 px-2 py-1 text-xs text-gray-800 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   style={{ scrollbarGutter: 'stable' }}
                   placeholder="e.g., Communication, 1023"
                 />
-                {showFrameIdMenu && frameIdSuggestions.length > 0 && (
+                {showConceptIdMenu && frameIdSuggestions.length > 0 && (
                   <div
                     className="fixed z-10 max-h-48 w-60 overflow-y-auto rounded-xl border border-gray-200 bg-white"
                     style={{ top: `${frameIdMenuPosition.top}px`, left: `${frameIdMenuPosition.left}px` }}
@@ -292,7 +292,7 @@ export const ScopeSelector = memo(function ScopeSelector({
                       {frameIdSuggestions.map((suggestion, idx) => (
                         <li key={suggestion.id}>
                           <button
-                            onClick={() => insertFrameId(suggestion.label)}
+                            onClick={() => insertConceptId(suggestion.label)}
                             className={`cursor-pointer flex w-full flex-col items-start px-3 py-2 text-left text-xs hover:bg-blue-50 ${idx === frameIdActiveIndex ? 'bg-blue-50' : ''}`}
                             type="button"
                           >
@@ -308,10 +308,10 @@ export const ScopeSelector = memo(function ScopeSelector({
                   <div className="mt-1 space-y-1">
                     {frameIds.map(id => (
                       <div key={id} className="flex items-center gap-1 text-[11px]">
-                        <span className={validatedFrameIds.has(id) ? 'text-green-600' : 'text-red-600'}>
-                          {validatedFrameIds.has(id) ? '✓' : '✗'}
+                        <span className={validatedConceptIds.has(id) ? 'text-green-600' : 'text-red-600'}>
+                          {validatedConceptIds.has(id) ? '✓' : '✗'}
                         </span>
-                        <span className={validatedFrameIds.has(id) ? 'text-gray-700' : 'text-red-600'}>{id}</span>
+                        <span className={validatedConceptIds.has(id) ? 'text-gray-700' : 'text-red-600'}>{id}</span>
                       </div>
                     ))}
                   </div>
@@ -325,7 +325,7 @@ export const ScopeSelector = memo(function ScopeSelector({
                         type="checkbox"
                         id="frameIncludeLexicalUnits"
                         checked={frameIncludeLexicalUnits ?? false}
-                        onChange={(e) => onFrameIncludeLexicalUnitsChange?.(e.target.checked)}
+                        onChange={(e) => onConceptIncludeLexicalUnitsChange?.(e.target.checked)}
                         className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                       />
                       <label htmlFor="frameIncludeLexicalUnits" className="text-xs font-medium text-gray-800">
@@ -342,7 +342,7 @@ export const ScopeSelector = memo(function ScopeSelector({
                             name="frameFlagTarget"
                             value="lexical_unit"
                             checked={frameFlagTarget === 'lexical_unit'}
-                            onChange={() => onFrameFlagTargetChange?.('lexical_unit')}
+                            onChange={() => onConceptFlagTargetChange?.('lexical_unit')}
                             className="text-blue-600 focus:ring-blue-500"
                           />
                           <span className="text-xs text-gray-700">Lexical units only</span>
@@ -353,7 +353,7 @@ export const ScopeSelector = memo(function ScopeSelector({
                             name="frameFlagTarget"
                             value="concept"
                             checked={frameFlagTarget === 'concept'}
-                            onChange={() => onFrameFlagTargetChange?.('concept')}
+                            onChange={() => onConceptFlagTargetChange?.('concept')}
                             className="text-blue-600 focus:ring-blue-500"
                           />
                           <span className="text-xs text-gray-700">Concept only</span>
@@ -364,7 +364,7 @@ export const ScopeSelector = memo(function ScopeSelector({
                             name="frameFlagTarget"
                             value="both"
                             checked={frameFlagTarget === 'both'}
-                            onChange={() => onFrameFlagTargetChange?.('both')}
+                            onChange={() => onConceptFlagTargetChange?.('both')}
                             className="text-blue-600 focus:ring-blue-500"
                           />
                           <span className="text-xs text-gray-700">Both concept and lexical units</span>

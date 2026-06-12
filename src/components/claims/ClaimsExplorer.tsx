@@ -75,6 +75,7 @@ export default function ClaimsExplorer() {
       setQueryFilter(null);
       const params = new URLSearchParams(searchParams.toString());
       params.set('graph', graphId);
+      params.delete('highlight');
       router.push(`/claims?${params.toString()}`, { scroll: false });
       void loadVisualization(graphId);
     },
@@ -88,12 +89,16 @@ export default function ClaimsExplorer() {
   useEffect(() => {
     if (graphs.length === 0) return;
     const graphParam = searchParams.get('graph');
+    const highlightParam = searchParams.get('highlight');
     const initialId = graphParam && graphs.some((g) => g.id === graphParam)
       ? graphParam
       : graphs[0].id;
     if (initialId !== selectedGraphId) {
       setSelectedGraphId(initialId);
-      void loadVisualization(initialId);
+      if (highlightParam) {
+        setSelectedInstanceId(highlightParam);
+      }
+      void loadVisualization(initialId, highlightParam ?? undefined);
     }
   }, [graphs, searchParams, selectedGraphId, loadVisualization]);
 
@@ -125,7 +130,7 @@ export default function ClaimsExplorer() {
   const selectedGraph = graphs.find((g) => g.id === selectedGraphId);
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50">
+    <div className="h-screen-zoomed flex flex-col bg-gray-50">
       <header className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -150,6 +155,13 @@ export default function ClaimsExplorer() {
                 className="px-4 py-2 text-base font-medium transition-colors relative cursor-pointer text-gray-600 hover:text-gray-900 hover:bg-gray-50"
               >
                 Concepts
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push('/table/referents')}
+                className="px-4 py-2 text-base font-medium transition-colors relative cursor-pointer text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+              >
+                Referents
               </button>
               <button
                 type="button"

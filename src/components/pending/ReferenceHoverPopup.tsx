@@ -150,7 +150,7 @@ export default function ReferenceHoverPopup({
 
   const virtualLexicalUnits = useMemo(() => {
     if (!isVirtualRef || !entityId) return [] as VirtualLexicalUnitSummary[];
-    return virtualIndex?.lexicalUnitsByFrameRef.get(entityId) ?? [];
+    return virtualIndex?.lexicalUnitsByConceptRef.get(entityId) ?? [];
   }, [entityId, isVirtualRef, virtualIndex]);
 
   const virtualParent = useMemo(() => {

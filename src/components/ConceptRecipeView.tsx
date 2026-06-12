@@ -66,7 +66,7 @@ export default function ConceptRecipeView({
 
   return (
     <div className="w-full h-full flex gap-6 overflow-hidden">
-      {/* Left Panel - Frame Details */}
+      {/* Left Panel - Concept Details */}
       <div className="w-1/2 flex flex-col overflow-hidden">
         <div className="bg-gradient-to-br from-purple-600 to-purple-800 rounded-xl p-6 overflow-auto">
           {/* Concept Header */}

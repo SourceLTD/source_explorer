@@ -12,7 +12,7 @@ interface LexicalPropertiesSectionProps {
   mode: Mode;
   editingField: EditableField | null;
   editValue: string;
-  availableFrames: ConceptOption[];
+  availableConcepts: ConceptOption[];
   isOpen: boolean;
   onToggle: () => void;
   onStartEdit: (field: EditableField) => void;
@@ -28,7 +28,7 @@ export function LexicalPropertiesSection({
   mode,
   editingField,
   editValue,
-  availableFrames,
+  availableConcepts,
   isOpen,
   onToggle,
   onStartEdit,
@@ -52,9 +52,9 @@ export function LexicalPropertiesSection({
     return currentValue;
   };
 
-  // availableFrames is kept in the prop API for backward compatibility but is no
+  // availableConcepts is kept in the prop API for backward compatibility but is no
   // longer used: concepts are now read via `node.senses`.
-  void availableFrames;
+  void availableConcepts;
 
   const getTitle = () => {
     switch (mode) {

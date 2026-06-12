@@ -7,9 +7,18 @@ import {
   ArrowPathIcon,
   CheckCircleIcon,
   ChatBubbleLeftIcon,
-  FunnelIcon,
-  MagnifyingGlassIcon,
+  PlusCircleIcon,
 } from '@heroicons/react/24/outline';
+import { SearchInput } from '@/components/filters';
+import PendingFilterPanel, {
+  type PendingFilterOptions,
+} from '@/components/pending/filter/PendingFilterPanel';
+import {
+  type PendingFilter,
+  type FilterableChangeset,
+  defaultPendingFilter,
+  changesetMatchesPendingFilter,
+} from '@/components/pending/filter/pendingFilter';
 import LoadingSpinner from './LoadingSpinner';
 import { RevisionButton } from './editing/RevisionButton';
 import { RevisionModal } from './editing/RevisionModal';
@@ -195,20 +204,11 @@ function readPlanMarker(cs: {
   return { planId, planKind, planSource: planId ? 'snapshot' : null };
 }
 
-interface PendingChangesFilter {
-  search: string;
-  entityTypes: string[];
-  operations: string[];
-  sources: string[];
-  jobIds: string[];
-}
-
-const defaultFilter: PendingChangesFilter = {
-  search: '',
-  entityTypes: [],
-  operations: [],
-  sources: [],
-  jobIds: [],
+/** Friendly labels for the `group_source` facet. */
+const SOURCE_LABELS: Record<string, string> = {
+  llm_job: 'LLM Job',
+  remediation: 'AI Remediation',
+  manual: 'Manual',
 };
 
 interface PendingChangesListProps {
@@ -241,7 +241,7 @@ function formatValue(value: unknown): string {
   return String(value);
 }
 
-function parseFrameRolesFieldName(fieldName: string): { roleType: string; field: string } | null {
+function parsePropertiesFieldName(fieldName: string): { roleType: string; field: string } | null {
   if (!fieldName.toLowerCase().startsWith('properties.') && !fieldName.toLowerCase().startsWith('frame_roles.')) return null;
   const parts = fieldName.split('.');
   if (parts.length < 3) return null;
@@ -263,7 +263,7 @@ const ROLE_SUBFIELD_LABELS: Record<string, string> = {
 function formatFieldName(fieldName: string, opts?: { short?: boolean }): string {
   if (fieldName.toLowerCase() === 'concept_id' || fieldName.toLowerCase() === 'frame_id') return 'Concept';
 
-  const parsed = parseFrameRolesFieldName(fieldName);
+  const parsed = parsePropertiesFieldName(fieldName);
   if (!parsed) return fieldName;
   const subfieldLabel = ROLE_SUBFIELD_LABELS[parsed.field] ?? parsed.field;
   if (opts?.short) {
@@ -276,7 +276,7 @@ function formatFieldName(fieldName: string, opts?: { short?: boolean }): string 
 }
 
 function formatFieldChangeValue(fc: FieldChange, which: 'old' | 'new'): string {
-  const parsed = parseFrameRolesFieldName(fc.field_name);
+  const parsed = parsePropertiesFieldName(fc.field_name);
   if (parsed?.field === '__exists') {
     const oldExists = typeof fc.old_value === 'boolean' ? fc.old_value : Boolean(fc.old_value);
     const newExists = typeof fc.new_value === 'boolean' ? fc.new_value : Boolean(fc.new_value);
@@ -414,10 +414,10 @@ function renderValueWithHover(
   const size = opts?.size || 'sm';
   const sizeClass = size === 'xs' ? 'text-xs' : 'text-sm';
 
-  const isFrameRef = fc.field_name === 'concept_id' || fc.field_name === 'frame_id';
+  const isConceptRef = fc.field_name === 'concept_id' || fc.field_name === 'frame_id';
   const normalizedId = normalizeIntLike(rawVal);
   
-  if (!isFrameRef || !normalizedId) {
+  if (!isConceptRef || !normalizedId) {
     return (
       <span className={`${sizeClass} break-all ${which === 'old' ? 'text-gray-500 line-through font-medium' : 'text-gray-900 font-bold'}`}>
         {val}
@@ -483,15 +483,12 @@ export default function PendingChangesList({ onRefresh, embedded }: PendingChang
   const [selectedDetail, setSelectedDetail] = useState<FlatChangeset | null>(null);
   const [revisionTarget, setRevisionTarget] = useState<FlatChangeset | null>(null);
   const [detailTab, setDetailTab] = useState<'review' | 'discussion'>('review');
-  const [filter, setFilter] = useState<PendingChangesFilter>(defaultFilter);
+  const [filter, setFilter] = useState<PendingFilter>(defaultPendingFilter);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
-  const [jobSearchQuery, setJobSearchQuery] = useState('');
-  const [jobDropdownOpen, setJobDropdownOpen] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [isPageSizeSelectorOpen, setIsPageSizeSelectorOpen] = useState(false);
-  const jobDropdownContainerRef = useRef<HTMLDivElement>(null);
-  
+
   // Column visibility and width state
   const [columnVisibility, setColumnVisibility] = useState<ColumnVisibilityState>(() => {
     if (typeof window !== 'undefined') {
@@ -736,8 +733,8 @@ export default function PendingChangesList({ onRefresh, embedded }: PendingChang
     for (const [planId, groupItems] of planGroupMap) {
       // Specialised: legacy frame_relation move pair (delete + create).
       // Collapses to a single "move" row to preserve the existing UI.
-      const allFrameRelations = groupItems.every(g => g.entity_type === 'frame_relation');
-      if (allFrameRelations && groupItems.length === 2) {
+      const allConceptRelations = groupItems.every(g => g.entity_type === 'frame_relation');
+      if (allConceptRelations && groupItems.length === 2) {
         const deleteCs = groupItems.find(g => g.operation === 'delete');
         const createCs = groupItems.find(g => g.operation === 'create');
         if (deleteCs && createCs) {
@@ -787,8 +784,8 @@ export default function PendingChangesList({ onRefresh, embedded }: PendingChang
 
   const virtualIndex = useMemo(() => buildVirtualIndex(flatChangesets as any), [flatChangesets]);
 
-  // --- Filter Options ---
-  const filterOptions = useMemo(() => {
+  // --- Filter Options (for the shared PendingFilterPanel) ---
+  const filterOptions = useMemo<PendingFilterOptions>(() => {
     const entityTypes = new Set<string>();
     const operations = new Set<string>();
     const sources = new Set<string>();
@@ -806,77 +803,47 @@ export default function PendingChangesList({ onRefresh, embedded }: PendingChang
     });
 
     return {
-      entityTypes: Array.from(entityTypes).sort(),
-      operations: Array.from(operations).sort(),
-      sources: Array.from(sources).sort(),
-      jobs,
+      entityTypes: Array.from(entityTypes).sort().map(v => ({ value: v, label: v })),
+      operations: Array.from(operations).sort().map(v => ({ value: v, label: v })),
+      sources: Array.from(sources).sort().map(v => ({ value: v, label: SOURCE_LABELS[v] ?? v })),
+      jobs: jobs.map(j => ({ id: j.id, label: j.label, sublabel: j.id })),
     };
   }, [flatChangesets]);
 
-  const filteredJobs = useMemo(() => {
-    if (!jobSearchQuery) return filterOptions.jobs;
-    const query = jobSearchQuery.toLowerCase();
-    return filterOptions.jobs.filter(job => {
-      if (filter.jobIds.includes(job.id)) return true;
-      return job.label.toLowerCase().includes(query) || job.id.includes(query);
+  // Precompute the searchable haystack + filterable projection for each row.
+  const filterableRows = useMemo(() => {
+    const map = new Map<string, FilterableChangeset>();
+    flatChangesets.forEach(cs => {
+      const fieldText = cs.field_changes
+        .map(fc =>
+          `${formatFieldName(fc.field_name)} ${fc.field_name} ${formatFieldChangeValue(fc, 'old')} ${formatFieldChangeValue(fc, 'new')}`,
+        )
+        .join(' ');
+      map.set(cs.id, {
+        entity_type: cs.entity_type,
+        operation: cs.operation,
+        source: cs.group_source || null,
+        jobId: cs.group_source === 'llm_job' ? cs.group_id : null,
+        hasPlan: Boolean(cs.planId ?? cs.changePlanId),
+        createdAt: cs.created_at,
+        searchText: `${cs.entity_type} ${cs.entity_display} ${cs.group_label} ${fieldText}`.toLowerCase(),
+      });
     });
-  }, [filterOptions.jobs, jobSearchQuery, filter.jobIds]);
+    return map;
+  }, [flatChangesets]);
 
   // --- Filtered List ---
   const filteredChangesets = useMemo(() => {
     return flatChangesets.filter(cs => {
-      // Text search
-      if (filter.search) {
-        const searchLower = filter.search.toLowerCase();
-        const fieldMatches = cs.field_changes.some(fc => 
-          formatFieldName(fc.field_name).toLowerCase().includes(searchLower) ||
-          fc.field_name.toLowerCase().includes(searchLower) ||
-          formatFieldChangeValue(fc, 'old').toLowerCase().includes(searchLower) ||
-          formatFieldChangeValue(fc, 'new').toLowerCase().includes(searchLower)
-        );
-        const matches = 
-          cs.entity_type.toLowerCase().includes(searchLower) ||
-          cs.entity_display.toLowerCase().includes(searchLower) ||
-          cs.group_label.toLowerCase().includes(searchLower) ||
-          fieldMatches;
-        if (!matches) return false;
-      }
-      // Entity type filter
-      if (filter.entityTypes.length > 0 && !filter.entityTypes.includes(cs.entity_type)) return false;
-      // Operation filter
-      if (filter.operations.length > 0 && !filter.operations.includes(cs.operation)) return false;
-      // Source filter
-      if (filter.sources.length > 0 && !filter.sources.includes(cs.group_source)) return false;
-      // Job filter
-      if (filter.jobIds.length > 0 && cs.group_id && !filter.jobIds.includes(cs.group_id)) return false;
-      return true;
+      const projection = filterableRows.get(cs.id);
+      return projection ? changesetMatchesPendingFilter(projection, filter) : true;
     });
-  }, [flatChangesets, filter]);
-
-  const hasActiveFilters = filter.search || filter.entityTypes.length > 0 || filter.operations.length > 0 || filter.sources.length > 0 || filter.jobIds.length > 0;
-  const activeFilterCount = (filter.search ? 1 : 0) + filter.entityTypes.length + filter.operations.length + filter.sources.length + filter.jobIds.length;
+  }, [flatChangesets, filterableRows, filter]);
 
   // Reset page when filters change
   useEffect(() => {
     setPage(1);
   }, [filter]);
-
-  // Close job dropdown on outside click (mimics the lexical-units FilterPanel "Frame ID" UX)
-  useEffect(() => {
-    if (!jobDropdownOpen) return;
-
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        jobDropdownContainerRef.current &&
-        !jobDropdownContainerRef.current.contains(event.target as Node)
-      ) {
-        setJobDropdownOpen(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [jobDropdownOpen]);
 
   // --- Paginated List ---
   const paginatedChangesets = useMemo(() => {
@@ -1311,7 +1278,7 @@ export default function PendingChangesList({ onRefresh, embedded }: PendingChang
   const hasPending = data && data.total_pending_changesets > 0;
 
   return (
-    <div className="space-y-6">
+    <div className={embedded ? 'space-y-6' : 'flex flex-col gap-6 flex-1 min-h-0'}>
       {/* Unread Messages Panel */}
       <UnreadCommentsPanel 
         key={unreadKey}
@@ -1411,9 +1378,10 @@ export default function PendingChangesList({ onRefresh, embedded }: PendingChang
                     setRevisionTarget(selectedDetail);
                   }}
                   disabled={isCommitting}
-                  className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 cursor-pointer"
+                  className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 cursor-pointer"
                 >
-                  Revise
+                  <PlusCircleIcon className="w-4 h-4" />
+                  Add alternative
                 </button>
                 {(selectedDetail.operation === 'update' || selectedDetail.operation === 'move') && (
                   <button
@@ -1638,7 +1606,7 @@ export default function PendingChangesList({ onRefresh, embedded }: PendingChang
                         const otherChanges: FieldChange[] = [];
 
                         for (const fc of detailFieldChanges) {
-                          const parsed = parseFrameRolesFieldName(fc.field_name);
+                          const parsed = parsePropertiesFieldName(fc.field_name);
                           if (parsed) {
                             if (!frameRoleGroups.has(parsed.roleType)) frameRoleGroups.set(parsed.roleType, []);
                             frameRoleGroups.get(parsed.roleType)!.push(fc);
@@ -1649,8 +1617,8 @@ export default function PendingChangesList({ onRefresh, embedded }: PendingChang
 
                         const roleFieldOrder = ['__exists', 'label', 'description', 'notes', 'main', 'examples'];
                         const sortRoleFieldChanges = (a: FieldChange, b: FieldChange) => {
-                          const aParsed = parseFrameRolesFieldName(a.field_name);
-                          const bParsed = parseFrameRolesFieldName(b.field_name);
+                          const aParsed = parsePropertiesFieldName(a.field_name);
+                          const bParsed = parsePropertiesFieldName(b.field_name);
                           const aField = aParsed?.field ?? '';
                           const bField = bParsed?.field ?? '';
                           const aIdx = roleFieldOrder.indexOf(aField);
@@ -1780,7 +1748,7 @@ export default function PendingChangesList({ onRefresh, embedded }: PendingChang
       )}
 
       {/* Table Container - matching DataTable styling */}
-      <div className={embedded ? '' : 'bg-white rounded-xl border border-gray-200'}>
+      <div className={embedded ? '' : 'bg-white rounded-xl border border-gray-200 flex flex-col flex-1 min-h-0'}>
         {/* Toolbar - matching DataTable layout */}
         <div className={`p-4 border-b border-gray-200 ${embedded ? '' : 'bg-gray-50'}`}>
           {/* Header Row */}
@@ -1796,195 +1764,14 @@ export default function PendingChangesList({ onRefresh, embedded }: PendingChang
             <div className="flex items-center gap-3">
               {/* Filter Button with Dropdown */}
               <div className="relative">
-                <button
-                  onClick={() => setIsFilterOpen(!isFilterOpen)}
-                  className={`inline-flex items-center gap-2 px-3 py-2 text-sm font-medium border border-gray-300 rounded-xl hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors cursor-pointer ${
-                    hasActiveFilters ? 'bg-blue-50 border-blue-300 text-blue-600' : 'bg-white text-gray-700'
-                  }`}
-                >
-                  <FunnelIcon className="w-4 h-4" />
-                  <span>Filters</span>
-                  {activeFilterCount > 0 && (
-                    <span className="bg-blue-600 text-white text-xs rounded-full px-2 py-0.5 min-w-[1.25rem] text-center">
-                      {activeFilterCount}
-                    </span>
-                  )}
-                </button>
-
-                {/* Filter Dropdown Panel */}
-                {isFilterOpen && (
-                  <div className="absolute top-full left-0 mt-2 w-[32rem] bg-white border border-gray-200 rounded-xl shadow-lg z-50">
-                    {/* Header */}
-                    <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <FunnelIcon className="w-5 h-5 text-gray-600" />
-                        <h3 className="font-semibold text-gray-900">Filters</h3>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {hasActiveFilters && (
-                          <button
-                            onClick={() => setFilter(defaultFilter)}
-                            className="text-sm text-blue-600 hover:text-blue-600 font-medium cursor-pointer"
-                          >
-                            Clear all
-                          </button>
-                        )}
-                        <button
-                          onClick={() => setIsFilterOpen(false)}
-                          className="text-gray-400 hover:text-gray-600 cursor-pointer"
-                        >
-                          <XMarkIcon className="w-5 h-5" />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Filter Content */}
-                    <div className="max-h-[24rem] overflow-y-auto p-6 space-y-6">
-                      {/* Entity Type Filter */}
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Entity Type</label>
-                        <div className="flex flex-wrap gap-2">
-                          {filterOptions.entityTypes.map(et => (
-                            <button
-                              key={et}
-                              onClick={() => setFilter(f => ({
-                                ...f,
-                                entityTypes: f.entityTypes.includes(et)
-                                  ? f.entityTypes.filter(x => x !== et)
-                                  : [...f.entityTypes, et]
-                              }))}
-                              className={`px-3 py-1 text-sm font-medium rounded-xl transition-colors cursor-pointer ${
-                                filter.entityTypes.includes(et)
-                                  ? 'bg-blue-100 text-blue-600 border border-blue-200'
-                                  : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
-                              }`}
-                            >
-                              {et}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Operation Filter */}
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Operation</label>
-                        <div className="flex flex-wrap gap-2">
-                          {filterOptions.operations.map(op => (
-                            <button
-                              key={op}
-                              onClick={() => setFilter(f => ({
-                                ...f,
-                                operations: f.operations.includes(op)
-                                  ? f.operations.filter(x => x !== op)
-                                  : [...f.operations, op]
-                              }))}
-                              className={`px-3 py-1 text-sm font-medium rounded-xl transition-colors cursor-pointer ${
-                                filter.operations.includes(op)
-                                  ? op === 'create' ? 'bg-green-100 text-green-800 border border-green-200'
-                                  : op === 'update' ? 'bg-blue-100 text-blue-600 border border-blue-200'
-                                  : 'bg-red-100 text-red-800 border border-red-200'
-                                  : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
-                              }`}
-                            >
-                              {op}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Source Filter */}
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Source</label>
-                        <div className="flex flex-wrap gap-2">
-                          {filterOptions.sources.map(src => (
-                            <button
-                              key={src}
-                              onClick={() => setFilter(f => ({
-                                ...f,
-                                sources: f.sources.includes(src)
-                                  ? f.sources.filter(x => x !== src)
-                                  : [...f.sources, src]
-                              }))}
-                              className={`px-3 py-1 text-sm font-medium rounded-xl transition-colors cursor-pointer ${
-                                filter.sources.includes(src)
-                                  ? 'bg-purple-100 text-purple-800 border border-purple-200'
-                                  : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
-                              }`}
-                            >
-                              {src === 'llm_job' ? 'LLM Job' : src === 'remediation' ? 'AI Remediation' : src === 'manual' ? 'Manual' : src}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Job Filter */}
-                      {filterOptions.jobs.length > 0 && (
-                        <div className="relative" ref={jobDropdownContainerRef}>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Job</label>
-                          <input
-                            type="text"
-                            value={jobSearchQuery}
-                            onChange={(e) => setJobSearchQuery(e.target.value)}
-                            onFocus={() => setJobDropdownOpen(true)}
-                            placeholder="Search jobs..."
-                            className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 mb-2"
-                          />
-                          {jobDropdownOpen && (
-                            <div className="max-h-48 overflow-y-auto border border-gray-300 rounded-xl bg-white">
-                              {filteredJobs.length === 0 ? (
-                                <div className="px-3 py-2 text-sm text-gray-500">No jobs found</div>
-                              ) : (
-                                filteredJobs.map((job) => (
-                                  <label
-                                    key={job.id}
-                                    className="flex items-start px-3 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
-                                  >
-                                    <input
-                                      type="checkbox"
-                                      checked={filter.jobIds.includes(job.id)}
-                                      onChange={() =>
-                                        setFilter((f) => ({
-                                          ...f,
-                                          jobIds: f.jobIds.includes(job.id)
-                                            ? f.jobIds.filter((id) => id !== job.id)
-                                            : [...f.jobIds, job.id],
-                                        }))
-                                      }
-                                      className="mt-0.5 mr-3 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                    />
-                                    <div className="flex-1 min-w-0">
-                                      <div className="text-sm font-medium text-gray-900 truncate">{job.label}</div>
-                                      <div className="text-xs text-gray-500 font-mono truncate">{job.id}</div>
-                                    </div>
-                                  </label>
-                                ))
-                              )}
-                            </div>
-                          )}
-                          {filter.jobIds.length > 0 && (
-                            <div className="mt-2 text-xs text-gray-600">
-                              {filter.jobIds.length} job{filter.jobIds.length !== 1 ? 's' : ''} selected
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Footer with active filter count */}
-                    {hasActiveFilters && (
-                      <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 rounded-b-xl">
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm text-gray-600">
-                            {activeFilterCount} filter{activeFilterCount !== 1 ? 's' : ''} active
-                          </span>
-                          <span className="text-sm text-gray-500">
-                            Showing {paginatedChangesets.length} of {flatChangesets.length} rows
-                          </span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
+                <PendingFilterPanel
+                  filter={filter}
+                  onFilterChange={setFilter}
+                  isOpen={isFilterOpen}
+                  onToggle={() => setIsFilterOpen((v) => !v)}
+                  options={filterOptions}
+                  show={{ source: true, jobs: true, planState: true, dates: true }}
+                />
               </div>
 
               {/* Column Visibility */}
@@ -2046,16 +1833,12 @@ export default function PendingChangesList({ onRefresh, embedded }: PendingChang
               )}
 
               {/* Search Box */}
-              <div className="relative">
-                <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Search changes..."
-                  value={filter.search}
-                  onChange={(e) => setFilter(f => ({ ...f, search: e.target.value }))}
-                  className="pl-9 pr-3 py-2 w-56 text-sm border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
-                />
-              </div>
+              <SearchInput
+                value={filter.search}
+                onChange={(value) => setFilter((f) => ({ ...f, search: value }))}
+                placeholder="Search changes..."
+                className="w-56"
+              />
 
               {/* Refresh Button */}
               <button
@@ -2104,7 +1887,7 @@ export default function PendingChangesList({ onRefresh, embedded }: PendingChang
             description="Try adjusting your filters"
           />
         ) : (
-          <div className={`overflow-x-auto ${isResizing ? 'select-none' : ''}`}>
+          <div className={`overflow-x-auto ${embedded ? '' : 'flex-1 min-h-0 overflow-y-auto'} ${isResizing ? 'select-none' : ''}`}>
             <table className="w-full text-left" style={{ tableLayout: 'fixed' }}>
               <thead className="bg-gray-50 sticky top-0 z-10">
                 <tr>
@@ -2185,9 +1968,9 @@ export default function PendingChangesList({ onRefresh, embedded }: PendingChang
                             onClick={() => setRevisionTarget(item)}
                             disabled={isCommitting}
                             className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors disabled:opacity-50"
-                            title="Revise with AI"
+                            title="Add alternative with AI"
                           >
-                            <ArrowPathIcon className="w-5 h-5" />
+                            <PlusCircleIcon className="w-5 h-5" />
                           </button>
                           <button
                             onClick={() => handleSingleCommit(item.id)}

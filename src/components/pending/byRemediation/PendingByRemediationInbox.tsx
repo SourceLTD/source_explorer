@@ -3,18 +3,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   CheckCircleIcon,
-  InboxIcon,
   ChevronDownIcon,
   ChevronRightIcon,
   CheckIcon,
-  XMarkIcon,
 } from '@heroicons/react/24/outline';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import { EmptyState } from '@/components/ui';
 import LazyMount from '@/components/pending/LazyMount';
 import PlanCard from '@/components/pending/PlanCard';
 import LooseChangesetCard from './LooseChangesetCard';
-import type { BucketBusyState, BulkCommitPlansOutcome, PlansBulkBusyState } from './useBucketActions';
+import type { BulkCommitPlansOutcome, PlansBulkBusyState } from './useBucketActions';
 import { collectBucketPendingPlanIds } from './bulkCommitPlans';
 import {
   actionBucketKey,
@@ -22,6 +20,7 @@ import {
   type ActionBucket,
   type HealthCheckSubGroup,
   type ByRemediationChangeset,
+  type EnrichedSubject,
 } from './types';
 
 // ---------------------------------------------------------------------------
@@ -196,17 +195,23 @@ const LOOSE_CARD_PLACEHOLDER_HEIGHT = 220;
 
 interface PendingByRemediationInboxProps {
   buckets: ActionBucket[];
+  /** Noun for the left-rail count, e.g. "action type" / "concept". */
+  groupNoun?: string;
   isLoading: boolean;
   error: string | null;
-  busy: BucketBusyState;
   plansBulkBusy: PlansBulkBusyState;
-  onCommitBucket: (bucket: ActionBucket, key: string) => Promise<void>;
   onCommitBucketPlans: (bucket: ActionBucket, key: string) => Promise<BulkCommitPlansOutcome>;
-  onRejectBucket: (bucket: ActionBucket, key: string) => void;
   onCommitRow: (cs: ByRemediationChangeset) => Promise<void>;
   onRejectRow: (cs: ByRemediationChangeset) => Promise<void>;
+  /** A plan was committed: remove its (and its discarded siblings') cards locally. */
+  onPlanCommitted: (planIds: string[]) => void;
+  /** A plan was discarded / revised / conflicted: refetch to reload structure. */
   onPlanChanged: () => void;
   onOpenChangeset?: (cs: ByRemediationChangeset) => void;
+  /** Shown in the empty state when the emptiness is due to active filters. */
+  emptyHint?: string;
+  /** Subject concept per plan id — used to title plan cards by what they edit. */
+  subjectsByPlan?: Record<string, EnrichedSubject>;
 }
 
 /**
@@ -217,17 +222,18 @@ interface PendingByRemediationInboxProps {
  */
 export default function PendingByRemediationInbox({
   buckets,
+  groupNoun = 'action type',
   isLoading,
   error,
-  busy,
   plansBulkBusy,
-  onCommitBucket,
   onCommitBucketPlans,
-  onRejectBucket,
   onCommitRow,
   onRejectRow,
+  onPlanCommitted,
   onPlanChanged,
   onOpenChangeset,
+  emptyHint,
+  subjectsByPlan,
 }: PendingByRemediationInboxProps) {
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const railRef = useRef<HTMLDivElement>(null);
@@ -266,8 +272,6 @@ export default function PendingByRemediationInbox({
 
   const selected = keyedBuckets.find((b) => b.key === selectedKey)?.bucket ?? null;
   const selectedBucketKey = selected ? actionBucketKey(selected) : null;
-  const selectedBucketBusy =
-    selected && busy.bucketKey === selectedBucketKey ? busy.action : null;
   const selectedPlansCount = selected ? collectBucketPendingPlanIds(selected).length : 0;
   const selectedPlansBusy =
     plansBulkBusy.scope === 'bucket' && plansBulkBusy.bucketKey === selectedBucketKey;
@@ -282,8 +286,8 @@ export default function PendingByRemediationInbox({
     return (
       <EmptyState
         icon={<CheckCircleIcon className="h-24 w-24 mx-auto mb-4" />}
-        title="All Clear!"
-        description="No pending changes to review."
+        title={emptyHint ? 'No matches' : 'All Clear!'}
+        description={emptyHint ?? 'No pending changes to review.'}
       />
     );
   }
@@ -298,7 +302,7 @@ export default function PendingByRemediationInbox({
         aria-label="Actions with pending changes"
       >
         <div className="px-3 py-2 border-b border-gray-100 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-          {expandedBuckets.length} action type{expandedBuckets.length === 1 ? '' : 's'}
+          {expandedBuckets.length} {groupNoun}{expandedBuckets.length === 1 ? '' : 's'}
         </div>
         <ul role="listbox">
           {keyedBuckets.map(({ key, bucket }) => (
@@ -319,12 +323,9 @@ export default function PendingByRemediationInbox({
           <>
             <ActionBucketHeader
               bucket={selected}
-              busyAction={selectedBucketBusy}
               plansCount={selectedPlansCount}
               plansBusy={selectedPlansBusy}
-              onCommitAll={() => void onCommitBucket(selected, selectedBucketKey!)}
               onCommitPlans={() => void onCommitBucketPlans(selected, selectedBucketKey!)}
-              onRejectAll={() => onRejectBucket(selected, selectedBucketKey!)}
             />
             <div className="flex-1 overflow-y-auto">
               <ActionBucketBody
@@ -332,7 +333,9 @@ export default function PendingByRemediationInbox({
                 onCommitRow={onCommitRow}
                 onRejectRow={onRejectRow}
                 onOpenRow={onOpenChangeset}
+                onPlanCommitted={onPlanCommitted}
                 onPlanChanged={onPlanChanged}
+                subjectsByPlan={subjectsByPlan}
               />
             </div>
           </>
@@ -464,25 +467,16 @@ function ActionRailItem({
 
 function ActionBucketHeader({
   bucket,
-  busyAction,
   plansCount,
   plansBusy,
-  onCommitAll,
   onCommitPlans,
-  onRejectAll,
 }: {
   bucket: ActionBucket;
-  busyAction: 'commit' | 'reject' | 'commit_plans' | null;
   plansCount: number;
   plansBusy: boolean;
-  onCommitAll: () => void;
   onCommitPlans: () => void;
-  onRejectAll: () => void;
 }) {
-  const looseCount = bucket.counts.loose;
-  const hasLoose = looseCount > 0;
   const hasPlans = plansCount > 0;
-  const anyBusy = busyAction !== null || plansBusy;
 
   return (
     <header className="px-4 py-3 bg-white border-b border-gray-200 shrink-0">
@@ -521,7 +515,7 @@ function ActionBucketHeader({
             <button
               type="button"
               onClick={onCommitPlans}
-              disabled={anyBusy}
+              disabled={plansBusy}
               className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-white bg-emerald-700 rounded-md hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {plansBusy
@@ -531,30 +525,6 @@ function ActionBucketHeader({
               Commit plans ({plansCount})
             </button>
           )}
-          <button
-            type="button"
-            onClick={onRejectAll}
-            disabled={!hasLoose || anyBusy}
-            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-red-700 border border-red-200 rounded-md bg-white hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {busyAction === 'reject'
-              ? <LoadingSpinner size="sm" noPadding />
-              : <XMarkIcon className="w-3.5 h-3.5" />
-            }
-            Reject loose{hasLoose ? ` (${looseCount})` : ''}
-          </button>
-          <button
-            type="button"
-            onClick={onCommitAll}
-            disabled={!hasLoose || anyBusy}
-            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-white bg-emerald-600 rounded-md hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {busyAction === 'commit'
-              ? <LoadingSpinner size="sm" noPadding />
-              : <CheckIcon className="w-3.5 h-3.5" />
-            }
-            Commit loose{hasLoose ? ` (${looseCount})` : ''}
-          </button>
         </div>
       </div>
     </header>
@@ -570,41 +540,35 @@ function ActionBucketBody({
   onCommitRow,
   onRejectRow,
   onOpenRow,
+  onPlanCommitted,
   onPlanChanged,
+  subjectsByPlan,
 }: {
   bucket: ActionBucket;
   onCommitRow: (cs: ByRemediationChangeset) => Promise<void>;
   onRejectRow: (cs: ByRemediationChangeset) => Promise<void>;
   onOpenRow?: (cs: ByRemediationChangeset) => void;
+  onPlanCommitted: (planIds: string[]) => void;
   onPlanChanged: () => void;
+  subjectsByPlan?: Record<string, EnrichedSubject>;
 }) {
-  const [busyRowId, setBusyRowId] = useState<string | null>(null);
-  const [busyAction, setBusyAction] = useState<'commit' | 'reject' | null>(null);
-
-  const handleCommit = async (cs: ByRemediationChangeset) => {
-    setBusyRowId(cs.id); setBusyAction('commit');
-    try { await onCommitRow(cs); } finally { setBusyRowId(null); setBusyAction(null); }
-  };
-  const handleReject = async (cs: ByRemediationChangeset) => {
-    setBusyRowId(cs.id); setBusyAction('reject');
-    try { await onRejectRow(cs); } finally { setBusyRowId(null); setBusyAction(null); }
-  };
-
+  // Each card / row owns its own busy state (see LooseChangesetCard and
+  // PlanCard), so actions on different items run concurrently and never
+  // block one another.
   const multipleGroups = bucket.health_check_groups.length > 1;
 
   return (
-    <div className="p-4 space-y-6">
+    <div className="w-full p-4 space-y-6">
       {bucket.health_check_groups.map((group) => (
         <HealthCheckGroupSection
           key={healthCheckGroupKey(group)}
           group={group}
           showHeader={multipleGroups}
-          busyRowId={busyRowId}
-          busyAction={busyAction}
-          disabled={busyRowId !== null}
-          onCommit={handleCommit}
-          onReject={handleReject}
+          subjectsByPlan={subjectsByPlan}
+          onCommit={onCommitRow}
+          onReject={onRejectRow}
           onOpen={onOpenRow}
+          onPlanCommitted={onPlanCommitted}
           onPlanChanged={onPlanChanged}
         />
       ))}
@@ -620,22 +584,20 @@ function ActionBucketBody({
 function HealthCheckGroupSection({
   group,
   showHeader,
-  busyRowId,
-  busyAction,
-  disabled,
+  subjectsByPlan,
   onCommit,
   onReject,
   onOpen,
+  onPlanCommitted,
   onPlanChanged,
 }: {
   group: HealthCheckSubGroup;
   showHeader: boolean;
-  busyRowId: string | null;
-  busyAction: 'commit' | 'reject' | null;
-  disabled: boolean;
+  subjectsByPlan?: Record<string, EnrichedSubject>;
   onCommit: (cs: ByRemediationChangeset) => Promise<void>;
   onReject: (cs: ByRemediationChangeset) => Promise<void>;
   onOpen?: (cs: ByRemediationChangeset) => void;
+  onPlanCommitted: (planIds: string[]) => void;
   onPlanChanged: () => void;
 }) {
   const looseChangesets = group.changesets.filter((c) => !c.change_plan_id);
@@ -661,7 +623,14 @@ function HealthCheckGroupSection({
         <div className="space-y-3">
           {uniquePlans.map((plan) => (
             <LazyMount key={plan.id} placeholderHeight={PLAN_CARD_PLACEHOLDER_HEIGHT}>
-              <PlanCard plan={plan} onCommitted={onPlanChanged} onDiscarded={onPlanChanged} onRevised={onPlanChanged} />
+              <PlanCard
+                plan={plan}
+                subjectLabel={subjectsByPlan?.[plan.id]?.label ?? undefined}
+                onCommitted={onPlanCommitted}
+                onDiscarded={onPlanChanged}
+                onRevised={onPlanChanged}
+                onConflict={onPlanChanged}
+              />
             </LazyMount>
           ))}
         </div>
@@ -680,11 +649,8 @@ function HealthCheckGroupSection({
                 <LazyMount placeholderHeight={LOOSE_CARD_PLACEHOLDER_HEIGHT}>
                   <LooseChangesetCard
                     cs={cs}
-                    isBusy={busyRowId === cs.id}
-                    busyAction={busyRowId === cs.id ? busyAction : null}
-                    disabled={disabled && busyRowId !== cs.id}
-                    onCommit={() => void onCommit(cs)}
-                    onReject={() => void onReject(cs)}
+                    onCommit={() => onCommit(cs)}
+                    onReject={() => onReject(cs)}
                     onOpen={onOpen ? () => onOpen(cs) : undefined}
                     onRevisionComplete={() => onPlanChanged()}
                   />

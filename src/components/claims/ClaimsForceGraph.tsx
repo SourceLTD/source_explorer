@@ -11,6 +11,10 @@ interface SimNode extends d3.SimulationNodeDatum {
   conceptLabel?: string;
   matched?: boolean;
   referentialStatus?: ReferentialStatus;
+  pendingChangePlanId?: string;
+  pendingConceptLabel?: string;
+  pendingConceptArchetype?: string;
+  fallbackConceptLabel?: string;
 }
 
 interface SimLink extends d3.SimulationLinkDatum<SimNode> {
@@ -29,6 +33,15 @@ interface ClaimsForceGraphProps {
 const NODE_RADIUS = 22;
 const CONCEPT_WIDTH = 100;
 const CONCEPT_HEIGHT = 36;
+const BASE_LINK_DISTANCE = 85;
+const LINK_DISTANCE_PER_CHAR = 5;
+const CHARGE_STRENGTH = -260;
+const COLLISION_RADIUS = 34;
+
+function linkDistance(l: SimLink): number {
+  const labelLen = l.propertyLabel?.length ?? 0;
+  return BASE_LINK_DISTANCE + labelLen * LINK_DISTANCE_PER_CHAR;
+}
 
 function graphDataKey(data: ClaimsGraphPayload): string {
   const nodePart = data.nodes
@@ -50,11 +63,17 @@ function applyNodeSelection(
     const el = d3.select(this);
     const isSelected = selectedNodeId === d.id;
     const shape = el.select('circle, rect');
+    const isPendingTBox = d.type === 'instance' && !!d.pendingChangePlanId;
     shape
-      .attr('stroke', isSelected ? '#1e40af' : d.type === 'concept' ? '#6366f1' : '#2563eb')
-      .attr('stroke-width', isSelected ? 3 : 1.5);
+      .attr(
+        'stroke',
+        isSelected ? '#1e40af' : isPendingTBox ? '#d97706' : d.type === 'concept' ? '#6366f1' : '#2563eb',
+      )
+      .attr('stroke-width', isSelected ? 3 : isPendingTBox ? 2.5 : 1.5);
     if (d.type === 'instance') {
-      if (d.referentialStatus === 'generic') {
+      if (isPendingTBox) {
+        shape.attr('stroke-dasharray', '4 2');
+      } else if (d.referentialStatus === 'generic') {
         shape.attr('stroke-dasharray', '6 3');
       } else if (d.referentialStatus === 'hypothetical') {
         shape.attr('stroke-dasharray', '2 3');
@@ -135,10 +154,10 @@ export default function ClaimsForceGraph({
       }));
 
     const simulation = d3.forceSimulation(nodes)
-      .force('link', d3.forceLink<SimNode, SimLink>(links).id((d) => d.id).distance(120))
-      .force('charge', d3.forceManyBody().strength(-400))
+      .force('link', d3.forceLink<SimNode, SimLink>(links).id((d) => d.id).distance(linkDistance))
+      .force('charge', d3.forceManyBody().strength(CHARGE_STRENGTH))
       .force('center', d3.forceCenter(width / 2, height / 2))
-      .force('collision', d3.forceCollide().radius(40));
+      .force('collision', d3.forceCollide().radius(COLLISION_RADIUS));
 
     simulationRef.current = simulation;
 
@@ -218,33 +237,54 @@ export default function ClaimsForceGraph({
       } else {
         const circle = el.append('circle')
           .attr('r', NODE_RADIUS)
-          .attr('fill', isGeneric ? '#c4b5fd' : isHypothetical ? '#fde68a' : d.matched ? '#3b82f6' : '#93c5fd')
+          .attr('fill', d.pendingChangePlanId ? '#fed7aa' : isGeneric ? '#c4b5fd' : isHypothetical ? '#fde68a' : d.matched ? '#3b82f6' : '#93c5fd')
           .attr('opacity', opacity);
 
-        if (isGeneric) {
+        if (d.pendingChangePlanId) {
+          circle.attr('stroke-dasharray', '4 2');
+        } else if (isGeneric) {
           circle.attr('stroke-dasharray', '6 3');
         } else if (isHypothetical) {
           circle.attr('stroke-dasharray', '2 3');
         }
       }
 
+      // For instance nodes show the concept label (what type of thing it is).
+      // For concept nodes show their own label.
+      const displayLabel =
+        d.type === 'instance'
+          ? (d.pendingConceptLabel ?? d.conceptLabel ?? d.label)
+          : d.label;
+
+      // Shrink font size so the full label fits without truncation.
+      // Instance labels sit below the node and can spread wider than the circle.
+      // Concept labels must fit inside the pill.
+      const maxLabelWidth = d.type === 'concept' ? CONCEPT_WIDTH - 8 : 120;
+      const baseFontSize = 11;
+      const charsAtBase = Math.floor(maxLabelWidth / (baseFontSize * 0.6));
+      const labelFontSize =
+        displayLabel.length <= charsAtBase
+          ? baseFontSize
+          : Math.max(9, Math.floor((maxLabelWidth / displayLabel.length) / 0.6));
+
       el.append('text')
-        .text(d.label.length > 16 ? `${d.label.slice(0, 14)}…` : d.label)
+        .text(displayLabel)
         .attr('text-anchor', 'middle')
         .attr('dy', d.type === 'concept' ? 4 : NODE_RADIUS + 14)
-        .attr('font-size', 11)
+        .attr('font-size', labelFontSize)
         .attr('font-weight', 500)
         .attr('fill', '#1e293b')
         .attr('pointer-events', 'none')
         .attr('opacity', opacity);
 
-      if (d.conceptLabel && d.type === 'instance') {
+      if (d.pendingChangePlanId && d.type === 'instance') {
         el.append('text')
-          .text(d.conceptLabel)
+          .text('pending concept')
           .attr('text-anchor', 'middle')
-          .attr('dy', NODE_RADIUS + 26)
+          .attr('dy', -NODE_RADIUS - 6)
           .attr('font-size', 9)
-          .attr('fill', '#64748b')
+          .attr('font-weight', 700)
+          .attr('fill', '#b45309')
           .attr('pointer-events', 'none')
           .attr('opacity', opacity);
       }

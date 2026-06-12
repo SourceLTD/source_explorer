@@ -36,6 +36,13 @@ function ConceptsTableModeContent() {
       </button>
       <button
         type="button"
+        onClick={() => router.push('/table/referents')}
+        className="px-4 py-2 text-base font-medium transition-colors relative cursor-pointer text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+      >
+        Referents
+      </button>
+      <button
+        type="button"
         onClick={() => router.push('/claims')}
         className="px-4 py-2 text-base font-medium transition-colors relative cursor-pointer text-gray-600 hover:text-gray-900 hover:bg-gray-50"
       >
@@ -60,7 +67,7 @@ function ConceptsTableModeContent() {
       showViewToggle
       showSensesLink
     >
-      <div className="mt-2 mx-6 mb-6 bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="mt-2 mx-6 mb-6 bg-white rounded-xl border border-gray-200 overflow-hidden flex-1 min-h-0 flex flex-col">
         <Suspense fallback={<div className="p-8 text-center text-gray-500">Loading...</div>}>
           <DataTable 
             searchQuery={searchQuery}

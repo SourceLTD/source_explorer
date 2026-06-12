@@ -10,6 +10,7 @@ import {
 } from 'react';
 import {
   ArrowPathIcon,
+  BoltIcon,
   PlusIcon,
   PlayIcon,
   PencilSquareIcon,
@@ -18,6 +19,7 @@ import {
   ChevronDownIcon,
   ChevronRightIcon,
 } from '@heroicons/react/24/outline';
+import toast from 'react-hot-toast';
 import LoadingSpinner from '../LoadingSpinner';
 import HealthCheckDefinitionFormModal from './HealthCheckDefinitionFormModal';
 import DiagnosisCodeFormModal from './DiagnosisCodeFormModal';
@@ -63,6 +65,7 @@ export default function HealthChecksBoard() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [defFormOpen, setDefFormOpen] = useState(false);
   const [editingDef, setEditingDef] = useState<HealthCheckDefinition | null>(null);
+  const [triggering, setTriggering] = useState(false);
 
   const llmDefinitions = definitions.filter(
     (def) => (def.execution_kind ?? 'llm_batch') === 'llm_batch',
@@ -89,6 +92,33 @@ export default function HealthChecksBoard() {
   useEffect(() => {
     void loadDefinitions();
   }, [loadDefinitions]);
+
+  const triggerPipeline = async () => {
+    if (triggering) return;
+    if (
+      !confirm(
+        'Run the full health-check pipeline now? This runs all programmatic checks plus an LLM batch submission, matching the nightly schedule.',
+      )
+    )
+      return;
+    setTriggering(true);
+    try {
+      const res = await fetch('/api/health-checks/trigger', { method: 'POST' });
+      const data = (await res.json().catch(() => ({}))) as {
+        message?: string;
+        error?: string;
+      };
+      if (res.ok) {
+        toast.success(data.message ?? 'Health-check pipeline started');
+      } else {
+        toast.error(data.error ?? 'Failed to trigger pipeline');
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to trigger pipeline');
+    } finally {
+      setTriggering(false);
+    }
+  };
 
   const handleToggleEnabled = async (def: HealthCheckDefinition) => {
     const res = await fetch(`/api/health-checks/definitions/${def.id}`, {
@@ -137,6 +167,15 @@ export default function HealthChecksBoard() {
       <div className="px-4 py-3 border-b border-gray-200 bg-white flex items-center gap-2 shrink-0">
         <h2 className="text-sm font-semibold text-gray-700">Health Checks</h2>
         <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={() => void triggerPipeline()}
+            disabled={triggering}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-gray-300 bg-white text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Run the full health-check pipeline now (programmatic checks + LLM batch), matching the nightly schedule"
+          >
+            <BoltIcon className="w-4 h-4" />
+            {triggering ? 'Starting…' : 'Run pipeline'}
+          </button>
           <button
             onClick={loadDefinitions}
             className="p-1.5 rounded-md border border-gray-300 bg-white text-gray-600 hover:bg-gray-50"

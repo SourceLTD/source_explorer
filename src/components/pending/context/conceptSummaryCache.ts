@@ -23,8 +23,6 @@ export interface ConceptSenseSummary {
   lemmas_truncated: boolean;
 }
 
-/** @deprecated Use ConceptSenseSummary instead */
-export type FrameSenseSummary = ConceptSenseSummary;
 
 export interface ConceptSummary {
   id: string;
@@ -46,8 +44,6 @@ export interface ConceptSummary {
   senses_total: number;
 }
 
-/** @deprecated Use ConceptSummary instead */
-export type FrameSummary = ConceptSummary;
 
 const summaryCache = new Map<string, ConceptSummary>();
 const inflight = new Map<string, Promise<ConceptSummary | null>>();
@@ -57,8 +53,6 @@ export function getCachedConceptSummary(id: string | null | undefined): ConceptS
   return summaryCache.get(id) ?? null;
 }
 
-/** @deprecated Use getCachedConceptSummary instead */
-export const getCachedFrameSummary = getCachedConceptSummary;
 
 /**
  * Fetch a concept summary, sharing in-flight requests across callers.
@@ -105,13 +99,9 @@ export async function fetchConceptSummary(
   return result;
 }
 
-/** @deprecated Use fetchConceptSummary instead */
-export const fetchFrameSummary = fetchConceptSummary;
 
 /** Heuristic: real db ids are positive integer strings. */
 export function isRealConceptId(id: string | null | undefined): boolean {
   return !!id && /^\d+$/.test(id);
 }
 
-/** @deprecated Use isRealConceptId instead */
-export const isRealFrameId = isRealConceptId;

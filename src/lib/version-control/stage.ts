@@ -75,10 +75,10 @@ async function fetchEntityByCode(
       include: { sense_concepts: { select: { concept_id: true } } },
     });
     if (!sense) return null;
-    const linkedFrameId = sense.sense_concepts[0]?.concept_id ?? null;
+    const linkedConceptId = sense.sense_concepts[0]?.concept_id ?? null;
     const { sense_concepts: _omit, ...senseRest } = sense;
     void _omit;
-    entity = { ...senseRest, concept_id: linkedFrameId } as Record<string, unknown>;
+    entity = { ...senseRest, concept_id: linkedConceptId } as Record<string, unknown>;
     return { entity, numericId: BigInt(sense.id) };
   } else {
     // Standard numeric ID lookup for other tables

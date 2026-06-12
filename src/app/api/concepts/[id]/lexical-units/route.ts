@@ -15,12 +15,12 @@ export async function GET(
     const frameId = BigInt(idParam);
 
     // Check if frame exists
-    const frame = await prisma.concepts.findUnique({
+    const concept = await prisma.concepts.findUnique({
       where: { id: frameId },
       select: { id: true },
     });
 
-    if (!frame) {
+    if (!concept) {
       return NextResponse.json(
         { error: 'Concept not found' },
         { status: 404 }
@@ -30,7 +30,7 @@ export async function GET(
     // Fetch lexical units via the sense chain: concept → sense_concepts →
     // senses → lexical_unit_senses → lexical_units. Deduplicate by LU id
     // because multiple senses on the concept may reference the same LU.
-    const senseFrameLinks = await prisma.sense_concepts.findMany({
+    const senseConceptLinks = await prisma.sense_concepts.findMany({
       where: { concept_id: frameId },
       select: {
         senses: {
@@ -63,7 +63,7 @@ export async function GET(
       pos: string;
       gloss: string;
     }>();
-    for (const sfLink of senseFrameLinks) {
+    for (const sfLink of senseConceptLinks) {
       for (const lus of sfLink.senses.lexical_unit_senses) {
         const lu = lus.lexical_units;
         const key = lu.id.toString();

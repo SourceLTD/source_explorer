@@ -114,7 +114,7 @@ export function TablePageLayout({
   };
 
   return (
-    <div className="h-screen flex flex-col bg-white">
+    <div className="h-screen-zoomed flex flex-col bg-white">
       {/* Header */}
       <header className="bg-white px-6 py-4">
         <div className="flex items-center justify-between">
@@ -164,9 +164,9 @@ export function TablePageLayout({
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col bg-white">
+      <main className="flex-1 min-h-0 flex flex-col bg-white">
         {children || (
-          <div className="mt-2 mx-6 mb-6 bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="mt-2 mx-6 mb-6 bg-white rounded-xl border border-gray-200 overflow-hidden flex-1 min-h-0 flex flex-col">
             <Suspense fallback={<div className="p-8 text-center text-gray-500">Loading...</div>}>
               <DataTable 
                 searchQuery={searchQuery}

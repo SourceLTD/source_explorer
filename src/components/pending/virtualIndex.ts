@@ -36,7 +36,7 @@ export interface VirtualLexicalUnitSummary {
 
 export interface VirtualIndex {
   virtualConceptsByRef: Map<string, VirtualConceptSummary>;
-  lexicalUnitsByFrameRef: Map<string, VirtualLexicalUnitSummary[]>;
+  lexicalUnitsByConceptRef: Map<string, VirtualLexicalUnitSummary[]>;
 }
 
 function isPlainObject(value: unknown): value is JsonRecord {
@@ -74,7 +74,7 @@ function getSnapshotValue(snapshot: JsonRecord | null, key: string): unknown {
   return snapshot[key];
 }
 
-function summarizeFrame(ref: string, snapshot: JsonRecord | null): VirtualConceptSummary | null {
+function summarizeConcept(ref: string, snapshot: JsonRecord | null): VirtualConceptSummary | null {
   if (!snapshot) return null;
   const label = pickString(snapshot.label) || pickString(snapshot.code) || 'Untitled';
   return {
@@ -121,12 +121,12 @@ function getEffectiveParentRef(cs: VirtualIndexChangeset, fieldName: string): st
 
 export function buildVirtualIndex(changesets: VirtualIndexChangeset[]): VirtualIndex {
   const virtualConceptsByRef = new Map<string, VirtualConceptSummary>();
-  const lexicalUnitsByFrameRef = new Map<string, VirtualLexicalUnitSummary[]>();
+  const lexicalUnitsByConceptRef = new Map<string, VirtualLexicalUnitSummary[]>();
 
   for (const cs of changesets) {
     if (cs.operation === 'create' && cs.entity_type === 'frame') {
       const virtualRef = `-${cs.id}`;
-      const summary = summarizeFrame(virtualRef, cs.after_snapshot);
+      const summary = summarizeConcept(virtualRef, cs.after_snapshot);
       if (summary) {
         virtualConceptsByRef.set(virtualRef, summary);
       }
@@ -141,9 +141,9 @@ export function buildVirtualIndex(changesets: VirtualIndexChangeset[]): VirtualI
         const ref = cs.entity_id ? String(cs.entity_id) : `-${cs.id}`;
         const summary = summarizeLexicalUnit(ref, snapshot);
         if (summary) {
-          const list = lexicalUnitsByFrameRef.get(parentRef!) ?? [];
+          const list = lexicalUnitsByConceptRef.get(parentRef!) ?? [];
           list.push(summary);
-          lexicalUnitsByFrameRef.set(parentRef!, list);
+          lexicalUnitsByConceptRef.set(parentRef!, list);
         }
       }
     }
@@ -151,6 +151,6 @@ export function buildVirtualIndex(changesets: VirtualIndexChangeset[]): VirtualI
 
   return {
     virtualConceptsByRef,
-    lexicalUnitsByFrameRef,
+    lexicalUnitsByConceptRef,
   };
 }

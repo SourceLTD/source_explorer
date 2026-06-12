@@ -55,6 +55,38 @@ function HighlightedSourceText({
   return <>{segments}</>;
 }
 
+function snapRecord(value: unknown): Record<string, unknown> | null {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return null;
+}
+
+function snapString(value: unknown): string | null {
+  if (typeof value === 'string' && value.trim()) return value.trim();
+  if (typeof value === 'number' || typeof value === 'bigint') return String(value);
+  return null;
+}
+
+function pendingConceptInfo(metadata: Record<string, unknown> | null): {
+  changePlanId: string | null;
+  label: string | null;
+  archetype: string | null;
+  parentLabel: string | null;
+} | null {
+  const bundle = snapRecord(metadata?.pending_tbox_bundle);
+  const bundleMetadata = snapRecord(bundle?.metadata);
+  const proposed = snapRecord(bundleMetadata?.proposed_concept);
+  const label = snapString(proposed?.label);
+  if (!label) return null;
+  return {
+    changePlanId: snapString(metadata?.pending_change_plan_id),
+    label,
+    archetype: snapString(proposed?.archetype),
+    parentLabel: snapString(proposed?.parent_label),
+  };
+}
+
 export default function InstanceDetailPanel({ instanceId, onClose }: InstanceDetailPanelProps) {
   const [detail, setDetail] = useState<ClaimsInstanceDetail | null>(null);
   const [loading, setLoading] = useState(false);
@@ -117,6 +149,79 @@ export default function InstanceDetailPanel({ instanceId, onClose }: InstanceDet
         {error && <p className="text-sm text-red-600">{error}</p>}
         {detail && !loading && (
           <div className="space-y-4">
+            {/* ── Concept card ── */}
+            <div className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-3 space-y-1.5">
+              <div className="flex items-start justify-between gap-2">
+                <Link
+                  href={`/graph/concepts?entry=${detail.conceptId}`}
+                  className="text-sm font-semibold text-indigo-800 hover:underline leading-snug"
+                >
+                  {detail.conceptLabel}
+                </Link>
+                <div className="flex flex-wrap gap-1 shrink-0">
+                  {detail.conceptArchetype && (
+                    <span className="inline-flex items-center rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700">
+                      {detail.conceptArchetype}
+                    </span>
+                  )}
+                  {detail.conceptDomain && (
+                    <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+                      {detail.conceptDomain}
+                    </span>
+                  )}
+                </div>
+              </div>
+              {detail.conceptParents.length > 0 && (
+                <p className="text-xs text-indigo-600">
+                  ↑{' '}
+                  {detail.conceptParents.map((p, i) => (
+                    <span key={p.id}>
+                      {i > 0 && <span className="text-indigo-400 mx-1">·</span>}
+                      <Link
+                        href={`/graph/concepts?entry=${p.id}`}
+                        className="hover:underline"
+                      >
+                        {p.label}
+                      </Link>
+                    </span>
+                  ))}
+                </p>
+              )}
+              {detail.conceptDefinition && (
+                <p className="text-xs text-indigo-900/70 leading-relaxed">
+                  {detail.conceptDefinition}
+                </p>
+              )}
+              {detail.conceptCode && (
+                <p className="text-xs font-mono text-indigo-500">{detail.conceptCode}</p>
+              )}
+            </div>
+
+            {pendingConceptInfo(detail.metadata) && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">
+                  Pending concept
+                </p>
+                <p className="mt-1 text-sm font-medium text-amber-950">
+                  {pendingConceptInfo(detail.metadata)?.label}
+                  {pendingConceptInfo(detail.metadata)?.archetype
+                    ? ` (${pendingConceptInfo(detail.metadata)?.archetype})`
+                    : ''}
+                </p>
+                <p className="mt-1 text-xs text-amber-800">
+                  Currently parked on fallback concept: {detail.conceptLabel}
+                  {pendingConceptInfo(detail.metadata)?.parentLabel
+                    ? ` · proposed parent: ${pendingConceptInfo(detail.metadata)?.parentLabel}`
+                    : ''}
+                </p>
+                {pendingConceptInfo(detail.metadata)?.changePlanId && (
+                  <p className="mt-1 text-xs font-mono text-amber-700">
+                    change_plan #{pendingConceptInfo(detail.metadata)?.changePlanId}
+                  </p>
+                )}
+              </div>
+            )}
+
             <div>
               <p className="text-xs text-gray-500 uppercase tracking-wide">Label</p>
               <p className="text-base font-medium text-gray-900">
@@ -137,16 +242,6 @@ export default function InstanceDetailPanel({ instanceId, onClose }: InstanceDet
                 </span>
               </div>
             )}
-
-            <div>
-              <p className="text-xs text-gray-500 uppercase tracking-wide">Concept</p>
-              <Link
-                href={`/graph/concepts?entry=${detail.conceptId}`}
-                className="text-blue-600 hover:underline text-sm font-medium"
-              >
-                {detail.conceptLabel}
-              </Link>
-            </div>
 
             {detail.confidence != null && (
               <div>

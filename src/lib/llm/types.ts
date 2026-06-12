@@ -15,7 +15,7 @@ export interface JobScopeIds {
   ids: string[];
 }
 
-export interface JobScopeFrameIds {
+export interface JobScopeConceptIds {
   kind: 'concept_ids';
   conceptIds: string[];
   targetType?: JobTargetType;
@@ -35,7 +35,7 @@ export interface JobScopeFilters {
   };
 }
 
-export type JobScope = JobScopeIds | JobScopeFrameIds | JobScopeFilters;
+export type JobScope = JobScopeIds | JobScopeConceptIds | JobScopeFilters;
 
 /**
  * MCP tool approval configuration
@@ -72,9 +72,9 @@ export interface CreateLLMJobParams {
     createdAt: string;
   }>;
   /** Minimum number of new concepts to create when splitting (default: 2) */
-  splitMinFrames?: number;
+  splitMinConcepts?: number;
   /** Maximum number of new concepts to create when splitting (default: 5) */
-  splitMaxFrames?: number;
+  splitMaxConcepts?: number;
 }
 
 /**

@@ -40,11 +40,11 @@ export async function POST(
       );
     }
 
-    const frame = await prisma.concepts.findFirst({
+    const concept = await prisma.concepts.findFirst({
       where: { id: frameId, deleted: false },
       select: { id: true, label: true },
     });
-    if (!frame) {
+    if (!concept) {
       return NextResponse.json({ error: 'Concept not found' }, { status: 404 });
     }
 
@@ -108,9 +108,9 @@ export async function POST(
             diagnosis_code_id: diagnosisCode!.id,
             status: 'open',
             severity: 'medium',
-            title: `[Manual] ${strategy.replace(/_/g, ' ')} — ${frame.label}`,
+            title: `[Manual] ${strategy.replace(/_/g, ' ')} — ${concept.label}`,
             message: [
-              description || `Manually scheduled remediation (strategy: ${strategy}) for concept "${frame.label}" (id: ${frameId}).`,
+              description || `Manually scheduled remediation (strategy: ${strategy}) for concept "${concept.label}" (id: ${frameId}).`,
               justification ? `\n\nJustification: ${justification}` : '',
             ].join(''),
           },
@@ -141,7 +141,7 @@ export async function POST(
           target_fingerprint: `manual:${frameId}:${Date.now()}`,
           context: {
             triggered_by: userId,
-            concept_label: frame.label,
+            concept_label: concept.label,
             ...(description ? { user_description: description } : {}),
             ...(justification ? { user_justification: justification } : {}),
           },
@@ -157,7 +157,7 @@ export async function POST(
         finding_id: result.finding_id?.toString() ?? null,
         run_id: result.run.id.toString(),
         target_id: result.target.id.toString(),
-        message: `Remediation scheduled: "${strategy.replace(/_/g, ' ')}" for "${frame.label}"`,
+        message: `Remediation scheduled: "${strategy.replace(/_/g, ' ')}" for "${concept.label}"`,
       },
       { status: 201 },
     );

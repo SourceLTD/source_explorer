@@ -57,8 +57,8 @@ export default function DiagnosisCodeFormModal({
   const [category, setCategory] = useState('');
   const [severity, setSeverity] = useState<IssuePriority>('medium');
   const [enabled, setEnabled] = useState(true);
-  const [appliesToFrameTypes, setAppliesToFrameTypes] = useState<string[]>([]);
-  const [appliesToFrameSubtypes, setAppliesToFrameSubtypes] = useState<string[]>([]);
+  const [appliesToConceptTypes, setAppliesToConceptTypes] = useState<string[]>([]);
+  const [appliesToConceptSubtypes, setAppliesToConceptSubtypes] = useState<string[]>([]);
   const [matchNullSubtype, setMatchNullSubtype] = useState(false);
   const [remediationStrategy, setRemediationStrategy] =
     useState<HealthRemediationStrategy | null>(null);
@@ -78,8 +78,8 @@ export default function DiagnosisCodeFormModal({
     setCategory(diagnosisCode?.category ?? '');
     setSeverity(diagnosisCode?.severity ?? 'medium');
     setEnabled(diagnosisCode?.enabled ?? true);
-    setAppliesToFrameTypes(diagnosisCode?.applies_to_archetypes ?? []);
-    setAppliesToFrameSubtypes(diagnosisCode?.applies_to_subtypes ?? []);
+    setAppliesToConceptTypes(diagnosisCode?.applies_to_archetypes ?? []);
+    setAppliesToConceptSubtypes(diagnosisCode?.applies_to_subtypes ?? []);
     setMatchNullSubtype(diagnosisCode?.match_null_subtype ?? false);
     setRemediationStrategy(diagnosisCode?.remediation_strategy ?? null);
     setRemediationNotes(diagnosisCode?.remediation_notes ?? '');
@@ -111,8 +111,8 @@ export default function DiagnosisCodeFormModal({
         category: category.trim() || null,
         severity,
         enabled,
-        applies_to_frame_types: appliesToFrameTypes,
-        applies_to_frame_subtypes: appliesToFrameSubtypes,
+        applies_to_frame_types: appliesToConceptTypes,
+        applies_to_frame_subtypes: appliesToConceptSubtypes,
         match_null_subtype: matchNullSubtype,
         remediation_strategy: remediationStrategy,
         remediation_notes: remediationNotes.trim() || null,
@@ -362,22 +362,22 @@ export default function DiagnosisCodeFormModal({
           <div className="space-y-3">
             <ChipInput
               label="Applies to archetypes"
-              values={appliesToFrameTypes}
-              onChange={setAppliesToFrameTypes}
+              values={appliesToConceptTypes}
+              onChange={setAppliesToConceptTypes}
               placeholder="e.g. State (press Enter)"
               hint="Empty = any archetype."
             />
             <ChipInput
               label="Applies to subtypes"
-              values={appliesToFrameSubtypes}
-              onChange={setAppliesToFrameSubtypes}
+              values={appliesToConceptSubtypes}
+              onChange={setAppliesToConceptSubtypes}
               placeholder="e.g. relation (press Enter)"
               hint={
-                matchNullSubtype && appliesToFrameSubtypes.length === 0
+                matchNullSubtype && appliesToConceptSubtypes.length === 0
                   ? 'Currently: only concepts whose subtype IS NULL.'
                   : matchNullSubtype
                     ? 'Listed values OR concepts whose subtype IS NULL.'
-                    : appliesToFrameSubtypes.length === 0
+                    : appliesToConceptSubtypes.length === 0
                       ? 'Empty = any subtype (including NULL).'
                       : 'Only concepts whose subtype is one of the listed values.'
               }

@@ -156,6 +156,22 @@ export interface IssueChangePlanSummary {
   created_at: string;
   updated_at: string;
   changesets: IssueChangePlanChangesetSummary[];
+  /**
+   * Plan alternatives: the logical-change group this plan is one alternative
+   * of. When the group owns more than one pending plan, the reviewer compares
+   * them and selects one; `selected_plan_id` records the winner. NULL for
+   * ungrouped plans.
+   */
+  alternative_group_id?: string | null;
+  /** The selected winning plan id in this plan's group (NULL until chosen). */
+  selected_plan_id?: string | null;
+  /**
+   * Sibling plans in the same alternative group (this plan EXCLUDED). Only
+   * populated on the representative plan surfaced in a list; each sibling is a
+   * full plan summary so the UI can preview it. Empty/absent for ungrouped
+   * plans or groups with a single plan.
+   */
+  alternatives?: IssueChangePlanSummary[];
 }
 
 /**

@@ -67,8 +67,6 @@ export function getPropertyPendingCellClasses(operation: PendingChangeOperation)
   }
 }
 
-/** @deprecated Use getPropertyPendingCellClasses instead */
-export const getFrameRolePendingCellClasses = getPropertyPendingCellClasses;
 
 export type PropertyChangeSummary = {
   created: string[];
@@ -76,8 +74,6 @@ export type PropertyChangeSummary = {
   deleted: string[];
 };
 
-/** @deprecated Use PropertyChangeSummary instead */
-export type FrameRoleChangeSummary = PropertyChangeSummary;
 
 export type PropertySnapshot = {
   roleType: string;
@@ -88,8 +84,6 @@ export type PropertySnapshot = {
   examples: string[];
 };
 
-/** @deprecated Use PropertySnapshot instead */
-export type FrameRoleSnapshot = PropertySnapshot;
 
 function isTruthyBoolean(v: unknown): boolean {
   return v === true || v === 1 || v === 'true';
@@ -129,8 +123,6 @@ export function getPropertyOldSnapshot(
   return { roleType: roleTypeLabel, label, description, notes, main, examples };
 }
 
-/** @deprecated Use getPropertyOldSnapshot instead */
-export const getFrameRoleOldSnapshot = getPropertyOldSnapshot;
 
 /**
  * Determine whether a specific property (by role type label) is being created/updated/deleted.
@@ -159,8 +151,6 @@ export function getPropertyOperation(
   return hasAnyRoleSubfieldChange ? 'update' : null;
 }
 
-/** @deprecated Use getPropertyOperation instead */
-export const getFrameRoleOperation = getPropertyOperation;
 
 /**
  * Summarize create/update/delete operations across all properties in a changeset.
@@ -195,8 +185,6 @@ export function getPropertyChangeSummary(
   return { created, updated, deleted };
 }
 
-/** @deprecated Use getPropertyChangeSummary instead */
-export const getFrameRoleChangeSummary = getPropertyChangeSummary;
 
 /**
  * Choose a single operation to represent the `properties` field at the cell/section level.
@@ -212,8 +200,6 @@ export function getPropertiesAggregateOperation(
   return null;
 }
 
-/** @deprecated Use getPropertiesAggregateOperation instead */
-export const getFrameRolesAggregateOperation = getPropertiesAggregateOperation;
 
 /**
  * Get SVG stroke color for graph nodes based on operation type.

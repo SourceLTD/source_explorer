@@ -127,7 +127,7 @@ export function AIAgentQuickEditModal({
         model: 'gpt-5-nano',
         metadata: {
           source: 'quick-edit',
-          includeFrameRelationsInContext: true,
+          includeConceptRelationsInContext: true,
         },
         scope: {
           kind: 'ids' as const,

@@ -75,10 +75,10 @@ export interface UseJobCreationReturn {
   agenticMode: boolean;
   setAgenticMode: (enabled: boolean) => void;
   // Split job settings
-  splitMinFrames: number;
-  setSplitMinFrames: (min: number) => void;
-  splitMaxFrames: number;
-  setSplitMaxFrames: (max: number) => void;
+  splitMinConcepts: number;
+  setSplitMinConcepts: (min: number) => void;
+  splitMaxConcepts: number;
+  setSplitMaxConcepts: (max: number) => void;
   
   // Scope state
   scopeMode: ScopeMode;
@@ -88,11 +88,11 @@ export interface UseJobCreationReturn {
   manualIds: string[];
   frameIds: string[];
   validatedManualIds: Set<string>;
-  validatedFrameIds: Set<string>;
+  validatedConceptIds: Set<string>;
   frameIncludeLexicalUnits: boolean;
-  setFrameIncludeLexicalUnits: (include: boolean) => void;
+  setConceptIncludeLexicalUnits: (include: boolean) => void;
   frameFlagTarget: 'concept' | 'lexical_unit' | 'both';
-  setFrameFlagTarget: (target: 'concept' | 'lexical_unit' | 'both') => void;
+  setConceptFlagTarget: (target: 'concept' | 'lexical_unit' | 'both') => void;
   
   // Filter state
   filterGroup: BooleanFilterGroup;
@@ -116,13 +116,13 @@ export interface UseJobCreationReturn {
   
   // Concept ID autocomplete
   frameIdInputRef: React.RefObject<HTMLTextAreaElement>;
-  showFrameIdMenu: boolean;
+  showConceptIdMenu: boolean;
   frameIdSuggestions: Array<{ id: string; label: string }>;
   frameIdMenuPosition: { top: number; left: number };
   frameIdActiveIndex: number;
-  handleFrameIdChange: (event: React.ChangeEvent<HTMLTextAreaElement>) => void;
-  handleFrameIdKeyDown: (event: React.KeyboardEvent<HTMLTextAreaElement>) => void;
-  insertFrameId: (id: string) => void;
+  handleConceptIdChange: (event: React.ChangeEvent<HTMLTextAreaElement>) => void;
+  handleConceptIdKeyDown: (event: React.KeyboardEvent<HTMLTextAreaElement>) => void;
+  insertConceptId: (id: string) => void;
   
   // Prompt state
   promptMode: 'simple' | 'advanced';
@@ -219,15 +219,15 @@ export function useJobCreation({
   const [reasoningEffort, setReasoningEffort] = useState<'low' | 'medium' | 'high'>('medium');
   const [agenticMode, setAgenticMode] = useState(true); // MCP tools enabled by default
   // Split job settings
-  const [splitMinFrames, setSplitMinFrames] = useState(2);
-  const [splitMaxFrames, setSplitMaxFrames] = useState(5);
+  const [splitMinConcepts, setSplitMinConcepts] = useState(2);
+  const [splitMaxConcepts, setSplitMaxConcepts] = useState(5);
   
   // Scope state
   const [scopeMode, setScopeMode] = useState<ScopeMode>('all');
-  const [frameIncludeLexicalUnits, setFrameIncludeLexicalUnits] = useState(false);
-  const [frameFlagTarget, setFrameFlagTarget] = useState<'concept' | 'lexical_unit' | 'both'>('lexical_unit');
+  const [frameIncludeLexicalUnits, setConceptIncludeLexicalUnits] = useState(false);
+  const [frameFlagTarget, setConceptFlagTarget] = useState<'concept' | 'lexical_unit' | 'both'>('lexical_unit');
   const [validatedManualIds, setValidatedManualIds] = useState<Set<string>>(new Set());
-  const [validatedFrameIds, setValidatedFrameIds] = useState<Set<string>>(new Set());
+  const [validatedConceptIds, setValidatedConceptIds] = useState<Set<string>>(new Set());
   
   // Filter state
   const [filterGroup, setFilterGroup] = useState<BooleanFilterGroup>(createEmptyGroup());
@@ -366,7 +366,7 @@ export function useJobCreation({
   const { setText: setManualIdText, setShowMenu: setManualIdShowMenu } = manualIdAutocomplete;
 
   // Concept ID autocomplete using the useAutocomplete hook
-  const searchFrameIds = useCallback(async (query: string) => {
+  const searchConceptIds = useCallback(async (query: string) => {
     const response = await api.get<{ results: Array<{ id: string; label: string }> }>(
       `/api/llm-jobs/search-concepts?q=${encodeURIComponent(query)}&limit=10`
     );
@@ -374,12 +374,12 @@ export function useJobCreation({
   }, []);
 
   const frameIdAutocomplete = useAutocomplete<{ id: string; label: string }>({
-    onSearch: searchFrameIds,
+    onSearch: searchConceptIds,
     getInsertValue: (item) => item.label,
     minQueryLength: 2,
   });
   // Extract stable functions to avoid dependency array issues
-  const { setText: setFrameIdText, setShowMenu: setFrameIdShowMenu } = frameIdAutocomplete;
+  const { setText: setConceptIdText, setShowMenu: setConceptIdShowMenu } = frameIdAutocomplete;
 
   // Derive parsed IDs
   const manualIds = useMemo(() => parseIds(manualIdAutocomplete.text), [manualIdAutocomplete.text]);
@@ -574,11 +574,11 @@ export function useJobCreation({
         return manualIds.length > 0 && manualIds.every(id => validatedManualIds.has(id));
       case 'concepts':
         if (mode !== 'lexical_units' && mode !== 'concepts') return false;
-        return frameIds.length > 0 && frameIds.every(id => validatedFrameIds.has(id));
+        return frameIds.length > 0 && frameIds.every(id => validatedConceptIds.has(id));
       default:
         return false;
     }
-  }, [scopeMode, parsedSelectionCount, manualIds, frameIds, validatedManualIds, validatedFrameIds, mode]);
+  }, [scopeMode, parsedSelectionCount, manualIds, frameIds, validatedManualIds, validatedConceptIds, mode]);
 
   const promptIsValid = useMemo(() => effectivePrompt.trim().length > 0, [effectivePrompt]);
 
@@ -597,11 +597,11 @@ export function useJobCreation({
         return manualIds.length === 0 || !manualIds.every(id => validatedManualIds.has(id));
       case 'concepts':
         if (mode !== 'lexical_units' && mode !== 'concepts') return true;
-        return frameIds.length === 0 || !frameIds.every(id => validatedFrameIds.has(id));
+        return frameIds.length === 0 || !frameIds.every(id => validatedConceptIds.has(id));
       default:
         return true;
     }
-  }, [submissionLoading, promptIsValid, model, scopeMode, parsedSelectionCount, manualIds, frameIds, validatedManualIds, validatedFrameIds, mode]);
+  }, [submissionLoading, promptIsValid, model, scopeMode, parsedSelectionCount, manualIds, frameIds, validatedManualIds, validatedConceptIds, mode]);
 
   const nextDisabled = useMemo(() => {
     if (currentStep === 'scope') {
@@ -657,10 +657,10 @@ export function useJobCreation({
     setReasoningEffort('medium');
     setAgenticMode(true);
     setScopeMode('all');
-    setFrameIncludeLexicalUnits(false);
-    setFrameFlagTarget('lexical_unit');
+    setConceptIncludeLexicalUnits(false);
+    setConceptFlagTarget('lexical_unit');
     setManualIdText('');
-    setFrameIdText('');
+    setConceptIdText('');
     setPromptMode('simple');
     setPromptTemplate(buildPrompt({
       entityType: mode,
@@ -675,10 +675,10 @@ export function useJobCreation({
     setShowVariableMenu(false);
     setVariableQuery('');
     setManualIdShowMenu(false);
-    setFrameIdShowMenu(false);
+    setConceptIdShowMenu(false);
     setValidatedManualIds(new Set());
-    setValidatedFrameIds(new Set());
-  }, [setManualIdText, setFrameIdText, setManualIdShowMenu, setFrameIdShowMenu]);
+    setValidatedConceptIds(new Set());
+  }, [setManualIdText, setConceptIdText, setManualIdShowMenu, setConceptIdShowMenu]);
 
   // Flow control
   const startCreateFlow = useCallback(() => {
@@ -714,8 +714,8 @@ export function useJobCreation({
       reallocationEntityTypes?: POSType[];
       reasoning?: { effort?: 'low' | 'medium' | 'high' } | null;
       mcpEnabled?: boolean | null;
-      splitMinFrames?: number | null;
-      splitMaxFrames?: number | null;
+      splitMinConcepts?: number | null;
+      splitMaxConcepts?: number | null;
     } | null;
     
     const scope = job.scope as JobScope | null;
@@ -745,8 +745,8 @@ export function useJobCreation({
     setAgenticMode(loadedAgenticMode);
     // Split job settings
     if (loadedJobType === 'split') {
-      setSplitMinFrames(config?.splitMinFrames ?? 2);
-      setSplitMaxFrames(config?.splitMaxFrames ?? 5);
+      setSplitMinConcepts(config?.splitMinConcepts ?? 2);
+      setSplitMaxConcepts(config?.splitMaxConcepts ?? 5);
     }
     // Use || instead of ?? so empty strings also fall back to default prompt
     const loadedPrompt = config?.userPromptTemplate || buildPrompt({
@@ -773,8 +773,8 @@ export function useJobCreation({
         if (mode === 'lexical_units' || mode === 'concepts') {
           setScopeMode('concepts');
           frameIdAutocomplete.setText(idsToText(scope.conceptIds ?? []));
-          setFrameIncludeLexicalUnits(scope.includeLexicalUnits ?? false);
-          setFrameFlagTarget(scope.flagTarget ?? 'lexical_unit');
+          setConceptIncludeLexicalUnits(scope.includeLexicalUnits ?? false);
+          setConceptFlagTarget(scope.flagTarget ?? 'lexical_unit');
         } else {
           setScopeMode('selection');
         }
@@ -1086,7 +1086,7 @@ export function useJobCreation({
           },
           initialBatchSize: BATCH_SIZE,
           // Split configuration (only relevant for split jobs)
-          ...(jobType === 'split' && { splitMinFrames, splitMaxFrames }),
+          ...(jobType === 'split' && { splitMinConcepts, splitMaxConcepts }),
         };
 
         if (cancelSubmissionRef.current) return;
@@ -1165,7 +1165,7 @@ export function useJobCreation({
             },
           },
           // Split configuration (only relevant for split jobs)
-          ...(jobType === 'split' && { splitMinFrames, splitMaxFrames }),
+          ...(jobType === 'split' && { splitMinConcepts, splitMaxConcepts }),
         };
 
         if (cancelSubmissionRef.current) return;
@@ -1368,7 +1368,7 @@ export function useJobCreation({
   // Validate concept IDs
   useEffect(() => {
     if (scopeMode !== 'concepts' || frameIds.length === 0 || (mode !== 'lexical_units' && mode !== 'concepts')) {
-      setValidatedFrameIds(new Set());
+      setValidatedConceptIds(new Set());
       return;
     }
     const validateIds = async () => {
@@ -1401,7 +1401,7 @@ export function useJobCreation({
           console.error(`Failed to validate concept ID ${id}:`, error);
         }
       }
-      setValidatedFrameIds(validIds);
+      setValidatedConceptIds(validIds);
     };
     const timeoutId = setTimeout(validateIds, 500);
     return () => clearTimeout(timeoutId);
@@ -1434,10 +1434,10 @@ export function useJobCreation({
     agenticMode,
     setAgenticMode,
     // Split job settings
-    splitMinFrames,
-    setSplitMinFrames,
-    splitMaxFrames,
-    setSplitMaxFrames,
+    splitMinConcepts,
+    setSplitMinConcepts,
+    splitMaxConcepts,
+    setSplitMaxConcepts,
     
     // Scope state
     scopeMode,
@@ -1447,11 +1447,11 @@ export function useJobCreation({
     manualIds,
     frameIds,
     validatedManualIds,
-    validatedFrameIds,
+    validatedConceptIds,
     frameIncludeLexicalUnits,
-    setFrameIncludeLexicalUnits,
+    setConceptIncludeLexicalUnits,
     frameFlagTarget,
-    setFrameFlagTarget,
+    setConceptFlagTarget,
     
     // Filter state
     filterGroup,
@@ -1478,13 +1478,13 @@ export function useJobCreation({
     
     // Concept ID autocomplete
     frameIdInputRef: frameIdAutocomplete.inputRef,
-    showFrameIdMenu: frameIdAutocomplete.showMenu,
+    showConceptIdMenu: frameIdAutocomplete.showMenu,
     frameIdSuggestions: frameIdAutocomplete.suggestions,
     frameIdMenuPosition: frameIdAutocomplete.menuPosition,
     frameIdActiveIndex: frameIdAutocomplete.activeIndex,
-    handleFrameIdChange: frameIdAutocomplete.handleChange,
-    handleFrameIdKeyDown: frameIdAutocomplete.handleKeyDown,
-    insertFrameId: (id: string) => {
+    handleConceptIdChange: frameIdAutocomplete.handleChange,
+    handleConceptIdKeyDown: frameIdAutocomplete.handleKeyDown,
+    insertConceptId: (id: string) => {
       const item = frameIdAutocomplete.suggestions.find(s => s.label === id);
       if (item) frameIdAutocomplete.insert(item);
     },

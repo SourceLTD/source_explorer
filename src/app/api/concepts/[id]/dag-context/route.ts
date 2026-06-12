@@ -45,7 +45,7 @@ export async function GET(
     const { id: idParam } = await params;
     const id = BigInt(idParam);
 
-    const frame = await prisma.concepts.findUnique({
+    const concept = await prisma.concepts.findUnique({
       where: { id },
       select: {
         id: true,
@@ -56,7 +56,7 @@ export async function GET(
       },
     });
 
-    if (!frame || frame.deleted) {
+    if (!concept || concept.deleted) {
       return NextResponse.json({ error: 'Concept not found' }, { status: 404 });
     }
 
@@ -101,10 +101,10 @@ export async function GET(
     });
 
     return NextResponse.json({
-      id: frame.id.toString(),
-      label: frame.label,
-      short_definition: frame.short_definition,
-      definition_excerpt: firstSentence(frame.definition),
+      id: concept.id.toString(),
+      label: concept.label,
+      short_definition: concept.short_definition,
+      definition_excerpt: firstSentence(concept.definition),
       parents,
       children,
     });

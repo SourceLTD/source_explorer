@@ -21,7 +21,21 @@ export async function GET(
     const instance = await prisma.instances.findUnique({
       where: { id: instanceId },
       include: {
-        concepts: { select: { id: true, label: true } },
+        concepts: {
+          select: {
+            id: true,
+            label: true,
+            definition: true,
+            short_definition: true,
+            archetype: true,
+            domain: true,
+            code: true,
+            concept_relations_concept_relations_child_idToconcepts: {
+              select: { concepts_concept_relations_parent_idToconcepts: { select: { id: true, label: true } } },
+              take: 3,
+            },
+          },
+        },
         source_texts: {
           select: {
             id: true,
@@ -105,10 +119,21 @@ export async function GET(
       };
     });
 
+    const conceptParents =
+      instance.concepts.concept_relations_concept_relations_child_idToconcepts.map((r) => ({
+        id: r.concepts_concept_relations_parent_idToconcepts.id.toString(),
+        label: r.concepts_concept_relations_parent_idToconcepts.label,
+      }));
+
     const detail: ClaimsInstanceDetail = {
       id: instance.id.toString(),
       conceptId: instance.concepts.id.toString(),
       conceptLabel: instance.concepts.label,
+      conceptDefinition: instance.concepts.short_definition ?? instance.concepts.definition ?? null,
+      conceptArchetype: instance.concepts.archetype ?? null,
+      conceptDomain: instance.concepts.domain ?? null,
+      conceptCode: instance.concepts.code ?? null,
+      conceptParents,
       confidence: instance.confidence,
       metadata: (instance.metadata as Record<string, unknown>) ?? null,
       referentialStatus: instance.referential_status,

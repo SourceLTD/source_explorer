@@ -11,10 +11,10 @@ import ClassifierGuidanceModal from './ClassifierGuidanceModal';
 // Color scheme
 const currentNodeColor = '#3b82f6';
 const currentNodeStroke = '#1e40af';
-const parentFrameColor = '#93c5fd';
-const parentFrameStroke = '#60a5fa';
-const childFrameColor = '#93c5fd';
-const childFrameStroke = '#60a5fa';
+const parentConceptColor = '#93c5fd';
+const parentConceptStroke = '#60a5fa';
+const childConceptColor = '#93c5fd';
+const childConceptStroke = '#60a5fa';
 const linkColor = '#e5e7eb';
 const backgroundColor = '#ffffff';
 
@@ -39,7 +39,7 @@ interface ConceptGraphProps {
   pendingRelationChanges?: PendingRelationChange[];
 }
 
-interface PositionedFrameNode {
+interface PositionedConceptNode {
   id: string;
   type: 'current' | 'parent' | 'child' | 'verb';
   label: string;
@@ -85,7 +85,7 @@ const RELATION_LABELS: Record<ConceptRelationType, string> = {
   'parent_of': 'Parent Of',
 };
 
-function dedupeRelationsByRelatedFrame(relations: ConceptGraphRelation[], getRelatedId: (relation: ConceptGraphRelation) => string | undefined) {
+function dedupeRelationsByRelatedConcept(relations: ConceptGraphRelation[], getRelatedId: (relation: ConceptGraphRelation) => string | undefined) {
   const seen = new Set<string>();
   return relations.filter((relation) => {
     const relatedId = getRelatedId(relation);
@@ -95,7 +95,7 @@ function dedupeRelationsByRelatedFrame(relations: ConceptGraphRelation[], getRel
   });
 }
 
-function getPositionedNodeKey(node: PositionedFrameNode) {
+function getPositionedNodeKey(node: PositionedConceptNode) {
   return `${node.type}-${node.id}`;
 }
 
@@ -112,7 +112,7 @@ function ConceptGraphInner({ currentConcept, onConceptClick, onEditClick, onRepa
   const [recipeGraphExpanded, setRecipeGraphExpanded] = useState<boolean>(false);
   const [reparentModalOpen, setReparentModalOpen] = useState(false);
   const [reparentQuery, setReparentQuery] = useState('');
-  const [reparentFrames, setReparentFrames] = useState<ConceptOption[]>([]);
+  const [reparentConcepts, setReparentConcepts] = useState<ConceptOption[]>([]);
   const [reparentLoading, setReparentLoading] = useState(false);
   const [reparentSubmitting, setReparentSubmitting] = useState(false);
   const [reparentError, setReparentError] = useState<string | null>(null);
@@ -151,10 +151,10 @@ function ConceptGraphInner({ currentConcept, onConceptClick, onEditClick, onRepa
         const resp = await fetch(`/api/concepts?${params.toString()}`, { cache: 'no-store' });
         if (resp.ok) {
           const data = await resp.json();
-          setReparentFrames(Array.isArray(data) ? data : []);
+          setReparentConcepts(Array.isArray(data) ? data : []);
         }
       } catch {
-        setReparentFrames([]);
+        setReparentConcepts([]);
       } finally {
         setReparentLoading(false);
       }
@@ -223,7 +223,7 @@ function ConceptGraphInner({ currentConcept, onConceptClick, onEditClick, onRepa
   }, [calculateNodeWidth]);
 
   // Incoming parent_of = another frame is the source (parent) pointing at this frame
-  const parentRels = useMemo(() => dedupeRelationsByRelatedFrame(
+  const parentRels = useMemo(() => dedupeRelationsByRelatedConcept(
     currentConcept.relations.filter(r =>
       r.direction === 'incoming' && r.type === 'parent_of' && r.source && r.source.id !== currentConcept.id
     ),
@@ -235,7 +235,7 @@ function ConceptGraphInner({ currentConcept, onConceptClick, onEditClick, onRepa
     [parentRels],
   );
 
-  const lockedRelationFrameIds = useMemo(() => {
+  const lockedRelationConceptIds = useMemo(() => {
     const ids = new Set<string>();
     for (const r of currentConcept.relations) {
       if (!r.locked) continue;
@@ -258,7 +258,7 @@ function ConceptGraphInner({ currentConcept, onConceptClick, onEditClick, onRepa
 
   // Outgoing parent_of = this frame is the source (parent) pointing at children
   const childRels = useMemo(() => {
-    const deduped = dedupeRelationsByRelatedFrame(
+    const deduped = dedupeRelationsByRelatedConcept(
       currentConcept.relations.filter(r =>
         r.direction === 'outgoing' && r.type === 'parent_of' && r.target && r.target.id !== currentConcept.id
       ),
@@ -305,6 +305,8 @@ function ConceptGraphInner({ currentConcept, onConceptClick, onEditClick, onRepa
     const spacingFromCenter = 60;
     const margin = 10;
     const relatedNodeHeight = NODE_HEIGHT_WITH_COUNT;
+    const LANE_LABEL_X = -16;
+    const LANE_LABEL_NODE_GAP = 14;
 
     const mainNodeWidth = 1000;
     const mainNodeLayoutHeight = CONCEPT_MAIN_NODE_FIXED_HEIGHT;
@@ -312,7 +314,7 @@ function ConceptGraphInner({ currentConcept, onConceptClick, onEditClick, onRepa
     const mainNodeRenderHeight = Math.max(CONCEPT_MAIN_NODE_FIXED_HEIGHT, dynamicHeights.totalHeight);
     const renderOverflow = mainNodeRenderHeight - mainNodeLayoutHeight;
     
-    const nodes: PositionedFrameNode[] = [];
+    const nodes: PositionedConceptNode[] = [];
 
     // Build synthetic row items for pending child creates so they can be row-packed
     const pendingCreateItems = (pendingCreates ?? []).map(pc => ({
@@ -355,6 +357,7 @@ function ConceptGraphInner({ currentConcept, onConceptClick, onEditClick, onRepa
     // pending creates and other taxonomic children stay in the taxonomic lane.
     const gradeChildRels = childRels.filter(r => r.target?.state_kind === 'grade');
     const taxonomicChildRels = childRels.filter(r => r.target?.state_kind !== 'grade');
+    const taxonomicChildCount = taxonomicChildRels.length + pendingCreateItems.length;
 
     // Arrange rows per lane
     const dimensionParentRows = arrangeNodesInRows(dimensionParentItems, maxRowWidth, nodeSpacing);
@@ -409,7 +412,6 @@ function ConceptGraphInner({ currentConcept, onConceptClick, onEditClick, onRepa
     // Lane chrome bookkeeping for SVG rendering (dividers + labels)
     const laneDividers: { y: number }[] = [];
     const laneLabels: { x: number; y: number; text: string; color: string }[] = [];
-    const LANE_LABEL_X = 24;
     const DIMENSION_COLOR = '#3b82f6';
     const GRADE_COLOR = '#ea580c';
     // Position parent lanes ABOVE the main node.
@@ -463,7 +465,7 @@ function ConceptGraphInner({ currentConcept, onConceptClick, onEditClick, onRepa
     const firstParentRowY = centerY - mainNodeLayoutHeight / 2 - spacingFromCenter - relatedNodeHeight / 2;
     if (dimensionParentRows.length > 0) {
       placeParentRows(dimensionParentRows, firstParentRowY);
-      laneLabels.push({ x: LANE_LABEL_X, y: firstParentRowY - relatedNodeHeight / 2 - 6, text: 'Dimensions', color: DIMENSION_COLOR });
+      laneLabels.push({ x: LANE_LABEL_X, y: firstParentRowY - relatedNodeHeight / 2 - LANE_LABEL_NODE_GAP, text: `Dimensions (${dimensionParentItems.length})`, color: DIMENSION_COLOR });
 
       if (taxonomicParentRows.length > 0) {
         const topOfDimensionLane = firstParentRowY - (dimensionParentRows.length - 1) * (relatedNodeHeight + rowSpacing);
@@ -472,7 +474,7 @@ function ConceptGraphInner({ currentConcept, onConceptClick, onEditClick, onRepa
 
         const taxonomicTopRowY = topOfDimensionLane - (relatedNodeHeight + rowSpacing) - (LANE_GAP - rowSpacing);
         placeParentRows(taxonomicParentRows, taxonomicTopRowY);
-        laneLabels.push({ x: LANE_LABEL_X, y: taxonomicTopRowY - relatedNodeHeight / 2 - 6, text: 'Parents', color: '#6b7280' });
+        laneLabels.push({ x: LANE_LABEL_X, y: taxonomicTopRowY - relatedNodeHeight / 2 - LANE_LABEL_NODE_GAP, text: 'Parents', color: '#6b7280' });
       }
     } else if (taxonomicParentRows.length > 0) {
       placeParentRows(taxonomicParentRows, firstParentRowY);
@@ -502,7 +504,7 @@ function ConceptGraphInner({ currentConcept, onConceptClick, onEditClick, onRepa
     // Grade lane (closest to centre)
     if (gradeChildRows.length > 0) {
       const gradeLaneTopY = childStartY;
-      laneLabels.push({ x: LANE_LABEL_X, y: gradeLaneTopY - relatedNodeHeight / 2 - 6, text: 'Grades', color: GRADE_COLOR });
+      laneLabels.push({ x: LANE_LABEL_X, y: gradeLaneTopY - relatedNodeHeight / 2 - LANE_LABEL_NODE_GAP, text: `Grades (${gradeChildRels.length})`, color: GRADE_COLOR });
       gradeChildRows.forEach((row, rowIndex) => {
         placeChildRow(rowIndex, gradeLaneTopY, gradeChildRows, (r, rowY) => {
           let currentX = centerX - r.totalWidth / 2;
@@ -538,11 +540,11 @@ function ConceptGraphInner({ currentConcept, onConceptClick, onEditClick, onRepa
     }
 
     // Taxonomic lane: pending creates first, then real children
-    if (taxonomicChildHasContent && gradeChildRows.length > 0) {
+    if (taxonomicChildHasContent) {
       const firstTaxRowY = childStartY
         + nextChildRowIdx * (relatedNodeHeight + rowSpacing)
         + usedChildLaneGaps * LANE_GAP;
-      laneLabels.push({ x: LANE_LABEL_X, y: firstTaxRowY - relatedNodeHeight / 2 - 6, text: 'Children', color: '#6b7280' });
+      laneLabels.push({ x: LANE_LABEL_X, y: firstTaxRowY - relatedNodeHeight / 2 - LANE_LABEL_NODE_GAP, text: `Children (${taxonomicChildCount})`, color: '#6b7280' });
     }
 
     if (pendingChildRows.length > 0) {
@@ -609,11 +611,11 @@ function ConceptGraphInner({ currentConcept, onConceptClick, onEditClick, onRepa
   }, [pendingRelationChanges, currentConcept.id]);
 
   // Render related frame nodes
-  const renderRelatedNode = (node: PositionedFrameNode) => {
+  const renderRelatedNode = (node: PositionedConceptNode) => {
     const nodeKey = getPositionedNodeKey(node);
     const isHovered = hoveredNodeId === nodeKey;
     const isPendingDelete = pendingDeletes.has(node.id);
-    const isLocked = lockedRelationFrameIds.has(node.id);
+    const isLocked = lockedRelationConceptIds.has(node.id);
     const descColors = descendantColorIntensity(node.descendant_count);
     const fillColor = isPendingDelete
       ? pendingDeleteColor
@@ -802,6 +804,7 @@ function ConceptGraphInner({ currentConcept, onConceptClick, onEditClick, onRepa
         width={layout.width} 
         height={layout.height}
         className="block flex-shrink-0"
+        style={{ overflow: 'visible' }}
       >
         <rect width={layout.width} height={layout.height} rx={14} fill={backgroundColor} stroke="none" />
 
@@ -1053,7 +1056,7 @@ function ConceptGraphInner({ currentConcept, onConceptClick, onEditClick, onRepa
           <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-lg font-semibold text-gray-900 mb-1">Reparent Frame</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-1">Reparent Concept</h3>
             <p className="text-sm text-gray-500 mb-4">
               Select a new parent for &ldquo;{currentConcept.label}&rdquo; in the parent_of hierarchy.
             </p>
@@ -1063,7 +1066,7 @@ function ConceptGraphInner({ currentConcept, onConceptClick, onEditClick, onRepa
               type="text"
               value={reparentQuery}
               onChange={(e) => setReparentQuery(e.target.value)}
-              placeholder="Search frames by label..."
+              placeholder="Search concepts by label..."
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500 mb-3"
             />
 
@@ -1078,10 +1081,10 @@ function ConceptGraphInner({ currentConcept, onConceptClick, onEditClick, onRepa
                 <div className="flex items-center justify-center py-6">
                   <LoadingSpinner size="sm" noPadding />
                 </div>
-              ) : reparentFrames.length === 0 ? (
+              ) : reparentConcepts.length === 0 ? (
                 <div className="px-3 py-4 text-sm text-gray-500 text-center">No concepts found</div>
               ) : (
-                reparentFrames
+                reparentConcepts
                   .filter(f => f.id !== currentConcept.id)
                   .map((frame) => (
                     <button
